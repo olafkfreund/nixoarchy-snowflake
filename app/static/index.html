@@ -7,8 +7,8 @@
 <link rel="icon" href="icon.png">
 <script>if(/[?&]native=1/.test(location.search)) document.documentElement.classList.add('native');</script>
 <style>
-:root{--eye:#3d9b74;--sclera:#f3dccf;--acc:#3d9b74;--hot:#7fd6ae;--edge:#16362a;--edge2:#26604a;--deep:#0b1d16;--tint:#cdeede;
-  --accA:#3d9b741f;--accB:#3d9b7459;--glow:var(--acc);--text:#f3f3f3;--dim:#a3a3a3;--panel:#0b0b0b;
+:root{--eye:#1b4f8a;--sclera:#ffffff;--acc:#5aa9e6;--hot:#a9d8ff;--edge:#16304a;--edge2:#2a5f8f;--deep:#0b1b2d;--tint:#d6ecff;
+  --accA:#5aa9e61f;--accB:#5aa9e659;--glow:var(--acc);--text:#f3f3f3;--dim:#a3a3a3;--panel:#0b0b0b;
   --mono:"JetBrains Mono","Fira Code",ui-monospace,monospace;--ease:cubic-bezier(.22,1,.36,1)}
 body.m-error,body.m-annoyed{--glow:#ff2a2a} body.m-listening,body.m-happy,body.m-excited,body.m-love{--glow:var(--hot)}
 body.m-sleepy{--glow:var(--edge2)} body.m-pleading{--glow:#ffb02a}
@@ -478,6 +478,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <g id="body">
         <g id="accBack"></g>
         <path class="ball" fill="url(#ballG)"/>
+        <path class="ball facet" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="1" pointer-events="none"/>
         <g id="face">
           <g id="eL"><path class="eye" id="pL"/><g clip-path="url(#clipL)"><path class="slit" id="hlL"/></g></g>
           <g id="eR"><path class="eye" id="pR"/><g clip-path="url(#clipR)"><path class="slit" id="hlR"/></g></g>
@@ -659,7 +660,7 @@ try{ muted=localStorage.getItem('void.muted')==='1'; }catch(e){}
 
 /* ================= his look: body colour, each pupil, each eye white, a skin =================
    Everything is a CSS variable, so changes glide in. UI accents (glow, sparks, menus) follow the left pupil. */
-const LOOK_DEFAULT={body:'#0b0b0b',pupL:'#3d9b74',pupR:'#3d9b74',whiteL:'#f3dccf',whiteR:'#f3dccf',skin:'none',skinColor:'',link:true,random:false};
+const LOOK_DEFAULT={body:'#5aa9e6',pupL:'#1b4f8a',pupR:'#1b4f8a',whiteL:'#ffffff',whiteR:'#ffffff',skin:'none',skinColor:'',link:true,random:false};
 let LOOK={...LOOK_DEFAULT};
 const EC={eye:LOOK.pupL,acc:LOOK.pupL,hot:'#7fd6ae',sclera:LOOK.whiteL};
 const hex2rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255);
@@ -778,20 +779,28 @@ function miniVoid(svg,L,clickable){
    Lids cut the finished shape: top – 0..1 from the top, tilted by `sl` (+ = inner corner down → cross, − = worried),
    sagged by `tc`; bot – lower lid from the bottom, `bow` arches it. sq squashes the oval, es scales one eye.
    Asleep (`shut`) an oval melts into a thin "‿" arc (per eye, so he can wink).  */
-// snowflake silhouette: hexagonal plate (flat top/bottom, inradius core) + six arms to reach, each with two pairs of side thorns
-function snowPath(core=62, reach=104){
-  const R=core/Math.cos(Math.PI/6), w=6, k=Math.sqrt(3)/2, P=[];
+// snowflake silhouette, one closed outline: hexagonal plate (flat top/bottom, inradius core), six tapering arms with a diamond tip
+// and three thorn pairs each, and a short spike from the middle of every hex edge
+function snowPath(core=62, reach=138){
+  const T=Math.PI/3, R=core/Math.cos(T/2), k=Math.sqrt(3)/2, P=[], rot=(a,x,y)=>[x*Math.cos(a)-y*Math.sin(a),x*Math.sin(a)+y*Math.cos(a)];
+  const t0=reach-22, hw=x=>x<=t0?5-2.5*(x-R)/(t0-R):2.5;   // half-width: 5 at the plate, 2.5 near the tip
+  const side=[[R-5*Math.tan(T/2),-5]];
+  for(const [d,L] of [[6,30],[24,22],[40,13]]){ const x=R+d, x2=x+5.8; side.push([x,-hw(x)],[x+L/2,-hw(x)-L*k],[x2,-hw(x2)]); }
+  side.push([t0,-2.5],[reach-10,-5]);
   for(let i=0;i<6;i++){
-    const a=i*Math.PI/3, c=Math.cos(a), s=Math.sin(a);
-    const side=[[R-w*Math.tan(Math.PI/6),-w]];
-    for(const [x0,x1,L] of [[R+4,R+16,16],[R+19,R+27,10]]) side.push([x0,-w],[x0+L/2,-w-L*k],[x1,-w]);
-    side.push([reach-6,-w],[reach,-2.5]);
-    const loc=side.concat(side.slice().reverse().map(([x,y])=>[x,-y]));
-    for(const [x,y] of loc) P.push([x*c-y*s,x*s+y*c]);
+    const a=i*T, loc=side.concat([[reach,0]],side.slice().reverse().map(([x,y])=>[x,-y]));
+    for(const [x,y] of loc) P.push(rot(a,x,y));
+    const m=a+T/2, c=Math.cos(m), s=Math.sin(m);   // spike on the edge between this arm and the next
+    P.push([62*c+3.5*s,62*s-3.5*c],[84*c,84*s],[62*c-3.5*s,62*s+3.5*c]);
   }
   return 'M'+P.map(([x,y])=>x.toFixed(1)+' '+y.toFixed(1)).join('L')+'Z';
 }
-document.querySelectorAll('#body>.ball').forEach(e=>e.setAttribute('d',snowPath()));
+// crystal facets: spokes to the hex vertices + an inner hexagon
+function facetPath(core=62, inner=36){
+  const R=core/Math.cos(Math.PI/6), v=(r,i)=>(r*Math.cos(i*Math.PI/3)).toFixed(1)+' '+(r*Math.sin(i*Math.PI/3)).toFixed(1), n=[0,1,2,3,4,5];
+  return n.map(i=>`M0 0L${v(R,i)}`).join('')+'M'+n.map(i=>v(inner,i)).join('L')+'Z';
+}
+document.querySelectorAll('#body>.ball').forEach(e=>e.setAttribute('d',e.classList.contains('facet')?facetPath():snowPath()));
 const EYE={rx:23.5, ry:40.5, cx:27.5, cy:-4.5, tilt:0.157};
 const EYE_HALFW=Math.hypot(EYE.rx*Math.cos(EYE.tilt),EYE.ry*Math.sin(EYE.tilt));   // half the width of one leaning eye
 /* pupils morph smoothly between shapes — all flat, solid colour:
