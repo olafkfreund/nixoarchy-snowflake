@@ -887,6 +887,22 @@ def notify(title, body):
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+_ATTN_LAST = {}                                # agent name → time of its last nudge
+_ATTN_NAMES = {"claude": "Claude", "codex": "Codex", "agy": "agy"}
+
+
+def attention_accept(frm, text, now=None):
+    """Validate an agent's "needs input" nudge, rate-limit it (one per agent per 30 s) and publish it. True if shown."""
+    frm = frm if isinstance(frm, str) and re.fullmatch(r"[a-z0-9-]{1,20}", frm) else "agent"
+    text = re.sub(r"\s+", " ", text).strip()[:120] if isinstance(text, str) else ""
+    now = time.monotonic() if now is None else now
+    if now - _ATTN_LAST.get(frm, -1e9) < 30:
+        return False
+    _ATTN_LAST[frm] = now
+    BUS.pub(t="attention", **{"from": frm, "name": _ATTN_NAMES.get(frm) or frm.capitalize(), "text": text})
+    return True
+
+
 def _wire_quick():
     quick.notify, quick.publish, quick.cfg, quick.save_config = notify, BUS.pub, CFG, save_config
 
@@ -3318,6 +3334,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(shot)
                 except Exception as e:  # noqa: BLE001
                     return self._json({"error": str(e)}, 400)
+            if p == "/api/attention":                # `nixi-companion attention --from claude [words]`: an agent wants you
+                b = json.loads(self._body() or b"{}")
+                return self._json({"ok": True, "shown": attention_accept(b.get("from"), b.get("text"))})
             if p == "/api/notify":
                 b = json.loads(self._body() or b"{}")
                 notify(str(b.get("title") or "Nixi"), str(b.get("body") or ""))

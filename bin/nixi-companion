@@ -25,6 +25,19 @@ SHARE="$(cd "$(dirname "$(readlink -f "$0")")/../share/nixi-companion" 2>/dev/nu
 if [ -d "$ROOT/app" ] || [ -z "$SHARE" ] || [ ! -d "$SHARE/app" ]; then APP="$ROOT/app"; else APP="$SHARE/app"; fi
 PY="$ROOT/venv/bin/python"; LOG="$ROOT/server.log"
 if [ -n "${NIXI_COMPANION_APP:-}" ] && [ -n "${NIXI_COMPANION_PYTHON:-}" ]; then APP="$NIXI_COMPANION_APP"; PY="$NIXI_COMPANION_PYTHON"; fi
+# an agent's hook says it needs you: tell the running companion, never start it, never fail (hooks must not break an agent)
+#   nixi-companion attention --from claude [message words…]
+if [ "${1:-}" = attention ]; then shift; FROM=agent
+  [ "${1:-}" = --from ] && { FROM="${2:-agent}"; shift 2 || shift; }
+  "${NIXI_COMPANION_PYTHON:-python3}" -c 'import json,sys,os,urllib.request as u
+try:
+    rt = json.load(open(os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "nixi-companion", "runtime.json")))
+    u.urlopen(u.Request("http://127.0.0.1:%s/api/attention" % rt["port"], json.dumps({"from": sys.argv[1], "text": " ".join(sys.argv[2:])}).encode(),
+              {"Content-Type": "application/json", "X-Nixi-Token": rt["token"]}), timeout=3).read()
+except Exception:
+    pass' "$FROM" "$@" >/dev/null 2>&1
+  exit 0
+fi
 # push-to-talk from a desktop key binding (one call on press, one on release): straight to the running window, fast
 case "${1:-}" in ptt-down|ptt-up)
   PSOCK="${XDG_RUNTIME_DIR:-/tmp}/nixi-companion-$(id -u).sock"

@@ -1481,6 +1481,11 @@ function onEvent(ev){
   else if(ev.t==='spk_skip'){ const it=spkMap.get(ev.id); spkMap.delete(ev.id); if(it&&it.cap) karaNow(it.cap,it.fresh); quietNative(); }
   else if(ev.t==='spk_done'){ quietNative(); }
   else if(ev.t==='approve') queueApproval(ev);
+  else if(ev.t==='attention'){                            // an agent (claude/codex/agy…) is waiting for you: `nixi-companion attention`
+    const msg=ev.name+' needs you'+(ev.text?': '+ev.text:'');
+    if(hiddenNow){ post('/api/notify',{title:'Nixi',body:msg}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
+    if(info.hover) comeBack(); wake(); sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(msg);
+    if(!muted) say(ev.name+' needs you'); }
   else if(ev.t==='approve_done') approvalGone(ev.id);
   else if(ev.t==='askpass') askPass(ev);
   else if(ev.t==='askpass_done') pwGone(ev.id);
