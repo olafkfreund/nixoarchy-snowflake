@@ -87,6 +87,31 @@ FACE_TAG_RE = re.compile(r"\[(?:neutral|happy|proud|excited|laugh|warm|curious|u
 def untag(t):
     return FACE_TAG_RE.sub("", t or "")
 
+# nixi's Nix build replaces this with a JSON argv; never read from env or config. Unsubstituted = upstream Void.
+NIXI_BRIDGE = "@nixiBridge@"
+NIXI_CONF = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "omarchy" / "nixi.json"
+
+
+def bridge_argv():
+    """The bridge command as a list, or None (constant unsubstituted, not JSON, empty, or not all non-empty strings)."""
+    try:
+        a = json.loads(NIXI_BRIDGE)
+    except ValueError:
+        return None
+    return a if isinstance(a, list) and a and all(isinstance(x, str) and x for x in a) else None
+
+
+BRIDGED = bridge_argv() is not None            # (tests: set NIXI_BRIDGE, then BRIDGED = bridge_argv() is not None)
+
+
+def nixi_conf():
+    try:
+        c = json.loads(NIXI_CONF.read_text(encoding="utf-8"))
+        return c if isinstance(c, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
 DEFAULTS = {
     "port": 47777,
     "cwd": "~",
@@ -359,6 +384,8 @@ def mem_del(ident=None, match=None):
 
 
 def hist_add(rec):
+    if BRIDGED:
+        return
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with open(HIST_PATH, "a") as f:
         f.write(json.dumps(rec) + "\n")
@@ -403,6 +430,8 @@ HYPR_MARK = "# added by Void (Settings → More → Start when I log in)"
 
 def sync_autostart():
     """Add/remove Void from login startup to match the `autostart` setting."""
+    if BRIDGED:
+        return
     on = bool(CFG.get("autostart"))
     if WIN:                                   # a shortcut in the Startup folder that runs the launcher quietly
         link = winsys.startup_link()
@@ -632,6 +661,25 @@ class Approvals:
         if item["ans"] is None:
             return {"ok": False, "why": "the user didn't answer in time, so it wasn't run"}
         return {"ok": False}
+
+    def ask_bridge(self, title, options, detail="", timeout=600):
+        """nixi's permission request on Void's card. Never touches self.always. Returns the picked option id ("" = none)."""
+        kinds = {o.get("kind"): o.get("id") for o in reversed(options)}      # first option of each kind wins
+        rej = kinds.get("reject_once") or next((o.get("id") for o in options if str(o.get("kind")).startswith("reject")), "")
+        ev = threading.Event()
+        aid = secrets.token_hex(4)
+        item = {"id": aid, "tool": title, "key": aid, "detail": detail, "ev": ev, "ans": None}
+        with self.lock:
+            self.pending[aid] = item
+        BUS.pub(t="approve", id=aid, tool=title, detail=detail, key=aid, say=title, always="allow_always" in kinds)
+        ev.wait(timeout)
+        with self.lock:
+            self.pending.pop(aid, None)
+        ans = item["ans"] or "no"
+        BUS.pub(t="approve_done", id=aid, ans=ans)
+        if ans == "always":
+            return kinds.get("allow_always") or kinds.get("allow_once") or ""
+        return (kinds.get("allow_once") or "") if ans == "yes" else rej or ""
 
     def answer(self, aid, ans):
         with self.lock:
@@ -2605,8 +2653,152 @@ def run_claude(prompt, emit, partial):
     return "done"
 
 
+class Bridge:
+    """One nixi bridge process per conversation (JSON lines in and out). Started on the first prompt."""
+    NOT_PASSED = ("VOID_TOKEN", "VOID_PORT", "SUDO_ASKPASS")    # the bridge's agent must never see these
+
+    def __init__(self):
+        self.proc = None
+        self.lock = threading.Lock()
+
+    def env(self):
+        e = {k: v for k, v in os.environ.items() if k not in self.NOT_PASSED}
+        c = nixi_conf()
+        for k, name in (("agent", "NIXI_AGENT"), ("model", "NIXI_MODEL"), ("reasoningEffort", "NIXI_REASONING_EFFORT")):
+            e.pop(name, None)
+            if c.get("agent") and isinstance(c.get(k), str) and c[k]:        # all unset when `agent` is empty
+                e[name] = c[k]
+        return e
+
+    def alive(self):
+        return self.proc is not None and self.proc.poll() is None
+
+    def start(self):
+        if self.alive():
+            return self.proc
+        p = self.proc = subprocess.Popen(bridge_argv(), cwd=ST.cwd, env=self.env(), stdin=subprocess.PIPE,
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1,
+                                         encoding="utf-8", errors="replace", start_new_session=True)
+        threading.Thread(target=lambda: [print(f"[bridge] {l.rstrip()}", file=sys.stderr) for l in p.stderr],
+                         daemon=True).start()
+        return p
+
+    def send(self, obj):
+        with self.lock:
+            try:
+                self.proc.stdin.write(json.dumps(obj) + "\n")
+                self.proc.stdin.flush()
+                return True
+            except (AttributeError, OSError, ValueError):
+                return False
+
+    def close(self):
+        APPROVALS.cancel_all()                       # a card for a bridge that's gone can't be answered
+        p, self.proc = self.proc, None
+        if not p or p.poll() is not None:
+            return
+        try:
+            with self.lock:
+                p.stdin.write('{"type":"close"}\n')
+                p.stdin.flush()
+        except (OSError, ValueError):
+            pass
+        try:
+            p.wait(2)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(p.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+
+
+BRIDGE = Bridge()
+
+
+def run_bridge(prompt, emit):
+    """One turn through nixi's bridge; the events are mapped as in the plan. Returns "done"."""
+    try:
+        p = BRIDGE.start()
+    except OSError as e:
+        emit(t="error", text=f"Couldn't start the nixi bridge: {e}")
+        return "done"
+
+    def approve(o):                                      # (a worker: the card waits for you, the reader goes on)
+        opts = [x for x in o.get("options") or [] if isinstance(x, dict)]
+        pick = APPROVALS.ask_bridge(str(o.get("title") or "Use a tool"), opts, str(o.get("detail") or ""))
+        BRIDGE.send({"type": "permission", "id": o.get("id"), "optionId": pick})
+
+    BRIDGE.send({"type": "prompt", "text": prompt})
+    mid = None
+    for line in p.stdout:
+        try:
+            o = json.loads(line)
+        except ValueError:
+            continue
+        ty = o.get("type") if isinstance(o, dict) else None
+        if ty == "text":
+            if mid is not None and o.get("messageId") != mid:
+                emit(t="break")
+            mid = o.get("messageId")
+            emit(t="delta", text=str(o.get("text") or ""))
+        elif ty == "tool":
+            emit(t="tool", name=str(o.get("title") or "tool"), detail="", id="", input=None)
+        elif ty == "permission":
+            threading.Thread(target=approve, args=(o,), daemon=True).start()
+        elif ty in ("notice", "status"):
+            emit(t="status", text=str(o.get("text") or ""))
+        elif ty == "done":
+            if ST.stopped:
+                emit(t="stopped")
+            else:
+                emit(t="result", text="", is_error=False)
+            return "done"
+        elif ty == "error":
+            emit(t="error", text=str(o.get("message") or "error"))
+            return "done"
+        elif ty == "fatal":
+            emit(t="error", text=str(o.get("message") or "the nixi bridge stopped"))
+            BRIDGE.close()
+            return "done"
+        elif ty == "diagnostic":
+            print(f"[bridge] {o.get('text') or ''}", file=sys.stderr)
+    if ST.stopped:
+        emit(t="stopped")
+    else:
+        emit(t="error", text="The nixi bridge exited.")
+    BRIDGE.close()
+    return "done"
+
+
+def bridge_trust(level):
+    """Ask the bridge to change nixi's trust level; the reply is what its ack says, not what we hoped."""
+    try:
+        p = BRIDGE.start()
+    except OSError as e:
+        return f"Couldn't start the nixi bridge: {e}"
+    BRIDGE.send({"type": "trust", "trust": level})
+    for line in p.stdout:
+        try:
+            o = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(o, dict) and o.get("type") == "ack" and o.get("of") == "trust":
+            if o.get("ok"):
+                return f"Trust set to {str(o.get('trust') or level).capitalize()}."
+            return str(o.get("message") or "Couldn't change the trust level.")
+        if isinstance(o, dict) and o.get("type") == "fatal":
+            break
+    BRIDGE.close()
+    return "The nixi bridge stopped before it confirmed the trust level."
+
+
 def stop_proc():
     APPROVALS.cancel_all()
+    if BRIDGED:
+        if BRIDGE.alive():
+            ST.stopped = True
+            BRIDGE.send({"type": "cancel"})
+        return
     p = ST.proc
     if p and p.poll() is None:
         ST.stopped = True
@@ -2914,15 +3106,21 @@ def diagnostics():
     return redact("Void diagnostics\n\n" + "\n".join(L) + "\n\n--- last lines of server.log ---\n" + "\n".join(log) + "\n")
 
 
+def trust_nixi():
+    t = nixi_conf().get("trust")
+    return t if t in ("guide", "mechanic") else "guide"
+
+
 def state_info():
     return {
+        "bridge": BRIDGED,
         "version": VERSION, "update": Updates.status(), "update_check": bool(CFG.get("update_check", True)),
         "platform": "windows" if WIN else "linux", "ptt_hotkey": CFG.get("ptt_hotkey", "") or "",
         "presence": "bar" if CFG.get("presence") == "bar" else "orb",
         "bar_edge": CFG.get("bar_edge") if CFG.get("bar_edge") in ("top", "bottom", "left", "right") else "top",
         "cwd": ST.cwd, "cwd_display": pretty_path(ST.cwd), "session": bool(ST.session),
         "tts": tts_engine(), "mic": WIN or bool(mic_cmds()), "stt": "ready" if _whisper else (_whisper_err or "loading"),
-        "trust": trust(), "model": CFG["model"] or "default", "effort": CFG.get("effort") or "", "lean": bool(CFG.get("lean", True)), "max_cost_usd": CFG.get("max_cost_usd") or 0,
+        "trust": trust_nixi() if BRIDGED else trust(), "model": CFG["model"] or "default", "effort": CFG.get("effort") or "", "lean": bool(CFG.get("lean", True)), "max_cost_usd": CFG.get("max_cost_usd") or 0,
         "compact_tokens": CFG.get("compact_tokens") or 0, "root": bool(CFG.get("root_mode")) and not WIN, "root_ok": not WIN,
 
         "wake_word": bool(CFG.get("wake_word")), "notify_done": bool(CFG.get("notify_done")),
@@ -3073,16 +3271,24 @@ class Handler(BaseHTTPRequestHandler):
                 webbrowser.open(ISSUE_URL)
                 return self._json({"ok": True})
             if p == "/api/update/check":                     # {"stale": s}: only if the last check is older than s
+                if BRIDGED:
+                    return self._json({"error": "off in nixi mode"}, 403)
                 st = json.loads(self._body() or b"{}").get("stale")
                 if not isinstance(st, (int, float)) or Updates.stale(st):
                     Updates.check()
                 return self._json(Updates.status())
             if p == "/api/update":
+                if BRIDGED:
+                    return self._json({"error": "off in nixi mode"}, 403)
                 Updates.install()
                 return self._json(Updates.status())
             if p == "/api/settings":
                 b = json.loads(self._body() or b"{}")
                 upd = {}
+                if BRIDGED:                              # nixi owns these
+                    for k in ("trust", "root", "root_mode", "model", "auto_model", "autostart"):
+                        b.pop(k, None)
+                    b = {k: v for k, v in b.items() if not k.startswith("cost_")}
                 if "model" in b:
                     m = str(b["model"] or "").strip()
                     upd["model"] = "" if m in ("", "default") else m
@@ -3191,11 +3397,15 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"ok": True})                       # an ordinary edit in the project: no card
                 return self._json(APPROVALS.ask(str(b.get("tool") or "?"), b.get("input") or {}))
             if p == "/api/askpass":                   # askpass.py (sudo -A) is waiting for the password
+                if BRIDGED:
+                    return self._json({"error": "off in nixi mode"}, 403)
                 if WIN or not CFG.get("root_mode"):   # the password card only exists in root mode
                     return self._json({"error": "root mode is off"}, 403)
                 b = json.loads(self._body() or b"{}")
                 return self._json(AskPass.ask(str(b.get("prompt") or "Password:")))
             if p == "/api/askpass/answer":
+                if BRIDGED:
+                    return self._json({"error": "off in nixi mode"}, 403)
                 b = json.loads(self._body() or b"{}")
                 pw = b.get("pw")
                 return self._json({"ok": AskPass.answer(str(b.get("id")), pw if isinstance(pw, str) else None)})
@@ -3208,6 +3418,8 @@ class Handler(BaseHTTPRequestHandler):
                 Wake.talking_until(time.monotonic() + (60 if b.get("on") else 0.8))
                 return self._json({"ok": True})
             if p == "/api/capture":
+                if BRIDGED:
+                    return self._json({"error": "off in nixi mode"}, 403)
                 b = json.loads(self._body() or b"{}")
                 kind = b.get("kind", "screen")
                 if not full:                          # Claude's commands may look at the screen, never your clipboard
@@ -3226,6 +3438,8 @@ class Handler(BaseHTTPRequestHandler):
                 notify(str(b.get("title") or "Void"), str(b.get("body") or ""))
                 return self._json({"ok": True})
             if p == "/api/plugins":
+                if BRIDGED:
+                    return self._json({"error": "off in nixi mode"}, 403)
                 b = json.loads(self._body() or b"{}")
                 if b.get("op") == "set" and not plugin_set(str(b.get("id") or ""), b.get("enabled")):
                     return self._json({"error": "couldn't change that plug-in", "items": plugins_list()}, 400)
@@ -3243,11 +3457,15 @@ class Handler(BaseHTTPRequestHandler):
                     mem_save([])
                 return self._json({"items": mem_load()})
             if p == "/api/history":
+                if BRIDGED:
+                    return self._json({"error": "off in nixi mode"}, 403)
                 b = json.loads(self._body() or b"{}")
                 if b.get("op") == "clear":
                     HIST_PATH.unlink(missing_ok=True)
                 return self._json({"items": hist_load(int(b.get("limit") or 60))})
             if p == "/api/resume":
+                if BRIDGED:
+                    return self._json({"error": "off in nixi mode"}, 403)
                 b = json.loads(self._body() or b"{}")
                 d = b.get("cwd") or ST.cwd
                 try:
@@ -3264,6 +3482,8 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/devices":
                 return self._json({"mics": list_mics()})
             if p == "/api/compact":                   # "tidy up now"
+                if BRIDGED:
+                    return self._json({"error": "off in nixi mode"}, 403)
                 if not ST.lock.acquire(blocking=False):
                     return self._json({"error": "still working on the last one"}, 409)
                 try:
@@ -3273,6 +3493,8 @@ class Handler(BaseHTTPRequestHandler):
                 finally:
                     ST.lock.release()
             if p == "/api/new":
+                if BRIDGED:
+                    BRIDGE.close()
                 ST.fresh()
                 ST.save()
                 APPROVALS.reset()
@@ -3283,6 +3505,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not os.path.isdir(path):
                     return self._json({"error": f"not a directory: {pretty_path(path)}"}, 400)
                 ST.cwd = path
+                if BRIDGED:
+                    BRIDGE.close()
                 ST.fresh()
                 ST.save()
                 APPROVALS.reset()
@@ -3360,6 +3584,20 @@ class Handler(BaseHTTPRequestHandler):
             prompt = FOLLOW_NOTE + said
         if not prompt:
             return self._json({"error": "empty prompt"}, 400)
+        if BRIDGED and said in ("/mechanic", "/guide"):        # trust is nixi's: pass it through, no agent turn
+            if not ST.lock.acquire(timeout=0):                 # the turn's reader owns the bridge's stdout
+                return self._json({"error": "still working on the last one"}, 409)
+            try:
+                msg = bridge_trust(said[1:])
+            finally:
+                ST.lock.release()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            for ev in ({"t": "delta", "text": msg}, {"t": "result", "text": ""}, {"t": "done"}):
+                self.wfile.write(b"data: " + json.dumps(ev).encode() + b"\n\n")
+            self.wfile.flush()
+            return None
         ST.auto_pick = pick_auto(said, extra, follow)
         if not ST.lock.acquire(timeout=180 if ST.compacting else 0):    # (tidying its notes: wait, don't refuse)
             return self._json({"error": "still working on the last one"}, 409)
@@ -3437,7 +3675,7 @@ class Handler(BaseHTTPRequestHandler):
             ST.stopped = False
             partial = bool(CFG["partial_messages"])
             for _ in range(3):
-                r = run_claude(prompt, emit, partial)
+                r = run_bridge(prompt, emit) if BRIDGED else run_claude(prompt, emit, partial)
                 if r == "retry_nopartial":
                     partial = False
                     continue
@@ -3455,7 +3693,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 ST.last_worked = bool(rec["tools"])
                 hist_add(rec)
-                recall.add(rec)
+                if not BRIDGED:
+                    recall.add(rec)
             except Exception as e:  # noqa: BLE001  (a notes problem must never break an answer)
                 print(f"[void] history/quick memory: {e}", file=sys.stderr)
             emit(t="done")
@@ -3538,7 +3777,8 @@ def main():
     _wire_quick()
     threading.Thread(target=warm_tts, daemon=True).start()
     Wake.ensure()
-    Updates.start()
+    if not BRIDGED:
+        Updates.start()
     srv = ThreadingHTTPServer(("127.0.0.1", int(CFG["port"])), Handler)
     try:                                       # where askpass.py finds us if sudo cleaned its environment (owner-only)
         rt = DATA_DIR / "runtime.json"
@@ -3554,6 +3794,8 @@ def main():
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        BRIDGE.close()
 
 
 def _try(fn):
