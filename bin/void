@@ -24,6 +24,7 @@ ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/void"
 SHARE="$(cd "$(dirname "$(readlink -f "$0")")/../share/void" 2>/dev/null && pwd || true)"
 if [ -d "$ROOT/app" ] || [ -z "$SHARE" ] || [ ! -d "$SHARE/app" ]; then APP="$ROOT/app"; else APP="$SHARE/app"; fi
 PY="$ROOT/venv/bin/python"; LOG="$ROOT/server.log"
+if [ -n "${VOID_APP:-}" ] && [ -n "${VOID_PYTHON:-}" ]; then APP="$VOID_APP"; PY="$VOID_PYTHON"; fi
 # push-to-talk from a desktop key binding (one call on press, one on release): straight to the running window, fast
 case "${1:-}" in ptt-down|ptt-up)
   PSOCK="${XDG_RUNTIME_DIR:-/tmp}/void-$(id -u).sock"
@@ -32,10 +33,11 @@ case "${1:-}" in ptt-down|ptt-up)
   set -- listen ;;                                     # he isn't open yet: start him and just listen
 esac
 if [ "${1:-}" = setup ]; then
+  if [ -n "${VOID_APP:-}" ] && [ -n "${VOID_PYTHON:-}" ]; then echo "installed by Nix; nothing to set up"; exit 0; fi
   [ -x "${SHARE:-}/install.sh" ] && exec "$SHARE/install.sh" --user
   echo "void setup is for system-wide installs — run ./install.sh from the folder you downloaded instead" >&2; exit 1
 fi
-if [ ! -x "$PY" ]; then
+if { [ -z "${VOID_APP:-}" ] || [ -z "${VOID_PYTHON:-}" ]; } && [ ! -x "$PY" ]; then
   if [ "$APP" = "${SHARE:-}/app" ]; then echo "First time? Run:  void setup   (downloads your voice + speech models)" >&2
   else echo "Void isn't installed — run install.sh" >&2; fi
   exit 1
@@ -56,7 +58,7 @@ case "${1:-}" in
   diagnostics) exec "$PY" "$APP/server.py" --diagnostics ;;
   see)     exec "$PY" "$APP/server.py" --see "${2:-window}" ;;            # view-only picture of your screen (for Claude)     # speak under heavy load, report any stutter
   doctor)  echo "── window ──"
-           for c in /usr/bin/python3 /usr/bin/python; do [ -x "$c" ] && { "$c" "$APP/window.py" --check 2>&1 | tail -n 3 || echo "overlay: window can't start (pacman -S python-gobject webkit2gtk-4.1 gtk-layer-shell)"; break; }; done
+           for c in "${VOID_PYTHON:-}" /usr/bin/python3 /usr/bin/python; do [ -x "$c" ] && { "$c" "$APP/window.py" --check 2>&1 | tail -n 3 || echo "overlay: window can't start (pacman -S python-gobject webkit2gtk-4.1 gtk-layer-shell)"; break; }; done
            echo "env: WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-unset} GDK_BACKEND=${GDK_BACKEND:-unset} XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-unset}"
            pgrep -f "$APP/window.py" >/dev/null && echo "running: overlay window process" || echo "running: no window process"
            pgrep -f -- "--user-data-dir=$ROOT/browser" >/dev/null && echo "running: a BROWSER window (the old fallback — 'void stop' closes it)"
@@ -103,10 +105,12 @@ hypr_rules(){
   done
 }
 if [ "${VOID_BROWSER:-0}" != 1 ]; then
-  SP=""
-  for c in /usr/bin/python3 /usr/bin/python; do
-    if [ -x "$c" ] && "$c" -c "import gi; gi.require_version('Gtk','3.0'); gi.require_version('WebKit2','4.1'); from gi.repository import WebKit2" >/dev/null 2>&1; then SP="$c"; break; fi
-  done
+  SP="${VOID_PYTHON:-}"
+  if [ -z "$SP" ]; then
+    for c in /usr/bin/python3 /usr/bin/python; do
+      if [ -x "$c" ] && "$c" -c "import gi; gi.require_version('Gtk','3.0'); gi.require_version('WebKit2','4.1'); from gi.repository import WebKit2" >/dev/null 2>&1; then SP="$c"; break; fi
+    done
+  fi
   if [ -n "$SP" ]; then
     # already running → just send it show/hide/toggle
     if winalive && [ -S "$SOCK" ]; then exec "$SP" "$APP/window.py" "${URL}?native=1" "$CMD"; fi
