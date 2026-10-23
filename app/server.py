@@ -186,6 +186,9 @@ DEFAULTS = {
     "sfx": True,
     # how he looks: body + each eye + each eye white, a skin (accessory), and whether to roll random colours each time
     "look": {},
+    # lambda-tip cues: failed user units + new generation (local); next calendar item (gog) and weather look (network): off
+    "follow_focus": False,                  # move to the screen you focus (Hyprland)
+    "ambient_system": True, "ambient_calendar": False, "ambient_weather": False,
     # projects you can switch to by voice: {"delivery app": "/home/you/code/diq"}
     "projects": {},
     # when a long task finishes while he's hidden: desktop notification / pop back up
@@ -918,16 +921,178 @@ _ATTN_LAST = {}                                # agent name → time of its last
 _ATTN_NAMES = {"claude": "Claude", "codex": "Codex", "agy": "agy"}
 
 
-def attention_accept(frm, text, now=None):
+_ATTN_TARGET = {}                              # agent name → {"herdr": {"pane", "session"}, "pids": [...]} of its last nudge
+_ATTN_ID = r"[A-Za-z0-9:_.-]{1,64}"
+
+
+def attention_target(t):
+    """Keep only what is safe to hand to herdr / hyprctl as argv: id-like pane and session, up to 32 integer pids."""
+    t = t if isinstance(t, dict) else {}
+    h = t.get("herdr") if isinstance(t.get("herdr"), dict) else {}
+    ok = all(isinstance(h.get(k), str) and re.fullmatch(_ATTN_ID, h[k]) for k in ("pane", "session"))
+    pids = [p for p in (t.get("pids") if isinstance(t.get("pids"), list) else [])[:32] if type(p) is int and p > 1]
+    return {"herdr": {"pane": h["pane"], "session": h["session"]} if ok else None, "pids": pids}
+
+
+def attention_focus(frm):
+    """Move focus to where the agent's last nudge came from: its herdr pane, then its terminal window. Never types."""
+    try:
+        return _attention_focus(_ATTN_TARGET.get(frm))
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _attention_focus(t):
+    if not t:
+        return False
+    done = False
+    if t["herdr"] and shutil.which("herdr"):
+        r = _run(["herdr", "--session", t["herdr"]["session"], "agent", "focus", t["herdr"]["pane"]], timeout=3)
+        done = r.returncode == 0
+    if t["pids"] and shutil.which("hyprctl"):
+        try:
+            clients = {c.get("pid") for c in json.loads(_run(["hyprctl", "clients", "-j"], timeout=3).stdout or "[]")}
+        except (ValueError, AttributeError, TypeError):
+            clients = set()
+        pid = next((p for p in t["pids"] if p in clients), None)       # nearest ancestor that is a window
+        if pid:
+            done = _run(["hyprctl", "dispatch", "focuswindow", f"pid:{pid}"], timeout=3).returncode == 0 or done
+    return done
+
+
+def attention_accept(frm, text, now=None, target=None):
     """Validate an agent's "needs input" nudge, rate-limit it (one per agent per 30 s) and publish it. True if shown."""
     frm = frm if isinstance(frm, str) and re.fullmatch(r"[a-z0-9-]{1,20}", frm) else "agent"
     text = re.sub(r"\s+", " ", text).strip()[:120] if isinstance(text, str) else ""
     now = time.monotonic() if now is None else now
+    if target is not None:
+        _ATTN_TARGET[frm] = attention_target(target)             # latest wins, even when rate-limited
     if now - _ATTN_LAST.get(frm, -1e9) < 30:
         return False
     _ATTN_LAST[frm] = now
     BUS.pub(t="attention", **{"from": frm, "name": _ATTN_NAMES.get(frm) or frm.capitalize(), "text": text})
     return True
+
+
+class Ambient:
+    """Small cues for the lambda tips: failed user units / a new NixOS generation (local), the next calendar item (gog) and
+    the weather (omarchy weather). Its own thread, a TTL per source, paused while he is hidden; never run from state_info()."""
+    EVERY = {"sys": 900, "cal": 900, "weather": 1800}
+    FLAG = {"sys": "ambient_system", "cal": "ambient_calendar", "weather": "ambient_weather"}
+    SYSTEM = "/nix/var/nix/profiles/system"
+    data = {"sys": [], "cal": None, "weather": None}           # what the page draws
+    due = {"sys": 0.0, "cal": 0.0, "weather": 0.0}
+    events = []                                                # [(start datetime, title, id)] from the last gog fetch
+    alerted = set()                                            # calendar items already announced
+    thread = None
+
+    @staticmethod
+    def run(argv, timeout=3):
+        try:
+            r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
+            return r.stdout if r.returncode == 0 else None
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+    @classmethod
+    def poke(cls):
+        """Fetch everything again on the next tick (he was shown, or a setting changed)."""
+        cls.due = {k: 0.0 for k in cls.due}
+
+    @classmethod
+    def snapshot(cls):
+        return dict(cls.data)
+
+    @classmethod
+    def fetch(cls, what):
+        """Refresh one source into cls.data. Returns True for a new NixOS generation (the blue glint)."""
+        if what == "sys":
+            out = cls.run(["systemctl", "--user", "--failed", "--no-legend"])
+            cls.data["sys"] = [ln.replace("●", " ").split()[0] for ln in (out or "").splitlines() if ln.replace("●", " ").split()]
+            return cls.generation()
+        if what == "cal":
+            conf = NIXI_CONF.parent / "calendars.json"
+            try:
+                ids = [c["googleCalendarId"] for c in json.loads(conf.read_text(encoding="utf-8"))
+                       if isinstance(c, dict) and c.get("enabled") and isinstance(c.get("googleCalendarId"), str)]
+            except (OSError, ValueError, KeyError, TypeError):
+                ids = []
+            out = ids and cls.run(["gog", "--readonly", "--json", "calendar", "events", *ids, "--from", "now", "--days", "1",
+                                   "--sort", "start", "--max", "20"], timeout=10)
+            if out:
+                try:
+                    import datetime
+                    ev = []
+                    for e in json.loads(out).get("events") or []:
+                        st = (e.get("start") or {}).get("dateTime")          # (all-day items have only "date": no cue)
+                        if st:
+                            ev.append((datetime.datetime.fromisoformat(st), str(e.get("summary") or "(busy)")[:60], str(e.get("id"))))
+                    cls.events = ev
+                except (ValueError, AttributeError, TypeError):
+                    pass
+            return False
+        out = cls.run(["omarchy", "weather", "status"], timeout=10)
+        m = re.search(r"(-?\d+(?:\.\d+)?)\s*°\s*C", out or "")
+        cls.data["weather"] = None if not m else "cold" if float(m.group(1)) < 0 else "hot" if float(m.group(1)) > 28 else None
+        return False
+
+    @classmethod
+    def generation(cls):
+        """True once per new NixOS system generation (the first run only records it)."""
+        try:
+            gen = os.readlink(cls.SYSTEM)
+        except OSError:
+            return False
+        p = DATA_DIR / "ambient.json"
+        try:
+            last = json.loads(p.read_text()).get("generation")
+        except (OSError, ValueError, AttributeError):
+            last = None
+        if gen == last:
+            return False
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"generation": gen}))
+        return last is not None
+
+    @classmethod
+    def step(cls, now=None):
+        """One pass: refetch what is due, work out the calendar window, publish if anything changed."""
+        import datetime
+        t = time.monotonic()
+        before, glint = json.dumps(cls.data, sort_keys=True), False
+        for what, every in cls.EVERY.items():
+            if not CFG.get(cls.FLAG[what], what == "sys"):
+                cls.data[what] = [] if what == "sys" else None
+                continue
+            if t >= cls.due[what]:
+                cls.due[what] = t + every
+                glint = cls.fetch(what) or glint
+        now = now or datetime.datetime.now().astimezone()
+        nxt = next(((s, ti, i) for s, ti, i in cls.events if 0 < (s - now).total_seconds() <= 600), None)
+        cls.data["cal"] = None if not (nxt and CFG.get("ambient_calendar")) else {
+            "time": nxt[0].astimezone().strftime("%H:%M"), "title": nxt[1], "id": nxt[2]}
+        alert = bool(nxt and CFG.get("ambient_calendar") and nxt[2] not in cls.alerted)
+        if alert:
+            cls.alerted.add(nxt[2])
+        if glint or alert or json.dumps(cls.data, sort_keys=True) != before:
+            BUS.pub(t="ambient", glint=glint, alert=alert, **cls.data)
+
+    @classmethod
+    def loop(cls):
+        time.sleep(3)
+        while True:
+            if not Wake.asleep:
+                try:
+                    cls.step()
+                except Exception as e:  # noqa: BLE001  (a cue must never take the server down)
+                    print(f"[nixi] ambient: {e}", file=sys.stderr)
+            time.sleep(20)
+
+    @classmethod
+    def start(cls):
+        if not cls.thread:
+            cls.thread = threading.Thread(target=cls.loop, daemon=True)
+            cls.thread.start()
 
 
 def _wire_quick():
@@ -3052,7 +3217,9 @@ def state_info():
         "popup_done": bool(CFG.get("popup_done")), "hover": bool(CFG.get("hover")), "code_panel": CFG.get("code_panel", True) is not False, "live_minutes": int(CFG.get("live_minutes") or 10), "voice_native": Speaker.available(), "code_face": "you" if CFG.get("code_face") == "you" else "him",
         "click_through": bool(CFG.get("click_through")),
         "autostart": bool(CFG.get("autostart")), "listen_on_show": bool(CFG.get("listen_on_show")),
-        "barge_in": bool(CFG.get("barge_in")), "sfx": bool(CFG.get("sfx")), "look": look(), "skins": SKINS,
+        "barge_in": bool(CFG.get("barge_in")), "sfx": bool(CFG.get("sfx")), "look": look(), "skins": SKINS, "ambient": Ambient.snapshot(),
+        "follow_focus": bool(CFG.get("follow_focus")),
+        **{k: bool(CFG.get(k, k == "ambient_system")) for k in Ambient.FLAG.values()},
         "projects": quick.projects(),
         "quick_actions": CFG.get("quick_actions") or [], "memory_count": len(mem_load()),
         "mic_device": CFG.get("mic_device") or "", "whisper_model": CFG.get("whisper_model") or "auto",
@@ -3177,6 +3344,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.listen()
             if p == "/api/sleep":                  # hidden = fully off: mic closed, no "hey Nixi", no voice
                 Wake.asleep = bool(json.loads(self._body() or b"{}").get("on"))
+                if not Wake.asleep:
+                    Ambient.poke()                       # shown again: look at the calendar now
                 if Wake.asleep:
                     Speaker.stop()
                     Wake.hush()
@@ -3257,7 +3426,7 @@ class Handler(BaseHTTPRequestHandler):
                 except (TypeError, ValueError):
                     pass
                 for key in ("wake_word", "notify_done", "popup_done", "code_panel", "hover", "click_through", "autostart", "listen_on_show",
-                            "barge_in", "sfx", "update_check", "auto_compact", "full_text", "lean"):
+                            "barge_in", "sfx", "update_check", "auto_compact", "full_text", "lean", "follow_focus", "ambient_system", "ambient_calendar", "ambient_weather"):
                     if key in b:
                         upd[key] = bool(b[key])
                 if "ptt_hotkey" in b:
@@ -3287,6 +3456,8 @@ class Handler(BaseHTTPRequestHandler):
                     reset_whisper()
                 if "autostart" in upd:
                     sync_autostart()
+                if any(k.startswith("ambient_") for k in upd):
+                    Ambient.poke()
                 if upd.get("wake_word"):
                     threading.Thread(target=lambda: _try(whisper), daemon=True).start()
                 Wake.ensure()
@@ -3368,7 +3539,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": str(e)}, 400)
             if p == "/api/attention":                # `nixi-companion attention --from claude [words]`: an agent wants you
                 b = json.loads(self._body() or b"{}")
-                return self._json({"ok": True, "shown": attention_accept(b.get("from"), b.get("text"))})
+                return self._json({"ok": True, "shown": attention_accept(b.get("from"), b.get("text"), target=b.get("target"))})
+            if p == "/api/attention/focus":
+                f = json.loads(self._body() or b"{}").get("from")
+                return self._json({"ok": attention_focus(f) if isinstance(f, str) else False})
             if p == "/api/notify":
                 b = json.loads(self._body() or b"{}")
                 notify(str(b.get("title") or "Nixi"), str(b.get("body") or ""))
@@ -3724,6 +3898,7 @@ def main():
     _wire_quick()
     threading.Thread(target=warm_tts, daemon=True).start()
     Wake.ensure()
+    Ambient.start()
     if not BRIDGED:
         Updates.start()
     srv = ThreadingHTTPServer(("127.0.0.1", int(CFG["port"])), Handler)

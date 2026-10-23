@@ -307,7 +307,7 @@ def _find_project(name):
 # ---------------------------------------------------------------- the matcher
 def handle(text):
     t = " ".join((text or "").lower().replace("’", "'").split()).strip(" .!?")
-    t = re.sub(r"^(hey nixi|nixi|ok nixi|okay nixi[,\s]+", "", t)
+    t = re.sub(r"^(hey nixi|nixi|ok nixi|okay nixi)[,\s]+", "", t)
     t = re.sub(r"^(please|can you|could you|would you|will you)\s+", "", t)
     t = re.sub(r"\s+please$", "", t)
     if not t or len(t) > 120:
@@ -374,6 +374,16 @@ def handle(text):
         return {"say": f"It's {datetime.now().strftime('%-I:%M %p').lower()}.", "mood": "curious"}
     if re.fullmatch(r"(what'?s|what is) (the )?(date|day)( today)?( is it)?|what day is (it|today)|what'?s today", t):
         return {"say": f"It's {datetime.now().strftime('%A, %B %-d')}.", "mood": "curious"}
+
+    # screens: "move to the other screen", "next screen", "left screen", "come here" → the window moves (the page relays it)
+    if re.fullmatch(r"come (here|over here)|(move|go|jump) (to )?(my |the )?(focused|current|active) (screen|monitor|display)", t):
+        return {"say": "Here I am.", "mood": "happy", "monitor": "focused", "sfx": "ok"}
+    m = re.fullmatch(r"(?:move|go|jump|switch)(?: over)?(?: to)?(?: the| my)? (other|next|previous|left|right|last) (?:screen|monitor|display)"
+                     r"|(next|previous|other|left|right) (?:screen|monitor|display)", t)
+    if m:
+        w = m.group(1) or m.group(2)
+        return {"say": "Over I go.", "mood": "happy", "sfx": "ok",
+                "monitor": "prev" if w in ("previous", "last", "left") else "next"}   # (left/right: the screens are ordered left to right)
 
     # lock
     if re.fullmatch(r"lock (my |the )?(screen|computer|pc|laptop|desktop|session)( now)?", t):

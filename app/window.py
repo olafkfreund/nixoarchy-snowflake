@@ -321,6 +321,9 @@ class NixiWindow:
         self.cur_w, self.wide_shift = W, 0
         self.want_panel = self.want_code = self.want_bar = False
         self.glide_n = 0                        # the current window glide (a newer one cancels it)
+        self.glide_end = 0.0
+        self.follow_focus = False               # move to the monitor you focus (the page tells us; Hyprland only)
+        self.follow_t = None
         self.dragging = False                   # (set before _place() can run — it checks this)
         self.hover = False
         self.bar, self.bar_home = None, None    # top bar: merged into a screen edge as a notch (None = the blob)
@@ -400,6 +403,8 @@ class NixiWindow:
         self.region_on = False
         if not SELFTEST:                     # (a test window must not take over the real one's socket: `nixi-companion stop`)
             threading.Thread(target=self._serve, daemon=True).start()
+            if self.hypr.ok():
+                threading.Thread(target=self._watch_focus, daemon=True).start()
 
     # ---- where he is (layer mode: margins from the top-left of a monitor)
     @staticmethod
@@ -473,6 +478,9 @@ class NixiWindow:
             except (OSError, ValueError):
                 p = {}
             p.update(mon=self.mon_i, x=self.mx + self.wide_shift, y=self.my)
+            name = next((n for n, i, _ in self._hmons() if i == self.mon_i), None) if self.hypr.ok() else None
+            if name and not self.bar:                          # his spot on each screen, by Hyprland's name for it
+                p.setdefault("mons", {})[name] = [self.mx + self.wide_shift, self.my]
             json.dump(p, open(POS_FILE, "w"))
         except OSError:
             pass
@@ -548,6 +556,95 @@ class NixiWindow:
             if g.x <= gx < g.x + g.width and g.y <= gy < g.y + g.height:
                 return i, g
         return self.mon_i, self._geom()[1]
+
+    # ---- between screens: `monitor:next|prev|focused|<name>` (socket, key binds, voice) and "follow my focused screen"
+    def _hmons(self):
+        """Hyprland's monitors joined to GDK's by their position: [(name, gdk index, focused)], left to right."""
+        try:
+            hm = json.loads(self.hypr.req("j/monitors"))
+        except Exception:  # noqa: BLE001
+            return []
+        gm = [m.get_geometry() for m in self._monitors()]
+        out = [(m["name"], i, bool(m.get("focused"))) for m in hm for i, g in enumerate(gm) if (g.x, g.y) == (m["x"], m["y"])]
+        return sorted(out, key=lambda t: (gm[t[1]].x, gm[t[1]].y))
+
+    def go_monitor(self, arg):
+        """Move him to another screen, to the spot he had there last (bottom-right the first time). Docked, he re-docks on
+        the same edge. False if there is nowhere to go."""
+        ms = self._hmons() if self.hypr.ok() else []
+        cur = self.mon_i if self.layer else self._mon_at(self.mx + W // 2, self.my + H // 2)[0]
+        k = next((j for j, m in enumerate(ms) if m[1] == cur), 0)
+        arg = (arg or "").strip()
+        if arg in ("next", "prev") and len(ms) > 1:
+            tgt = ms[(k + (1 if arg == "next" else -1)) % len(ms)]
+        elif arg == "focused":
+            tgt = next((m for m in ms if m[2]), None)
+        else:
+            tgt = next((m for m in ms if m[0].lower() == arg.lower()), None)
+        if not tgt or tgt[1] == cur:
+            return False
+        if self.bar and not self.layer:
+            log("monitor: a docked notch only moves between screens with layer-shell")
+            return False
+        self._save_pos() if self.layer else self._save_xpos()                   # remember where he was here
+        g = self._monitors()[tgt[1]].get_geometry()
+        try:
+            mem = json.load(open(POS_FILE)).get("mons", {}).get(tgt[0])
+            x, y = int(mem[0]), int(mem[1])
+        except Exception:  # noqa: BLE001
+            x, y = g.width - W - 10, g.height - H - 10
+        self.glide_n += 1                                                      # (cancel any glide in progress)
+        if self.bar:
+            gw, gh = g.width, g.height
+            if self.bar_home:
+                self.bar_home = (tgt[1], x, y)
+            bx = {"top": (gw - W) // 2, "bottom": (gw - W) // 2, "left": 0, "right": gw - W}[self.bar]
+            by = {"top": 0, "bottom": gh - H, "left": (gh - H) // 2, "right": (gh - H) // 2}[self.bar]
+            self._place(bx - self.wide_shift, by, True, tgt[1])
+        elif self.layer:
+            self._place(x - self.wide_shift, y, True, tgt[1])
+        else:
+            self._xmove(g.x + x - self.wide_shift, g.y + y)
+        self._rewide()
+        GLib.timeout_add(100, lambda: (self._save_pos() if self.layer else self._save_xpos(), False)[1])
+        return True
+
+    def _watch_focus(self):
+        """Hyprland's event socket: `focusedmon>>NAME,WS` → follow it (if asked to), debounced, never mid-drag or glide."""
+        sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+        p = next((q for b in (os.environ.get("XDG_RUNTIME_DIR", ""), "/tmp") for q in [os.path.join(b, "hypr", sig or "-", ".socket2.sock")]
+                  if os.path.exists(q)), None)
+        if not p:
+            return
+        while True:
+            try:
+                s = socket.socket(socket.AF_UNIX)
+                s.connect(p)
+                buf = b""
+                while True:
+                    d = s.recv(4096)
+                    if not d:
+                        break
+                    buf += d
+                    *lines, buf = buf.split(b"\n")
+                    for ln in lines:
+                        if ln.startswith(b"focusedmon>>") and self.follow_focus:
+                            GLib.idle_add(self._follow, ln[12:].decode(errors="replace").split(",")[0])
+            except OSError:
+                pass
+            time.sleep(2)
+
+    def _follow(self, name):
+        if self.follow_t:
+            GLib.source_remove(self.follow_t)
+
+        def go():
+            self.follow_t = None
+            if self.follow_focus and not self.dragging and not self.pmoving and time.monotonic() >= self.glide_end:
+                self.go_monitor(name)
+            return False
+        self.follow_t = GLib.timeout_add(300, go)
+        return False
 
     def _tell_page(self):
         # X11 / XWayland: always-on-top window is the normal mode there, nothing to complain about. Only a plain Wayland
@@ -706,6 +803,7 @@ class NixiWindow:
         position. A newer glide (or move) cancels this one."""
         self.glide_n += 1
         n, sx, sy, t0 = self.glide_n, self.mx, self.my, time.monotonic()
+        self.glide_end = t0 + GLIDE + 0.2                 # (follow-focus waits for a glide to finish)
 
         def step():
             if n != self.glide_n:
@@ -1053,7 +1151,8 @@ class NixiWindow:
          "kbd:grab": lambda: self.keyboard(True), "kbd:release": lambda: self.keyboard(False),
          "code:on": lambda: self.set_wide(True, "code"), "code:off": lambda: self.set_wide(False, "code"),
          "peek:hide": self.win.hide, "peek:show": self.show,
-         }.get(msg, lambda: None)()
+         "follow:on": lambda: setattr(self, "follow_focus", True), "follow:off": lambda: setattr(self, "follow_focus", False),
+         }.get(msg, (lambda: self.go_monitor(msg[8:])) if msg.startswith("monitor:") else (lambda: None))()
 
     def _serve(self):
         try:
@@ -1070,7 +1169,7 @@ class NixiWindow:
                 cmd = c.recv(64).decode().strip()
             finally:
                 c.close()
-            fn = {"toggle": self.toggle, "show": self.show, "hide": self.hide, "quit": self.quit,
+            fn = (lambda: (self.go_monitor(cmd[8:]), False)[1]) if cmd.startswith("monitor:") else {"toggle": self.toggle, "show": self.show, "hide": self.hide, "quit": self.quit,
                   "listen": lambda: self.cmd("listen"), "look": lambda: self.cmd("look"), "live": lambda: self.cmd("live"),
                   "hover": lambda: self.cmd("hover"), "hover-on": lambda: self.cmd("hover-on"),
                   "hover-off": lambda: self.cmd("hover-off"),
