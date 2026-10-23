@@ -1,6 +1,6 @@
 ---
 name: Something isn't working
-about: Tell us what went wrong, and paste Void's diagnostics
+about: Tell us what went wrong, and paste Nixi's diagnostics
 labels: bug
 ---
 
@@ -12,8 +12,8 @@ labels: bug
 **Was he the orb, or the top bar (which edge)?**
 
 **Diagnostics**
-<!-- In Void: right-click him → Settings → More → "Copy diagnostics", then paste below.
-     (Or run `void diagnostics` in a terminal.) Your name and folders are already blanked out. -->
+<!-- In Nixi: right-click him → Settings → More → "Copy diagnostics", then paste below.
+     (Or run `nixi-companion diagnostics` in a terminal.) Your name and folders are already blanked out. -->
 
 ```
 paste here

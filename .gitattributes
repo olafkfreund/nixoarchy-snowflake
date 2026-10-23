@@ -2,6 +2,6 @@
 *.cmd text eol=crlf
 *.iss text eol=crlf
 *.sh text eol=lf
-bin/void text eol=lf
+bin/nixi-companion text eol=lf
 configure text eol=lf
 packaging/** text eol=lf

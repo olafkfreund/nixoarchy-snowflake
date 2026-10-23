@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Void overlay: a see-through GTK + WebKit surface that is *just* the little guy.
+"""Nixi overlay: a see-through GTK + WebKit surface that is *just* the little guy.
 
 On Wayland desktops that support layer-shell (Hyprland, sway, KDE Plasma, river, niri, Wayfire, labwc, COSMIC…) he's
 an *overlay* (like a bar or a notification), not an app window: he sits on top of every app on every workspace, never
@@ -13,7 +13,7 @@ Runs with the system Python (needs PyGObject + WebKit2GTK 4.1).
     window.py URL --selftest-bar EDGE out.png   (dock as the top bar on EDGE, print where, save a picture — for CI)
 
 The first instance owns the window; later calls just send it a command over a unix socket,
-so binding `void` (or `void listen`) to a hotkey pops him in and out like a quick-shell.
+so binding `nixi-companion` (or `nixi-companion listen`) to a hotkey pops him in and out like a quick-shell.
 
 Only the parts of the window you can see take clicks (the ball, open menus/panels); everything else clicks
 through to whatever is underneath. In hover mode he floats along next to your mouse cursor
@@ -31,7 +31,7 @@ import time
 # Lots of setups (NVIDIA ones especially) set GDK_BACKEND=x11, or start apps without WAYLAND_DISPLAY — then GTK quietly
 # uses XWayland and he ends up as an ordinary app window. Fix that up before GTK loads.
 LAYER_WHY = []
-if os.environ.get("VOID_NO_LAYER") != "1":
+if os.environ.get("NIXI_COMPANION_NO_LAYER") != "1":
     _rt = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
     if not os.environ.get("WAYLAND_DISPLAY") and os.path.isdir(_rt):
         _socks = sorted(f for f in os.listdir(_rt) if f.startswith("wayland-") and not f.endswith(".lock"))
@@ -40,14 +40,14 @@ if os.environ.get("VOID_NO_LAYER") != "1":
             LAYER_WHY.append(f"WAYLAND_DISPLAY wasn't set — found {_socks[0]}")
     _be = os.environ.get("GDK_BACKEND", "")
     if os.environ.get("WAYLAND_DISPLAY") and _be and _be.split(",")[0].strip() not in ("wayland", "*"):
-        LAYER_WHY.append(f"GDK_BACKEND was '{_be}' — using wayland for Void so it can be an overlay")
+        LAYER_WHY.append(f"GDK_BACKEND was '{_be}' — using wayland for Nixi so it can be an overlay")
         os.environ["GDK_BACKEND"] = "wayland"
 
 # His face (this window + WebKit's processes, which inherit this) on the first half of the CPU cores; the server
 # (voice + brain) takes the other half — drawing can never starve his voice. Off with "cpu_split": false.
 def _cpu_split():
     try:
-        conf = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "void", "config.json")
+        conf = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "nixi-companion", "config.json")
         try:
             if json.load(open(conf)).get("cpu_split", True) is False:
                 return
@@ -69,23 +69,23 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import GLib  # noqa: E402
 
-GLib.set_prgname("Void")                # before Gtk loads → X11 WM_CLASS + Wayland app_id "Void"
-GLib.set_application_name("Void")
+GLib.set_prgname("Nixi")                # before Gtk loads → X11 WM_CLASS + Wayland app_id "Nixi"
+GLib.set_application_name("Nixi")
 from gi.repository import Gdk, Gtk, WebKit2  # noqa: E402
 
 # We restarted under XWayland (see below) but can't reach it (no XWayland, no permission…): go back to Wayland as a
 # plain window rather than not showing up at all.
-if os.environ.get("VOID_LAYER_WHY") and os.environ.get("GDK_BACKEND") == "x11" and not Gtk.init_check(sys.argv)[0]:
-    os.environ.update(GDK_BACKEND="wayland", VOID_NO_XWAYLAND="1",
-                      VOID_LAYER_WHY=os.environ["VOID_LAYER_WHY"].replace(" — running under XWayland so he can stay on top",
+if os.environ.get("NIXI_COMPANION_LAYER_WHY") and os.environ.get("GDK_BACKEND") == "x11" and not Gtk.init_check(sys.argv)[0]:
+    os.environ.update(GDK_BACKEND="wayland", NIXI_COMPANION_NO_XWAYLAND="1",
+                      NIXI_COMPANION_LAYER_WHY=os.environ["NIXI_COMPANION_LAYER_WHY"].replace(" — running under XWayland so he can stay on top",
                                                                            "") + " — and XWayland couldn't be opened")
     os.execv(sys.executable, [sys.executable] + sys.argv)
 
 GtkLayerShell = None
-if os.environ.get("VOID_LAYER_WHY"):            # we restarted ourselves under XWayland (below): keep the reason for the log
-    LAYER_WHY.append(os.environ["VOID_LAYER_WHY"])
-elif os.environ.get("VOID_NO_LAYER") == "1":
-    LAYER_WHY.append("VOID_NO_LAYER=1 is set")
+if os.environ.get("NIXI_COMPANION_LAYER_WHY"):            # we restarted ourselves under XWayland (below): keep the reason for the log
+    LAYER_WHY.append(os.environ["NIXI_COMPANION_LAYER_WHY"])
+elif os.environ.get("NIXI_COMPANION_NO_LAYER") == "1":
+    LAYER_WHY.append("NIXI_COMPANION_NO_LAYER=1 is set")
 elif not os.environ.get("WAYLAND_DISPLAY"):
     LAYER_WHY.append("not running on Wayland (no WAYLAND_DISPLAY)")
 else:
@@ -102,9 +102,9 @@ else:
 # A Wayland desktop without layer-shell (GNOME…): a plain Wayland window can't stay on top or place itself, so start
 # over under XWayland, where it can (always-on-top, on every workspace, remembered position, hover mode).
 if GtkLayerShell is None and os.environ.get("WAYLAND_DISPLAY") and os.environ.get("DISPLAY") \
-        and os.environ.get("GDK_BACKEND", "").split(",")[0] != "x11" and os.environ.get("VOID_NO_XWAYLAND") != "1":
-    os.environ.update(GDK_BACKEND="x11", VOID_NO_LAYER="1",
-                      VOID_LAYER_WHY="; ".join(LAYER_WHY) + " — running under XWayland so he can stay on top")
+        and os.environ.get("GDK_BACKEND", "").split(",")[0] != "x11" and os.environ.get("NIXI_COMPANION_NO_XWAYLAND") != "1":
+    os.environ.update(GDK_BACKEND="x11", NIXI_COMPANION_NO_LAYER="1",
+                      NIXI_COMPANION_LAYER_WHY="; ".join(LAYER_WHY) + " — running under XWayland so he can stay on top")
     os.execv(sys.executable, [sys.executable] + sys.argv)
 
 try:                                          # python-cairo + gi's cairo bridge: input regions
@@ -118,9 +118,9 @@ WIDE = 470                   # while settings / history / memory are open the wi
 CODE_SIDE = 100              # room on each side for the code panel when he swings it out to his side
 BAR_SIDE = 70                # docked at the top / bottom: room either side of the notch, so his glow fades out in it
 GLIDE = 0.26                 # seconds the window takes to glide into the notch and back (quick: it should feel snappy)
-SOCK = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", f"void-{os.getuid()}.sock")
+SOCK = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", f"nixi-companion-{os.getuid()}.sock")
 BALL = (170, 165)            # where the ball's centre sits inside the window (CSS px)
-POS_FILE = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "void", "pos.json")
+POS_FILE = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "nixi-companion", "pos.json")
 
 
 _logged = set()
@@ -128,10 +128,10 @@ SELFTEST = "--selftest-bar" in sys.argv[2:3]
 
 
 def log(msg):
-    """→ `void log`. Each distinct message once, so a loop can't flood the log."""
+    """→ `nixi-companion log`. Each distinct message once, so a loop can't flood the log."""
     if msg not in _logged:
         _logged.add(msg)
-        print(f"[void] {msg}", file=sys.stderr, flush=True)
+        print(f"[nixi] {msg}", file=sys.stderr, flush=True)
 
 
 def send(cmd):
@@ -184,7 +184,7 @@ class Hypr:
 
     def find(self):
         for c in json.loads(self.req("j/clients")):
-            if c.get("class") == "Void" or c.get("initialClass") == "Void":
+            if c.get("class") == "Nixi" or c.get("initialClass") == "Nixi":
                 self.addr = c["address"]
                 return c
         return None
@@ -199,7 +199,7 @@ class Hypr:
         """Don't trust window rules (their syntax keeps changing): make him floating, pinned and exactly W×H directly."""
         c = self.find()
         if not c:
-            log("hyprland: couldn't find the Void window in `hyprctl clients`")
+            log("hyprland: couldn't find the Nixi window in `hyprctl clients`")
             return False
         a = f"address:{self.addr}"
         if not c.get("floating"):
@@ -252,7 +252,7 @@ class Ghost:
             L = GtkLayerShell
             L.init_for_window(g)
             L.set_layer(g, L.Layer.OVERLAY)
-            L.set_namespace(g, "void-ghost")
+            L.set_namespace(g, "nixi-ghost")
             L.set_monitor(g, mon)
             L.set_anchor(g, L.Edge.TOP, True)
             L.set_anchor(g, L.Edge.LEFT, True)
@@ -301,9 +301,9 @@ class Ghost:
         return True
 
 
-class VoidWindow:
+class NixiWindow:
     def __init__(self, url):
-        w = self.win = Gtk.Window(title="Void")
+        w = self.win = Gtk.Window(title="Nixi")
         w.set_decorated(False)
         w.set_resizable(False)
         w.set_default_size(W, H)
@@ -315,7 +315,7 @@ class VoidWindow:
         if visual is not None and w.get_screen().is_composited():
             w.set_visual(visual)
         else:
-            print("[void] no compositor/RGBA visual — window won't be see-through", file=sys.stderr)
+            print("[nixi] no compositor/RGBA visual — window won't be see-through", file=sys.stderr)
         # (no draw handler that clears the window: with GPU rendering WebKit only repaints what changed,
         #  so clearing here made everything outside the animating ball vanish until the mouse moved)
         self.cur_w, self.wide_shift = W, 0
@@ -331,7 +331,7 @@ class VoidWindow:
             L = GtkLayerShell
             L.init_for_window(w)
             L.set_layer(w, L.Layer.OVERLAY)
-            L.set_namespace(w, "void")
+            L.set_namespace(w, "nixi-companion")
             L.set_anchor(w, L.Edge.TOP, True)
             L.set_anchor(w, L.Edge.LEFT, True)
             L.set_exclusive_zone(w, -1)                    # don't push other things around, and may sit over bars
@@ -352,20 +352,20 @@ class VoidWindow:
             w.connect("configure-event", self._moved)
 
         ucm = WebKit2.UserContentManager()
-        ucm.register_script_message_handler("voidui")
-        ucm.connect("script-message-received::voidui", self._on_msg)
+        ucm.register_script_message_handler("nixiui")
+        ucm.connect("script-message-received::nixiui", self._on_msg)
         v = self.view = WebKit2.WebView.new_with_user_content_manager(ucm)
         v.set_background_color(Gdk.RGBA(0, 0, 0, 0))
         st = v.get_settings()
         st.set_enable_webaudio(True)
         st.set_media_playback_requires_user_gesture(False)
-        st.set_enable_developer_extras(os.environ.get("VOID_DEVTOOLS") == "1")
+        st.set_enable_developer_extras(os.environ.get("NIXI_COMPANION_DEVTOOLS") == "1")
         st.set_enable_back_forward_navigation_gestures(False)
         try:
-            st.set_enable_write_console_messages_to_stdout(True)   # page errors land in `void log`
+            st.set_enable_write_console_messages_to_stdout(True)   # page errors land in `nixi-companion log`
         except AttributeError:
             pass
-        if os.environ.get("VOID_DEVTOOLS") != "1":
+        if os.environ.get("NIXI_COMPANION_DEVTOOLS") != "1":
             v.connect("context-menu", lambda *a: True)   # right-click is his own menu
         v.connect("permission-request", lambda _v, req: (req.deny(), True)[1])   # the server records the mic, not the page
         # if the page's renderer crashes (GPU drivers…), bring him straight back instead of leaving an empty window
@@ -385,7 +385,7 @@ class VoidWindow:
         # Redraw the whole window on every frame. WebKit only reports the bits that changed, and on some GPU/compositor
         # combos (NVIDIA + layer-shell especially) the untouched parts of the see-through window come back from an older
         # buffer: menus and panels around him flicker or vanish until something moves. A full redraw is cheap at this size.
-        if os.environ.get("VOID_PARTIAL_REDRAW") != "1":
+        if os.environ.get("NIXI_COMPANION_PARTIAL_REDRAW") != "1":
             v.add_tick_callback(lambda wid, _clock: (wid.queue_draw(), True)[1])
 
         self.hypr = Hypr()
@@ -398,7 +398,7 @@ class VoidWindow:
         self.last_sent = None
         self.rects = None
         self.region_on = False
-        if not SELFTEST:                     # (a test window must not take over the real one's socket: `void stop`)
+        if not SELFTEST:                     # (a test window must not take over the real one's socket: `nixi-companion stop`)
             threading.Thread(target=self._serve, daemon=True).start()
 
     # ---- where he is (layer mode: margins from the top-left of a monitor)
@@ -539,7 +539,7 @@ class VoidWindow:
                 self.hypr.dispatch(f"resizewindowpixel exact {self.cur_w} {H},address:{self.hypr.addr}")
             except Exception:  # noqa: BLE001
                 pass
-        self._js(f"window.voidLayout&&voidLayout({self.wide_shift})")
+        self._js(f"window.nixiLayout&&nixiLayout({self.wide_shift})")
         self.win.queue_draw()
 
     def _mon_at(self, gx, gy):
@@ -553,7 +553,7 @@ class VoidWindow:
         # X11 / XWayland: always-on-top window is the normal mode there, nothing to complain about. Only a plain Wayland
         # window (no layer-shell and no XWayland) can end up behind other apps — then say why on screen.
         why = "" if self.layer or self._x11() else ("; ".join(LAYER_WHY) or "layer-shell isn't available")
-        self._js(f"window.voidMode&&voidMode({json.dumps({'layer': self.layer, 'cursor': self.hypr.ok() or self._x11(), 'why': why})})")
+        self._js(f"window.nixiMode&&nixiMode({json.dumps({'layer': self.layer, 'cursor': self.hypr.ok() or self._x11(), 'why': why})})")
         return False
 
     def _hypr_setup(self):
@@ -580,7 +580,7 @@ class VoidWindow:
         self.win.present()
         self.view.grab_focus()
         self._apply_region()
-        self._js("window.voidShown&&voidShown()")
+        self._js("window.nixiShown&&nixiShown()")
 
     def quit(self):
         if self.hover:
@@ -591,12 +591,12 @@ class VoidWindow:
         if self.hover:
             self.cursor_hidden(False)
         self.shown = False
-        self._js("window.voidHidden&&voidHidden()")
+        self._js("window.nixiHidden&&nixiHidden()")
         self.win.hide()
 
     def toggle(self):
         if self.hover:                       # he's being the cursor: calling him brings him home instead of hiding him
-            self._js("window.voidCmd&&voidCmd('home')")
+            self._js("window.nixiCmd&&nixiCmd('home')")
             return
         if self.win.get_visible() and (self.layer or self.win.is_active() or self.hover):
             self.hide()
@@ -607,7 +607,7 @@ class VoidWindow:
         """Something for the page to do (listen, look…) — make sure he's visible first."""
         if not self.win.get_visible():
             self.show()
-        self._js(f"window.voidCmd&&voidCmd({json.dumps(name)})")
+        self._js(f"window.nixiCmd&&nixiCmd({json.dumps(name)})")
 
     def drag(self, panel=False):
         """Move him with the mouse. Pulling the notch away pops the blob out under the mouse; dropping the blob at a
@@ -731,7 +731,7 @@ class VoidWindow:
         edge = edge if edge in ("top", "bottom", "left", "right") else None
         if edge and not (self.layer or self._x11() or self.hypr.ok()):
             log("top bar: needs layer-shell or X11/XWayland — this desktop doesn't let apps place their window")
-            self._js("window.voidBarUnsupported&&voidBarUnsupported()")
+            self._js("window.nixiBarUnsupported&&nixiBarUnsupported()")
             return
         if edge:
             if not self.bar:
@@ -778,7 +778,7 @@ class VoidWindow:
                 GLib.timeout_add(int(GLIDE * 1000) + 150, lambda: (self._save_pos() if self.layer else self._save_xpos(), False)[1])
         # (pulled out by the mouse: the page just pops him out under it, nothing trailing behind)
         pulled = bool(to) and to != "here" and not edge
-        self._js("window.voidDock&&voidDock(%s,%s)" % (json.dumps(edge or ""), json.dumps("pull" if pulled else "")))
+        self._js("window.nixiDock&&nixiDock(%s,%s)" % (json.dumps(edge or ""), json.dumps("pull" if pulled else "")))
 
     def _drag_loop(self):
         try:
@@ -872,7 +872,7 @@ class VoidWindow:
     def set_hover(self, on):
         if on and not (self.hypr.ok() or (self._x11() and not self.layer)):
             log("hover mode: needs Hyprland or X11/XWayland — this Wayland desktop doesn't tell apps where the mouse is")
-            self._js("window.voidHoverUnsupported&&voidHoverUnsupported()")
+            self._js("window.nixiHoverUnsupported&&nixiHoverUnsupported()")
             return
         if self.hover == on:
             return
@@ -892,7 +892,7 @@ class VoidWindow:
             threading.Thread(target=self._follow, daemon=True).start()
         elif getattr(self, "home", None):                          # glide from the cursor back to where he was parked
             threading.Thread(target=self._glide_home, daemon=True).start()
-        self._js(f"window.voidHover&&voidHover({'true' if on else 'false'})")
+        self._js(f"window.nixiHover&&nixiHover({'true' if on else 'false'})")
 
     def _glide_home(self):
         m, hx, hy = self.home
@@ -992,7 +992,7 @@ class VoidWindow:
             self.hpos[0] += (x - self.hpos[0]) * 0.7          # tiny bit of lag so he feels alive, not glued
             self.hpos[1] += (y - self.hpos[1]) * 0.7
             x, y = self.hpos
-            GLib.idle_add(self._js, f"window.voidLook&&voidLook({max(-1, min(1, vx / 900)):.3f},{max(-1, min(1, vy / 900)):.3f})")
+            GLib.idle_add(self._js, f"window.nixiLook&&nixiLook({max(-1, min(1, vx / 900)):.3f},{max(-1, min(1, vy / 900)):.3f})")
             if self.last_sent and abs(self.last_sent[0] - x) < 0.5 and abs(self.last_sent[1] - y) < 0.5:
                 continue
             self.last_sent = (x, y)
@@ -1011,7 +1011,7 @@ class VoidWindow:
     def _authed_url(self):
         """The page's address with the server's token after '#': read from runtime.json (only you can read it) and
         never on a command line or in the page the server hands out; the part after '#' is never sent anywhere."""
-        rt = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "void", "runtime.json")
+        rt = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "nixi-companion", "runtime.json")
         for _ in range(50):                                            # (a just-started server writes it in a moment)
             try:
                 with open(rt) as f:
@@ -1074,13 +1074,13 @@ class VoidWindow:
                   "listen": lambda: self.cmd("listen"), "look": lambda: self.cmd("look"), "live": lambda: self.cmd("live"),
                   "hover": lambda: self.cmd("hover"), "hover-on": lambda: self.cmd("hover-on"),
                   "hover-off": lambda: self.cmd("hover-off"),
-                  "ptt-down": lambda: self.cmd("ptt-down"), "ptt-up": lambda: self._js("window.voidCmd&&voidCmd('ptt-up')")}.get(cmd)
+                  "ptt-down": lambda: self.cmd("ptt-down"), "ptt-up": lambda: self._js("window.nixiCmd&&nixiCmd('ptt-up')")}.get(cmd)
             if fn:
                 GLib.idle_add(fn)
 
 
 def main():
-    if len(sys.argv) > 1 and sys.argv[1] == "--check":          # `void doctor`: can he be an overlay here?
+    if len(sys.argv) > 1 and sys.argv[1] == "--check":          # `nixi-companion doctor`: can he be an overlay here?
         notes = "; ".join(LAYER_WHY)
         if GtkLayerShell is not None:
             print("overlay: yes — he floats on a layer above your apps" + (f"  ({notes})" if notes else ""))
@@ -1093,7 +1093,7 @@ def main():
     url, cmd = sys.argv[1], (sys.argv[2] if len(sys.argv) > 2 else "toggle")
     if cmd == "--selftest-bar" and len(sys.argv) > 4:            # dock on an edge, report where, save a picture (CI)
         edge, out = sys.argv[3], sys.argv[4]
-        win = VoidWindow(url)
+        win = NixiWindow(url)
 
         def report():
             gw = win.win.get_window()
@@ -1131,7 +1131,7 @@ def main():
         return
     if cmd in ("hide", "quit"):
         return
-    win = VoidWindow(url)
+    win = NixiWindow(url)
     if cmd in ("listen", "look", "live", "hover", "hover-on"):
         GLib.timeout_add(1800, lambda: (win.cmd(cmd), False)[1])     # first launch: let the page load, then do it
     try:

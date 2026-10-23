@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Void — a tiny voice-first shell for Claude Code.
+"""Nixi — a tiny voice-first shell for Claude Code.
 
 Local server (127.0.0.1 only) that:
-  * serves the Void UI
+  * serves the Nixi UI
   * records the mic itself (parecord / pw-record / arecord — no browser mic permissions needed)
     with a little voice-activity detector, and transcribes it with faster-whisper
   * runs `claude -p --output-format stream-json` and streams events back
@@ -35,34 +35,25 @@ APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 import quick  # noqa: E402
 import recall  # noqa: E402
-WIN = os.name == "nt"                        # Windows: OS bits go through winsys.py instead of Linux command-line tools
-if WIN:
-    import winsys  # noqa: E402
-    winsys.dpi_aware()
-    for _s in (sys.stdout, sys.stderr):               # logs go to a file: write UTF-8, not the old Windows code page
-        if _s is not None and hasattr(_s, "reconfigure"):
-            _s.reconfigure(encoding="utf-8", errors="replace")
+WIN = False                                  # Linux only: the fork dropped upstream's Windows port (the `if WIN:` branches below are dead)
 STATIC = APP_DIR / "static"
 try:                                            # written by the release build (and kept in git for git installs)
     VERSION = (APP_DIR / "VERSION").read_text(encoding="utf-8").strip() or "0.0.0"
 except OSError:
     VERSION = "0.0.0"
-if WIN:
-    DATA_DIR, CONF_PATH = winsys.data_dir(), winsys.config_dir() / "config.json"
-else:
-    DATA_DIR = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "void"
-    CONF_PATH = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "void" / "config.json"
+DATA_DIR = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "nixi-companion"
+CONF_PATH = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "nixi-companion" / "config.json"
 STATE_PATH = DATA_DIR / "state.json"
 # Two passwords per run. TOKEN is the window's: it can do everything, so it's never put anywhere other programs can
 # see it (not in Claude's environment, not in the page the server hands out); the window reads it from runtime.json,
-# which only you can read. TOOL_TOKEN goes to the commands Claude runs (the approval hook, `void see`, the sudo
+# which only you can read. TOOL_TOKEN goes to the commands Claude runs (the approval hook, `nixi-companion see`, the sudo
 # password helper) and only works for those: asking you to approve, looking at the screen, and the sudo card in root mode.
 TOKEN = secrets.token_urlsafe(24)
 TOOL_TOKEN = secrets.token_urlsafe(24)
 TOOL_PATHS = {"/api/approve", "/api/capture", "/api/askpass"}
 
 VOICE_PROMPT = (
-    "You are being driven from Void, a small voice-first desktop shell for Claude Code. "
+    "You are being driven from Nixi, a small voice-first desktop shell for Claude Code. "
     "The user is often speaking, so their message may contain speech-to-text mistakes; interpret them sensibly. "
     "Use your tools normally to get the work done, but keep your final reply short and conversational "
     "(1-4 sentences, no tables) because it is read aloud. If there is long output, put it in a file and say which one. "
@@ -70,11 +61,11 @@ VOICE_PROMPT = (
     "\"I'll update your packages\"), never by reading out full paths or raw commands. "
     "Whenever you run a Bash command, always fill in its description with a short plain-English summary of what it "
     "does, for someone who isn't technical (e.g. \"Restart Firefox\", \"Clear out old package downloads to free up "
-    "space\"); Void reads it aloud when asking the user for permission. "
+    "space\"); Nixi reads it aloud when asking the user for permission. "
     "When a task needs you to see the user's screen (they mention something on it, or you need to check what happened), "
-    "run `void see` for the window they're using or `void see screen` for everything; it prints the path of a small "
+    "run `nixi-companion see` for the window they're using or `nixi-companion see screen` for everything; it prints the path of a small "
     "picture to open with the Read tool. It only looks, it can't click or type. Don't look when the task doesn't need it. "
-    "Void has an expressive face. In your final spoken reply only, start each sentence with one tag in square brackets "
+    "Nixi has an expressive face. In your final spoken reply only, start each sentence with one tag in square brackets "
     "saying how you mean it, so the face matches your words: [neutral] [happy] [proud] [excited] [laugh] [warm] "
     "[curious] [unsure] [thinking] [surprised] [sorry] [serious]. Example: \"[proud] Fixed it, all nine tests pass now. "
     "[curious] Want me to commit it?\" You can switch tags mid-sentence if your feeling changes. Never put these tags in "
@@ -87,7 +78,7 @@ FACE_TAG_RE = re.compile(r"\[(?:neutral|happy|proud|excited|laugh|warm|curious|u
 def untag(t):
     return FACE_TAG_RE.sub("", t or "")
 
-# nixi's Nix build replaces this with a JSON argv; never read from env or config. Unsubstituted = upstream Void.
+# nixi's Nix build replaces this with a JSON argv; never read from env or config. Unsubstituted = upstream Nixi.
 NIXI_BRIDGE = "@nixiBridge@"
 NIXI_CONF = Path.home() / ".config" / "omarchy" / "nixi.json"   # the bridge's path, not XDG_CONFIG_HOME
 
@@ -149,9 +140,9 @@ DEFAULTS = {
     # keep the mic at a level he hears well: turn the Windows mic level up when your voice comes in quiet, down when it
     # clips, and boost it himself past 100%
     "mic_auto": True,
-    # ask GitHub twice a day whether a newer Void is out (nothing about you is sent) and offer "Update now"
+    # ask GitHub twice a day whether a newer Nixi is out (nothing about you is sent) and offer "Update now"
     "update_check": True,
-    # hold this anywhere to talk, let go to send (Windows watches it itself; on Linux bind `void ptt-down` / `ptt-up`)
+    # hold this anywhere to talk, let go to send (Windows watches it itself; on Linux bind `nixi-companion ptt-down` / `ptt-up`)
     "ptt_hotkey": "Ctrl+Alt+Space",
     # how he sits on your desktop: "orb" (the floating blob) or "bar" (his eyes in a notch at the top of the screen)
     "presence": "orb",
@@ -175,15 +166,15 @@ DEFAULTS = {
     "eye_white": "#ffffff",
     # resting pupil shape: slit | circle | dot  (they still change shape with his mood)
     "pupil_style": "slit",
-    # "hey Void" wake word (keeps the mic open and listens for his name; nothing leaves your machine)
+    # "hey Nixi" wake word (keeps the mic open and listens for his name; nothing leaves your machine)
     "wake_word": True,
-    # start Void when you log in (Hyprland exec-once + XDG autostart)
+    # start Nixi when you log in (Hyprland exec-once + XDG autostart)
     "autostart": True,
-    # start listening the moment he pops up (`void`)
+    # start listening the moment he pops up (`nixi-companion`)
     "listen_on_show": False,
-    # say "stop" / "hey Void" while he's talking to cut him off
+    # say "stop" / "hey Nixi" while he's talking to cut him off
     "barge_in": True,
-    # for this many seconds after he stops talking, just talk — no "hey Void" needed (0 = off)
+    # for this many seconds after he stops talking, just talk — no "hey Nixi" needed (0 = off)
     "follow_up": 4,
     # context: he tracks how full Claude's memory of the chat is; past `compact_at` he writes himself a short note and
     # starts a fresh chat from it (so a long session can't quietly eat your usage). Off = only warn.
@@ -216,7 +207,7 @@ DEFAULTS = {
         {"label": "Run the tests", "prompt": "Run this project's tests. Tell me what passed and what failed, and why."},
         {"label": "What's this folder?", "prompt": "Give me a short tour of this folder: what the project is and the important files."},
     ],
-    # mic: leave empty for the system default input. `void doctor` lists inputs.
+    # mic: leave empty for the system default input. `nixi-companion doctor` lists inputs.
     "mic_device": "",
     # optional custom recorder; must write raw s16le, 16 kHz, mono to stdout
     "mic_cmd": "",
@@ -234,7 +225,7 @@ def load_config():
             if "trust" not in user and user.get("permission_mode"):
                 cfg["trust"] = {"bypassPermissions": "trust", "plan": "readonly"}.get(user["permission_mode"], "ask")
         except Exception as e:  # noqa: BLE001
-            print(f"[void] could not parse {CONF_PATH}: {e}", file=sys.stderr)
+            print(f"[nixi] could not parse {CONF_PATH}: {e}", file=sys.stderr)
     else:
         CONF_PATH.parent.mkdir(parents=True, exist_ok=True)
         CONF_PATH.write_text(json.dumps(DEFAULTS, indent=2) + "\n")
@@ -353,7 +344,7 @@ def plugin_set(pid, enabled):
     except ValueError:
         return False                              # (never overwrite a settings file we can't read)
     cfg.setdefault("enabledPlugins", {})[pid] = bool(enabled)
-    tmp = f.with_suffix(".json.void-tmp")
+    tmp = f.with_suffix(".json.nixi-tmp")
     tmp.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     os.replace(tmp, f)
     return True
@@ -423,13 +414,13 @@ def memory_prompt(fresh):
 
 
 # ---------------------------------------------------------------- start with the computer
-AUTOSTART_DESKTOP = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "autostart" / "void.desktop"
+AUTOSTART_DESKTOP = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "autostart" / "nixi-companion.desktop"
 HYPR_CONF = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "hypr" / "hyprland.conf"
-HYPR_MARK = "# added by Void (Settings → More → Start when I log in)"
+HYPR_MARK = "# added by Nixi (Settings → More → Start when I log in)"
 
 
 def sync_autostart():
-    """Add/remove Void from login startup to match the `autostart` setting."""
+    """Add/remove Nixi from login startup to match the `autostart` setting."""
     if BRIDGED:
         return
     on = bool(CFG.get("autostart"))
@@ -442,17 +433,17 @@ def sync_autostart():
         else:
             link.unlink(missing_ok=True)
         return
-    launcher = shutil.which("void") or str(Path.home() / ".local/bin/void")     # ~/.local/bin, or /usr/bin after ninja install
+    launcher = shutil.which("nixi-companion") or str(Path.home() / ".local/bin/nixi-companion")     # ~/.local/bin, or /usr/bin after ninja install
     try:
         if on:
             AUTOSTART_DESKTOP.parent.mkdir(parents=True, exist_ok=True)
             AUTOSTART_DESKTOP.write_text(
-                "[Desktop Entry]\nType=Application\nName=Void\nComment=Voice shell for Claude Code\n"
+                "[Desktop Entry]\nType=Application\nName=Nixi\nComment=Voice shell for Claude Code\n"
                 f"Exec={launcher} show\nX-GNOME-Autostart-enabled=true\nNoDisplay=true\n")
         else:
             AUTOSTART_DESKTOP.unlink(missing_ok=True)
     except OSError as e:
-        print(f"[void] autostart file: {e}", file=sys.stderr)
+        print(f"[nixi] autostart file: {e}", file=sys.stderr)
     if HYPR_CONF.exists():                    # Hyprland doesn't read XDG autostart → exec-once line, clearly marked
         try:
             lines = HYPR_CONF.read_text().splitlines()
@@ -462,7 +453,7 @@ def sync_autostart():
             if keep != lines:
                 HYPR_CONF.write_text("\n".join(keep) + "\n")
         except OSError as e:
-            print(f"[void] hyprland.conf: {e}", file=sys.stderr)
+            print(f"[nixi] hyprland.conf: {e}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------- event bus (server → page, one long stream)
@@ -533,7 +524,7 @@ def approval_say(tool, inp):
 
 
 # ---------------------------------------------------------------- file edits ("Ask me first")
-# Claude edits files in the project on its own, but these places run things later, change how Void or Claude behave,
+# Claude edits files in the project on its own, but these places run things later, change how Nixi or Claude behave,
 # or hold keys: a change there gets the approval card, like a command. So does any edit outside the project folder.
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 
@@ -564,7 +555,7 @@ def sensitive_paths():
 
 
 def edit_needs_card(path):
-    """True for edits outside the project, in Void's / Claude's own files, startup places, shell profiles, keys, or a
+    """True for edits outside the project, in Nixi's / Claude's own files, startup places, shell profiles, keys, or a
     git repo's hooks and config."""
     if path is None:
         return True
@@ -578,13 +569,12 @@ def edit_needs_card(path):
     return not (norm(path) == norm(cwd) or norm(path).startswith(norm(cwd).rstrip(os.sep) + os.sep))
 
 
-def is_void_see(cmd):
-    """`void see` (look at the screen) runs without the approval card — but only when the command is exactly that:
-    `void see`, `void see window` or `void see screen`, optionally with the full path of Void's own launcher. No
-    pattern: a shell can do a lot before a `/void see` with no spaces at all."""
-    launchers = {"void", "void.cmd", str(Path.home() / ".local" / "bin" / "void"), "/usr/bin/void", "/usr/local/bin/void"}
-    if WIN:
-        launchers |= {str(DATA_DIR / "bin" / "void"), str(DATA_DIR / "bin" / "void.cmd")}
+def is_nixi_see(cmd):
+    """`nixi-companion see` (look at the screen) runs without the approval card — but only when the command is exactly that:
+    `nixi-companion see`, `nixi-companion see window` or `nixi-companion see screen`, optionally with the full path of Nixi's own launcher. No
+    pattern: a shell can do a lot before a `/nixi-companion see` with no spaces at all."""
+    launchers = {"nixi-companion", str(Path.home() / ".local" / "bin" / "nixi-companion"), "/usr/bin/nixi-companion",
+                 "/usr/local/bin/nixi-companion"}
     launchers |= {p.replace("\\", "/") for p in launchers}
     return cmd in {f"{l} see{w}" for l in launchers for w in ("", " window", " screen")}
 
@@ -663,7 +653,7 @@ class Approvals:
         return {"ok": False}
 
     def ask_bridge(self, title, options, detail="", timeout=600):
-        """nixi's permission request on Void's card. Never touches self.always. Returns the picked option id ("" = none)."""
+        """nixi's permission request on Nixi's card. Never touches self.always. Returns the picked option id ("" = none)."""
         kinds = {o.get("kind"): o.get("id") for o in reversed(options)}      # first option of each kind wins
         rej = kinds.get("reject_once") or next((o.get("id") for o in options if str(o.get("kind")).startswith("reject")), "")
         ev = threading.Event()
@@ -701,7 +691,7 @@ APPROVALS = Approvals()
 
 
 class AskPass:
-    """sudo's password, asked for in a small card right next to Void (askpass.py → here → the page). Every time — it's
+    """sudo's password, asked for in a small card right next to Nixi (askpass.py → here → the page). Every time — it's
     never remembered."""
     lock = threading.Lock()
     pending = {}
@@ -756,7 +746,7 @@ def approval_text(tool, inp):
 
 
 # ---------------------------------------------------------------- screenshots, clipboard, notifications
-SHOTS = (winsys.cache_dir() if WIN else Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "void") / "shots"
+SHOTS = (winsys.cache_dir() if WIN else Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "nixi-companion") / "shots"
 
 
 def _run(cmd, **kw):
@@ -764,11 +754,11 @@ def _run(cmd, **kw):
 
 
 def _active_window():
-    """Where the window you're using is, as (x, y, w, h) on the whole desktop — or None if we can't tell (or it's Void)."""
+    """Where the window you're using is, as (x, y, w, h) on the whole desktop — or None if we can't tell (or it's Nixi)."""
     try:
         if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") and shutil.which("hyprctl"):
             w = json.loads(_run(["hyprctl", "activewindow", "-j"], timeout=3).stdout or b"{}")
-            if w.get("size") and w.get("class") != "Void":
+            if w.get("size") and w.get("class") != "Nixi":
                 return (*w["at"], *w["size"])
         elif os.environ.get("SWAYSOCK") and shutil.which("swaymsg"):
             def find(n):
@@ -779,16 +769,16 @@ def _active_window():
                     if f:
                         return f
             n = find(json.loads(_run(["swaymsg", "-t", "get_tree"], timeout=3).stdout or b"{}"))
-            if n and n.get("app_id") != "Void":
+            if n and n.get("app_id") != "Nixi":
                 r = n["rect"]
                 return r["x"], r["y"], r["width"], r["height"]
         elif not os.environ.get("WAYLAND_DISPLAY") and shutil.which("xdotool"):
-            if _run(["xdotool", "getactivewindow", "getwindowclassname"], timeout=3).stdout.strip() != b"Void":
+            if _run(["xdotool", "getactivewindow", "getwindowclassname"], timeout=3).stdout.strip() != b"Nixi":
                 g = dict(ln.split("=", 1) for ln in _run(["xdotool", "getactivewindow", "getwindowgeometry", "--shell"],
                                                           timeout=3).stdout.decode().split() if "=" in ln)
                 return int(g["X"]), int(g["Y"]), int(g["WIDTH"]), int(g["HEIGHT"])
     except Exception as e:  # noqa: BLE001
-        print(f"[void] couldn't find the active window: {e}", file=sys.stderr)
+        print(f"[nixi] couldn't find the active window: {e}", file=sys.stderr)
     return None
 
 
@@ -804,16 +794,16 @@ def _shrink(path):
             path.unlink(missing_ok=True)
         return small
     except Exception as e:  # noqa: BLE001  (no Pillow / odd file: send it as it is)
-        print(f"[void] couldn't shrink the picture: {e}", file=sys.stderr)
+        print(f"[nixi] couldn't shrink the picture: {e}", file=sys.stderr)
         return path
 
 
 def capture(kind):
     """kind: window | screen | region | clipboard → dict describing the attachment."""
     SHOTS.mkdir(parents=True, exist_ok=True)
-    for old in sorted(SHOTS.glob("void-*.*"))[:-30]:        # keep the folder small
+    for old in sorted(SHOTS.glob("nixi-*.*"))[:-30]:        # keep the folder small
         old.unlink(missing_ok=True)
-    out = SHOTS / f"void-{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}.png"
+    out = SHOTS / f"nixi-{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}.png"
     if WIN:
         if kind == "clipboard":
             what, val = winsys.clipboard(out)
@@ -921,7 +911,7 @@ def notify(title, body):
     if WIN:
         return winsys.notify(title, body)
     if shutil.which("notify-send"):
-        subprocess.Popen(["notify-send", "-a", "Void", "-i", str(STATIC / "icon.png"), title, body[:300]],
+        subprocess.Popen(["notify-send", "-a", "Nixi", "-i", str(STATIC / "icon.png"), title, body[:300]],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -991,8 +981,8 @@ def _load(device):
         name = "small.en" if device == "cuda" else "base.en"
     ct = _compute_type(device)
     m = WhisperModel(name, device=device, compute_type=ct)
-    m._void_name, m._void_dev, m._void_ct = name, device, ct
-    print(f"[void] speech model {name} on {device} ({ct})", file=sys.stderr)
+    m._nixi_name, m._nixi_dev, m._nixi_ct = name, device, ct
+    print(f"[nixi] speech model {name} on {device} ({ct})", file=sys.stderr)
     return m
 
 
@@ -1012,7 +1002,7 @@ def whisper():
                 try:
                     _whisper = _load(dev)
                 except Exception as e:  # noqa: BLE001
-                    print(f"[void] whisper on {dev} failed ({e}); using CPU", file=sys.stderr)
+                    print(f"[nixi] whisper on {dev} failed ({e}); using CPU", file=sys.stderr)
                     try:
                         _whisper = _load("cpu")
                     except Exception as e2:  # noqa: BLE001
@@ -1042,7 +1032,7 @@ def run_whisper(audio, beam=None, hint=None) -> str:
     except Exception as e:  # noqa: BLE001
         if not re.search(r"cuda|cublas|cudnn|libcu|gpu", str(e), re.I):
             raise
-        print(f"[void] GPU speech-to-text failed ({e}); switching to CPU", file=sys.stderr)
+        print(f"[nixi] GPU speech-to-text failed ({e}); switching to CPU", file=sys.stderr)
         with _whisper_lock:
             _whisper = _load("cpu")
         return go()
@@ -1138,17 +1128,17 @@ class MicAuto:
         if clipped > 0.002 or pk > cls.LOUD:
             if hw is not None and hw > 0.15:
                 winsys.set_mic_level(hw * 0.8, hint)
-                print(f"[void] mic: your voice clipped — Windows mic level {hw:.0%} → {hw * 0.8:.0%}", file=sys.stderr)
+                print(f"[nixi] mic: your voice clipped — Windows mic level {hw:.0%} → {hw * 0.8:.0%}", file=sys.stderr)
             cls.soft = 1.0
         elif pk * cls.soft < cls.QUIET:
             want = min(2.0, cls.TARGET / pk)      # how much louder it should be, at most double per step
             if hw is not None and hw < 0.99:
                 new = min(1.0, hw * want)
                 winsys.set_mic_level(new, hint)
-                print(f"[void] mic: your voice came in quiet — Windows mic level {hw:.0%} → {new:.0%}", file=sys.stderr)
+                print(f"[nixi] mic: your voice came in quiet — Windows mic level {hw:.0%} → {new:.0%}", file=sys.stderr)
             else:
                 cls.soft = min(8.0, cls.TARGET / pk)
-                print(f"[void] mic: still quiet at full level — boosting it {cls.soft:.1f}×", file=sys.stderr)
+                print(f"[nixi] mic: still quiet at full level — boosting it {cls.soft:.1f}×", file=sys.stderr)
         elif cls.soft > 1.0 and pk * cls.soft > 0.7:
             cls.soft = max(1.0, 0.5 / pk)
 
@@ -1317,7 +1307,7 @@ class Listen:
             mic.close()
         if peak < 0.0005:
             emit(t="error", text="the mic is completely silent — is the right input selected/unmuted? "
-                                 "(`void doctor` lists inputs; set mic_device in the config)")
+                                 "(`nixi-companion doctor` lists inputs; set mic_device in the config)")
             return
         if spoke or (floor is not None and peak > max(0.001, floor * 2.5)):   # you said something, maybe too quietly
             MicAuto.learn(bytes(pcm))
@@ -1358,9 +1348,9 @@ def list_mics():
                 if "\t" in ln and ".monitor" not in ln]
 
 
-STOP_RE = re.compile(r"(?:ok(?:ay)?\W+|void\W+|hey\W+void\W+)?(?:stop|wait|shush|shh+|quiet|be quiet|shut up|hold on|hang on|"
-                     r"enough|stop talking|that's enough|thanks?(?: you)?|got it)(?:\W+(?:void|please|now))?")
-# sent ahead of a follow-up (said without "hey Void") so Claude can tell if it was even meant for him
+STOP_RE = re.compile(r"(?:ok(?:ay)?\W+|nixi\W+|hey\W+nixi\W+)?(?:stop|wait|shush|shh+|quiet|be quiet|shut up|hold on|hang on|"
+                     r"enough|stop talking|that's enough|thanks?(?: you)?|got it)(?:\W+(?:nixi|please|now))?")
+# sent ahead of a follow-up (said without "hey Nixi") so Claude can tell if it was even meant for him
 FOLLOW_NOTE = ("(Voice note from Nixi: the mic picked this up a few seconds after your last reply, without \"hey Nixi\". "
                "If it is clearly not meant for you, e.g. the user thinking out loud, talking to themselves or to someone "
                "else, reply with exactly [ignore] and nothing else, and use no tools. Otherwise just answer it normally.)\n\n")
@@ -1372,11 +1362,11 @@ WAKE_RE = re.compile(r"^\W*(?:(?:hey|hi|hay|okay|ok|yo|oi)\W+)?(nixi's|nixi|nixi
 
 
 class Wake:
-    """Optional "hey Void": keeps a recorder open, cuts out short bursts of speech, and checks them for his name.
+    """Optional "hey Nixi": keeps a recorder open, cuts out short bursts of speech, and checks them for his name.
     Steps aside whenever the normal mic session runs (or while he's talking, so he can't wake himself)."""
     thread = None
     speaking_until = 0.0
-    follow_from = follow_until = 0.0         # the "just talk, no 'hey Void'" window right after he stops talking
+    follow_from = follow_until = 0.0         # the "just talk, no 'hey Nixi'" window right after he stops talking
     follow_on = False                        # what the page was last told (it shows him listening while it's open)
     cut = None                               # you clicked him ("finish") or pressed Space/Esc ("cancel") while he heard you
     asleep = False                           # he's hidden: the mic stays closed until he's shown again
@@ -1424,7 +1414,7 @@ class Wake:
     def should_run(cls):
         if cls.asleep or Listen.lock.locked():
             return False
-        if cls.speaking():                       # while he talks: only to catch "stop" / "hey Void" (barge-in)
+        if cls.speaking():                       # while he talks: only to catch "stop" / "hey Nixi" (barge-in)
             return bool(CFG.get("barge_in"))
         return bool(CFG.get("wake_word")) or time.monotonic() < cls.follow_until
 
@@ -1440,7 +1430,7 @@ class Wake:
                 last = None
             except Exception as e:  # noqa: BLE001
                 if str(e) != last:                   # (no mic plugged in: say so once, then check now and then)
-                    print(f"[void] wake word: {e}", file=sys.stderr)
+                    print(f"[nixi] wake word: {e}", file=sys.stderr)
                 time.sleep(5 if str(e) != last else 30)
                 last = str(e)
 
@@ -1509,7 +1499,7 @@ class Wake:
 
     @classmethod
     def check(cls, pcm, started):
-        # started after he finished talking, inside the follow-up window → it's a request, no "hey Void" needed
+        # started after he finished talking, inside the follow-up window → it's a request, no "hey Nixi" needed
         follow = not cls.speaking() and cls.follow_from <= started < cls.follow_until and not ST.lock.locked()
         if not cls.speaking():                   # (while he talks the mic also hears him: don't tune to his voice)
             MicAuto.learn(pcm)
@@ -1519,7 +1509,7 @@ class Wake:
                 return
             text = transcribe_pcm(pcm) if follow else transcribe_pcm(pcm, beam=1, hint="Hey Nixi.")
         except Exception as e:  # noqa: BLE001
-            print(f"[void] wake word stt: {e}", file=sys.stderr)
+            print(f"[nixi] wake word stt: {e}", file=sys.stderr)
             return
         m = WAKE_RE.match(text or "")
         if cls.speaking():
@@ -1538,7 +1528,7 @@ class Wake:
 
 
 def doctor():
-    print(f"Void doctor (version {VERSION})\n")
+    print(f"Nixi doctor (version {VERSION})\n")
     if WIN:
         print("inputs (any part of a name works as mic_device):")
         for m in winsys.list_mics():
@@ -1613,7 +1603,7 @@ def doctor():
                   "(a button, or its own app, e.g. INZONE Hub / Logitech G HUB)? Is it the mic you're talking into? "
                   "Pick another in Settings → Voice.")
         elif len(talk) == 2 and talk.get("channel 2") and not talk.get("channel 1"):
-            print("  -> your voice is on channel 2 only — Void records that one (since 1.5.4)")
+            print("  -> your voice is on channel 2 only — Nixi records that one (since 1.5.4)")
         elif peak <= 0.02:
             print("  -> very quiet: wrong input, muted, or gain too low")
         else:
@@ -1627,7 +1617,7 @@ def doctor():
                 if not heard and heard_any:
                     print("  -> there's talking but no words came out: speak a bit closer to the mic, in English "
                           "(or set language in Settings)")
-                print(f"  (speech model: {_whisper._void_name} on {_whisper._void_dev}, {_whisper._void_ct})")
+                print(f"  (speech model: {_whisper._nixi_name} on {_whisper._nixi_dev}, {_whisper._nixi_ct})")
             except Exception as e:  # noqa: BLE001
                 print("  speech-to-text failed:", e)
     except Exception as e:  # noqa: BLE001
@@ -1635,7 +1625,7 @@ def doctor():
     if WIN:
         lv = winsys.mic_level(CFG.get("mic_device") or "")
         print(f"  Windows mic level: {'?' if lv is None else f'{lv:.0%}'}"
-              + ("  (Void adjusts it as you talk: mic_auto)" if CFG.get("mic_auto", True) else ""))
+              + ("  (Nixi adjusts it as you talk: mic_auto)" if CFG.get("mic_auto", True) else ""))
     print("\nvoice:", tts_engine() or "none (install espeak-ng / piper)")
     print("claude:", claude_bin() or "NOT FOUND")
 
@@ -1674,7 +1664,7 @@ PATH_RE = re.compile(r"(?<![\w.])(?:~|/)[\w.\-]*(?:/[\w.\-]+)+/?|(?<![\w.])/(?:h
 
 
 def say_path(p):
-    """/home/you/Downloads → "your Downloads folder" · ~/code/void/app/server.py → "server.py" (how a person says it)."""
+    """/home/you/Downloads → "your Downloads folder" · ~/code/nixi/app/server.py → "server.py" (how a person says it)."""
     parts = [x for x in p.split("/") if x]
     home = parts[:1] == ["~"] or parts[:1] == ["home"]
     parts = parts[1:] if parts[:1] == ["~"] else parts[2:] if parts[:1] == ["home"] else parts
@@ -1743,9 +1733,9 @@ def fetch_kokoro():
         import kokoro_fetch   # GitHub first, Hugging Face if that's blocked
         try:
             src = kokoro_fetch.fetch(KOKORO_DIR)
-            print(f"[void] kokoro voice ready (from {src})", file=sys.stderr)
+            print(f"[nixi] kokoro voice ready (from {src})", file=sys.stderr)
         except Exception as e:  # noqa: BLE001
-            print(f"[void] kokoro download failed: {e}", file=sys.stderr)
+            print(f"[nixi] kokoro download failed: {e}", file=sys.stderr)
         finally:
             _downloading.discard("kokoro")
     threading.Thread(target=go, daemon=True).start()
@@ -1792,9 +1782,9 @@ def fetch_voice(name):
             urllib.request.urlretrieve(base + ".onnx.json", d / f"{name}.onnx.json")
             urllib.request.urlretrieve(base + ".onnx", d / f"{name}.onnx.part")
             (d / f"{name}.onnx.part").rename(d / f"{name}.onnx")
-            print(f"[void] voice {name} ready", file=sys.stderr)
+            print(f"[nixi] voice {name} ready", file=sys.stderr)
         except Exception as e:  # noqa: BLE001
-            print(f"[void] voice download {name} failed: {e}", file=sys.stderr)
+            print(f"[nixi] voice download {name} failed: {e}", file=sys.stderr)
         finally:
             _downloading.discard(name)
     threading.Thread(target=go, daemon=True).start()
@@ -1813,7 +1803,7 @@ def piper_run(model, text, out, length_scale):
             if r.returncode == 0:
                 _piper_speed_flag = f
                 return
-        print("[void] piper doesn't take a speed flag; pitch preset will also change speed", file=sys.stderr)
+        print("[nixi] piper doesn't take a speed flag; pitch preset will also change speed", file=sys.stderr)
     subprocess.run(base, input=text, text=True, capture_output=True, timeout=90, check=True)
 
 
@@ -1846,7 +1836,7 @@ def piper_inproc(model, text, length_scale):
     except Exception as e:  # noqa: BLE001
         if not _PIPER.get("_warned"):
             _PIPER["_warned"] = True
-            print(f"[void] piper in-process unavailable ({e}); using the piper command instead", file=sys.stderr)
+            print(f"[nixi] piper in-process unavailable ({e}); using the piper command instead", file=sys.stderr)
         return None
 
 
@@ -1858,7 +1848,7 @@ def warm_tts():
         if tts_engine() in ("piper", "kokoro"):
             synth("Hi.")
     except Exception as e:  # noqa: BLE001
-        print(f"[void] couldn't warm up the voice: {e}", file=sys.stderr)
+        print(f"[nixi] couldn't warm up the voice: {e}", file=sys.stderr)
 
 
 def _syllables(w):
@@ -1971,7 +1961,7 @@ def tidy_full(wav, text):
                 t += d
         return buf.getvalue(), times, level
     except Exception as e:  # noqa: BLE001
-        print(f"[void] word timing failed: {e}", file=sys.stderr)
+        print(f"[nixi] word timing failed: {e}", file=sys.stderr)
         return wav, None, None
 
 
@@ -1979,7 +1969,7 @@ def audio_player_cmd(rate):
     """A plain audio player that takes raw 16-bit mono on stdin."""
     if shutil.which("paplay"):
         return ["paplay", "--raw", f"--rate={rate}", "--channels=1", "--format=s16le", "--latency-msec=100",
-                "--client-name=Void", "--stream-name=Void voice"]
+                "--client-name=Nixi", "--stream-name=Nixi voice"]
     if shutil.which("aplay"):
         return ["aplay", "-q", "-t", "raw", "-f", "S16_LE", "-r", str(rate), "-c", "1", "--buffer-time=120000", "-"]
     return None
@@ -1998,10 +1988,10 @@ class Speaker:
 
     Two workers, so nothing ever waits on anything else:
       * the maker turns upcoming sentences into audio ahead of time (up to 3 ready), in order;
-      * the player streams finished audio to the speakers, keeping ~0.8 s buffered — so even if Void (or the whole
+      * the player streams finished audio to the speakers, keeping ~0.8 s buffered — so even if Nixi (or the whole
         computer) is busy for a moment, there's still sound queued up and nothing stutters.
     It always knows when each sentence will start playing and tells the page, which times the captions and his face
-    from that. If it ever does run dry, it counts it (see `void stress`) and shifts its clock so sync stays right."""
+    from that. If it ever does run dry, it counts it (see `nixi-companion stress`) and shifts its clock so sync stays right."""
     cv = threading.Condition()
     todo = []            # (gen, id, text) waiting to be made
     ready = []           # (gen, id, text, pcm, prate, words, level) waiting to be played
@@ -2099,7 +2089,7 @@ class Speaker:
                         cls.ready.append((g, sid, text, pcm, prate, words, level, round(40 * sr / prate, 2)))
                         cls.cv.notify_all()
             except Exception as e:  # noqa: BLE001
-                print(f"[void] speech: {e}", file=sys.stderr)
+                print(f"[nixi] speech: {e}", file=sys.stderr)
                 BUS.pub(t="spk_skip", id=sid)
             finally:
                 with cls.cv:
@@ -2173,7 +2163,7 @@ class Speaker:
             try:
                 cls._player(prate)
             except Exception as e:  # noqa: BLE001
-                print(f"[void] audio player: {e}", file=sys.stderr)
+                print(f"[nixi] audio player: {e}", file=sys.stderr)
                 BUS.pub(t="spk_skip", id=sid)
                 continue
             now = time.monotonic()
@@ -2211,7 +2201,7 @@ def _cpu_burn(stop):
 
 
 def stress_voice(silent=False):
-    """`void stress`: speak a few sentences three times — on a quiet computer, with every CPU core flat out, and with Void
+    """`nixi-companion stress`: speak a few sentences three times — on a quiet computer, with every CPU core flat out, and with Nixi
     itself busy — and report whether the voice ever ran dry (a stutter), and how close it came."""
     import multiprocessing as mp
     eng = tts_engine()
@@ -2226,11 +2216,11 @@ def stress_voice(silent=False):
         if not cmd:
             print("no audio player (paplay / aplay) — install libpulse or alsa-utils"); return 1
         print(f"player: {cmd[0]}   (you'll hear him say the same few sentences three times)")
-    print("plays his voice four times: on a quiet computer, then with your CPU and Void itself as busy as they can be")
+    print("plays his voice four times: on a quiet computer, then with your CPU and Nixi itself as busy as they can be")
     print("warming up the voice…", flush=True)
     synth("Hi.")
     results, ok = [], True
-    phases = [("quiet computer", ""), ("every CPU core busy", "cpu"), ("Void itself busy", "gil"),
+    phases = [("quiet computer", ""), ("every CPU core busy", "cpu"), ("Nixi itself busy", "gil"),
               ("everything busy at once", "cpu+gil")]
     for n, (name, load) in enumerate(phases):
         stop, workers = mp.Event(), []
@@ -2267,7 +2257,7 @@ def stress_voice(silent=False):
         print("✓ PASS — the voice never ran dry, even with your computer flat out.")
     elif worst_rtf > 0.8:
         print("✗ The voice takes almost as long to make as to say on this computer. Pick a lighter voice "
-              "(Settings → Voice), or a '-low' piper voice, and run `void stress` again.")
+              "(Settings → Voice), or a '-low' piper voice, and run `nixi-companion stress` again.")
     else:
         print("✗ It ran dry under load. Please send the numbers above.")
     return 0 if ok else 2
@@ -2419,7 +2409,7 @@ HOOKS_PATH = DATA_DIR / "hooks.json"
 
 
 def hooks_file():
-    """Claude Code settings that route commands / web requests through approve.py (→ a yes/no card under Void)."""
+    """Claude Code settings that route commands / web requests through approve.py (→ a yes/no card under Nixi)."""
     cmd = (f'"{sys.executable}" "{APP_DIR / "approve.py"}"' if WIN else
            f"{shlex.quote(sys.executable)} {shlex.quote(str(APP_DIR / 'approve.py'))}")
     data = {"hooks": {"PreToolUse": [{"matcher": "Bash|WebFetch|WebSearch|Edit|Write|MultiEdit|NotebookEdit|mcp__.*",
@@ -2472,11 +2462,11 @@ def build_cmd(binary, partial):
     sp = CFG["voice_prompt"] or ""
     if CFG.get("root_mode"):
         sp += ("\n\nRoot mode is ON: the user allows you to run any command, including ones that need root. "
-               "When you need root, use `sudo -A ...` (Void asks the user for the password itself, or fills it in "
+               "When you need root, use `sudo -A ...` (Nixi asks the user for the password itself, or fills it in "
                "automatically; never ask for the password in chat). Still be careful: say what you're about to change before destructive or "
                "system-wide actions.")
     if tr == "ask":
-        sp += ("\n\nThe user approves commands and web requests one at a time (Void asks them out loud). "
+        sp += ("\n\nThe user approves commands and web requests one at a time (Nixi asks them out loud). "
                "Prefer one clear command over many small ones, and don't retry a command the user said no to.")
     mp = memory_prompt(fresh=not ST.session)
     if mp:
@@ -2563,7 +2553,7 @@ def run_claude(prompt, emit, partial):
     env["PATH"] = str(Path.home() / ".local" / "bin") + os.pathsep + env.get("PATH", "")
     if CFG.get("root_mode") and not WIN:
         env["SUDO_ASKPASS"] = str(APP_DIR / "askpass.py")
-    env["VOID_PORT"], env["VOID_TOKEN"] = str(CFG["port"]), TOOL_TOKEN   # (the limited one: every command Claude runs sees it)
+    env["NIXI_COMPANION_PORT"], env["NIXI_COMPANION_TOKEN"] = str(CFG["port"]), TOOL_TOKEN   # (the limited one: every command Claude runs sees it)
     proc = subprocess.Popen(build_cmd(binary, partial), cwd=ST.cwd, env=env, stdin=subprocess.PIPE,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1,
                             encoding="utf-8", errors="replace", **spawn_kw())
@@ -2657,7 +2647,7 @@ def run_claude(prompt, emit, partial):
 
 class Bridge:
     """One nixi bridge process per conversation (JSON lines in and out). Started on the first prompt."""
-    NOT_PASSED = ("VOID_TOKEN", "VOID_PORT", "SUDO_ASKPASS")    # the bridge's agent must never see these
+    NOT_PASSED = ("NIXI_COMPANION_TOKEN", "NIXI_COMPANION_PORT", "SUDO_ASKPASS")    # the bridge's agent must never see these
 
     def __init__(self):
         self.proc = None
@@ -2838,7 +2828,7 @@ def stop_proc():
 
 
 # ---------------------------------------------------------------- updates
-UPDATE_URL = os.environ.get("VOID_UPDATE_URL") or "https://api.github.com/repos/PLAYER99-void/void/releases/latest"
+UPDATE_URL = os.environ.get("NIXI_COMPANION_UPDATE_URL") or "https://api.github.com/repos/olafkfreund/nixoarchy-snowflake/releases/latest"
 
 
 def vtuple(v):
@@ -2848,9 +2838,9 @@ def vtuple(v):
 
 
 class Updates:
-    """Is a newer Void out? Asks GitHub's public "latest release" — at most twice a day; nothing about you is sent —
-    and installs it on request: on Windows by running the new VoidSetup.exe (it stops Void, updates and starts him
-    again), on a git install of Linux by `git pull` + install.sh + `void show`."""
+    """Is a newer Nixi out? Asks GitHub's public "latest release" — at most twice a day; nothing about you is sent —
+    and installs it on request: on Windows by running the new NixiSetup.exe (it stops Nixi, updates and starts him
+    again), on a git install of Linux by `git pull` + install.sh + `nixi-companion show`."""
     info = {}                    # {"latest", "url", "setup", "checked"} — also kept in update.json
     state, error = "idle", ""    # idle | updating | failed
 
@@ -2895,20 +2885,20 @@ class Updates:
         import urllib.request
         try:
             req = urllib.request.Request(UPDATE_URL, headers={"Accept": "application/vnd.github+json",
-                                                              "User-Agent": f"Void/{VERSION}"})
+                                                              "User-Agent": f"Nixi/{VERSION}"})
             rel = json.load(urllib.request.urlopen(req, timeout=15))
         except Exception as e:  # noqa: BLE001
-            print(f"[void] update check: {e}", file=sys.stderr)
+            print(f"[nixi] update check: {e}", file=sys.stderr)
             return False
         assets = {a.get("name") or "": a.get("browser_download_url") or "" for a in rel.get("assets") or []}
 
         def pick(test):
             return next((u for n, u in assets.items() if test(n)), "")
         cls.info = {"latest": str(rel.get("tag_name") or "").lstrip("v"), "url": rel.get("html_url") or "",
-                    "setup": assets.get("VoidSetup.exe", ""),
-                    "deb": pick(lambda n: n.startswith("void-claude_") and n.endswith(".deb")),
-                    "rpm": pick(lambda n: n.startswith("void-claude-") and n.endswith(".noarch.rpm")),
-                    "arch": pick(lambda n: n.startswith("void-claude-") and n.endswith(".pkg.tar.zst")),
+                    "setup": assets.get("NixiSetup.exe", ""),
+                    "deb": pick(lambda n: n.startswith("nixi-companion_") and n.endswith(".deb")),
+                    "rpm": pick(lambda n: n.startswith("nixi-companion-") and n.endswith(".noarch.rpm")),
+                    "arch": pick(lambda n: n.startswith("nixi-companion-") and n.endswith(".pkg.tar.zst")),
                     "checked": time.time()}
         try:
             cls.cache().write_text(json.dumps(cls.info))
@@ -2982,11 +2972,11 @@ class Updates:
             if WIN:
                 import urllib.request
                 if not cls.info.get("setup"):
-                    raise RuntimeError("this release has no VoidSetup.exe")
-                exe = Path(tempfile.gettempdir()) / "VoidSetup-update.exe"
+                    raise RuntimeError("this release has no NixiSetup.exe")
+                exe = Path(tempfile.gettempdir()) / "NixiSetup-update.exe"
                 urllib.request.urlretrieve(cls.info["setup"], exe)
-                # A hidden helper runs setup, waits for it, then starts Void again. A short-lived PowerShell starts the
-                # helper and exits, so the helper isn't in our process tree and survives setup stopping Void (and this
+                # A hidden helper runs setup, waits for it, then starts Nixi again. A short-lived PowerShell starts the
+                # helper and exits, so the helper isn't in our process tree and survives setup stopping Nixi (and this
                 # server). The helper's script goes in base64 (-EncodedCommand): no quoting to get wrong.
                 import base64
 
@@ -3003,32 +2993,32 @@ class Updates:
                 subprocess.Popen(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
                                   "Start-Process powershell -WindowStyle Hidden -ArgumentList '-NoProfile -EncodedCommand "
                                   + enc + "'"], creationflags=winsys.NO_WINDOW, close_fds=True)
-                print(f"[void] update: running {exe}", flush=True)
-                return                                 # setup stops us and updates Void; the helper starts him again
+                print(f"[nixi] update: running {exe}", flush=True)
+                return                                 # setup stops us and updates Nixi; the helper starts him again
             how = cls.how()
             if how == "package":
                 return cls._install_package()
             if how != "git":
                 raise RuntimeError("update by running install.sh from the folder you installed from")
             src = (DATA_DIR / "source").read_text().strip()
-            void_bin = Path.home() / ".local" / "bin" / "void"
+            nixi_bin = Path.home() / ".local" / "bin" / "nixi-companion"
             res = DATA_DIR / "update.result"
             # install.sh stops this server and the window at the end, so the whole thing runs on its own and
-            # starts Void again afterwards, success or not; the result is read back by the new server (start())
+            # starts Nixi again afterwards, success or not; the result is read back by the new server (start())
             script = (f'cd {shlex.quote(src)} && git pull --ff-only && ./install.sh </dev/null; '
-                      f'echo $? > {shlex.quote(str(res))}; {shlex.quote(str(void_bin))} show')
+                      f'echo $? > {shlex.quote(str(res))}; {shlex.quote(str(nixi_bin))} show')
             with open(DATA_DIR / "update.log", "ab") as log:
                 subprocess.Popen(["bash", "-c", script], stdout=log, stderr=subprocess.STDOUT,
                                  stdin=subprocess.DEVNULL, start_new_session=True)
-            print("[void] update: git pull + install.sh running (log: update.log)", flush=True)
+            print("[nixi] update: git pull + install.sh running (log: update.log)", flush=True)
         except Exception as e:  # noqa: BLE001
             cls.state, cls.error = "failed", str(e)
-            print(f"[void] update failed: {e}", file=sys.stderr)
+            print(f"[nixi] update failed: {e}", file=sys.stderr)
 
     @classmethod
     def _install_package(cls):
         """A .deb / .rpm / Arch package install: download the new package from the release and install it as root
-        (pkexec: your desktop asks for your password), then start Void again. Runs on its own, like the git path."""
+        (pkexec: your desktop asks for your password), then start Nixi again. Runs on its own, like the git path."""
         import urllib.request
         kind, url = cls.pkg_kind(), cls.info.get(cls.pkg_kind() or "-")
         if not kind or not url:
@@ -3042,17 +3032,17 @@ class Updates:
         (DATA_DIR / "update.hint").write_text(f"install it by hand: sudo {cmd}")
         if not shutil.which("pkexec"):
             raise RuntimeError(f"no pkexec here — run: sudo {cmd}")
-        res, void_bin = DATA_DIR / "update.result", shutil.which("void") or "/usr/bin/void"
+        res, nixi_bin = DATA_DIR / "update.result", shutil.which("nixi-companion") or "/usr/bin/nixi-companion"
         script = (f'pkexec {cmd}; echo $? > {shlex.quote(str(res))}; '
-                  f'{shlex.quote(void_bin)} restart')
+                  f'{shlex.quote(nixi_bin)} restart')
         with open(DATA_DIR / "update.log", "ab") as log:
             subprocess.Popen(["bash", "-c", script], stdout=log, stderr=subprocess.STDOUT,
                              stdin=subprocess.DEVNULL, start_new_session=True)
-        print(f"[void] update: installing {f.name} with pkexec (log: update.log)", flush=True)
+        print(f"[nixi] update: installing {f.name} with pkexec (log: update.log)", flush=True)
 
 
-# ---------------------------------------------------------------- diagnostics ("Copy diagnostics", `void diagnostics`)
-ISSUE_URL = "https://github.com/PLAYER99-void/void/issues/new?template=bug.md"
+# ---------------------------------------------------------------- diagnostics ("Copy diagnostics", `nixi-companion diagnostics`)
+ISSUE_URL = "https://github.com/olafkfreund/nixoarchy-snowflake/issues/new?template=bug.md"
 
 
 def redact(text):
@@ -3072,7 +3062,7 @@ def redact(text):
 
 
 def diagnostics():
-    """A plain-text report for asking for help: versions, what Void found (mic, voice, speech model, Claude Code) and
+    """A plain-text report for asking for help: versions, what Nixi found (mic, voice, speech model, Claude Code) and
     the end of the log. Nothing is sent anywhere — you paste it where you want. Memory, history, projects and what
     you said aren't included; your home folder, user name and email addresses are blanked out."""
     import importlib.util
@@ -3081,7 +3071,7 @@ def diagnostics():
 
     def add(k, v):
         L.append(f"{k:<18} {v}")
-    add("void", f"{VERSION} ({Updates.how()} install; latest seen: {Updates.info.get('latest') or '?'})")
+    add("nixi-companion", f"{VERSION} ({Updates.how()} install; latest seen: {Updates.info.get('latest') or '?'})")
     add("system", platform.platform())
     if not WIN:
         add("desktop", " / ".join(x for x in (os.environ.get("XDG_CURRENT_DESKTOP"), os.environ.get("XDG_SESSION_TYPE"),
@@ -3097,7 +3087,7 @@ def diagnostics():
     add("claude code", cv)
     add("voice engine", f"{tts_engine() or 'none'} (voice: {CFG.get('voice')})")
     if _whisper:
-        add("speech model", f"{_whisper._void_name} on {_whisper._void_dev} ({_whisper._void_ct})")
+        add("speech model", f"{_whisper._nixi_name} on {_whisper._nixi_dev} ({_whisper._nixi_ct})")
     else:
         add("speech model", _whisper_err or "not loaded yet")
     try:                                         # (find_spec raises when there's no nvidia package at all)
@@ -3128,7 +3118,7 @@ def diagnostics():
         log = (DATA_DIR / "server.log").read_text(encoding="utf-8", errors="replace").splitlines()[-60:]
     except OSError:
         log = ["(no server.log)"]
-    return redact("Void diagnostics\n\n" + "\n".join(L) + "\n\n--- last lines of server.log ---\n" + "\n".join(log) + "\n")
+    return redact("Nixi diagnostics\n\n" + "\n".join(L) + "\n\n--- last lines of server.log ---\n" + "\n".join(log) + "\n")
 
 
 def trust_nixi():
@@ -3177,7 +3167,7 @@ CTYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css":
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "Void"
+    server_version = "Nixi"
 
     def log_message(self, *a):
         pass
@@ -3203,7 +3193,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "bad host"}, 403)
         p = urlparse(self.path).path
         if p == "/api/state":                      # without the window's token: just "it's running" and the version
-            if secrets.compare_digest(self.headers.get("X-Void-Token") or "", TOKEN):
+            if secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
                 return self._json(state_info())
             return self._json({"version": VERSION})
         if p == "/":
@@ -3227,7 +3217,7 @@ class Handler(BaseHTTPRequestHandler):
             if Tickets.claim(str(json.loads(self._body() or b"{}").get("ticket") or "")):
                 return self._json({"token": TOKEN})
             return self._json({"error": "forbidden"}, 403)
-        tok = self.headers.get("X-Void-Token") or ""
+        tok = self.headers.get("X-Nixi-Token") or ""
         full = secrets.compare_digest(tok, TOKEN)
         if not full and not (secrets.compare_digest(tok, TOOL_TOKEN) and p in TOOL_PATHS):
             return self._json({"error": "forbidden"}, 403)
@@ -3247,11 +3237,11 @@ class Handler(BaseHTTPRequestHandler):
                 pause = 0.3 if re.search(r"[.!?]['\")]*$", text) else 0.14 if re.search(r"[,;:—–]$", text) else 0.06
                 self.send_response(200)
                 self.send_header("Content-Type", "audio/wav")
-                self.send_header("X-Void-Rate", f"{rate:.3f}")
-                self.send_header("X-Void-Pause", f"{pause:.2f}")
+                self.send_header("X-Nixi-Rate", f"{rate:.3f}")
+                self.send_header("X-Nixi-Pause", f"{pause:.2f}")
                 if words:
-                    self.send_header("X-Void-Words", json.dumps(words, separators=(",", ":")))
-                self.send_header("Access-Control-Expose-Headers", "X-Void-Rate, X-Void-Pause, X-Void-Words")
+                    self.send_header("X-Nixi-Words", json.dumps(words, separators=(",", ":")))
+                self.send_header("Access-Control-Expose-Headers", "X-Nixi-Rate, X-Nixi-Pause, X-Nixi-Words")
                 self.send_header("Content-Length", str(len(audio)))
                 self.end_headers()
                 self.wfile.write(audio)
@@ -3270,7 +3260,7 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/listen":
                 Wake.end_follow("cancel")                # a normal recording takes over from the follow-up window
                 return self.listen()
-            if p == "/api/sleep":                  # hidden = fully off: mic closed, no "hey Void", no voice
+            if p == "/api/sleep":                  # hidden = fully off: mic closed, no "hey Nixi", no voice
                 Wake.asleep = bool(json.loads(self._body() or b"{}").get("on"))
                 if Wake.asleep:
                     Speaker.stop()
@@ -3394,7 +3384,7 @@ class Handler(BaseHTTPRequestHandler):
                 if mem:
                     return self._json({"handled": True, "say": mem, "mood": "happy", "state": state_info()})
                 r = quick.handle(said)
-                if r and r.get("cd") and BRIDGED:        # nixi picks where its agent works; Void's folders don't apply
+                if r and r.get("cd") and BRIDGED:        # nixi picks where its agent works; Nixi's folders don't apply
                     r = {"say": "Folders are nixi's job here — I always work from nixi's own place.", "mood": "shy"}
                 elif r and r.get("cd"):
                     ST.cwd = r["cd"]
@@ -3419,7 +3409,7 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/approve":
                 b = json.loads(self._body() or b"{}")
                 cmd = str((b.get("input") or {}).get("command") or "").strip()
-                if b.get("tool") == "Bash" and is_void_see(cmd):          # only looking at the screen: no card
+                if b.get("tool") == "Bash" and is_nixi_see(cmd):          # only looking at the screen: no card
                     return self._json({"ok": True, "why": "just looking at the screen"})
                 if b.get("tool") in EDIT_TOOLS and not edit_needs_card(edit_path(b.get("input"))):
                     return self._json({"ok": True})                       # an ordinary edit in the project: no card
@@ -3441,7 +3431,7 @@ class Handler(BaseHTTPRequestHandler):
                 b = json.loads(self._body() or b"{}")
                 ans = b.get("ans") if b.get("ans") in ("yes", "no", "always") else "no"
                 return self._json({"ok": APPROVALS.answer(str(b.get("id")), ans)})
-            if p == "/api/speaking":                 # the page tells us while he talks (so "hey Void" can't wake himself)
+            if p == "/api/speaking":                 # the page tells us while he talks (so "hey Nixi" can't wake himself)
                 b = json.loads(self._body() or b"{}")
                 Wake.talking_until(time.monotonic() + (60 if b.get("on") else 0.8))
                 return self._json({"ok": True})
@@ -3456,14 +3446,14 @@ class Handler(BaseHTTPRequestHandler):
                     b["by"] = "claude"
                 try:
                     shot = capture(kind)
-                    if b.get("by") == "claude":          # `void see` during a task: show him looking
+                    if b.get("by") == "claude":          # `nixi-companion see` during a task: show him looking
                         BUS.pub(t="saw", kind=shot["kind"])
                     return self._json(shot)
                 except Exception as e:  # noqa: BLE001
                     return self._json({"error": str(e)}, 400)
             if p == "/api/notify":
                 b = json.loads(self._body() or b"{}")
-                notify(str(b.get("title") or "Void"), str(b.get("body") or ""))
+                notify(str(b.get("title") or "Nixi"), str(b.get("body") or ""))
                 return self._json({"ok": True})
             if p == "/api/plugins":
                 if BRIDGED:
@@ -3726,7 +3716,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not BRIDGED:
                     recall.add(rec)
             except Exception as e:  # noqa: BLE001  (a notes problem must never break an answer)
-                print(f"[void] history/quick memory: {e}", file=sys.stderr)
+                print(f"[nixi] history/quick memory: {e}", file=sys.stderr)
             emit(t="done")
         finally:
             ST.lock.release()
@@ -3760,16 +3750,16 @@ def main():
     ap.add_argument("--sync-autostart", action="store_true", help="add/remove login startup to match the config")
     ap.add_argument("--stress-voice", action="store_true", help="test the voice for stutters under heavy load")
     ap.add_argument("--silent", action="store_true", help="with --stress-voice: don't actually play the sound")
-    ap.add_argument("--see", choices=("window", "screen"), help="`void see`: ask the running Void for a picture, print its path")
+    ap.add_argument("--see", choices=("window", "screen"), help="`nixi-companion see`: ask the running Nixi for a picture, print its path")
     args = ap.parse_args()
     if args.see:                                 # view-only: no clicking or typing, ever
         try:
             rt = json.loads((DATA_DIR / "runtime.json").read_text())
-            port, tok = os.environ.get("VOID_PORT") or rt["port"], os.environ.get("VOID_TOKEN") or rt["tool_token"]
+            port, tok = os.environ.get("NIXI_COMPANION_PORT") or rt["port"], os.environ.get("NIXI_COMPANION_TOKEN") or rt["tool_token"]
             import urllib.request
             req = urllib.request.Request(f"http://127.0.0.1:{port}/api/capture",
                                          data=json.dumps({"kind": args.see, "by": "claude"}).encode(),
-                                         headers={"Content-Type": "application/json", "X-Void-Token": tok})
+                                         headers={"Content-Type": "application/json", "X-Nixi-Token": tok})
             j = json.load(urllib.request.urlopen(req, timeout=30))
         except Exception as e:  # noqa: BLE001
             print(f"couldn't look: {getattr(e, 'read', lambda: b'')().decode() or e}", file=sys.stderr)
@@ -3791,12 +3781,12 @@ def main():
         return None
     if args.warm:
         m = whisper()
-        print(f"speech model ready: {m._void_name} on {m._void_dev}")
+        print(f"speech model ready: {m._nixi_name} on {m._nixi_dev}")
         return None
     if CFG.get("cpu_split", True) and not args.print_port:
         got = cpu_split("server")
         if got:
-            print(f"[void] voice & brain on CPU cores {got[0]}-{got[-1]} (the window gets the others)", flush=True)
+            print(f"[nixi] voice & brain on CPU cores {got[0]}-{got[-1]} (the window gets the others)", flush=True)
     if args.stress_voice:
         sys.exit(stress_voice(silent=args.silent))
     if args.print_port:
@@ -3819,7 +3809,7 @@ def main():
     except OSError:
         pass
     srv.daemon_threads = True
-    print(f"[void] http://127.0.0.1:{CFG['port']}/  cwd={ST.cwd}  tts={tts_engine()}", flush=True)
+    print(f"[nixi] http://127.0.0.1:{CFG['port']}/  cwd={ST.cwd}  tts={tts_engine()}", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
@@ -3832,7 +3822,7 @@ def _try(fn):
     try:
         fn()
     except Exception as e:  # noqa: BLE001
-        print(f"[void] {e}", file=sys.stderr)
+        print(f"[nixi] {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

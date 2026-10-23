@@ -1,5 +1,5 @@
 {
-  description = "Void desktop companion";
+  description = "Nixi desktop companion";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -17,11 +17,11 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          void = pkgs.callPackage ./nix/package.nix { };
+          nixi-companion = pkgs.callPackage ./nix/package.nix { };
         in
         {
-          inherit void;
-          default = void;
+          inherit nixi-companion;
+          default = nixi-companion;
         }
       );
 
