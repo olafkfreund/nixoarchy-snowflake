@@ -546,8 +546,8 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><div class="t">His voice</div><div class="h">Tap one to hear it. <span id="voiceEng"></span></div><div class="voices" id="voiceChips"></div></div>
       <div class="row tgs">
         <label class="tg"><input type="checkbox" id="speakSw"><span class="sw"></span><span class="l">Speak replies out loud</span></label>
-        <label class="tg"><input type="checkbox" id="wakeSw"><span class="sw"></span><span class="l">“Hey Void” wake word<small>Listens for his name. Nothing leaves your computer.</small></span></label>
-        <label class="tg"><input type="checkbox" id="bargeSw"><span class="sw"></span><span class="l">Interrupt him by voice<small>Say “stop” (or “hey Void”) while he's talking.</small></span></label>
+        <label class="tg"><input type="checkbox" id="wakeSw"><span class="sw"></span><span class="l">“Hey Nixi” wake word<small>Listens for his name. Nothing leaves your computer.</small></span></label>
+        <label class="tg"><input type="checkbox" id="bargeSw"><span class="sw"></span><span class="l">Interrupt him by voice<small>Say “stop” (or “hey Nixi”) while he's talking.</small></span></label>
         <label class="tg"><input type="checkbox" id="listenShowSw"><span class="sw"></span><span class="l">Listen as soon as he pops up</span></label>
         <label class="tg"><input type="checkbox" id="fullSw"><span class="sw"></span><span class="l">Show everything I said<small>The end of your words, wrapped over a few lines, instead of one cut-off line.</small></span></label>
         <label class="tg"><input type="checkbox" id="sfxSw"><span class="sw"></span><span class="l">Sound effects<small>Little blips when he wakes, opens his menu or finishes.</small></span></label>
@@ -581,7 +581,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
     <!-- ================= MORE ================= -->
     <div class="tab" data-tab="more">
       <div class="row tgs">
-        <label class="tg nx"><input type="checkbox" id="autoSw"><span class="sw"></span><span class="l">Start when I log in<small>Ready and listening for “hey Void”.</small></span></label>
+        <label class="tg nx"><input type="checkbox" id="autoSw"><span class="sw"></span><span class="l">Start when I log in<small>Ready and listening for “hey Nixi”.</small></span></label>
         <label class="tg"><input type="checkbox" id="notifySw"><span class="sw"></span><span class="l">Notify me when a long task finishes<small>…while he's hidden.</small></span></label>
         <label class="tg"><input type="checkbox" id="popupSw"><span class="sw"></span><span class="l">Pop back up when it's done</span></label>
         <label class="tg nx"><input type="checkbox" id="updSw"><span class="sw"></span><span class="l">Check for updates<small>Asks GitHub for the latest version when he starts, every few hours and when you open Settings. Nothing about you is sent.</small></span></label>
@@ -2262,7 +2262,7 @@ setEl.addEventListener('change',e=>{
   if(id==='speakSw' && on===muted) toggleMute();
   if(id==='autoSw') setSetting({autostart:on}).then(()=>tick(on?'I’ll start when you log in':'won’t start at login'));
   if(id==='listenShowSw') setSetting({listen_on_show:on});
-  if(id==='wakeSw') setSetting({wake_word:on}).then(()=>tick(on?'say “hey Void” any time':'wake word off'));
+  if(id==='wakeSw') setSetting({wake_word:on}).then(()=>tick(on?'say “hey Nixi” any time':'wake word off'));
   if(id==='bargeSw') setSetting({barge_in:on});
   if(id==='sfxSw') setSetting({sfx:on}).then(()=>on&&sfx('ok'));
   if(id==='hoverSw') toggleHover(on);

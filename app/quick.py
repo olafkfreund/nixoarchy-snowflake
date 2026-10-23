@@ -335,7 +335,7 @@ def _find_project(name):
 # ---------------------------------------------------------------- the matcher
 def handle(text):
     t = " ".join((text or "").lower().replace("’", "'").split()).strip(" .!?")
-    t = re.sub(r"^(hey void|void|ok void|okay void)[,\s]+", "", t)
+    t = re.sub(r"^(hey nixi|nixi|ok nixi|okay nixi|hey void|void|ok void|okay void)[,\s]+", "", t)
     t = re.sub(r"^(please|can you|could you|would you|will you)\s+", "", t)
     t = re.sub(r"\s+please$", "", t)
     if not t or len(t) > 120:

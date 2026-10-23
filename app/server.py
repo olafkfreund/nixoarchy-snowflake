@@ -143,7 +143,7 @@ DEFAULTS = {
     "whisper_model": "auto",
     "whisper_beam": 5,
     # words he should expect (helps with names/jargon)
-    "stt_hint": "Hey Void, Claude, Claude Code, Void, git, commit, README, Python, JavaScript, npm, pacman, sudo, Arch Linux, "
+    "stt_hint": "Hey Nixi, Claude, Claude Code, Nixi, git, commit, README, Python, JavaScript, npm, pacman, sudo, Arch Linux, "
                 "Hyprland, folder, directory, file, terminal, config, server, function, bug, refactor.",
     "whisper_device": "auto",
     # keep the mic at a level he hears well: turn the Windows mic level up when your voice comes in quiet, down when it
@@ -1361,14 +1361,14 @@ def list_mics():
 STOP_RE = re.compile(r"(?:ok(?:ay)?\W+|void\W+|hey\W+void\W+)?(?:stop|wait|shush|shh+|quiet|be quiet|shut up|hold on|hang on|"
                      r"enough|stop talking|that's enough|thanks?(?: you)?|got it)(?:\W+(?:void|please|now))?")
 # sent ahead of a follow-up (said without "hey Void") so Claude can tell if it was even meant for him
-FOLLOW_NOTE = ("(Voice note from Void: the mic picked this up a few seconds after your last reply, without \"hey Void\". "
+FOLLOW_NOTE = ("(Voice note from Nixi: the mic picked this up a few seconds after your last reply, without \"hey Nixi\". "
                "If it is clearly not meant for you, e.g. the user thinking out loud, talking to themselves or to someone "
                "else, reply with exactly [ignore] and nothing else, and use no tools. Otherwise just answer it normally.)\n\n")
 IGNORE = "[ignore]"
 
 # what the speech model "hears" in background noise — never treat these as a follow-up request
 NOISE_WORDS = {"you", "thank you", "thanks", "bye", "thanks for watching", "thank you for watching", "uh", "um", "hmm"}
-WAKE_RE = re.compile(r"^\W*(?:(?:hey|hi|hay|okay|ok|yo|oi)\W+)?(void|voyd|boyd|voi|vod)\b\W*(.*)$", re.I | re.S)
+WAKE_RE = re.compile(r"^\W*(?:(?:hey|hi|hay|okay|ok|yo|oi)\W+)?(nixi's|nixi|nixie|nixy|nixey|nixee|nicksy|nicksie)\b\W*(.*)$", re.I | re.S)
 
 
 class Wake:
@@ -1517,7 +1517,7 @@ class Wake:
             ss = speech_seconds(pcm)
             if ss < 0.25 or ss < len(pcm) / (RATE * 2) * 0.2:    # music or noise, not talking: don't let Whisper dream up words
                 return
-            text = transcribe_pcm(pcm) if follow else transcribe_pcm(pcm, beam=1, hint="Hey Void.")
+            text = transcribe_pcm(pcm) if follow else transcribe_pcm(pcm, beam=1, hint="Hey Nixi.")
         except Exception as e:  # noqa: BLE001
             print(f"[void] wake word stt: {e}", file=sys.stderr)
             return
