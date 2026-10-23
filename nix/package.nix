@@ -22,6 +22,11 @@
   nixiBridge ? null,
 }:
 let
+  # speaking only: no Japanese (its pyopenjtalk-plus fails its tests on current unstable) and no training extras
+  piper = piper-tts.override {
+    withJapanese = false;
+    withTrain = false;
+  };
   py = python3.withPackages (p: [
     p.pygobject3
     p.pycairo
@@ -82,7 +87,7 @@ stdenvNoCC.mkDerivation {
           playerctl
           pulseaudio
           brightnessctl
-          piper-tts
+          piper
           espeak-ng
         ]
       } \
