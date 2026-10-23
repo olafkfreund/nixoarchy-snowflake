@@ -19,6 +19,10 @@
   brightnessctl,
   piper-tts,
   espeak-ng,
+  procps,
+  wireplumber,
+  pipewire,
+  alsa-utils,
   nixiBridge ? null,
 }:
 let
@@ -89,6 +93,10 @@ stdenvNoCC.mkDerivation {
           brightnessctl
           piper
           espeak-ng
+          procps
+          wireplumber
+          pipewire
+          alsa-utils
         ]
       } \
       "''${gappsWrapperArgs[@]}"

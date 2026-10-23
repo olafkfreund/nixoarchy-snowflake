@@ -28,7 +28,7 @@ if [ -n "${VOID_APP:-}" ] && [ -n "${VOID_PYTHON:-}" ]; then APP="$VOID_APP"; PY
 # push-to-talk from a desktop key binding (one call on press, one on release): straight to the running window, fast
 case "${1:-}" in ptt-down|ptt-up)
   PSOCK="${XDG_RUNTIME_DIR:-/tmp}/void-$(id -u).sock"
-  if [ -S "$PSOCK" ] && python3 -c 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); s.sendall(sys.argv[2].encode())' "$PSOCK" "$1" 2>/dev/null; then exit 0; fi
+  if [ -S "$PSOCK" ] && "${VOID_PYTHON:-python3}" -c 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); s.sendall(sys.argv[2].encode())' "$PSOCK" "$1" 2>/dev/null; then exit 0; fi
   [ "$1" = ptt-up ] && exit 0
   set -- listen ;;                                     # he isn't open yet: start him and just listen
 esac

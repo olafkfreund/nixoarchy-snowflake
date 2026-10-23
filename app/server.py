@@ -2727,7 +2727,8 @@ class Bridge:
         except subprocess.TimeoutExpired:
             try:
                 os.killpg(p.pid, signal.SIGTERM)
-            except ProcessLookupError:
+                p.wait(2)
+            except (ProcessLookupError, subprocess.TimeoutExpired):
                 pass
 
 
@@ -2745,7 +2746,8 @@ def run_bridge(prompt, emit):
     def approve(o):                                      # (a worker: the card waits for you, the reader goes on)
         opts = [x for x in o.get("options") or [] if isinstance(x, dict)]
         pick = APPROVALS.ask_bridge(str(o.get("title") or "Use a tool"), opts, str(o.get("detail") or ""))
-        BRIDGE.send({"type": "permission", "id": o.get("id"), "optionId": pick})
+        if BRIDGE.proc is p:                             # (ids restart per bridge: never answer a newer one's request)
+            BRIDGE.send({"type": "permission", "id": o.get("id"), "optionId": pick})
 
     BRIDGE.send({"type": "prompt", "text": prompt})
     mid = None
@@ -2796,17 +2798,21 @@ def bridge_trust(level):
     except OSError as e:
         return f"Couldn't start the nixi bridge: {e}"
     BRIDGE.send({"type": "trust", "trust": level})
+    timer = threading.Timer(10, p.kill)                  # (this holds ST.lock: never wait forever)
+    timer.start()
     for line in p.stdout:
         try:
             o = json.loads(line)
         except ValueError:
             continue
         if isinstance(o, dict) and o.get("type") == "ack" and o.get("of") == "trust":
+            timer.cancel()
             if o.get("ok"):
                 return f"Trust set to {str(o.get('trust') or level).capitalize()}."
             return str(o.get("message") or "Couldn't change the trust level.")
         if isinstance(o, dict) and o.get("type") == "fatal":
             break
+    timer.cancel()
     BRIDGE.close()
     return "The nixi bridge stopped before it confirmed the trust level."
 
@@ -3160,7 +3166,7 @@ def state_info():
                     "downloading": v.get("piper") in _downloading or (bool(v.get("kokoro")) and "kokoro" in _downloading)}
                    for k, v in VOICES.items()],
         "voice_engine": tts_engine() or "none",
-        "claude": bool(claude_bin()), "busy": ST.lock.locked(), "config": str(CONF_PATH),
+        "claude": BRIDGED or bool(claude_bin()), "busy": ST.lock.locked(), "config": str(CONF_PATH),
         "context": context_info(), "recall": recall.stats(), "auto_compact": bool(CFG.get("auto_compact", True)), "full_text": bool(CFG.get("full_text")),
     }
 
