@@ -66,6 +66,7 @@ quitwin(){ pkill -f "$APP/window.py" >/dev/null 2>&1 || true; killbrowser
   command -v hyprctl >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && { [ "$(hyprctl keyword cursor:invisible false 2>&1)" = ok ] || hyprctl eval 'hl.config({ cursor = { invisible = false } })' >/dev/null 2>&1; } || true; }
 
 case "${1:-}" in
+  theme-changed) up 2>/dev/null && "$PY" "$APP/server.py" --theme-changed || true; exit 0 ;;   # the omarchy theme hook: recolour the running Nixi
   stop)    stop; quitwin; echo "Nixi stopped"; exit 0 ;;
   stress)  exec "$PY" "$APP/server.py" --stress-voice "${@:2}" ;;
   diagnostics) exec "$PY" "$APP/server.py" --diagnostics ;;
