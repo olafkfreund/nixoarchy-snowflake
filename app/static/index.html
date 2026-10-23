@@ -296,13 +296,13 @@ select:focus,.pn input[type=text]:focus,.pn textarea:focus{border-color:var(--ed
 .qedit span{flex:1;padding:6px 9px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* "can I run this?" */
-#appr{position:absolute;left:14px;right:14px;top:256px;padding:11px 12px 12px;border-radius:16px;background:#0c0c0cf7;
+#appr{position:absolute;left:14px;width:312px;top:256px;padding:11px 12px 12px;border-radius:16px;background:#0c0c0cf7;
   border:1px solid #6b4a10;box-shadow:0 6px 20px #000a,0 0 18px #ffb02a22;z-index:7;
   opacity:0;transform:translateY(12px) scale(.95);pointer-events:none;transition:opacity .4s var(--ease),transform .6s var(--ease)}
 #appr.on{opacity:1;transform:none;pointer-events:auto}
-#appr .q{font-size:12.5px;color:#ffd38a;margin-bottom:6px;display:flex;gap:6px;align-items:center}
+#appr .q{font-size:12.5px;color:#ffd38a;margin-bottom:6px;display:flex;gap:6px;align-items:flex-start;overflow-wrap:anywhere}
 #appr pre{margin:0 0 9px;padding:7px 9px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);font:11.5px/1.4 var(--mono);color:var(--text);
-  max-height:64px;overflow:auto;white-space:pre-wrap;word-break:break-all;user-select:text;-webkit-user-select:text}
+  max-height:var(--apprMax,60vh);overflow:auto;white-space:pre-wrap;word-break:break-all;user-select:text;-webkit-user-select:text}
 #appr .bar{justify-content:flex-end}
 #appr .yes{background:#2f7d4f;border-color:#55c285;color:#fff}
 #appr .hint{flex:1;color:var(--dim);font-size:11px}
@@ -419,7 +419,7 @@ body.hover #moreB,body.pnl #moreB,body.appr #moreB{display:none}
 .md h1,.md h2,.md h3{font-size:13.5px;margin:10px 0 6px}
 /* ===== the terminal: a small flat sheet he holds under his eyes while he works ===== */
 #stage{z-index:2}
-#code{position:fixed;left:0;top:0;width:490px;height:166px;z-index:3;pointer-events:none;border-radius:10px;
+#code{position:fixed;left:0;top:0;width:490px;height:auto;z-index:3;pointer-events:none;border-radius:10px;
   background:color-mix(in srgb,var(--panel) 95%,transparent);border:1px solid var(--edge2);box-shadow:0 8px 18px #000b;font:13px/17px var(--mono);color:var(--text);
   opacity:0;scale:.5;transition:opacity .3s,scale .4s cubic-bezier(.3,1.5,.5,1)}
 #code.on{opacity:1;scale:1}
@@ -427,7 +427,7 @@ body.hover #moreB,body.pnl #moreB,body.appr #moreB{display:none}
 #code .tb b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 #code .tb span{color:var(--dim)} #code .tb span.ok{color:var(--hot)} #code .tb span.bad{color:#ff6b6b}
 #code.root{border-color:#7a1414} #code.root .tb b::before{content:"root · ";color:#ff5a5a}
-#code .lines{padding:3px 10px;height:140px;overflow:hidden}
+#code .lines{padding:3px 10px 5px;min-height:144px;overflow:hidden}
 /* root mode: a red sticker on the side of the paper you see — so it reads the right way round even though the page is
    turned toward him */
 #liveDot{animation:liveBeat 1.6s ease-in-out infinite} @keyframes liveBeat{50%{opacity:.25}} body.hover #liveTag{display:none}
@@ -435,7 +435,7 @@ body.hover #moreB,body.pnl #moreB,body.appr #moreB{display:none}
   color:#fff;background:#9a0000;border-radius:6px;padding:3px 6px;box-shadow:0 0 10px #ff000066,0 2px 6px #000a}
 #code.rootmode .rootb{display:block}
 body.faceyou #code .rootb{transform:none;left:auto;right:-9px}
-#code .l{height:17px;white-space:pre;overflow:hidden}
+#code .l{min-height:17px;white-space:pre-wrap;word-break:break-all}
 #code .l.add{color:#bfe8d3} #code .l.del{color:#ff8b8b}
 #code .l.out{color:var(--dim)} #code .l.bad{color:#ff8b8b}
 #code i{font-style:normal} #code .k{color:var(--hot)} #code .s{color:var(--whiteL,#f3dccf)} #code .c{color:#5f5f5f}
@@ -1665,15 +1665,19 @@ pwIn.addEventListener('keydown',e=>{ e.stopPropagation(); if(e.key==='Escape'){ 
 /* ================= approvals ("ask me first") ================= */
 const apprQ=[]; const apEl=$('#appr');
 function queueApproval(ev){ apprQ.push(ev); if(!pendingAppr) nextApproval(); }
+function fitCard(){   // the card grows with the command (wider up to 640px, then taller), and the window grows to hold it
+  const longest=Math.max(0,...String(pendingAppr.detail||'').split('\n').map(x=>x.length)), w=Math.min(640,Math.max(312,Math.ceil(longest*6.9)+50));
+  apEl.style.width=w+'px'; apEl.style.left=(170-w/2)+'px'; apEl.style.setProperty('--apprMax',Math.round(screen.height*.6)+'px');
+  cardWant=[Math.max(0,w+28-340),Math.max(0,256+apEl.offsetHeight+14-460)]; sizeWindow(); sendRegion(true); }
 function nextApproval(){
   pendingAppr=apprQ.shift()||null;
   document.body.classList.toggle('appr',!!pendingAppr); apEl.classList.toggle('on',!!pendingAppr);
-  if(!pendingAppr) return;
+  if(!pendingAppr){ cardWant=[0,0]; sizeWindow(); return; }
   const a=pendingAppr;
   if(hiddenNow) native('show');
   const what=a.tool==='Bash'?'Can I run this?':a.tool==='WebFetch'?'Can I open this page?':a.tool==='WebSearch'?'Can I search the web?':
     /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(a.tool)?'Can I change this file?':`Can I use ${a.tool}?`;
-  $('#apQ').textContent=what; $('#apCmd').textContent=a.detail;
+  $('#apQ').textContent=what; $('#apCmd').textContent=a.detail; fitCard();
   { const al=apEl.querySelector('[data-ans="always"]'); if(al) al.hidden=a.always===false; }   // not for chained commands
   const spoken=a.say||what;   // the server says what it does in plain words (the card shows the real command)
   askAloud(a,spoken);
@@ -2389,13 +2393,17 @@ window.nixiCmd=async c=>{ hiddenNow=false;
 let lastRegion='';
 function calmCheck(){ document.body.classList.toggle('calm', setEl.classList.contains('on')||panelEl.classList.contains('on')||apEl.classList.contains('on')); }
 // the page is laid out for 340×460: if the window ends up a different size, scale/centre it instead of cutting things off
-let fitK=1, layoutX=0;
+let fitK=1, layoutX=0, layoutY=0;
+// room for a long approval card / terminal sheet: ask the window for extra width and height (it shrinks back at [0,0])
+let cardWant=[0,0], sheetWant=[0,0], sizeKey='';
+function sizeWindow(){ const w=Math.max(cardWant[0],sheetWant[0]), h=Math.max(cardWant[1],sheetWant[1]), k=w+','+h;
+  if(k!==sizeKey){ sizeKey=k; native('size:'+k); } }
 function fit(){ const k=Math.min(1, innerWidth/340, innerHeight/460); fitK=k>0.995?1:k; const bs=document.body.style;
-  bs.transformOrigin='0 0'; bs.margin='0'; bs.marginLeft=layoutX+'px';
+  bs.transformOrigin='0 0'; bs.margin='0'; bs.marginLeft=layoutX+'px'; bs.marginTop=layoutY+'px';
   bs.transform=fitK===1?'':`scale(${fitK})`;
   if(NATIVE&&fitK<1) console.log(`[nixi] window is ${innerWidth}x${innerHeight} (expected 340x460) — scaling the page to fit`); }
 // the window widened for a panel: it grew to the left by ox px, so shift the page back and he stays exactly where he was
-window.nixiLayout=ox=>{ layoutX=ox|0; fit(); sendRegion(true); requestAnimationFrame(moveInd); };
+window.nixiLayout=(ox,oy)=>{ layoutX=ox|0; layoutY=oy|0; fit(); sendRegion(true); requestAnimationFrame(moveInd); };
 addEventListener('resize',()=>{ fit(); sendRegion(true); moveInd(); }); fit();
 function sendRegion(force){
   calmCheck();
@@ -2502,7 +2510,7 @@ addEventListener('blur',()=>{ spaceHeld=false; if(rec&&rec.mode==='ptt') stopRec
    His eyes keep an eye on it. */
 const CP=(()=>{
   const el=$('#code'), out=el.querySelector('.lines'), titleEl=el.querySelector('.tb b'), stEl=el.querySelector('.tb span');
-  const W=490, H=166, ROWS=8;                       // size, visible lines
+  let W=490, H=168; const ROWS=24, MAXH=442;                       // size, visible lines
   let on=false, last=0, wide=false, offT=null, pos=null;
   const sp={x:0,y:0,vx:0,vy:0,r:0};                // held in a "hand": follows where he looks, with a little lag and tilt
   let look=[0,4.5], lookUntil=0, glancing=false;
@@ -2556,7 +2564,14 @@ const CP=(()=>{
   // ---- show / hide (the window gets a bit wider while it's out, so it has room to go round)
   function show(){ if(info.code_panel===false||document.body.classList.contains('hover')) return; clearTimeout(offT);
     if(!wide){ wide=true; native('code:on'); } if(!on&&!el.classList.contains('on')){ pos=null; glancing=false; lookUntil=performance.now()+4500; } on=true; el.classList.add('on'); document.body.classList.add('term'); }
-  function hide(){ on=false; el.classList.remove('on'); document.body.classList.remove('term'); clearTimeout(offT); offT=setTimeout(()=>{ if(!on&&wide){ wide=false; native('code:off'); } },400); }
+  function fitSheet(){   // the sheet follows its content: wider for long lines (up to 720px, then they wrap), taller for more lines
+    let mx=0; for(const c of out.children) mx=Math.max(mx,c.textContent.length);
+    const w=clamp(Math.ceil(mx*7.9)+30,490,720); if(w!==W){ W=w; el.style.width=w+'px'; }
+    while(out.children.length>8&&el.offsetHeight>MAXH) out.firstChild.remove();
+    H=el.offsetHeight; const want=[Math.max(0,W+28-340),Math.max(0,H-160)];
+    if(want[0]!==sheetWant[0]||want[1]!==sheetWant[1]){ sheetWant=want; sizeWindow(); } }
+  new MutationObserver(()=>{ if(on&&!barEdge()) fitSheet(); }).observe(out,{childList:true,subtree:true,characterData:true});
+  function hide(){ sheetWant=[0,0]; sizeWindow(); on=false; el.classList.remove('on'); document.body.classList.remove('term'); clearTimeout(offT); offT=setTimeout(()=>{ if(!on&&wide){ wide=false; native('code:off'); } },400); }
 
   // ---- writing to it
   const KW=/\b(def|return|if|elif|else|for|while|in|not|and|or|import|from|try|except|with|as|const|let|var|function|async|await|new|null|None|True|False|true|false|fn|pub|use|match|export|raise|throw)\b/g;

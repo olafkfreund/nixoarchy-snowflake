@@ -319,6 +319,7 @@ class NixiWindow:
         # (no draw handler that clears the window: with GPU rendering WebKit only repaints what changed,
         #  so clearing here made everything outside the animating ball vanish until the mouse moved)
         self.cur_w, self.wide_shift = W, 0
+        self.cur_h, self.top_shift, self.want_xw, self.want_h = H, 0, 0, 0   # the page asks for room for a long approval card / terminal sheet
         self.want_panel = self.want_code = self.want_bar = False
         self.glide_n = 0                        # the current window glide (a newer one cancels it)
         self.glide_end = 0.0
@@ -516,7 +517,9 @@ class NixiWindow:
     def set_wide(self, on, kind="panel"):
         """Make room: panels (settings / history) widen him to the left; the code panel wants room on both sides.
         The page is told how far he moved inside the window so he stays exactly where he was on screen."""
-        if kind == "panel":
+        if kind == "size":                         # on = (extra width, extra height) the page wants for its card / sheet
+            self.want_xw, self.want_h = on
+        elif kind == "panel":
             self.want_panel = on
         elif kind == "bar":
             self.want_bar = on
@@ -524,6 +527,8 @@ class NixiWindow:
             self.want_code = on
         L = max(WIDE - W if self.want_panel else 0, CODE_SIDE if self.want_code else 0, BAR_SIDE if self.want_bar else 0)
         R = max(CODE_SIDE if self.want_code else 0, BAR_SIDE if self.want_bar else 0)
+        xw, eh = (0, 0) if (self.hover or self.want_bar) else (self.want_xw, self.want_h)
+        L, R = max(L, (xw + 1) // 2), max(R, (xw + 1) // 2)
         if self.hover:
             L = R = 0
         base = self.mx + self.wide_shift                 # where his own 340px strip starts on the monitor
@@ -532,22 +537,28 @@ class NixiWindow:
             L, R = min(L, max(0, base)), min(R, max(0, gw - base - W))
         elif not (self.want_bar and not (self.want_panel or self.want_code)):
             L, R = 0, L + R                              # a normal window only grows to the right (it isn't moved)…
-        if W + L + R == self.cur_w and L == self.wide_shift:
+        # height: grow downward as far as the monitor allows, then upward (the page is shifted down by T so he stays put)
+        basey, T, B = self.my + self.top_shift, 0, 0
+        if eh:
+            gh = self._geom()[1].height
+            B = min(eh, max(0, gh - (basey + H)))
+            T = min(eh - B, max(0, basey)) if self.layer else 0
+        if W + L + R == self.cur_w and L == self.wide_shift and H + T + B == self.cur_h and T == self.top_shift:
             return
         old = self.wide_shift
-        self.wide_shift, self.cur_w = L, W + L + R
-        self.win.set_size_request(self.cur_w, H)
-        self.win.resize(self.cur_w, H)
+        self.wide_shift, self.cur_w, self.top_shift, self.cur_h = L, W + L + R, T, H + T + B
+        self.win.set_size_request(self.cur_w, self.cur_h)
+        self.win.resize(self.cur_w, self.cur_h)
         if self.layer:
-            self._place(base - L, self.my)
+            self._place(base - L, basey - T)
         elif L != old:                                   # …except round the notch, where we place it ourselves
             self._xmove(base - L, self.my)
         if not self.layer and self.hypr.ok() and self.hypr.addr:
             try:
-                self.hypr.dispatch(f"resizewindowpixel exact {self.cur_w} {H},address:{self.hypr.addr}")
+                self.hypr.dispatch(f"resizewindowpixel exact {self.cur_w} {self.cur_h},address:{self.hypr.addr}")
             except Exception:  # noqa: BLE001
                 pass
-        self._js(f"window.nixiLayout&&nixiLayout({self.wide_shift})")
+        self._js(f"window.nixiLayout&&nixiLayout({self.wide_shift},{self.top_shift})")
         self.win.queue_draw()
 
     def _mon_at(self, gx, gy):
@@ -1152,7 +1163,8 @@ class NixiWindow:
          "code:on": lambda: self.set_wide(True, "code"), "code:off": lambda: self.set_wide(False, "code"),
          "peek:hide": self.win.hide, "peek:show": self.show,
          "follow:on": lambda: setattr(self, "follow_focus", True), "follow:off": lambda: setattr(self, "follow_focus", False),
-         }.get(msg, (lambda: self.go_monitor(msg[8:])) if msg.startswith("monitor:") else (lambda: None))()
+         }.get(msg, (lambda: self.go_monitor(msg[8:])) if msg.startswith("monitor:") else
+               (lambda: self.set_wide((int(msg[5:].split(",")[0]), int(msg[5:].split(",")[1])), "size")) if msg.startswith("size:") else (lambda: None))()
 
     def _serve(self):
         try:
