@@ -71,7 +71,8 @@ VOICE_PROMPT = (
     "files, code, commands or tool input — only in the words you say to the user."
 )
 # the face tags Claude puts in its replies (see VOICE_PROMPT) — never spoken, never shown, never saved
-FACE_TAG_RE = re.compile(r"\[(?:neutral|happy|proud|excited|laugh|warm|curious|unsure|thinking|surprised|sorry|serious)\]\s*", re.I)
+FACE_TAGS = ("neutral", "happy", "proud", "excited", "laugh", "warm", "curious", "unsure", "thinking", "surprised", "sorry", "serious")
+FACE_TAG_RE = re.compile(r"\[(?:" + "|".join(FACE_TAGS) + r")\]\s*", re.I)
 
 
 def untag(t):
@@ -2868,7 +2869,10 @@ def run_bridge(prompt, emit):
         if BRIDGE.proc is p:                             # (ids restart per bridge: never answer a newer one's request)
             BRIDGE.send({"type": "permission", "id": o.get("id"), "optionId": pick})
 
-    BRIDGE.send({"type": "prompt", "text": prompt})
+    # nixi's agent writes for a screen; this is read aloud, so ask for speech (the grounding stays the bridge's own)
+    note = ("(Spoken reply via Nixi's voice: 1-4 short spoken sentences, no tables, lists or code blocks; you may start with "
+            "one mood tag, one of " + ", ".join(f"[{t}]" for t in FACE_TAGS) + ".)\n\n")
+    BRIDGE.send({"type": "prompt", "text": note + prompt})
     mid = None
     for line in p.stdout:
         try:
