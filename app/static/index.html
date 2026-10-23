@@ -575,7 +575,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <div class="h" id="recallTxt" style="margin-top:-3px"></div>
         <label class="tg nx"><input type="checkbox" id="compactSw"><span class="sw"></span><span class="l">Tidy up automatically<small>At about 70% full he writes himself a short note and carries on in a fresh chat, so a long session can't quietly eat your usage.</small></span></label>
         <div class="bar" style="margin-top:9px"><button class="btn sm nx" id="ctxTidy">Tidy up now</button><button class="btn sm" id="ctxNew">New chat</button></div></div>
-      <div class="row"><div class="t">Projects</div><div class="h">Say “switch to my <i>name</i>” to jump there. Add by voice: “remember my blog is in ~/code/blog”.</div>
+      <div class="row nx"><div class="t">Projects</div><div class="h">Say “switch to my <i>name</i>” to jump there. Add by voice: “remember my blog is in ~/code/blog”.</div>
         <div id="projList"></div>
         <div class="bar" style="margin-top:7px"><input type="text" id="projName" placeholder="name" style="flex:1 1 80px;min-width:0"><input type="text" id="projPath" placeholder="~/code/app" style="flex:2 1 120px;min-width:0"><button class="btn pri sm" id="projAdd">add</button></div></div>
       <div class="row nx"><label class="tg red"><input type="checkbox" id="rootSw"><span class="sw"></span><span class="l">Root mode<small>Runs <b>anything</b>, incl. <code>sudo</code> — a password card appears next to him when he needs root.</small></span></label>
@@ -590,7 +590,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <label class="tg nx"><input type="checkbox" id="updSw"><span class="sw"></span><span class="l">Check for updates<small>Asks GitHub for the latest version when he starts, every few hours and when you open Settings. Nothing about you is sent.</small></span></label>
       </div>
       <div class="row"><div class="t">Memory &amp; history</div><div class="h">Say “remember …” and he keeps it for every future chat.</div>
-        <div class="bar"><button class="btn" data-open="memory">🧠 Memory <i id="memCount"></i></button><button class="btn nx" data-open="history">🕘 History</button></div></div>
+        <div class="bar"><button class="btn nx" data-open="memory">🧠 Memory <i id="memCount"></i></button><button class="btn nx" data-open="history">🕘 History</button></div></div>
       <div class="row nx"><div class="t">Void <span id="verTxt"></span></div><div class="h" id="updTxt"></div>
         <div class="bar"><button class="btn" id="updNow" hidden>⬇ Update now</button><button class="btn" id="updCheck">Check now</button></div></div>
       <div class="row"><div class="t">Need help?</div><div class="h">Copies a report (versions, mic, voice, the end of his log) to paste when you ask for help. Nothing is sent; your name and folders are blanked out.</div>
@@ -1673,14 +1673,14 @@ const PROJ_ADD=/^(?:hey\s+void[,\s]+)?(?:remember|note)\s+(?:that\s+)?((?:my|the
 const NICE=/\b(thank(s| you)|good job|well done|nice( one| work)?|love you|you'?re (the best|awesome|cute|great)|good boy|cutie)\b/i;
 async function send(text,opts={}){
   text=(text||'').trim(); if(!text&&!atts.length) return; wake();
-  if(text.startsWith('/')) return slash(text);
+  if(text.startsWith('/') && !(info.bridge && /^\/(mechanic|guide)$/.test(text))) return slash(text);   // nixi's trust: to the server
   // memory: handled right here, instantly
   let mm; const question=/\?\s*$/.test(text)||/^(?:hey\s+void[,\s]+)?(?:do|did|can|could) you\b|^remember (what|when|how|where|why|which|who|if|the time)\b/i.test(text);
-  if(!question && (mm=text.match(PROJ_ADD))){ const r=await (await post('/api/projects',{op:'add',name:mm[1],path:mm[2]})).json();
+  if(!question && !info.bridge && (mm=text.match(PROJ_ADD))){ const r=await (await post('/api/projects',{op:'add',name:mm[1],path:mm[2]})).json();
     if(!r.error){ info.projects=r.projects; capShow(); setYou(text); say(`Got it — say “switch to ${mm[1].replace(/^(my|the) /i,'')}” any time.`); poke('wink',1300); sfx('ok'); return; } }
-  if(!question && (mm=text.match(MEM_ADD))){ const r=await (await post('/api/memory',{op:'add',text:mm[1].replace(/[.!]+$/,'')})).json();
+  if(!question && !info.bridge && (mm=text.match(MEM_ADD))){ const r=await (await post('/api/memory',{op:'add',text:mm[1].replace(/[.!]+$/,'')})).json();
     info.memory_count=r.items.length; capShow(); setYou(text); say(r.added?"Got it — I'll remember that.":'I already had that one!'); poke('wink',1300); return; }
-  if((mm=text.match(MEM_DEL))){ const r=await (await post('/api/memory',{op:'del',match:mm[1].replace(/[.!]+$/,'')})).json();
+  if(!info.bridge && (mm=text.match(MEM_DEL))){ const r=await (await post('/api/memory',{op:'del',match:mm[1].replace(/[.!]+$/,'')})).json();
     info.memory_count=r.items.length; capShow(); setYou(text); say(r.removed?'Okay, forgotten.':"I couldn't find that in my notes — opening them so you can pick."); if(!r.removed) openPanel('memory'); return; }
   if(LIVE_ON.test(text)){ setLive(true); capShow(); setYou(text); say("Okay, I'm watching. Say “stop watching” when you're done."); poke('looking',1400); sfx('ok'); return; }
   if(LIVE_OFF.test(text)){ const was=liveOn(); setLive(false); capShow(); setYou(text); say(was?'Okay, I stopped looking.':"I wasn't looking."); poke('wink',1000); return; }
@@ -1860,7 +1860,7 @@ const ICON={
   hide:'<path d="M6 6l12 12M18 6 6 18"/>',
 };
 // (no top bar / blob button: you dock him by dragging him into a screen edge, and pull him out to get the blob back)
-const NX_MENU=['history','look','plugins'];
+const NX_MENU=['cd','history','look','plugins'];
 const MENU=[['talk','talk'],['cd','folder'],['history','history'],['look','show my screen'],['hover','hover mode'],['plugins','plug-ins'],['set','settings'],['hide','hide']];
 const MENU_XY=[];
 menuEl.innerHTML=MENU.map(([a,l],i)=>{ const ang=(-168+i*(156/(MENU.length-1)))*Math.PI/180, r=122;

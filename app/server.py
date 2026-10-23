@@ -89,7 +89,7 @@ def untag(t):
 
 # nixi's Nix build replaces this with a JSON argv; never read from env or config. Unsubstituted = upstream Void.
 NIXI_BRIDGE = "@nixiBridge@"
-NIXI_CONF = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "omarchy" / "nixi.json"
+NIXI_CONF = Path.home() / ".config" / "omarchy" / "nixi.json"   # the bridge's path, not XDG_CONFIG_HOME
 
 
 def bridge_argv():
@@ -2334,6 +2334,8 @@ def save_config(**kw):
 
 # ---------------------------------------------------------------- claude code
 def claude_bin():
+    if BRIDGED:                                  # nixi mode: the agent is reached only through the bridge
+        return None
     b = CFG["claude_bin"]
     found = shutil.which(b)
     if found:
@@ -3303,9 +3305,8 @@ class Handler(BaseHTTPRequestHandler):
                 b = json.loads(self._body() or b"{}")
                 upd = {}
                 if BRIDGED:                              # nixi owns these
-                    for k in ("trust", "root", "root_mode", "model", "auto_model", "autostart"):
+                    for k in ("trust", "root", "root_mode", "model", "auto_model", "autostart", "max_cost_usd", "auto_compact"):
                         b.pop(k, None)
-                    b = {k: v for k, v in b.items() if not k.startswith("cost_")}
                 if "model" in b:
                     m = str(b["model"] or "").strip()
                     upd["model"] = "" if m in ("", "default") else m
@@ -3387,7 +3388,9 @@ class Handler(BaseHTTPRequestHandler):
                 if mem:
                     return self._json({"handled": True, "say": mem, "mood": "happy", "state": state_info()})
                 r = quick.handle(said)
-                if r and r.get("cd"):
+                if r and r.get("cd") and BRIDGED:        # nixi picks where its agent works; Void's folders don't apply
+                    r = {"say": "Folders are nixi's job here — I always work from nixi's own place.", "mood": "shy"}
+                elif r and r.get("cd"):
                     ST.cwd = r["cd"]
                     ST.fresh()
                     ST.save()
@@ -3395,6 +3398,8 @@ class Handler(BaseHTTPRequestHandler):
                     r["state"] = state_info()
                 return self._json({"handled": bool(r), **(r or {})})
             if p == "/api/projects":
+                if BRIDGED:
+                    return self._json({"error": "off in nixi mode"}, 403)
                 b = json.loads(self._body() or b"{}")
                 if b.get("op") == "add":
                     got = quick.add_project(str(b.get("name") or ""), str(b.get("path") or ""))
@@ -3516,6 +3521,8 @@ class Handler(BaseHTTPRequestHandler):
                 ST.save()
                 APPROVALS.reset()
                 return self._json(state_info())
+            if p == "/api/cd" and BRIDGED:
+                return self._json({"error": "off in nixi mode"}, 403)
             if p == "/api/cd":
                 raw = json.loads(self._body() or b"{}").get("path", "~")
                 path = os.path.abspath(os.path.join(ST.cwd, os.path.expanduser(raw.strip() or "~")))
