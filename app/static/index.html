@@ -1734,8 +1734,9 @@ async function send(text,opts={}){
   if(LIVE_OFF.test(text)){ const was=liveOn(); setLive(false); capShow(); setYou(text); say(was?'Okay, I stopped looking.':"I wasn't looking."); poke('wink',1000); return; }
   if(CTX_TIDY.test(text)){ capShow(); setYou(text); say('Okay, tidying up.'); tidyNow(); return; }
   if(MEM_SHOW.test(text)){ capShow(); setYou(text); const n=info.memory_count||0; say(n?`I have ${n} note${n>1?'s':''} — here they are.`:"Nothing yet! Say “remember …” and I'll keep it."); openPanel('memory'); return; }
+  let asked=text;                            // what goes to the agent (a session summary asks with the session's text)
   if(!atts.length && text && !opts.claude){
-    try{ const q=await (await post('/api/quick',{text})).json();
+    try{ const q=await (await post('/api/quick',{text})).json(); if(q.ask) asked=q.ask;
       if(q.handled){ capShow(); setYou(text); say(q.say); poke(q.mood||'happy',1300); if(q.sfx) sfx(q.sfx); if(q.monitor) native('monitor:'+q.monitor); if(q.state){ info=q.state; showInfo(); } return; } }catch(e){} }
   if(busy){ tick("one sec — I'm still on the last thing"); return; }
   if(!atts.length && SCREEN_RE.test(text)) await shoot(WHOLE_RE.test(text)?'screen':'window');
@@ -1764,7 +1765,7 @@ async function send(text,opts={}){
     case 'stopped': stopped=true; tick('stopped'); poke('scared',900); break;
     case 'ignored': ignored=true; break; } };   // a follow-up that wasn't meant for him
   try{
-    const res=await post('/api/ask',{prompt:text,attach,follow:!!opts.follow});
+    const res=await post('/api/ask',{prompt:asked,attach,follow:!!opts.follow});
     if(!res.ok){ const j=await res.json().catch(()=>({})); throw new Error(j.error||res.statusText); }
     await readSSE(res,handle);
   }catch(e){ failed=true; himSet(e.message,true); }

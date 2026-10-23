@@ -313,6 +313,21 @@ def handle(text):
     if not t or len(t) > 120:
         return None
 
+    # running agent sessions (#95): the server resolves the name and talks to herdr
+    m = re.match(r"^(?:how is|how's|hows) (?:the |my )?(.+?) session (?:doing|going)$", t)
+    if m:
+        return {"session_status": m.group(1)}
+    m = re.match(r"^(?:the )?status of (?:the |my )?(.+?)( session)?$", t)
+    if m:                       # without the word "session" it may be about anything: the server falls through if nothing matches
+        return {"session_status": m.group(1), "loose": not m.group(2)}
+    m = re.match(r"^(?:show|open) me (?:the |my )?(.+?) session$", t)
+    if m:
+        return {"session_show": m.group(1)}
+    # the text keeps its case: it is typed into another session
+    m = re.match(r"^\s*(?:(?:hey )?nixi,?\s+)?(?:tell|ask) (?:the |my )?(.+?) session[:,]\s*(.+)$|^\s*on (.+?):\s*(.+)$", (text or "").strip(" .!?"), re.I)
+    if m:
+        return {"session_send": [(m.group(1) or m.group(3)).strip().lower(), (m.group(2) or m.group(4)).strip()]}
+
     # switch project / folder
     m = re.match(r"^(?:switch to|go to|jump to|work on|open|cd to|change to)\s+(?:my\s+|the\s+)?(.+?)(?:\s+(?:project|folder|repo|directory))?$", t)
     if m:
