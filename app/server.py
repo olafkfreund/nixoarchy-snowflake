@@ -2931,6 +2931,31 @@ def session_status(name, loose=False):
     return (None, status_prompt(hits[0], redact_session(out)))
 
 
+def attach_argv(pane):
+    """The window for "show me": attach, never --takeover, so closing it leaves the session running."""
+    if not isinstance(pane, str) or not PANE_RE.fullmatch(pane):
+        raise ValueError("bad pane id")
+    base = ["xdg-terminal-exec", "herdr", "agent", "attach", pane]
+    return ["setsid", "uwsm-app", "--"] + base if shutil.which("uwsm-app") else base
+
+
+def session_show(name):
+    agents = herdr_agents()
+    if not agents:
+        return "I can't read herdr right now."
+    hits = resolve_session(name, agents)
+    if not hits:
+        return f"I can't find a session called {name}."
+    if len(hits) > 1:
+        return "Which one: " + ", ".join(str(a.get("terminal_title_stripped") or a.get("cwd")) for a in hits[:4]) + "?"
+    try:
+        subprocess.Popen(attach_argv(hits[0].get("pane_id")), start_new_session=True,
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except (OSError, ValueError):
+        return "I couldn't open that session."
+    return f"Opening the {hits[0].get('terminal_title_stripped') or name} session."
+
+
 def run_bridge(prompt, emit):
     """One turn through nixi's bridge; the events are mapped as in the plan. Returns "done"."""
     try:
@@ -3558,8 +3583,10 @@ class Handler(BaseHTTPRequestHandler):
                     if ask:
                         return self._json({"handled": False, "ask": ask})
                     r = {"say": say, "mood": "curious"} if say else None
-                elif r and ("session_show" in r or "session_send" in r):
-                    r = None                              # P6/P7
+                elif r and "session_show" in r:
+                    r = {"say": session_show(r["session_show"]), "mood": "happy"}
+                elif r and "session_send" in r:
+                    r = None                              # P7
                 if r and r.get("cd") and BRIDGED:        # nixi picks where its agent works; Nixi's folders don't apply
                     r = {"say": "Folders are nixi's job here — I always work from nixi's own place.", "mood": "shy"}
                 elif r and r.get("cd"):

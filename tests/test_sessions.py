@@ -93,6 +93,26 @@ class SessionsTest(unittest.TestCase):
             self.assertIn("can't find", s.session_status("zzz")[0])
             self.assertEqual(s.session_status("zzz", loose=True), (None, None))
 
+    def test_show_me_argv_and_window(self):
+        s = self.server
+        with mock.patch.object(s.shutil, "which", return_value="/bin/uwsm-app"):
+            self.assertEqual(s.attach_argv("w1A:p1"),
+                             ["setsid", "uwsm-app", "--", "xdg-terminal-exec", "herdr", "agent", "attach", "w1A:p1"])
+        with mock.patch.object(s.shutil, "which", return_value=None):
+            self.assertEqual(s.attach_argv("w1A:p1"), ["xdg-terminal-exec", "herdr", "agent", "attach", "w1A:p1"])
+        with self.assertRaises(ValueError):
+            s.attach_argv("w1; id")
+        with mock.patch.object(s, "herdr_agents", return_value=AGENTS), \
+                mock.patch.object(s.shutil, "which", return_value=None), \
+                mock.patch.object(s.subprocess, "Popen") as popen:
+            self.assertEqual(s.session_show("factory"), "Opening the triage-aifactory-open-issues session.")
+            argv = popen.call_args[0][0]
+            self.assertNotIn("--takeover", argv)
+            self.assertTrue(popen.call_args[1]["start_new_session"])
+            popen.reset_mock()
+            self.assertIn("can't find", s.session_show("zzz"))
+            popen.assert_not_called()
+
     def test_phrases(self):
         h = self.quick.handle
         self.assertEqual(h("How is the Factory session doing?"), {"session_status": "factory"})
