@@ -1,4 +1,4 @@
-"""Instant local commands: things Void can do himself in a blink instead of asking Claude.
+"""Instant local commands: things Nixi can do himself in a blink instead of asking Claude.
 
     handle(text) -> None (not a quick command → goes to Claude) or a dict:
         {"say": "...", "mood": "happy", "cd": "/path" (switch folder), "sfx": "ok"}
@@ -11,9 +11,6 @@ import re
 import shlex
 import shutil
 import subprocess
-WIN = os.name == "nt"
-if WIN:
-    import winsys   # Windows versions of volume / media keys / brightness / apps / lock
 import threading
 import time
 from datetime import datetime, timedelta
@@ -51,8 +48,6 @@ def _num(s):
 
 # ---------------------------------------------------------------- volume
 def _volume_pct():
-    if WIN:
-        return winsys.volume_get()
     if shutil.which("wpctl"):
         ok, out = _run(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"])
         m = re.search(r"([\d.]+)", out)
@@ -68,13 +63,6 @@ def _volume_pct():
 
 
 def _volume(op, val=None):
-    if WIN:
-        if not winsys.volume_set(op, val):
-            return None
-        if op in ("mute", "unmute"):
-            return {"say": "Muted." if op == "mute" else "Sound's back on.", "mood": "wink", "sfx": "ok"}
-        pct, _ = _volume_pct()
-        return {"say": f"Volume {pct} percent." if pct is not None else "Done.", "mood": "happy", "sfx": "ok"}
     w, p = shutil.which("wpctl"), shutil.which("pactl")
     if not (w or p):
         return None
@@ -96,12 +84,6 @@ def _volume(op, val=None):
 
 # ---------------------------------------------------------------- media
 def _media(op):
-    if WIN:
-        if op == "what":
-            return {"say": "I can't see what's playing on Windows yet.", "mood": "unsure"}
-        winsys.media(op)
-        return {"say": {"pause": "Okay.", "play": "Okay.", "toggle": "Okay.", "next": "Next one.",
-                        "previous": "Going back."}[op], "mood": "happy", "sfx": "ok"}
     if not shutil.which("playerctl"):
         return {"say": "I need playerctl for that — pacman -S playerctl.", "mood": "confused"}
     if op == "what":
@@ -117,10 +99,6 @@ def _media(op):
 
 # ---------------------------------------------------------------- brightness
 def _bright(op, val=None):
-    if WIN:
-        new = winsys.brightness(op, val)
-        return ({"say": f"Brightness {new} percent.", "mood": "happy"} if new is not None else
-                {"say": "I can only change the brightness of laptop screens on Windows.", "mood": "confused"})
     if not shutil.which("brightnessctl"):
         return {"say": "I need brightnessctl for that — pacman -S brightnessctl.", "mood": "confused"}
     arg = f"{int(val)}%" if op == "set" else f"{int(val or 10)}%{'+' if op == 'up' else '-'}"
@@ -143,7 +121,7 @@ def _fire(item):
     what = item["what"]
     msg = f"Reminder: {what}" if what else "Time's up!"
     if notify:
-        notify("Void", msg)
+        notify("Nixi", msg)
     if publish:
         publish(t="remind", text=msg)
 
@@ -274,9 +252,6 @@ def _find_app(name):
 
 
 def _open_app(name):
-    if WIN:
-        nm = winsys.open_app(name)
-        return {"say": f"Opening {nm}.", "mood": "happy", "sfx": "ok"} if nm else None
     hit = _find_app(name)
     if not hit:
         return None                                  # unknown → let Claude figure it out
@@ -293,9 +268,6 @@ def _open_app(name):
 
 
 def _lock():
-    if WIN:
-        winsys.lock()
-        return {"say": "Locking up. See you soon!", "mood": "wink"}
     for cmd in (["loginctl", "lock-session"], ["hyprlock"], ["swaylock", "-f"], ["xdg-screensaver", "lock"]):
         if shutil.which(cmd[0]):
             subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
@@ -335,7 +307,7 @@ def _find_project(name):
 # ---------------------------------------------------------------- the matcher
 def handle(text):
     t = " ".join((text or "").lower().replace("’", "'").split()).strip(" .!?")
-    t = re.sub(r"^(hey void|void|ok void|okay void)[,\s]+", "", t)
+    t = re.sub(r"^(hey nixi|nixi|ok nixi|okay nixi)[,\s]+", "", t)
     t = re.sub(r"^(please|can you|could you|would you|will you)\s+", "", t)
     t = re.sub(r"\s+please$", "", t)
     if not t or len(t) > 120:
@@ -402,6 +374,16 @@ def handle(text):
         return {"say": f"It's {datetime.now().strftime('%-I:%M %p').lower()}.", "mood": "curious"}
     if re.fullmatch(r"(what'?s|what is) (the )?(date|day)( today)?( is it)?|what day is (it|today)|what'?s today", t):
         return {"say": f"It's {datetime.now().strftime('%A, %B %-d')}.", "mood": "curious"}
+
+    # screens: "move to the other screen", "next screen", "left screen", "come here" → the window moves (the page relays it)
+    if re.fullmatch(r"come (here|over here)|(move|go|jump) (to )?(my |the )?(focused|current|active) (screen|monitor|display)", t):
+        return {"say": "Here I am.", "mood": "happy", "monitor": "focused", "sfx": "ok"}
+    m = re.fullmatch(r"(?:move|go|jump|switch)(?: over)?(?: to)?(?: the| my)? (other|next|previous|left|right|last) (?:screen|monitor|display)"
+                     r"|(next|previous|other|left|right) (?:screen|monitor|display)", t)
+    if m:
+        w = m.group(1) or m.group(2)
+        return {"say": "Over I go.", "mood": "happy", "sfx": "ok",
+                "monitor": "prev" if w in ("previous", "last", "left") else "next"}   # (left/right: the screens are ordered left to right)
 
     # lock
     if re.fullmatch(r"lock (my |the )?(screen|computer|pc|laptop|desktop|session)( now)?", t):

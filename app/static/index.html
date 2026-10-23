@@ -3,20 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Void</title>
+<title>Nixi</title>
 <link rel="icon" href="icon.png">
 <script>if(/[?&]native=1/.test(location.search)) document.documentElement.classList.add('native');</script>
 <style>
-:root{--eye:#3d9b74;--sclera:#f3dccf;--acc:#3d9b74;--hot:#7fd6ae;--edge:#16362a;--edge2:#26604a;--deep:#0b1d16;--tint:#cdeede;
-  --accA:#3d9b741f;--accB:#3d9b7459;--glow:var(--acc);--text:#f3f3f3;--dim:#a3a3a3;--panel:#0b0b0b;
+:root{--eye:#3e5993;--sclera:#ffffff;--acc:#4d6fb7;--hot:#9cc4f0;--edge:#16304a;--edge2:#2a5f8f;--deep:#0b1b2d;--tint:#d6ecff;
+  --accA:#5aa9e61f;--accB:#5aa9e659;--glow:var(--acc);--text:#f3f3f3;--dim:#a3a3a3;--panel:#0b0b0b;--panel2:#141414;--line:#222;--notch:#000;
   --mono:"JetBrains Mono","Fira Code",ui-monospace,monospace;--ease:cubic-bezier(.22,1,.36,1)}
 body.m-error,body.m-annoyed{--glow:#ff2a2a} body.m-listening,body.m-happy,body.m-excited,body.m-love{--glow:var(--hot)}
 body.m-sleepy{--glow:var(--edge2)} body.m-pleading{--glow:#ffb02a}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;overflow:hidden}
-body{position:relative;width:340px;height:460px;margin:0}
+body{position:relative;width:340px;height:460px;margin:0;overflow:visible}   /* visible: the card and sheet reach past the 340px strip when the window is wider (html clips to the window) */
 html{background:transparent}
-body{background:radial-gradient(70% 52% at 50% 36%,#161616 0%,#090909 78%);color:var(--text);
+body{background:radial-gradient(70% 52% at 50% 36%,var(--panel2) 0%,#090909 78%);color:var(--text);
   font:14px/1.45 "Inter",system-ui,sans-serif;user-select:none;-webkit-user-select:none}
 html.native body{background:transparent}
 button{font:inherit;color:inherit}
@@ -26,7 +26,7 @@ button{font:inherit;color:inherit}
 body.hover #stage{transform:scale(.17)}
 #stage{transition:transform .65s cubic-bezier(.34,1.3,.5,1)}
 body.bar #stage,body.unfold #stage{transition:transform .36s cubic-bezier(.3,1.25,.5,1)}   /* into / out of the notch: quick */
-body.snap #stage,body.snap #barPill,body.snap #body>circle,body.snap #body>ellipse,body.snap #orbBack,body.snap #orbFront,
+body.snap #stage,body.snap #barPill,body.snap #body>.ball,body.snap #body>ellipse,body.snap #orbBack,body.snap #orbFront,
 body.snap #haloW,body.snap #shadow,body.snap #accBack,body.snap #accFront{transition:none!important}  /* grabbed mid-morph */
 body.hover #orbBack,body.hover #orbFront,body.hover #workW,body.hover #haloW,body.hover #vring,body.hover #raysW,body.hover #fx,body.hover #fxBack,
 body.hover #think,body.hover #anger,body.hover #sweat,body.hover #zz,body.hover #qmark,body.hover #tears,body.hover #cap,body.hover #chip,body.hover #atts{display:none}
@@ -36,7 +36,7 @@ body.hover #shadow{display:none}
    change of size on Apple's spring-like curve. Docks on any edge: body.bar + .e-top / .e-bottom / .e-left / .e-right.
    The edge class stays a moment after .bar goes (setBarClass), so the notch can fold back into the edge it came from. */
 :root{--apple:cubic-bezier(.32,.72,0,1);--pop:cubic-bezier(.34,1.56,.64,1)}
-#barPill{position:absolute;background:#000;pointer-events:none;z-index:0;opacity:0;--r:18px;
+#barPill{position:absolute;background:var(--notch);pointer-events:none;z-index:0;opacity:0;--r:18px;
   transition:opacity .12s linear,box-shadow .5s var(--ease),height .5s var(--apple),
              width .5s var(--apple),margin .5s var(--apple),border-radius .5s var(--apple)}
 body.bar #barPill{opacity:1;pointer-events:auto;cursor:pointer;transition:opacity .08s linear,box-shadow .5s var(--ease),
@@ -47,17 +47,17 @@ body.bar #barPill.big{--r:26px;--gx:0px!important;--gy:0px!important}   /* open:
 body.e-top #barPill,body.e-bottom #barPill{left:50%;width:260px;height:52px;margin-left:-130px}
 body.e-left #barPill,body.e-right #barPill{top:50%;width:68px;height:210px;margin-top:-105px}
 body.e-top #barPill{top:0;border-radius:0 0 var(--r) var(--r)}
-body.e-top #barPill::before{top:0;left:-10px;background:radial-gradient(circle at 0 100%,transparent 9.5px,#000 10px)}
-body.e-top #barPill::after{top:0;right:-10px;background:radial-gradient(circle at 100% 100%,transparent 9.5px,#000 10px)}
+body.e-top #barPill::before{top:0;left:-10px;background:radial-gradient(circle at 0 100%,transparent 9.5px,var(--notch) 10px)}
+body.e-top #barPill::after{top:0;right:-10px;background:radial-gradient(circle at 100% 100%,transparent 9.5px,var(--notch) 10px)}
 body.e-bottom #barPill{bottom:0;border-radius:var(--r) var(--r) 0 0}
-body.e-bottom #barPill::before{bottom:0;left:-10px;background:radial-gradient(circle at 0 0,transparent 9.5px,#000 10px)}
-body.e-bottom #barPill::after{bottom:0;right:-10px;background:radial-gradient(circle at 100% 0,transparent 9.5px,#000 10px)}
+body.e-bottom #barPill::before{bottom:0;left:-10px;background:radial-gradient(circle at 0 0,transparent 9.5px,var(--notch) 10px)}
+body.e-bottom #barPill::after{bottom:0;right:-10px;background:radial-gradient(circle at 100% 0,transparent 9.5px,var(--notch) 10px)}
 body.e-left #barPill{left:0;border-radius:0 var(--r) var(--r) 0}
-body.e-left #barPill::before{left:0;top:-10px;background:radial-gradient(circle at 100% 0,transparent 9.5px,#000 10px)}
-body.e-left #barPill::after{left:0;bottom:-10px;background:radial-gradient(circle at 100% 100%,transparent 9.5px,#000 10px)}
+body.e-left #barPill::before{left:0;top:-10px;background:radial-gradient(circle at 100% 0,transparent 9.5px,var(--notch) 10px)}
+body.e-left #barPill::after{left:0;bottom:-10px;background:radial-gradient(circle at 100% 100%,transparent 9.5px,var(--notch) 10px)}
 body.e-right #barPill{right:0;border-radius:var(--r) 0 0 var(--r)}
-body.e-right #barPill::before{right:0;top:-10px;background:radial-gradient(circle at 0 0,transparent 9.5px,#000 10px)}
-body.e-right #barPill::after{right:0;bottom:-10px;background:radial-gradient(circle at 0 100%,transparent 9.5px,#000 10px)}
+body.e-right #barPill::before{right:0;top:-10px;background:radial-gradient(circle at 0 0,transparent 9.5px,var(--notch) 10px)}
+body.e-right #barPill::after{right:0;bottom:-10px;background:radial-gradient(circle at 0 100%,transparent 9.5px,var(--notch) 10px)}
 /* in the notch his glow may reach past his 340px strip: the window grows around the notch to make room for it
    (set_wide "bar"), and nothing here may cut it off */
 body.bar{overflow:visible}
@@ -69,20 +69,21 @@ body.bar.e-right #stage{transform:translate(136px,68px) scale(.46)}
 /* the morph is liquid (melt()): while his eyes glide up, his ball flows into the screen edge like a drop of liquid
    glass — the edge swells toward it, a neck forms, the ball is drawn in and absorbed — and back out a drop swells out
    of the notch, its neck stretches thin and snaps, and it wobbles round. The real ball parts are hidden meanwhile. */
-body.bar #body>circle,body.bar #body>ellipse,body.bar #orbBack,body.bar #orbFront,body.bar #workW,body.bar #haloW,body.bar #raysW,
+body.nixi .nx{display:none!important}
+body.bar #body>.ball,body.bar #body>ellipse,body.bar #orbBack,body.bar #orbFront,body.bar #workW,body.bar #haloW,body.bar #raysW,
 body.bar #vring,body.bar #shadow,body.bar #accBack,body.bar #accFront,body.bar #liveTag,
-body.goohide #body>circle,body.goohide #body>ellipse,body.goohide #orbBack,body.goohide #orbFront,body.goohide #haloW,
+body.goohide #body>.ball,body.goohide #body>ellipse,body.goohide #orbBack,body.goohide #orbFront,body.goohide #haloW,
 body.goohide #shadow,body.goohide #accBack,body.goohide #accFront{opacity:0;transition:none}
-body.unfold #body>circle,body.unfold #body>ellipse,body.unfold #shadow,body.unfold #accBack,body.unfold #accFront{transition:opacity .12s linear}
+body.unfold #body>.ball,body.unfold #body>ellipse,body.unfold #shadow,body.unfold #accBack,body.unfold #accFront{transition:opacity .12s linear}
 body.unfold #orbBack,body.unfold #orbFront,body.unfold #haloW{transition:opacity .25s linear .08s}
 /* pulled out of the notch by the mouse: the ball pops in where he is (the notch melts on the wall, not here) */
-#body>circle{transform-box:fill-box;transform-origin:center}
-body.popout #body>circle{animation:popOut .34s var(--pop)}
+#body>.ball{transform-box:fill-box;transform-origin:center}
+body.popout #body>.ball{animation:popOut .34s var(--pop)}
 @keyframes popOut{from{transform:scale(.55);opacity:.4}to{transform:none;opacity:1}}
 #goo{position:absolute;left:0;top:0;width:340px;height:460px;overflow:visible;pointer-events:none;z-index:0;display:none}
 body.gooing #goo{display:block}
 body.bar.bar-done #orbBack,body.bar.bar-done #orbFront,body.bar.bar-done #workW,body.bar.bar-done #haloW,body.bar.bar-done #raysW,
-body.bar.bar-done #vring,body.bar.bar-done #shadow,body.bar.bar-done #body>circle,body.bar.bar-done #body>ellipse,
+body.bar.bar-done #vring,body.bar.bar-done #shadow,body.bar.bar-done #body>.ball,body.bar.bar-done #body>ellipse,
 body.bar.bar-done #accBack,body.bar.bar-done #accFront,body.bar.bar-done #liveTag{display:none}
 /* talking with him: the whole notch wears his halo, bright and unmistakable.
    .hearing = he's listening to you: a thick ring that swells with your voice (--lv, 0–1, from the mic level)
@@ -98,7 +99,7 @@ body.bar.hearing #barPill{transition:box-shadow .08s linear,height .5s var(--app
 body.bar.speaking:not(.hearing) #barPill{animation:speakGlow 1.1s ease-in-out infinite}
 @keyframes speakGlow{0%,100%{box-shadow:0 0 0 2px var(--glow),0 0 12px 3px var(--glow),var(--gx) var(--gy) 26px -6px var(--glow)}
   50%{box-shadow:0 0 0 3.5px var(--glow),0 0 18px 6px var(--glow),calc(var(--gx) * 1.8) calc(var(--gy) * 1.8) 34px -6px var(--glow)}}
-/* the round flashes and shock rings ("hey Void", happy, error…) become a flash of the notch itself */
+/* the round flashes and shock rings ("hey Nixi", happy, error…) become a flash of the notch itself */
 body.bar #barPill.pulse{animation:notchPulse .9s var(--ease)}
 @keyframes notchPulse{0%{box-shadow:0 0 0 2px var(--pulse,var(--glow)),0 0 6px 2px var(--pulse,var(--glow))}
   35%{box-shadow:0 0 0 3px var(--pulse,var(--glow)),0 0 18px 6px var(--pulse,var(--glow)),var(--gx) var(--gy) 34px -6px var(--pulse,var(--glow))}
@@ -117,25 +118,25 @@ body.bar #cap{height:auto;max-height:150px;padding:0 12px;justify-content:flex-s
 body.bar #cap.off,body.bar.pnl #cap,body.bar.appr #cap,body.bar #code:not(.on){opacity:0;filter:blur(6px);scale:.96;
   transition:opacity .15s linear,filter .15s linear,scale .15s linear,top .5s var(--apple),left .5s var(--apple)}
 body.bar.e-left #cap,body.bar.e-right #cap{max-height:200px}
-body.bar #code{height:auto;padding:0 12px;font:12.5px/1.45 system-ui,"Inter",sans-serif;color:#eaeaea;filter:none}
+body.bar #code{height:auto;padding:0 12px;font:12.5px/1.45 system-ui,"Inter",sans-serif;color:var(--text);filter:none}
 body.bar #code .tb{height:auto;padding:0 0 3px;border:0;color:var(--dim);font:12px "Inter",system-ui,sans-serif;justify-content:center}
 body.bar #code .tb b{flex:0 1 auto;font-weight:400} body.bar #code .tb span{margin-left:6px}
 body.bar #code .lines{height:auto;padding:0}
 body.bar #code .l{height:auto;white-space:pre-wrap;word-break:break-word;font:12.5px/1.45 var(--mono);text-align:left}
-body.bar #code .l.out{color:#b5b5b5}
+body.bar #code .l.out{color:var(--dim)}
 #guy{width:330px;height:330px;overflow:visible;pointer-events:none}
 #body{pointer-events:visiblePainted;cursor:pointer}
 #pL{fill:var(--whiteL);stroke:var(--lineL,none)} #pR{fill:var(--whiteR);stroke:var(--lineR,none)}
 .eye{stroke-width:1.6;transition:fill .6s,stroke .6s}
-.b0{stop-color:var(--body0,#191919)} .b1{stop-color:var(--body1,#0a0a0a)} .b2{stop-color:var(--body2,#020202)} .b0,.b1,.b2{transition:stop-color .6s}
-#rim{stroke:var(--rim,#262626)}
+.b0{stop-color:var(--body0,#191919)} .b1{stop-color:var(--body1,var(--panel))} .b2{stop-color:var(--body2,#020202)} .b0,.b1,.b2{transition:stop-color .6s}
+#rim{stroke:var(--rim,var(--line))}
 #hlL{fill:var(--pupL)} #hlR{fill:var(--pupR)} .slit{transition:fill .6s}
 .hs{stop-color:var(--glow);transition:stop-color .8s}
 .orb line{stroke:var(--hot);stroke-linecap:round}
 #vring{fill:none;stroke:var(--hot);stroke-width:1.6;stroke-linejoin:round}
 .zz{font:700 15px var(--mono);fill:var(--hot)}
 .qm{font:800 24px "Inter",system-ui,sans-serif;fill:var(--hot)}
-.thk{fill:#111;stroke:var(--acc);stroke-width:2}
+.thk{fill:var(--panel2);stroke:var(--acc);stroke-width:2}
 .rs{stop-color:var(--acc);transition:stop-color .8s}
 .ang{fill:none;stroke:#ff2a2a;stroke-width:4;stroke-linecap:round}
 
@@ -149,14 +150,14 @@ body.bar #code .l.out{color:#b5b5b5}
 #you.pop{animation:wIn .7s var(--ease) both}
 /* "Show everything I said": the last few lines of it, wrapped, instead of one cut-off line */
 body.fulltext #cap{top:248px;height:148px}      /* same bottom edge as before; it grows up into the gap under his body, not down */
-body.fulltext #you{white-space:normal;max-height:4.3em;line-height:1.4;font-size:12.5px;color:#c4c4c4;display:flex;flex-direction:column;justify-content:flex-end;text-overflow:clip;margin-bottom:2px}
-.row .t.sub{margin-top:14px;padding-top:12px;border-top:1px solid #1c1c1c}
-.row .t .pct{margin-left:auto;font:600 11.5px var(--mono);color:#aaa}
+body.fulltext #you{white-space:normal;max-height:4.3em;line-height:1.4;font-size:12.5px;color:var(--dim);display:flex;flex-direction:column;justify-content:flex-end;text-overflow:clip;margin-bottom:2px}
+.row .t.sub{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.row .t .pct{margin-left:auto;font:600 11.5px var(--mono);color:var(--dim)}
 .ctxbar{height:14px;border-radius:7px;background:#ffffff1a;overflow:hidden;margin:8px 0 8px}
 .ctxbar i{display:block;height:100%;width:0;background:var(--acc);transition:width .6s var(--ease),background .6s}
 .ctxbar.warn i{background:#e89a2c} .ctxbar.full i{background:#d8453a}
 input[type=range]{accent-color:var(--acc)}
-#ctxTxt{font-size:13px;font-weight:600;color:#ddd} #ctxTxt.warn{color:#e89a2c} #ctxTxt.full{color:#ef6a60}
+#ctxTxt{font-size:13px;font-weight:600;color:var(--text)} #ctxTxt.warn{color:#e89a2c} #ctxTxt.full{color:#ef6a60}
 #him{font-size:14.5px;font-weight:500;max-height:4.5em;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;width:100%}
 #him.err{color:#ff8a8a}
 #him .ln{display:block}
@@ -165,11 +166,15 @@ input[type=range]{accent-color:var(--acc)}
 @keyframes wIn{from{opacity:0;transform:translateY(.5em);filter:blur(5px)}to{opacity:1;transform:none;filter:none}}
 
 #chip{position:absolute;top:10px;left:50%;max-width:92%;padding:3px 11px;border-radius:999px;font:11px var(--mono);color:var(--tint);
-  background:#0b0b0bdd;border:1px solid var(--edge);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;z-index:9;
+  background:color-mix(in srgb,var(--panel) 87%,transparent);border:1px solid var(--edge);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;z-index:9;
   opacity:0;transform:translate(-50%,-6px) scale(.94);transition:opacity .5s var(--ease),transform .7s var(--ease)}
 #chip.on{opacity:1;transform:translate(-50%,0)}
+@keyframes glint{0%,100%{filter:none}40%{filter:brightness(2.4) saturate(1.4) drop-shadow(0 0 6px #77b6e1)}}
+.nix.glint{animation:glint 1.5s ease-in-out}   /* a new NixOS generation: one blue glint across the lambdas */
+@keyframes cuep{0%,100%{opacity:1}50%{opacity:.55}} #cue.attn{animation:cuep 1.1s infinite}
+#chip.act{pointer-events:auto;cursor:pointer}   /* an agent's nudge: click to jump to it */
 #chip.bad{color:#ff9b9b;border-color:#5a1a1a}
-#chip.work{color:#e9e9e9;border-color:var(--edge2);box-shadow:0 0 12px var(--accA)}
+#chip.work{color:var(--text);border-color:var(--edge2);box-shadow:0 0 12px var(--accA)}
 #chip .spin{display:inline-block;width:8px;height:8px;margin-right:7px;border-radius:50%;border:1.6px solid var(--hot);border-right-color:transparent;
   animation:vspin .75s linear infinite;vertical-align:-1px}
 @keyframes vspin{to{transform:rotate(360deg)}}
@@ -179,22 +184,22 @@ input[type=range]{accent-color:var(--acc)}
 #him .w.k{animation-duration:.32s}
 
 #ask{position:absolute;left:20px;right:20px;bottom:18px;height:40px;display:flex;align-items:center;gap:8px;padding:0 5px 0 16px;border-radius:20px;
-  background:#0b0b0bf2;border:1px solid var(--edge);box-shadow:0 4px 12px #0009,0 0 14px var(--accA);
+  background:color-mix(in srgb,var(--panel) 95%,transparent);border:1px solid var(--edge);box-shadow:0 4px 12px #0009,0 0 14px var(--accA);
   opacity:0;transform:translateY(16px) scale(.92);pointer-events:none;transition:opacity .45s var(--ease),transform .7s var(--ease)}
 #ask.on{opacity:1;transform:none;pointer-events:auto}
 #input{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--text);font:inherit;caret-color:var(--hot)}
 #input::placeholder{color:#5e5e5e}
 .round{flex:none;width:30px;height:30px;border-radius:50%;border:0;display:grid;place-items:center;cursor:pointer}
 #go{background:var(--acc);color:#fff}
-#clipB{background:#1a1a1a;color:#bbb} #clipB:hover{color:#fff}
+#clipB{background:var(--panel2);color:var(--dim)} #clipB:hover{color:#fff}
 .round svg{width:14px;height:14px}
 
 /* things he'll look at with your next message */
 #atts{position:absolute;left:20px;right:20px;bottom:64px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap;pointer-events:none}
 #atts .at{pointer-events:auto;display:flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border-radius:999px;font-size:12px;
-  background:#0d0d0df2;border:1px solid var(--edge2);box-shadow:0 3px 10px #0008;animation:wIn .5s var(--ease) both}
+  background:color-mix(in srgb,var(--panel2) 95%,transparent);border:1px solid var(--edge2);box-shadow:0 3px 10px #0008;animation:wIn .5s var(--ease) both}
 #atts .at img{width:22px;height:16px;object-fit:cover;border-radius:3px}
-#atts .at button{background:none;border:0;color:#999;cursor:pointer;font-size:12px;padding:0 3px}
+#atts .at button{background:none;border:0;color:var(--dim);cursor:pointer;font-size:12px;padding:0 3px}
 
 /* right-click menu: an arc of buttons over his head */
 #menu{position:absolute;left:170px;top:165px;width:0;height:0;pointer-events:none}
@@ -206,7 +211,7 @@ body.gooing #menu:not(.on) .mb{transform:translate(0,0) scale(.1);transition:tra
 #menu.on .mb{opacity:1;transform:translate(var(--x),var(--y)) scale(1);transition:transform .5s var(--ease) var(--d,.3s),opacity .3s linear var(--d,.3s),background .2s}
 .mb:hover,.mb.on{background:var(--deep);border-color:var(--edge2)}
 .mb svg{width:18px;height:18px}
-.mb span{position:absolute;top:46px;font:10.5px var(--mono);color:#e4e4e4;white-space:nowrap;opacity:0;transition:opacity .2s;
+.mb span{position:absolute;top:46px;font:10.5px var(--mono);color:var(--text);white-space:nowrap;opacity:0;transition:opacity .2s;
   text-shadow:0 0 6px #000,0 0 3px #000;pointer-events:none}
 .mb:hover span{opacity:1}
 
@@ -218,94 +223,99 @@ body.gooing #menu:not(.on) .mb{transform:translate(0,0) scale(.1);transition:tra
 .pn.on{opacity:1;transform:none;pointer-events:auto}
 .pn .hd{display:flex;align-items:center;gap:8px;padding:11px 12px 6px 15px}
 .pn .hd b{font:600 13px "Inter",system-ui,sans-serif;flex:1}
-.pn .x{background:none;border:0;color:#888;cursor:pointer;font-size:14px;width:26px;height:26px;border-radius:50%}
-.pn .x:hover{background:#1c1c1c;color:#fff}
+.pn .x{background:none;border:0;color:var(--dim);cursor:pointer;font-size:14px;width:26px;height:26px;border-radius:50%}
+.pn .x:hover{background:var(--line);color:#fff}
 .pn .bd{overflow-y:auto;padding:2px 15px 14px;scrollbar-width:thin;scrollbar-color:var(--edge2) transparent}
 .pn .bd::-webkit-scrollbar{width:6px} .pn .bd::-webkit-scrollbar-thumb{background:var(--edge2);border-radius:3px}
-.tabs{display:flex;gap:4px;padding:2px 12px 8px;border-bottom:1px solid #1d1d1d}
-.tabs button{flex:1;background:none;border:0;border-radius:10px;padding:6px 0;color:#9a9a9a;cursor:pointer;font-size:12px;transition:all .25s}
-.tabs button:hover{color:#ddd;background:#151515}
+.tabs{display:flex;gap:4px;padding:2px 12px 8px;border-bottom:1px solid var(--line)}
+.tabs button{flex:1;background:none;border:0;border-radius:10px;padding:6px 0;color:var(--dim);cursor:pointer;font-size:12px;transition:all .25s}
+.tabs button:hover{color:var(--text);background:var(--panel2)}
 .tabs button.on{color:#fff;background:var(--deep);box-shadow:inset 0 0 0 1px var(--edge2)}
 .tab{display:none} .tab.on{display:block;animation:wIn .45s var(--ease) both}
 .row{padding:11px 0;border-bottom:1px solid #191919} .row:last-child{border-bottom:0}
 .row .t{font-weight:600;font-size:12.5px;margin-bottom:2px;display:flex;align-items:center;gap:8px}
-.row .h{color:#8d8d8d;font-size:11.5px;line-height:1.35;margin-bottom:7px}
+.row .h{color:var(--dim);font-size:11.5px;line-height:1.35;margin-bottom:7px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
-.chips button{padding:5px 11px;border-radius:999px;border:1px solid #2c2c2c;background:#141414;color:#ddd;cursor:pointer;transition:all .25s var(--ease)}
+.chips button{padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;transition:all .25s var(--ease)}
 .chips button:hover{border-color:var(--edge2)}
 .chips button.on{background:var(--acc);border-color:var(--hot);color:#fff;box-shadow:0 0 12px var(--accB)}
 .chips button i{font-style:normal;opacity:.6;margin-left:4px}
 .chips.eyes{gap:7px;align-items:center}
-.chips.eyes .sw{width:24px;height:24px;padding:0;border-radius:50%;background:var(--c);border:2px solid #2c2c2c}
+.chips.eyes .sw{width:24px;height:24px;padding:0;border-radius:50%;background:var(--c);border:2px solid var(--line)}
 .chips.eyes .sw.on{border-color:#fff;box-shadow:0 0 0 2px var(--c),0 0 12px var(--c)}
 .chips.eyes label.sw{position:relative;overflow:hidden;cursor:pointer;background:conic-gradient(#f55,#fd5,#5f8,#5df,#86f,#f5d,#f55)}
 .chips.eyes label.sw input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .chips.eyes .rnd{padding:4px 10px}
 .opts{display:flex;flex-direction:column;gap:6px}
-.opt{display:flex;gap:10px;align-items:flex-start;text-align:left;padding:9px 11px;border-radius:12px;border:1px solid #262626;background:#121212;cursor:pointer;transition:all .25s}
+.opt{display:flex;gap:10px;align-items:flex-start;text-align:left;padding:9px 11px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);cursor:pointer;transition:all .25s}
 .opt:hover{border-color:var(--edge2)}
 .opt.on{border-color:var(--hot);background:var(--deep);box-shadow:0 0 12px var(--accA)}
-.opt .ic{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#1d1d1d;font-size:12px}
+.opt .ic{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--line);font-size:12px}
 .opt.on .ic{background:var(--acc)}
-.opt b{display:block;font-size:12.5px} .opt small{color:#8d8d8d;font-size:11.2px;line-height:1.3}
-.tg{display:flex;gap:10px;align-items:center;cursor:pointer;color:#ddd;line-height:1.35;padding:2px 0}
+.opt b{display:block;font-size:12.5px} .opt small{color:var(--dim);font-size:11.2px;line-height:1.3}
+.tg{display:flex;gap:10px;align-items:center;cursor:pointer;color:var(--text);line-height:1.35;padding:2px 0}
 .tg input{display:none}
-.tg .sw{flex:none;width:34px;height:20px;border-radius:10px;background:#222;border:1px solid #333;position:relative;transition:background .3s}
+.tg .sw{flex:none;width:34px;height:20px;border-radius:10px;background:var(--line);border:1px solid #333;position:relative;transition:background .3s}
 .tg .sw::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#888;transition:transform .35s var(--ease),background .3s}
 .tg input:checked+.sw{background:var(--acc);border-color:var(--hot)}
 .tg input:checked+.sw::after{transform:translateX(14px);background:#fff}
 .tg.red input:checked+.sw{background:#7a0000;border-color:#ff3b3b}
-.tg span.l{flex:1} .tg small{display:block;color:#8d8d8d;font-size:11.2px}
-code{font:11px var(--mono);color:var(--tint);background:#161616;border-radius:5px;padding:1px 5px}
-select,.pn input[type=text],.pn textarea{width:100%;background:#121212;color:#eee;border:1px solid #2a2a2a;border-radius:10px;padding:7px 9px;font:inherit;outline:0}
+.tg span.l{flex:1} .tg small{display:block;color:var(--dim);font-size:11.2px}
+code{font:11px var(--mono);color:var(--tint);background:var(--panel2);border-radius:5px;padding:1px 5px}
+select,.pn input[type=text],.pn textarea{width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:7px 9px;font:inherit;outline:0}
+/* WebKitGTK paints <select> with the GTK theme (light Adwaita when the Nix wrapper can't see yours): draw it ourselves */
+:root{color-scheme:dark}
+select{-webkit-appearance:none;appearance:none;padding-right:28px;cursor:pointer;
+  background:var(--panel2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23aaa' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 10px center/10px 6px}
+select option{background:var(--panel2);color:var(--text)}
 select:focus,.pn input[type=text]:focus,.pn textarea:focus{border-color:var(--edge2)}
 .pn textarea{resize:vertical;min-height:52px}
-.btn{padding:6px 12px;border-radius:999px;border:1px solid #2c2c2c;background:#161616;color:#ddd;cursor:pointer;transition:all .2s}
+.btn{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;transition:all .2s}
 .btn:hover{border-color:var(--edge2);color:#fff} .btn.pri{background:var(--acc);border-color:var(--hot);color:#fff}
 .btn.sm{padding:3px 9px;font-size:11.5px} .btn.danger:hover{border-color:#a33;color:#ff9b9b}
 .bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.keys{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;color:#aaa;font-size:11.5px}
-.keys kbd{font:10.5px var(--mono);color:#ddd;background:#181818;border:1px solid #2c2c2c;border-radius:5px;padding:1px 5px;justify-self:start}
-.empty{color:#777;text-align:center;padding:22px 6px;font-size:12px;line-height:1.5}
-.item{padding:9px 10px;border-radius:12px;background:#111;border:1px solid #1e1e1e;margin-bottom:6px;cursor:pointer;transition:border-color .2s}
+.keys{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;color:var(--dim);font-size:11.5px}
+.keys kbd{font:10.5px var(--mono);color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 5px;justify-self:start}
+.empty{color:var(--dim);text-align:center;padding:22px 6px;font-size:12px;line-height:1.5}
+.item{padding:9px 10px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);margin-bottom:6px;cursor:pointer;transition:border-color .2s}
 .item:hover{border-color:var(--edge2)}
-.item .meta{font:10.5px var(--mono);color:#777;margin-bottom:3px;display:flex;gap:6px}
+.item .meta{font:10.5px var(--mono);color:var(--dim);margin-bottom:3px;display:flex;gap:6px}
 .item .meta .bad{color:#ff8a8a}
 .item .y{color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.item .a{color:#8d8d8d;font-size:11.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px}
-.item.open .a{display:block;-webkit-line-clamp:unset;white-space:pre-wrap;color:#ddd;max-height:190px;overflow-y:auto;user-select:text;-webkit-user-select:text}
+.item .a{color:var(--dim);font-size:11.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px}
+.item.open .a{display:block;-webkit-line-clamp:unset;white-space:pre-wrap;color:var(--text);max-height:190px;overflow-y:auto;user-select:text;-webkit-user-select:text}
 .item .bar{margin-top:8px;display:none} .item.open .bar{display:flex}
-.note{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;background:#111;border:1px solid #1e1e1e;margin-bottom:6px;user-select:text;-webkit-user-select:text}
-.note span{flex:1;color:#ddd}
-.note button{background:none;border:0;color:#777;cursor:pointer} .note button:hover{color:#ff9b9b}
+.note{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);margin-bottom:6px;user-select:text;-webkit-user-select:text}
+.note span{flex:1;color:var(--text)}
+.note button{background:none;border:0;color:var(--dim);cursor:pointer} .note button:hover{color:#ff9b9b}
 .qa{display:flex;flex-direction:column;gap:6px}
-.qa button{text-align:left;padding:10px 12px;border-radius:12px;border:1px solid #232323;background:#121212;color:#eee;cursor:pointer;transition:all .2s}
+.qa button{text-align:left;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;transition:all .2s}
 .qa button:hover{border-color:var(--hot);background:var(--deep)}
-.qa button small{display:block;color:#888;font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qa button small{display:block;color:var(--dim);font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .qedit{display:flex;gap:6px;align-items:center;margin-bottom:5px}
-.qedit span{flex:1;padding:6px 9px;border-radius:9px;background:#121212;border:1px solid #222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qedit span{flex:1;padding:6px 9px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* "can I run this?" */
-#appr{position:absolute;left:14px;right:14px;top:256px;padding:11px 12px 12px;border-radius:16px;background:#0c0c0cf7;
+#appr{position:absolute;left:14px;width:312px;top:256px;padding:11px 12px 12px;border-radius:16px;background:#0c0c0cf7;
   border:1px solid #6b4a10;box-shadow:0 6px 20px #000a,0 0 18px #ffb02a22;z-index:7;
   opacity:0;transform:translateY(12px) scale(.95);pointer-events:none;transition:opacity .4s var(--ease),transform .6s var(--ease)}
 #appr.on{opacity:1;transform:none;pointer-events:auto}
-#appr .q{font-size:12.5px;color:#ffd38a;margin-bottom:6px;display:flex;gap:6px;align-items:center}
-#appr pre{margin:0 0 9px;padding:7px 9px;border-radius:9px;background:#151515;border:1px solid #262626;font:11.5px/1.4 var(--mono);color:#eee;
-  max-height:64px;overflow:auto;white-space:pre-wrap;word-break:break-all;user-select:text;-webkit-user-select:text}
+#appr .q{font-size:12.5px;color:#ffd38a;margin-bottom:6px;display:flex;gap:6px;align-items:flex-start;overflow-wrap:anywhere}
+#appr pre{margin:0 0 9px;padding:7px 9px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);font:11.5px/1.4 var(--mono);color:var(--text);
+  max-height:var(--apprMax,60vh);overflow:auto;white-space:pre-wrap;word-break:break-all;user-select:text;-webkit-user-select:text}
 #appr .bar{justify-content:flex-end}
 #appr .yes{background:#2f7d4f;border-color:#55c285;color:#fff}
-#appr .hint{flex:1;color:#777;font-size:11px}
+#appr .hint{flex:1;color:var(--dim);font-size:11px}
 #pwbox{position:absolute;left:14px;right:14px;top:256px;padding:11px 12px 10px;border-radius:16px;background:#0c0c0cf7;margin:0;
   border:1px solid #7a1414;box-shadow:0 6px 20px #000a,0 0 18px #ff2a2a22;z-index:23;
   opacity:0;transform:translateY(12px) scale(.95);pointer-events:none;transition:opacity .4s var(--ease),transform .6s var(--ease)}
 #pwbox.on{opacity:1;transform:none;pointer-events:auto}
 #pwbox .q{font-size:12.5px;color:#ff9b9b;margin-bottom:7px;display:flex;gap:6px;align-items:center}
 #pwbox .pwrow{display:flex;gap:6px}
-#pwbox input{flex:1;min-width:0;background:#151515;border:1px solid #3a1a1a;border-radius:9px;color:#eee;font:13px var(--mono);padding:6px 9px;outline:0}
+#pwbox input{flex:1;min-width:0;background:var(--panel2);border:1px solid #3a1a1a;border-radius:9px;color:var(--text);font:13px var(--mono);padding:6px 9px;outline:0}
 #pwbox input:focus{border-color:#a02828}
 #pwbox .yes{background:#8a1414;border-color:#d04040;color:#fff}
-#pwbox .hint{margin-top:6px;color:#777;font-size:10.5px}
+#pwbox .hint{margin-top:6px;color:var(--dim);font-size:10.5px}
 #pwbox.bad{animation:pwShake .4s}
 @keyframes pwShake{25%{transform:translateX(-6px)}50%{transform:translateX(6px)}75%{transform:translateX(-3px)}}
 body.pw #cap,body.pw #appr{opacity:0}
@@ -319,39 +329,39 @@ body.calm #orbBack,body.calm #orbFront,body.calm #raysW,body.calm #vring,body.ca
 
 @keyframes flash{0%{opacity:.18}100%{opacity:0}}
 /* ===== settings, take two: cards, a sliding tab pill, a live clickable preview and a proper colour picker ===== */
-#set{background:linear-gradient(180deg,#141414 0,#0c0c0c 120px,#0b0b0b 100%)}
+#set{background:linear-gradient(180deg,var(--panel2) 0,var(--panel) 120px,var(--panel) 100%)}
 #set .hd{padding:12px 12px 8px 14px}
 #set .hd .logo{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%,var(--body0,#1b1b1b),var(--body2,#030303) 70%);
   box-shadow:0 0 0 1.5px var(--edge2),0 0 10px var(--accA);position:relative}
 #set .hd .logo::before,#set .hd .logo::after{content:"";position:absolute;top:5px;width:4px;height:7px;border-radius:50%;background:var(--whiteL,#f3dccf)}
 #set .hd .logo::before{left:4.5px} #set .hd .logo::after{right:4.5px;background:var(--whiteR,#f3dccf)}
 #set .hd b{font-size:14px;letter-spacing:.01em}
-#tabs{position:relative;display:flex;gap:0;margin:0 12px 8px;padding:3px;border:0;border-radius:13px;background:#151515;box-shadow:inset 0 0 0 1px #1f1f1f}
+#tabs{position:relative;display:flex;gap:0;margin:0 12px 8px;padding:3px;border:0;border-radius:13px;background:var(--panel2);box-shadow:inset 0 0 0 1px #1f1f1f}
 #tabs button{position:relative;z-index:1;flex:1;display:flex;align-items:center;justify-content:center;gap:5px;background:none;border:0;border-radius:10px;
   padding:6px 0;color:#8f8f8f;font-size:12px;font-weight:500;cursor:pointer;transition:color .25s}
 #tabs button svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-#tabs button:hover{color:#ddd;background:none}
+#tabs button:hover{color:var(--text);background:none}
 #tabs button.on{color:#fff;background:none;box-shadow:none}
 #tabs .ind{position:absolute;z-index:0;top:3px;bottom:3px;left:3px;border-radius:10px;background:linear-gradient(180deg,var(--acc),var(--edge2));
   box-shadow:0 2px 10px var(--accB);transition:transform .45s var(--ease),width .45s var(--ease)}
 #set .bd{padding:2px 12px 14px}
-#set .tab .row{background:#111;border:1px solid #1c1c1c;border-radius:14px;padding:11px 12px;margin:0 0 8px}
-#set .tab .row:last-child{border-bottom:1px solid #1c1c1c}
+#set .tab .row{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:11px 12px;margin:0 0 8px}
+#set .tab .row:last-child{border-bottom:1px solid var(--line)}
 #set .row .t{font-size:12.8px}
 #set .row.tgs{display:flex;flex-direction:column;gap:10px}
-#set .tg .sw{width:36px;height:21px;border-radius:11px;background:#232323;border:1px solid #2e2e2e}
+#set .tg .sw{width:36px;height:21px;border-radius:11px;background:var(--line);border:1px solid #2e2e2e}
 #set .tg .sw::after{top:2.5px;left:2.5px;width:14px;height:14px;box-shadow:0 1px 3px #0008}
 #set .tg input:checked+.sw{background:linear-gradient(180deg,var(--hot),var(--acc));border-color:transparent}
 #set .tg input:checked+.sw::after{transform:translateX(15px)}
 #set .tg.red input:checked+.sw{background:linear-gradient(180deg,#ff5050,#8a0000)}
 /* segmented control */
 .seg{display:flex;flex-wrap:wrap;gap:3px;padding:3px;border-radius:11px;background:#171717;box-shadow:inset 0 0 0 1px #212121}
-.seg button{flex:1 1 0;min-width:0;padding:6px 3px;border:0;border-radius:8px;background:none;color:#aaa;font-size:11.8px;cursor:pointer;transition:all .2s;white-space:nowrap}
+.seg button{flex:1 1 0;min-width:0;padding:6px 3px;border:0;border-radius:8px;background:none;color:var(--dim);font-size:11.8px;cursor:pointer;transition:all .2s;white-space:nowrap}
 .seg button:hover{color:#fff}
 .seg button.on{background:var(--acc);color:#fff;box-shadow:0 1px 8px var(--accB)}
 /* voices */
 .voices{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
-.voices button{display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:10px;border:1px solid #242424;background:#151515;color:#ddd;cursor:pointer;font-size:12px;transition:all .2s}
+.voices button{display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;font-size:12px;transition:all .2s}
 .voices button::before{content:"";width:0;height:0;border-left:7px solid currentColor;border-top:4.5px solid transparent;border-bottom:4.5px solid transparent;opacity:.6}
 .voices button:hover{border-color:var(--edge2)} .voices button.on{border-color:var(--hot);background:var(--deep);color:#fff}
 .voices button i{font-style:normal;opacity:.6}
@@ -377,7 +387,7 @@ body.calm #orbBack,body.calm #orbFront,body.calm #raysW,body.calm #vring,body.ca
 .picker .hue .dot{top:50%}
 .pkrow{display:flex;gap:6px;align-items:center}
 .pkrow .cur{flex:none;width:30px;height:30px;border-radius:9px;background:var(--c,#000);box-shadow:inset 0 0 0 1px #fff3}
-.pkrow input{flex:1;min-width:0;background:#151515;border:1px solid #262626;border-radius:9px;color:#eee;font:12.5px var(--mono);padding:6px 9px;outline:0;text-transform:lowercase}
+.pkrow input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--text);font:12.5px var(--mono);padding:6px 9px;outline:0;text-transform:lowercase}
 .pkrow input:focus{border-color:var(--edge2)}
 .swatches,.recent{display:flex;flex-wrap:wrap;gap:6px}
 .swatches button,.recent button{width:22px;height:22px;padding:0;border-radius:7px;border:0;background:var(--c);cursor:pointer;box-shadow:inset 0 0 0 1px #ffffff26;transition:transform .15s}
@@ -386,38 +396,38 @@ body.calm #orbBack,body.calm #orbFront,body.calm #raysW,body.calm #vring,body.ca
 .recent:empty{display:none} .recent::before{content:"recent";font:10px var(--mono);color:#666;align-self:center;margin-right:2px}
 /* skins gallery */
 .skins{display:grid;grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:6px}
-.skins button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 2px 6px;border-radius:11px;border:1px solid #222;background:#141414;color:#aaa;font-size:10.5px;cursor:pointer;transition:all .2s}
+.skins button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 2px 6px;border-radius:11px;border:1px solid var(--line);background:var(--panel2);color:var(--dim);font-size:10.5px;cursor:pointer;transition:all .2s}
 .skins button svg{width:52px;height:52px;overflow:visible}
 .skins button:hover{border-color:var(--edge2);color:#fff}
 .skins button.on{border-color:var(--hot);background:var(--deep);color:#fff;box-shadow:0 0 12px var(--accA)}
 /* projects */
-.proj{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:10px;background:#151515;border:1px solid #222;margin-bottom:5px}
-.proj b{font-size:12px} .proj span{flex:1;font:11px var(--mono);color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.proj button{background:none;border:0;color:#777;cursor:pointer} .proj button:hover{color:#ff9b9b}
+.proj{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);margin-bottom:5px}
+.proj b{font-size:12px} .proj span{flex:1;font:11px var(--mono);color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.proj button{background:none;border:0;color:var(--dim);cursor:pointer} .proj button:hover{color:#ff9b9b}
 /* the "full answer" button + reply panel */
 #moreB{position:absolute;left:50%;top:398px;transform:translateX(-50%);z-index:8;padding:3px 10px;border-radius:999px;border:1px solid var(--edge2);
-  background:#0d0d0df2;color:var(--tint);font-size:11px;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .4s}
+  background:color-mix(in srgb,var(--panel2) 95%,transparent);color:var(--tint);font-size:11px;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .4s}
 #moreB.on{opacity:1;pointer-events:auto}
 body.hover #moreB,body.pnl #moreB,body.appr #moreB{display:none}
 .md{font-size:12.8px;line-height:1.5;color:#e6e6e6;user-select:text;-webkit-user-select:text}
 .md p{margin:0 0 8px} .md ul{margin:0 0 8px;padding-left:18px} .md li{margin:2px 0}
 .md code{font-size:11.5px}
-.md .cb{position:relative;margin:0 0 9px;border-radius:10px;background:#151515;border:1px solid #242424}
+.md .cb{position:relative;margin:0 0 9px;border-radius:10px;background:var(--panel2);border:1px solid var(--line)}
 .md .cb pre{margin:0;padding:9px 10px;font:11.5px/1.45 var(--mono);color:#e8e8e8;overflow-x:auto;white-space:pre}
-.md .cb button{position:absolute;top:5px;right:5px;padding:2px 8px;border-radius:7px;border:1px solid #333;background:#1c1c1c;color:#bbb;font-size:10.5px;cursor:pointer}
+.md .cb button{position:absolute;top:5px;right:5px;padding:2px 8px;border-radius:7px;border:1px solid #333;background:var(--line);color:var(--dim);font-size:10.5px;cursor:pointer}
 .md .cb button:hover{color:#fff;border-color:var(--edge2)}
 .md h1,.md h2,.md h3{font-size:13.5px;margin:10px 0 6px}
 /* ===== the terminal: a small flat sheet he holds under his eyes while he works ===== */
 #stage{z-index:2}
-#code{position:fixed;left:0;top:0;width:136px;height:80px;z-index:3;pointer-events:none;border-radius:10px;
-  background:#0b0b0bf2;border:1px solid var(--edge2);box-shadow:0 8px 18px #000b;font:8.5px/12px var(--mono);color:#d6d6d6;
+#code{position:fixed;left:0;top:0;width:490px;height:auto;z-index:3;pointer-events:none;border-radius:10px;
+  background:color-mix(in srgb,var(--panel) 95%,transparent);border:1px solid var(--edge2);box-shadow:0 8px 18px #000b;font:13px/17px var(--mono);color:var(--text);
   opacity:0;scale:.5;transition:opacity .3s,scale .4s cubic-bezier(.3,1.5,.5,1)}
 #code.on{opacity:1;scale:1}
-#code .tb{display:flex;align-items:center;gap:6px;height:17px;padding:0 8px;border-bottom:1px solid #1d1d1d;color:var(--hot);font-weight:600}
+#code .tb{display:flex;align-items:center;gap:6px;height:24px;padding:0 10px;font-size:12px;border-bottom:1px solid var(--line);color:var(--hot);font-weight:600}
 #code .tb b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
-#code .tb span{color:#777} #code .tb span.ok{color:var(--hot)} #code .tb span.bad{color:#ff6b6b}
+#code .tb span{color:var(--dim)} #code .tb span.ok{color:var(--hot)} #code .tb span.bad{color:#ff6b6b}
 #code.root{border-color:#7a1414} #code.root .tb b::before{content:"root · ";color:#ff5a5a}
-#code .lines{padding:3px 8px;height:60px;overflow:hidden}
+#code .lines{padding:3px 10px 5px;min-height:144px;overflow:hidden}
 /* root mode: a red sticker on the side of the paper you see — so it reads the right way round even though the page is
    turned toward him */
 #liveDot{animation:liveBeat 1.6s ease-in-out infinite} @keyframes liveBeat{50%{opacity:.25}} body.hover #liveTag{display:none}
@@ -425,12 +435,12 @@ body.hover #moreB,body.pnl #moreB,body.appr #moreB{display:none}
   color:#fff;background:#9a0000;border-radius:6px;padding:3px 6px;box-shadow:0 0 10px #ff000066,0 2px 6px #000a}
 #code.rootmode .rootb{display:block}
 body.faceyou #code .rootb{transform:none;left:auto;right:-9px}
-#code .l{height:12px;white-space:pre;overflow:hidden}
+#code .l{min-height:17px;white-space:pre-wrap;word-break:break-all}
 #code .l.add{color:#bfe8d3} #code .l.del{color:#ff8b8b}
-#code .l.out{color:#9a9a9a} #code .l.bad{color:#ff8b8b}
+#code .l.out{color:var(--dim)} #code .l.bad{color:#ff8b8b}
 #code i{font-style:normal} #code .k{color:var(--hot)} #code .s{color:var(--whiteL,#f3dccf)} #code .c{color:#5f5f5f}
 #code .pr,#code .ok{color:var(--hot)} #code .rt{color:#ff5a5a}
-#code .cur{display:inline-block;width:5px;height:9px;margin-left:1px;vertical-align:-1px;background:var(--hot);animation:cpBlink .9s steps(1) infinite}
+#code .cur{display:inline-block;width:7px;height:13px;margin-left:1px;vertical-align:-1px;background:var(--hot);animation:cpBlink .9s steps(1) infinite}
 @keyframes cpBlink{50%{opacity:0}}
 body.hover #code{display:none}
 body.term #chip.work{opacity:0}          /* the terminal already says what he's doing */
@@ -447,7 +457,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
     <feGaussianBlur in="SourceGraphic" stdDeviation="9" result="b"/>
     <feColorMatrix in="b" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 26 -11"/>
   </filter></defs>
-  <g filter="url(#gooF)" fill="#000"><rect id="gooBar" rx="18"/><ellipse id="gooBall"/><circle id="gooDrop"/><circle class="gooN"/><circle class="gooN"/><circle class="gooN"/></g>
+  <g filter="url(#gooF)" style="fill:var(--notch)"><rect id="gooBar" rx="18"/><ellipse id="gooBall"/><circle id="gooDrop"/><circle class="gooN"/><circle class="gooN"/><circle class="gooN"/></g>
 </svg>
 <div id="stage">
   <svg id="guy" viewBox="-150 -150 300 300">
@@ -461,6 +471,8 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <filter id="glow" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
       <radialGradient id="ballG" cx="-24" cy="-30" r="112" gradientUnits="userSpaceOnUse"><stop offset="0" class="b0"/><stop offset=".55" class="b1"/><stop offset="1" class="b2"/></radialGradient>
       <radialGradient id="glossG"><stop offset="0" stop-color="#fff" stop-opacity=".17"/><stop offset=".6" stop-color="#fff" stop-opacity=".05"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+      <linearGradient id="nixD" gradientUnits="userSpaceOnUse" x1="-80.6" y1="0" x2="-24.2" y2="97.7"><stop offset="0" stop-color="#3e5993"/><stop offset=".25" stop-color="#4564a5"/><stop offset="1" stop-color="#4d6fb7"/></linearGradient>
+      <linearGradient id="nixL" gradientUnits="userSpaceOnUse" x1="-80.6" y1="0" x2="-24.2" y2="97.7"><stop offset="0" stop-color="#6d9bbc"/><stop offset=".25" stop-color="#72a9cf"/><stop offset="1" stop-color="#77b6e1"/></linearGradient>
       <clipPath id="clipL"><path id="cpL"/></clipPath>
       <clipPath id="clipR"><path id="cpR"/></clipPath>
     </defs>
@@ -476,7 +488,8 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <g id="qmark" opacity="0"><text class="qm" x="70" y="-70">?</text></g>
       <g id="body">
         <g id="accBack"></g>
-        <circle r="76" fill="url(#ballG)"/>
+        <path class="ball" fill="url(#ballG)"/>
+        <g class="ball nix"></g>
         <g id="face">
           <g id="eL"><path class="eye" id="pL"/><g clip-path="url(#clipL)"><path class="slit" id="hlL"/></g></g>
           <g id="eR"><path class="eye" id="pR"/><g clip-path="url(#clipR)"><path class="slit" id="hlR"/></g></g>
@@ -485,8 +498,10 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <!-- the glass dome: soft reflection + rim -->
         <ellipse cx="-30" cy="-46" rx="38" ry="15" transform="rotate(-30 -30 -46)" fill="url(#glossG)" pointer-events="none"/>
         <ellipse cx="34" cy="50" rx="18" ry="6" transform="rotate(-40 34 50)" fill="url(#glossG)" opacity=".45" pointer-events="none"/>
-        <circle id="rim" r="75" fill="none" stroke-width="1.6" pointer-events="none"/>
+        <path id="rim" class="ball" fill="none" stroke-width="1.6" stroke-linejoin="round" pointer-events="none"/>
         <g id="accFront"></g>
+        <g id="frost" display="none" pointer-events="none"></g>
+        <g id="cue" display="none" transform="translate(8 -122)" style="cursor:pointer"><circle id="cueD" r="10" stroke="#0008" stroke-width="1"/><text id="cueT" text-anchor="middle" y="4.5" font-size="12" pointer-events="none"></text></g>
         <g id="liveTag" transform="translate(50 58) rotate(-14)" display="none"><rect x="-21" y="-8.5" width="42" height="17" rx="6" fill="#2f8f66" stroke="#7fd6ae" stroke-width="1"/><circle id="liveDot" cx="-12" cy="0" r="2.6" fill="#fff"/><text x="4" y="3.6" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff" font-family="monospace" letter-spacing="1">LIVE</text></g>
         <g id="think" opacity="0"><circle class="thk" cx="64" cy="-70" r="4"/><circle class="thk" cx="79" cy="-86" r="6"/><circle class="thk" cx="99" cy="-106" r="9"/></g>
         <g id="anger" opacity="0"><path class="ang" d="M-10-3Q-3-3-3-10M3-10Q3-3 10-3M10 3Q3 3 3 10M-3 10Q-3 3-10 3"/></g>
@@ -530,14 +545,19 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
           <div class="swatches" id="pkSw"></div>
           <div class="recent" id="pkRecent"></div>
         </div>
+        <label class="tg" style="margin-top:9px"><input type="checkbox" id="themeSw"><span class="sw"></span><span class="l">Follow desktop theme<small>Colours follow your Omarchy theme. Picking a colour by hand turns this off.</small></span></label>
         <label class="tg" style="margin-top:9px"><input type="checkbox" id="linkSw"><span class="sw"></span><span class="l">Matching eyes<small>Change both eyes (and both whites) together.</small></span></label>
         <label class="tg" style="margin-top:7px"><input type="checkbox" id="rndSw"><span class="sw"></span><span class="l">Surprise me<small>New random colours every time he pops up.</small></span></label>
       </div>
-      <div class="row"><div class="t">Skin</div><div class="h">Something to wear. Cat ears twitch, antennas wobble.</div><div class="skins" id="skinGrid"></div></div>
+      <div class="row"><div class="t">Skin</div><div class="h">Something to wear. The sprout sways.</div><div class="skins" id="skinGrid"></div></div>
       <div class="row"><div class="t">Resting pupils</div><div class="h">His everyday look — they still change with his mood.</div><div class="seg" id="pupChips"></div></div>
       <div class="row"><label class="tg"><input type="checkbox" id="codeSw"><span class="sw"></span><span class="l">Terminal<small>While he works he holds a little terminal showing the code he writes and the commands he runs.</small></span></label>
         <div class="seg" id="faceChips" style="margin-top:9px"><button data-face="him">Faces him</button><button data-face="you">Faces you (readable)</button></div></div>
       <div class="row"><label class="tg"><input type="checkbox" id="hoverSw"><span class="sw"></span><span class="l">Hover mode<small>He becomes your mouse cursor. Call him to bring him back.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="ambSysSw"><span class="sw"></span><span class="l">System health<small>A mark on his tip when a user service fails, a glint after each new NixOS generation. Local only.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="ambCalSw"><span class="sw"></span><span class="l">Next calendar item (uses gog)<small>Ten minutes before, a calendar mark and the title. Asks Google Calendar every 15 minutes.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="ambWxSw"><span class="sw"></span><span class="l">Weather look (uses omarchy weather)<small>Frost on his tips below 0 °C, a slight thaw above 28 °C. Fetches the weather every 30 minutes.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="followSw"><span class="sw"></span><span class="l">Follow my focused screen<small>When you focus another monitor he moves there too (Hyprland). Also: "move to the other screen", or bind <code>nixi-companion monitor next</code>.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="clickSw"><span class="sw"></span><span class="l">Click through around him<small>Clicks on the empty space around him go to the window behind. Turn off if he flickers.</small></span></label></div>
     </div>
     <!-- ================= VOICE ================= -->
@@ -545,8 +565,8 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><div class="t">His voice</div><div class="h">Tap one to hear it. <span id="voiceEng"></span></div><div class="voices" id="voiceChips"></div></div>
       <div class="row tgs">
         <label class="tg"><input type="checkbox" id="speakSw"><span class="sw"></span><span class="l">Speak replies out loud</span></label>
-        <label class="tg"><input type="checkbox" id="wakeSw"><span class="sw"></span><span class="l">“Hey Void” wake word<small>Listens for his name. Nothing leaves your computer.</small></span></label>
-        <label class="tg"><input type="checkbox" id="bargeSw"><span class="sw"></span><span class="l">Interrupt him by voice<small>Say “stop” (or “hey Void”) while he's talking.</small></span></label>
+        <label class="tg"><input type="checkbox" id="wakeSw"><span class="sw"></span><span class="l">“Hey Nixi” wake word<small>Listens for his name. Nothing leaves your computer.</small></span></label>
+        <label class="tg"><input type="checkbox" id="bargeSw"><span class="sw"></span><span class="l">Interrupt him by voice<small>Say “stop” (or “hey Nixi”) while he's talking.</small></span></label>
         <label class="tg"><input type="checkbox" id="listenShowSw"><span class="sw"></span><span class="l">Listen as soon as he pops up</span></label>
         <label class="tg"><input type="checkbox" id="fullSw"><span class="sw"></span><span class="l">Show everything I said<small>The end of your words, wrapped over a few lines, instead of one cut-off line.</small></span></label>
         <label class="tg"><input type="checkbox" id="sfxSw"><span class="sw"></span><span class="l">Sound effects<small>Little blips when he wakes, opens his menu or finishes.</small></span></label>
@@ -559,7 +579,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
     <!-- ================= BRAIN ================= -->
     <div class="tab" data-tab="brain">
       <div class="row"><div class="t">How much can he do on his own?</div><div class="opts" id="trustOpts"></div></div>
-      <div class="row"><div class="t">Claude model</div><div class="h">Auto uses the fast model for quick questions and the full one for real work.</div><div class="seg" id="modelChips"></div>
+      <div class="row nx"><div class="t">Claude model</div><div class="h">Auto uses the fast model for quick questions and the full one for real work.</div><div class="seg" id="modelChips"></div>
         <div class="t sub">Thinking effort</div><div class="h">Higher thinks harder on real work, but is slower and uses more of your plan. “default” leaves it to Claude.</div><div class="seg" id="effortChips"></div>
         <label class="tg" style="margin-top:12px;padding-top:12px;border-top:1px solid #1c1c1c"><input type="checkbox" id="leanSw"><span class="sw"></span><span class="l">Light mode<small>Only the tools he needs (files, commands, web), not your other skills or plugins. Every chat starts about half the size, so it uses far less of your plan.</small></span></label>
         <div class="t sub">Stop when usage hits this amount<span class="pct" id="costVal"></span></div>
@@ -569,33 +589,33 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <div class="ctxbar" id="ctxBar"><i></i></div>
         <div class="h" id="ctxTxt"></div>
         <div class="h" id="recallTxt" style="margin-top:-3px"></div>
-        <label class="tg"><input type="checkbox" id="compactSw"><span class="sw"></span><span class="l">Tidy up automatically<small>At about 70% full he writes himself a short note and carries on in a fresh chat, so a long session can't quietly eat your usage.</small></span></label>
-        <div class="bar" style="margin-top:9px"><button class="btn sm" id="ctxTidy">Tidy up now</button><button class="btn sm" id="ctxNew">New chat</button></div></div>
-      <div class="row"><div class="t">Projects</div><div class="h">Say “switch to my <i>name</i>” to jump there. Add by voice: “remember my blog is in ~/code/blog”.</div>
+        <label class="tg nx"><input type="checkbox" id="compactSw"><span class="sw"></span><span class="l">Tidy up automatically<small>At about 70% full he writes himself a short note and carries on in a fresh chat, so a long session can't quietly eat your usage.</small></span></label>
+        <div class="bar" style="margin-top:9px"><button class="btn sm nx" id="ctxTidy">Tidy up now</button><button class="btn sm" id="ctxNew">New chat</button></div></div>
+      <div class="row nx"><div class="t">Projects</div><div class="h">Say “switch to my <i>name</i>” to jump there. Add by voice: “remember my blog is in ~/code/blog”.</div>
         <div id="projList"></div>
         <div class="bar" style="margin-top:7px"><input type="text" id="projName" placeholder="name" style="flex:1 1 80px;min-width:0"><input type="text" id="projPath" placeholder="~/code/app" style="flex:2 1 120px;min-width:0"><button class="btn pri sm" id="projAdd">add</button></div></div>
-      <div class="row"><label class="tg red"><input type="checkbox" id="rootSw"><span class="sw"></span><span class="l">Root mode<small>Runs <b>anything</b>, incl. <code>sudo</code> — a password card appears next to him when he needs root.</small></span></label>
+      <div class="row nx"><label class="tg red"><input type="checkbox" id="rootSw"><span class="sw"></span><span class="l">Root mode<small>Runs <b>anything</b>, incl. <code>sudo</code> — a password card appears next to him when he needs root.</small></span></label>
         </div>
     </div>
     <!-- ================= MORE ================= -->
     <div class="tab" data-tab="more">
       <div class="row tgs">
-        <label class="tg"><input type="checkbox" id="autoSw"><span class="sw"></span><span class="l">Start when I log in<small>Ready and listening for “hey Void”.</small></span></label>
+        <label class="tg nx"><input type="checkbox" id="autoSw"><span class="sw"></span><span class="l">Start when I log in<small>Ready and listening for “hey Nixi”.</small></span></label>
         <label class="tg"><input type="checkbox" id="notifySw"><span class="sw"></span><span class="l">Notify me when a long task finishes<small>…while he's hidden.</small></span></label>
         <label class="tg"><input type="checkbox" id="popupSw"><span class="sw"></span><span class="l">Pop back up when it's done</span></label>
-        <label class="tg"><input type="checkbox" id="updSw"><span class="sw"></span><span class="l">Check for updates<small>Asks GitHub for the latest version when he starts, every few hours and when you open Settings. Nothing about you is sent.</small></span></label>
+        <label class="tg nx"><input type="checkbox" id="updSw"><span class="sw"></span><span class="l">Check for updates<small>Asks GitHub for the latest version when he starts, every few hours and when you open Settings. Nothing about you is sent.</small></span></label>
       </div>
       <div class="row"><div class="t">Memory &amp; history</div><div class="h">Say “remember …” and he keeps it for every future chat.</div>
-        <div class="bar"><button class="btn" data-open="memory">🧠 Memory <i id="memCount"></i></button><button class="btn" data-open="history">🕘 History</button></div></div>
-      <div class="row"><div class="t">Void <span id="verTxt"></span></div><div class="h" id="updTxt"></div>
+        <div class="bar"><button class="btn nx" data-open="memory">🧠 Memory <i id="memCount"></i></button><button class="btn nx" data-open="history">🕘 History</button></div></div>
+      <div class="row nx"><div class="t">Nixi <span id="verTxt"></span></div><div class="h" id="updTxt"></div>
         <div class="bar"><button class="btn" id="updNow" hidden>⬇ Update now</button><button class="btn" id="updCheck">Check now</button></div></div>
       <div class="row"><div class="t">Need help?</div><div class="h">Copies a report (versions, mic, voice, the end of his log) to paste when you ask for help. Nothing is sent; your name and folders are blanked out.</div>
         <div class="bar"><button class="btn" id="diagCopy">📋 Copy diagnostics</button><button class="btn" id="diagReport">Report a problem</button></div>
         <pre id="diagPrev" hidden style="max-height:160px;overflow:auto;font-size:10.5px;white-space:pre-wrap;user-select:text;margin:8px 0 0"></pre></div>
       <div class="row"><div class="t">Things you can just say</div>
         <div class="keys"><kbd>volume up</kbd><span>also mute, set volume to 40</span><kbd>pause / next song</kbd><span>needs playerctl</span><kbd>timer 10 minutes</kbd><span>“remind me at 5 to…”</span><kbd>what time is it</kbd><span>and the date</span><kbd>open firefox</kbd><span>any app</span><kbd>lock my screen</kbd><span></span><kbd>switch to my app</kbd><span>your projects</span></div></div>
-      <div class="row"><div class="t">Hotkeys</div><div class="h">Bind in your desktop, e.g. Hyprland <code>bind = SUPER, A, exec, void listen</code></div>
-        <div class="keys"><kbd>void listen</kbd><span>pop up &amp; listen</span><kbd>void look</kbd><span>screenshot, then listen</span><kbd>void hover</kbd><span>be my cursor / come back</span><kbd>void</kbd><span>show / hide</span></div></div>
+      <div class="row"><div class="t">Hotkeys</div><div class="h">Bind in your desktop, e.g. Hyprland <code>bind = SUPER, A, exec, nixi-companion listen</code></div>
+        <div class="keys"><kbd>nixi-companion listen</kbd><span>pop up &amp; listen</span><kbd>nixi-companion look</kbd><span>screenshot, then listen</span><kbd>nixi-companion hover</kbd><span>be my cursor / come back</span><kbd>nixi-companion</kbd><span>show / hide</span></div></div>
       <div class="row"><div class="t">While he's open</div>
         <div class="keys"><kbd>Space</kbd><span>hold to talk · tap to stop him</span><kbd>Enter</kbd><span>type</span><kbd>Esc</kbd><span>back / stop / hide</span><kbd>Ctrl+N</kbd><span>new chat</span><kbd>Ctrl+H</kbd><span>history</span><kbd>Ctrl+M</kbd><span>mute</span></div></div>
     </div>
@@ -614,7 +634,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
   <div class="hint" id="pwHint">typed straight to sudo — never saved</div></form>
 
 <form id="ask" autocomplete="off">
-  <button id="clipB" class="round" type="button" title="Attach a screenshot (right-click: clipboard)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+  <button id="clipB" class="round nx" type="button" title="Attach a screenshot (right-click: clipboard)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
   <input id="input" spellcheck="false" placeholder="ask anything…">
   <button id="go" class="round" type="submit" title="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
 </form>
@@ -628,8 +648,8 @@ const tokenReady=(async()=>{
   const h=new URLSearchParams(location.hash.slice(1));
   if(h.get('t')) TOKEN=h.get('t');
   else if(h.get('ticket')){ try{ const r=await fetch('/api/claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticket:h.get('ticket')})}); TOKEN=(await r.json()).token||''; }catch(e){} }
-  if(TOKEN){ try{ sessionStorage.setItem('void-t',TOKEN); }catch(e){} }
-  else{ try{ TOKEN=sessionStorage.getItem('void-t')||''; }catch(e){} }
+  if(TOKEN){ try{ sessionStorage.setItem('nixi-t',TOKEN); }catch(e){} }
+  else{ try{ TOKEN=sessionStorage.getItem('nixi-t')||''; }catch(e){} }
   if(location.hash) history.replaceState(null,'',location.pathname+location.search);   // out of the address bar / history
 })();
 const NATIVE=document.documentElement.classList.contains('native');
@@ -637,28 +657,28 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const input=$('#input'), youEl=$('#you'), himEl=$('#him'), cap=$('#cap'), chip=$('#chip'), ask=$('#ask'), menuEl=$('#menu');
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), lerp=(a,b,k)=>a+(b-a)*k;
 const approach=(a,b,dt,rate)=>a+(b-a)*(1-Math.exp(-rate*dt));      // frame-rate independent smoothing
-const hdr=x=>Object.assign({'X-Void-Token':TOKEN},x||{});
+const hdr=x=>Object.assign({'X-Nixi-Token':TOKEN},x||{});
 const post=(u,b,o)=>tokenReady.then(()=>fetch(u,Object.assign({method:'POST',headers:hdr({'Content-Type':'application/json'}),body:JSON.stringify(b||{})},o||{})))
   .then(r=>{ if(r.status===403) staleToken(); return r; });
 function staleToken(){                       // the server restarted with a new token: ask the window for it (at most every 10 s)
-  let last=0; try{ last=+sessionStorage.getItem('void-reload')||0; }catch(e){}
+  let last=0; try{ last=+sessionStorage.getItem('nixi-reload')||0; }catch(e){}
   if(Date.now()-last<10000) return;
-  try{ sessionStorage.setItem('void-reload',Date.now()); sessionStorage.removeItem('void-t'); }catch(e){}
-  if(!native('reauth')) tick('Void restarted — close this window and run “void” again',true);
+  try{ sessionStorage.setItem('nixi-reload',Date.now()); sessionStorage.removeItem('nixi-t'); }catch(e){}
+  if(!native('reauth')) tick('Nixi restarted — close this window and run “nixi-companion” again',true);
 }
-const native=msg=>{ try{ window.webkit.messageHandlers.voidui.postMessage(msg); return true; }catch(e){ return false; } };
+const native=msg=>{ try{ window.webkit.messageHandlers.nixiui.postMessage(msg); return true; }catch(e){ return false; } };
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 let workAmt=0, workRot=0, workWhat='', workT0=0;
 let busy=false, toolMood=null, muted=false, info={}, lastActive=performance.now(), hiddenNow=false;
 let transient=null, transientUntil=0, errorUntil=0;
-let rec=null, transcribing=false, micRaw=0, follow=false, hearRaw=0;   // follow: the no-"hey Void" window after he talks
-try{ muted=localStorage.getItem('void.muted')==='1'; }catch(e){}
+let rec=null, transcribing=false, micRaw=0, follow=false, hearRaw=0;   // follow: the no-"hey Nixi" window after he talks
+try{ muted=localStorage.getItem('nixi.muted')==='1'; }catch(e){}
 
 /* ================= his look: body colour, each pupil, each eye white, a skin =================
    Everything is a CSS variable, so changes glide in. UI accents (glow, sparks, menus) follow the left pupil. */
-const LOOK_DEFAULT={body:'#0b0b0b',pupL:'#3d9b74',pupR:'#3d9b74',whiteL:'#f3dccf',whiteR:'#f3dccf',skin:'none',skinColor:'',link:true,random:false};
+const LOOK_DEFAULT={body:'#1b2a4a',pupL:'#3e5993',pupR:'#3e5993',whiteL:'#ffffff',whiteR:'#ffffff',skin:'none',skinColor:'',link:true,random:false};
 let LOOK={...LOOK_DEFAULT};
 const EC={eye:LOOK.pupL,acc:LOOK.pupL,hot:'#7fd6ae',sclera:LOOK.whiteL};
 const hex2rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255);
@@ -680,7 +700,21 @@ function applyAccent(hex){
     '--tint':hsl2hex(h,s?.55:0,.86),'--accA':acc+'1f','--accB':acc+'59'};
   for(const k in v) st.setProperty(k,v[k]);
 }
+// the Omarchy theme paints the face while look.follow_theme is on (and he isn't rolling random colours)
+const themed=L=>{ const t=info&&info.theme; if(!t||L.follow_theme===false||L.random) return L;
+  const lt=t.mode==='light'; return {...L,body:lt?t.lighter_background:t.darker_background,pupL:t.accent,pupR:t.accent,whiteL:t.bright_foreground,whiteR:t.bright_foreground}; };
+const NIX_STOPS={nixD:['#3e5993','#4564a5','#4d6fb7'],nixL:['#6d9bbc','#72a9cf','#77b6e1']};
+function applyLambdas(t){   // lambdas: blue (dark ones) and cyan (light ones), each a shaded gradient; no theme = the NixOS blues
+  const c=t?{nixD:[shade(t.blue,-.15),t.blue,shade(t.blue,.08)],nixL:[shade(t.cyan,-.1),t.cyan,shade(t.cyan,.1)]}:NIX_STOPS;
+  for(const id in c) document.querySelectorAll(`#${id} stop`).forEach((e,i)=>e.setAttribute('stop-color',c[id][i])); }
+function applyThemeVars(t){   // the desktop theme's colours for the notch, panels and text (null = the built-in dark ones)
+  const st=document.documentElement.style, lt=t&&t.mode==='light';
+  const v=t?{'--notch':lt?shade(t.background,-.1):t.darker_background,'--panel':t.background,'--panel2':t.lighter_background,'--text':t.foreground,
+    '--dim':t.dark_foreground||t.muted||t.foreground,'--line':t.selection||t.lighter_background}:{};
+  for(const k of ['--notch','--panel','--panel2','--text','--dim','--line']) v[k]?st.setProperty(k,v[k]):st.removeProperty(k);
+  NOTCH_COL=v['--notch']||'#000000'; }
 function applyLook(L){
+  const fl=L.follow_theme!==false&&info&&info.theme; applyLambdas(fl&&!L.random?info.theme:null); applyThemeVars(fl?info.theme:null); L=themed(L);
   LOOK={...LOOK_DEFAULT,...L};
   const st=document.documentElement.style, [b0,b1,b2]=bodyStops(LOOK.body);
   st.setProperty('--pupL',LOOK.pupL); st.setProperty('--pupR',LOOK.pupR);
@@ -704,63 +738,47 @@ function randomLook(L){
 }
 let lookShown='', lookRolled=false;
 function syncLook(reroll){
-  const L={...LOOK_DEFAULT,...(info.look||{})};
+  const L=themed({...LOOK_DEFAULT,...(info.look||{})});
   if(L.random){ if(reroll||!lookRolled){ applyLook({...L,...randomLook(L)}); lookRolled=true; lookShown=''; } else if(L.skin!==LOOK.skin) applyLook({...LOOK,skin:L.skin}); return; }
-  lookRolled=false; const k=JSON.stringify(L); if(k!==lookShown){ applyLook(L); lookShown=k; }
+  lookRolled=false; const k=JSON.stringify([L,info.theme]); if(k!==lookShown){ applyLook(L); lookShown=k; }
 }
 const syncEye=syncLook;
 
 /* ---------------- skins: things he can wear. Drawn into a group behind the ball (ears etc.) and one in front (hats) */
 const SVGNS='http://www.w3.org/2000/svg';
 const sv=(tag,at,par)=>{ const e=document.createElementNS(SVGNS,tag); for(const k in at) e.setAttribute(k,at[k]); if(par) par.appendChild(e); return e; };
-const SKIN_LABELS={none:'none',cat:'cat ears',bunny:'bunny',bear:'bear',antenna:'antenna',devil:'devil',halo:'halo',crown:'crown',
-  sprout:'sprout',party:'party hat',headphones:'headphones',bow:'bow'};
+const SKIN_LABELS={none:'none',halo:'halo',crown:'crown',sprout:'sprout',bow:'bow'};
 let SKIN_PARTS={};
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
 function drawSkin(back,front,L,bodyFill='url(#ballG)'){
   back.innerHTML=''; front.innerHTML='';
   const F=L.skinColor||bodyFill, acc=L.skinColor||L.pupL, soft=L.skinColor||L.whiteL, parts={pivots:{}};
   const R=(at)=>({...at,'stroke-linejoin':'round','stroke-linecap':'round'});
-  const pair=fn=>{ for(const s of [-1,1]){ const g=sv('g',{},back); fn(g,s); parts[s<0?'earL':'earR']=g; } };
   switch(L.skin){
-    case 'cat': pair((g,s)=>{ sv('path',R({d:`M${52*s} -48L${50*s} -96L${20*s} -68Z`,fill:F,stroke:F,'stroke-width':13}),g);
-        parts.pivots[s<0?'earL':'earR']=[36*s,-58]; }); break;
-    case 'bunny': pair((g,s)=>{ sv('ellipse',{cx:24*s,cy:-110,rx:13,ry:38,fill:F,transform:`rotate(${14*s} ${20*s} -74)`},g);
-        parts.pivots[s<0?'earL':'earR']=[20*s,-74]; }); break;
-    case 'bear': pair((g,s)=>{ sv('circle',{cx:50*s,cy:-56,r:19,fill:F},g); parts.pivots[s<0?'earL':'earR']=[44*s,-50]; }); break;
-    case 'antenna': { const g=sv('g',{},back);
-        sv('line',R({x1:0,y1:-72,x2:0,y2:-106,stroke:F,'stroke-width':4.5}),g); sv('circle',{cx:0,cy:-110,r:7.5,fill:acc},g);
-        parts.wob=g; parts.pivots.wob=[0,-72]; break; }
-    case 'devil': pair((g,s)=>{ sv('path',R({d:`M${24*s} -70C${26*s} -86 ${36*s} -96 ${48*s} -102C${40*s} -92 ${38*s} -78 ${38*s} -64Z`,fill:acc,stroke:acc,'stroke-width':2.5}),g);
-        parts.pivots[s<0?'earL':'earR']=[31*s,-67]; }); break;
     case 'halo': { const g=sv('g',{},front);
-        sv('ellipse',{cx:0,cy:-102,rx:30,ry:7,fill:'none',stroke:soft,'stroke-width':5},g); parts.halo=g; break; }
-    case 'crown': { const g=sv('g',{},front);
+        sv('ellipse',{cx:0,cy:-134,rx:36,ry:6,fill:'none',stroke:soft,'stroke-width':4},g); parts.halo=g; break; }
+    case 'crown': { const g=sv('g',{transform:'translate(0 -58) scale(.85) translate(0 68)'},front);
         sv('path',R({d:'M-22 -68L-26 -94L-11 -80L0 -98L11 -80L26 -94L22 -68Z',fill:soft,stroke:soft,'stroke-width':6}),g); break; }
-    case 'sprout': { const g=sv('g',{},back);
-        sv('path',R({d:'M0 -72Q-2 -88 3 -98',fill:'none',stroke:acc,'stroke-width':3.5}),g);
-        sv('ellipse',{cx:-8,cy:-101,rx:10,ry:5,fill:acc,transform:'rotate(-28 -8 -101)'},g);
-        sv('ellipse',{cx:14,cy:-103,rx:11,ry:5.5,fill:acc,transform:'rotate(26 14 -103)'},g);
-        parts.wob=g; parts.pivots.wob=[0,-72]; break; }
-    case 'party': { const g=sv('g',{transform:'rotate(12 4 -70)'},front);
-        sv('path',R({d:'M-16 -68L22 -68L5 -116Z',fill:acc,stroke:acc,'stroke-width':7}),g); sv('circle',{cx:5,cy:-120,r:6,fill:soft},g); break; }
-    case 'headphones': { const g=sv('g',{},front);
-        sv('path',R({d:'M-80 -6A82 82 0 0 1 80 -6',fill:'none',stroke:acc,'stroke-width':6}),g);
-        for(const s of [-1,1]) sv('rect',{x:80*s-9,y:-24,width:18,height:40,rx:9,fill:acc},g); break; }
-    case 'bow': { const g=sv('g',{transform:'translate(38 -62) rotate(20)'},front);
-        sv('path',{d:'M0 0C-8 -13 -24 -12 -24 0C-24 12 -8 13 0 0Z',fill:acc},g);
-        sv('path',{d:'M0 0C8 -13 24 -12 24 0C24 12 8 13 0 0Z',fill:acc},g);
-        sv('circle',{r:5,fill:shade(acc,-.08)},g); break; }
+    case 'sprout': { const g=sv('g',{},front);   // in front: the lambdas would hide it
+        sv('path',R({d:'M0 -58Q-3 -76 2 -90',fill:'none',stroke:soft,'stroke-width':3.5}),g);
+        sv('ellipse',{cx:-9,cy:-93,rx:10,ry:5,fill:soft,transform:'rotate(-28 -9 -93)'},g);
+        sv('ellipse',{cx:13,cy:-96,rx:11,ry:5.5,fill:soft,transform:'rotate(26 13 -96)'},g);
+        parts.wob=g; parts.pivots.wob=[0,-58]; break; }
+    case 'bow': { const g=sv('g',{transform:'translate(33.5 -58) rotate(30)'},front);
+        sv('path',{d:'M0 0C-8 -13 -24 -12 -24 0C-24 12 -8 13 0 0Z',fill:soft},g);
+        sv('path',{d:'M0 0C8 -13 24 -12 24 0C24 12 8 13 0 0Z',fill:soft},g);
+        sv('circle',{r:5,fill:shade(soft,-.15)},g); break; }
   }
   return parts;
 }
-// little mini-Void for the settings preview + skin gallery (static, clickable parts)
+// little mini-Nixi for the settings preview + skin gallery (static, clickable parts)
 let miniN=0;
-function miniVoid(svg,L,clickable){
+function miniNixi(svg,L,clickable){
   svg.innerHTML=''; const id='mg'+(miniN++), [b0,b1,b2]=bodyStops(L.body);
   const defs=sv('defs',{},svg), gr=sv('radialGradient',{id,cx:-24,cy:-30,r:112,gradientUnits:'userSpaceOnUse'},defs);
   [[0,b0],[.55,b1],[1,b2]].forEach(([o,c])=>sv('stop',{offset:o,'stop-color':c},gr));
-  const back=sv('g',{'data-part':clickable?'skin':''},svg), ball=sv('circle',{r:76,fill:`url(#${id})`,stroke:lum(L.body)<.12?'#2a2a2a':shade(L.body,-.12),'stroke-width':1.6,'data-part':'body'},svg);
+  const back=sv('g',{'data-part':clickable?'skin':''},svg), ball=sv('path',{d:snowPath(),'stroke-linejoin':'round',fill:`url(#${id})`,stroke:lum(L.body)<.12?'#2a2a2a':shade(L.body,-.12),'stroke-width':1.6,'data-part':'body'},svg);
+  sv('g',{'data-part':'body'},svg).innerHTML=nixLambdas();
   for(const s of [-1,1]){ const k=s<0?'L':'R';
     sv('ellipse',{cx:s*25.5,cy:-4.5,rx:23.5,ry:40.5,transform:`rotate(${-s*9} ${s*25.5} -4.5)`,fill:L['white'+k],'data-part':'white'+k},svg);
     sv('ellipse',{cx:s*10.5,cy:-4,rx:clickable?4.2:3.2,ry:12.5,transform:`rotate(${-s*8} ${s*10.5} -4)`,fill:L['pup'+k],'data-part':'pup'+k},svg); }
@@ -777,6 +795,14 @@ function miniVoid(svg,L,clickable){
    Lids cut the finished shape: top – 0..1 from the top, tilted by `sl` (+ = inner corner down → cross, − = worried),
    sagged by `tc`; bot – lower lid from the bottom, `bow` arches it. sq squashes the oval, es scales one eye.
    Asleep (`shut`) an oval melts into a thin "‿" arc (per eye, so he can wink).  */
+// the snowflake is the NixOS logo: six lambdas (scaled 145/1152, its two blues alternating) around a hexagonal hole of
+// inradius 55.8; snowPath() is the plate in that hole, just under the lambdas, that carries his face (flat top, like the hole)
+const LAMBDA='M-78.5 31.4L-62.4 3.5L8.1 125.6L-24.2 125.6L-40.3 97.7L-56.4 125.6L-72.5 125.6L-80.6 111.6L-56.4 69.8Z';
+function snowPath(core=58){ const R=core/Math.cos(Math.PI/6);
+  return 'M'+[0,1,2,3,4,5].map(i=>(R*Math.cos(i*Math.PI/3)).toFixed(1)+' '+(R*Math.sin(i*Math.PI/3)).toFixed(1)).join('L')+'Z'; }
+const nixLambdas=()=>[0,1,2,3,4,5].map(i=>`<path d="${LAMBDA}" transform="rotate(${i*60})" fill="url(#nix${i%2?'L':'D'})"/>`).join('');
+document.querySelectorAll('#body>path.ball').forEach(e=>e.setAttribute('d',snowPath()));
+document.querySelectorAll('#body>.nix').forEach(g=>g.innerHTML=nixLambdas());
 const EYE={rx:23.5, ry:40.5, cx:27.5, cy:-4.5, tilt:0.157};
 const EYE_HALFW=Math.hypot(EYE.rx*Math.cos(EYE.tilt),EYE.ry*Math.sin(EYE.tilt));   // half the width of one leaning eye
 /* pupils morph smoothly between shapes — all flat, solid colour:
@@ -934,7 +960,7 @@ class Spring{   // f = natural frequency (Hz), z = damping ratio (1 = no oversho
 const S={L:{},R:{}}; for(const k of EYE_KEYS){ S.L[k]=new Spring(val(MOODS.idle[k],0),2.1,.82); S.R[k]=new Spring(val(MOODS.idle[k],1),2.1,.82); }
 const SP={L:{},R:{}}; for(const k of PUP_KEYS){ SP.L[k]=new Spring(val(PUP.slit[k],0),2.3,.78); SP.R[k]=new Spring(val(PUP.slit[k],1),2.3,.78); }
 const G={ sz:new Spring(1,2,.75), tilt:new Spring(0,.8,.85), dx:new Spring(0,2.4,.55),
-  earL:new Spring(0,3.2,.32), earR:new Spring(0,3.2,.32), wob:new Spring(0,1.7,.22),
+  wob:new Spring(0,1.7,.22),
   gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), zoom:new Spring(1,1.6,.7),
   appear:new Spring(.2,1.5,.55), open:new Spring(0,1.8,.55), think:new Spring(0,1.6,.6), anger:new Spring(0,1.8,.55), qm:new Spring(0,1.8,.55),
   rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
@@ -996,14 +1022,14 @@ function tear(side){ const g=mk('path',{d:'M0-6C3-1 4.5 2 4.5 4.2A4.5 4.5 0 0 1-
     g.setAttribute('transform',`translate(${(x+Math.sin(p*5)*1.5).toFixed(1)},${(30+p*p*48).toFixed(1)}) scale(${(.5+Math.min(1,p*4)*.5).toFixed(2)})`);
     g.setAttribute('opacity',(p<.15?p/.15:p>.75?(1-p)/.25:1).toFixed(2)); return true; }); }
 const flashEl=$('#flash');
-function notchPulse(col){ const p=$('#barPill'); if(col) p.style.setProperty('--pulse',col); p.classList.remove('pulse'); void p.offsetWidth; p.classList.add('pulse'); }
-function flash(col){ if(document.body.classList.contains('bar')) return notchPulse(col); flashEl.style.setProperty('--flash',col); flashEl.classList.remove('go'); void flashEl.offsetWidth; flashEl.classList.add('go'); }
+function notchPulse(col){ const p=$('#barPill'); if(col) p.style.setProperty('--pulse',col); p.classList.remove('pulse'); p.offsetWidth; p.classList.add('pulse'); }
+function flash(col){ if(document.body.classList.contains('bar')) return notchPulse(col); flashEl.style.setProperty('--flash',col); flashEl.classList.remove('go'); flashEl.offsetWidth; flashEl.classList.add('go'); }
 
 function onMood(m){
   document.body.classList.forEach(c=>{ if(c.startsWith('m-')) document.body.classList.remove(c); }); document.body.classList.add('m-'+m);
   if(!opened) return;
   if(isTalk(m)){ for(const e of [S.L,S.R]) e.es.kick(m==='t_excited'?.7:.35); if(m==='t_excited'||m==='t_beam') popPupils(); if(m==='t_beam') G.jelly.kick(.25); return; }
-  G.sz.kick(.12); G.jelly.kick(.15); popPupils(); G.earL.kick((Math.random()-.5)*80); G.earR.kick((Math.random()-.5)*80);
+  G.sz.kick(.12); G.jelly.kick(.15); popPupils();
   for(const e of [S.L,S.R]){ e.sq.kick(-1.1); e.es.kick(.8); }          // eyes "pop" with every new feeling
   if(m==='happy'){ setTimeout(()=>confetti(18),120); burstLines(EC.hot,10); shock(EC.acc,true); flash(EC.acc); G.zoom.kick(.25); G.jelly.kick(.7); }
   else if(m==='excited'){ burstLines('#ffffff',12,90); shock(EC.hot,true); flash(EC.hot); G.zoom.kick(.4); G.jelly.kick(.9); }
@@ -1044,12 +1070,12 @@ const FIDGETS={
   shake:     {dur:1000, start:()=>{ shakeAmp=3; G.jelly.kick(.9); }, f:p=>({eye:{shut:.7*(1-bump(p,.5,1))},pu:'circle'})},
   blinks:    {dur:1100, start:()=>{ const n=performance.now(); blinkAt=n; setTimeout(()=>blinkAt=performance.now(),300); setTimeout(()=>blinkAt=performance.now(),600); }, f:()=>({})},
 };
-let FID=null, nextFidAt=performance.now()+6000, lastFid='', earTwAt=0;
-function earKick(){ G.earL.kick(-120); G.earR.kick(120); } const paintEl=document.getElementById('paint');
+let FID=null, nextFidAt=performance.now()+6000, lastFid='';
+const paintEl=document.getElementById('paint');
 function frame(ts){
   const rawDt=(ts-(lastTs||ts))/1000, dt=clamp(rawDt,0,.05); lastTs=ts; const t=ts/1000;
   if(!lowFx && rawDt>0 && rawDt<.25 && document.visibilityState==='visible'){ perfAcc+=rawDt; perfN++;
-    if(perfN>=120){ if(perfAcc/perfN>.032){ lowFx=true; ['orbBack','orbFront','vring','workW'].forEach(k=>E[k].removeAttribute('filter')); console.log('[void] slow frames — glow off'); } perfAcc=0; perfN=0; } }
+    if(perfN>=120){ if(perfAcc/perfN>.032){ lowFx=true; ['orbBack','orbFront','vring','workW'].forEach(k=>E[k].removeAttribute('filter')); console.log('[nixi] slow frames — glow off'); } perfAcc=0; perfN=0; } }
   const m=mood(ts), T=MOODS[m], A=AURA[m];
   if(m!==prevMood){ onMood(m); prevMood=m; }
   // idle routines (not while he's the cursor, or busy with anything)
@@ -1214,13 +1240,8 @@ function frame(ts){
   const sw=(t%1.8)/1.8;
   E.sweat.setAttribute('opacity',m==='running'||m==='pleading'?(sw<.75?1:1-(sw-.75)/.25).toFixed(2):'0');
   E.sweat.setAttribute('transform',`translate(-70,${(-44+eOut(sw)*18).toFixed(1)}) scale(${(.6+Math.min(sw*3,1)*.4).toFixed(2)})`);
-  // skin: ears follow his mood (droop, perk, flatten) and twitch now and then; antennas/sprouts wobble; halos float
+  // skin: sprouts wobble, halos float
   const SP2=SKIN_PARTS||{};
-  if(SP2.earL||SP2.earR){
-    const base={sad:24,sleepy:20,bored:16,annoyed:34,error:30,listening:-10,surprised:-12,excited:-8,scared:-14,joy:6,purr:10,happy:4}[m]||0;
-    if(ts>earTwAt){ earTwAt=ts+3500+Math.random()*6000; (Math.random()<.5?G.earL:G.earR).kick((Math.random()<.5?-1:1)*90); }
-    for(const [side,key] of [[-1,'earL'],[1,'earR']]){ const g=SP2[key], pv=SP2.pivots[key]; if(!g||!pv) continue;
-      const a=side*(base+G[key].to(0,dt)); g.setAttribute('transform',`rotate(${a.toFixed(2)} ${pv[0]} ${pv[1]})`); } }
   if(SP2.wob){ const pv=SP2.pivots.wob, w=G.wob.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)+(LOOK.skin==='sprout'?Math.sin(t*1.3)*3:0);
     SP2.wob.setAttribute('transform',`rotate(${w.toFixed(2)} ${pv[0]} ${pv[1]})`); }
   if(SP2.halo) SP2.halo.setAttribute('transform',`translate(0,${(Math.sin(t*1.6)*2.2).toFixed(2)})`);
@@ -1231,9 +1252,8 @@ function frame(ts){
   E.zz.setAttribute('transform',`translate(0,${(-((t*6)%14)).toFixed(1)})`);
   for(let i=parts.length-1;i>=0;i--) if(!parts[i](ts,dt)) parts.splice(i,1);
   capTick(ts);
-  if(NATIVE&&!window.voidQt){ const a=(frameN++&1)?'rgba(0,0,0,.004)':'rgba(0,0,0,.006)';   // forces WebKit to repaint the whole window every frame —
+  if(NATIVE&&!window.nixiQt){ const a=(frameN++&1)?'rgba(0,0,0,.004)':'rgba(0,0,0,.006)';   // forces WebKit to repaint the whole window every frame —
     paintEl.style.background=a; document.documentElement.style.background=a; }  // both the page and the root, so the widened edge is covered too
-    // (not on Windows: Chromium repaints fine, and there the near-black fill shows as a dim box around him)
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -1255,8 +1275,8 @@ function enqueue(text,o={}){
     return; }
   const g=gen; q.push({cap:o.cap?(o.cap===true?text:o.cap):'',fresh:!!o.fresh,
     p:post('/api/tts',{text}).then(async r=>{ if(r.status!==200) return null;
-      const rate=+(r.headers.get('X-Void-Rate')||1), pause=+(r.headers.get('X-Void-Pause')||.08);
-      let words=null; try{ words=JSON.parse(r.headers.get('X-Void-Words')||'null'); }catch(e){}
+      const rate=+(r.headers.get('X-Nixi-Rate')||1), pause=+(r.headers.get('X-Nixi-Pause')||.08);
+      let words=null; try{ words=JSON.parse(r.headers.get('X-Nixi-Words')||'null'); }catch(e){}
       const b=await ac().decodeAudioData(await r.arrayBuffer()); return {b,rate,pause,words}; }).catch(()=>null).then(x=>g===gen?x:null)});
   pump();
 }
@@ -1432,25 +1452,44 @@ async function tidyNow(){ tick('tidying up…'); const r=await post('/api/compac
 async function readSSE(res,handle){
   const rd=res.body.getReader(), dec=new TextDecoder(); let pend='';
   for(;;){ const {value,done}=await rd.read(); if(done) break; pend+=dec.decode(value,{stream:true}); let i;
-    while((i=pend.indexOf('\n\n'))>=0){ const c=pend.slice(0,i); pend=pend.slice(i+2); if(c.startsWith('data: ')) try{ handle(JSON.parse(c.slice(6))); }catch(e){ console.log('[void] event error',e); } } }
+    while((i=pend.indexOf('\n\n'))>=0){ const c=pend.slice(0,i); pend=pend.slice(i+2); if(c.startsWith('data: ')) try{ handle(JSON.parse(c.slice(6))); }catch(e){ console.log('[nixi] event error',e); } } }
 }
-// one long-lived stream for things the server starts: "hey Void", approval questions
+// one long-lived stream for things the server starts: "hey Nixi", approval questions
 async function events(){
   for(;;){
     try{ const r=await post('/api/events'); if(r.ok) await readSSE(r,onEvent); }catch(e){}
     await sleep(2000);
   }
 }
+/* lambda-tip cues: one at a time, attention > calendar > system; the weather look (frost / thaw) is the quietest */
+let AMB={sys:[],cal:null,weather:null};
+const CUES={attn:['#ff8a2a','!'],cal:['#4d6fb7','📅'],sys:['#e5a50a','⚠']};
+function ambKind(){ if(attnPend&&performance.now()-attnPend.at<60000) return 'attn'; if(AMB.cal) return 'cal'; if(AMB.sys&&AMB.sys.length) return 'sys'; return ''; }
+function renderCue(){ const k=ambKind(), g=$('#cue'), bar=document.body.classList.contains('bar');   // (the notch only pulses)
+  g.setAttribute('display',k&&!bar?'':'none'); g.setAttribute('class',k);
+  if(k){ $('#cueD').setAttribute('fill',CUES[k][0]); $('#cueT').textContent=CUES[k][1]; }
+  const w=!k&&!bar&&AMB.weather, fr=$('#frost');
+  if(!fr.firstChild) fr.innerHTML=[0,1,2,3,4,5].map(i=>`<g transform="rotate(${i*60})"><circle cx="-8" cy="124" r="4"/><circle cx="-24" cy="118" r="2.2"/><circle cx="-56" cy="120" r="2.6"/></g>`).join('');
+  fr.setAttribute('display',w?'':'none'); fr.setAttribute('fill',AMB.weather==='cold'?'#e6f4ff':'#ffb36b'); fr.setAttribute('opacity',AMB.weather==='cold'?.9:.55); }   // frost on the tips / a slight warm thaw
+new MutationObserver(renderCue).observe(document.body,{attributes:true,attributeFilter:['class']});   // notch in / out: show or hide the mark
+$('#cue').addEventListener('click',e=>{ e.stopPropagation(); const k=ambKind();
+  if(k==='attn'){ attnJump(); renderCue(); }
+  else if(k==='cal'&&AMB.cal) tick('📅 '+AMB.cal.time+' '+AMB.cal.title);
+  else if(k==='sys') tick('failed: '+AMB.sys.join(', '),true); });
+let attnPend=null;     // the last agent nudge nobody has acted on yet (≤ 60 s): where a click on the notch / hovering orb jumps to
+function attnJump(){ const p=attnPend; attnPend=null; if(!p||performance.now()-p.at>60000) return false;
+  post('/api/attention/focus',{from:p.from}).catch(()=>{}); chip.classList.remove('on','act'); renderCue(); sendRegion(); return true; }
 function onEvent(ev){
-  if(ev.t==='saw'){ poke('looking',1800); wake(); return; }   // Claude took a look at your screen (`void see`)
+  if(ev.t==='theme'){ info.theme=ev.theme; lookShown=''; syncLook(); if(setEl.classList.contains('on')) renderSettings(); return; }
+  if(ev.t==='saw'){ poke('looking',1800); wake(); return; }   // Claude took a look at your screen (`nixi-companion see`)
   if(ev.t==='ctx'){ onContext(ev); return; }
   if(ev.t==='follow'){ follow=!!ev.on; hearRaw=0; if(follow) wake(); return; }
   if(ev.t==='hear'){ hearRaw=ev.v; return; }
   if(ev.t==='wake'){ if(rec||transcribing) return;
-    if(ev.follow&&hiddenNow) return;          // you sent him away: talking afterwards isn't for him (only "hey Void" is)
+    if(ev.follow&&hiddenNow) return;          // you sent him away: talking afterwards isn't for him (only "hey Nixi" is)
     if(hiddenNow) native('show');
     if(info.hover){ comeBack().then(()=>onEvent(ev)); return; }
-    if(ev.follow){ if(busy) return; wake(); send(ev.text,{follow:true}); return; }   // talked right after he answered: no "hey Void" needed
+    if(ev.follow){ if(busy) return; wake(); send(ev.text,{follow:true}); return; }   // talked right after he answered: no "hey Nixi" needed
     poke('surprised',500); wake(); sfx('wake');
     if(ev.text && ev.text.split(/\s+/).length>=2) send(ev.text); else if(!busy) startRec('auto'); else tick("one sec — I'm still on the last thing");
   }
@@ -1464,6 +1503,15 @@ function onEvent(ev){
   else if(ev.t==='spk_skip'){ const it=spkMap.get(ev.id); spkMap.delete(ev.id); if(it&&it.cap) karaNow(it.cap,it.fresh); quietNative(); }
   else if(ev.t==='spk_done'){ quietNative(); }
   else if(ev.t==='approve') queueApproval(ev);
+  else if(ev.t==='attention'){                            // an agent (claude/codex/agy…) is waiting for you: `nixi-companion attention`
+    const msg=ev.name+' needs you'+(ev.text?': '+ev.text:'');
+    if(hiddenNow){ post('/api/notify',{title:'Nixi',body:msg}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
+    if(info.hover) comeBack(); wake(); sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(msg); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
+    if(!muted) say(ev.name+' needs you'); }
+  else if(ev.t==='ambient'){ const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue();
+    if(ev.glint){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
+    if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')) flash('#4d6fb7'); }   // (never spoken)
+    else if(more&&document.body.classList.contains('bar')) flash('#e5a50a'); }
   else if(ev.t==='approve_done') approvalGone(ev.id);
   else if(ev.t==='askpass') askPass(ev);
   else if(ev.t==='askpass_done') pwGone(ev.id);
@@ -1519,7 +1567,7 @@ function capTick(ts){ if(!capOn){ if(kara.length) karaTick(ts); if(moreEl.classL
   karaTick(ts);
   if(busy||playing||kara.length||rec||transcribing||ask.classList.contains('on')){ quietSince=ts; return; }
   if(ts-quietSince>(himEl.classList.contains('err')?9000:6500)){ cap.classList.add('off'); capOn=false; } }
-function setYou(t){ youEl.textContent=t; youEl.classList.remove('pop'); void youEl.offsetWidth; youEl.classList.add('pop'); }
+function setYou(t){ youEl.textContent=t; youEl.classList.remove('pop'); youEl.offsetWidth; youEl.classList.add('pop'); }
 function himSet(t,bad){ karaDrop(); himEl.classList.toggle('err',!!bad); himEl.textContent=''; shownTxt=''; if(t) showHim(t,true); }
 function showHim(s,end){
   const p=untag(plain(s)).trim(); let ln=himEl.querySelector('.ln'), fresh=false;
@@ -1535,6 +1583,7 @@ function showHim(s,end){
     ln.appendChild(w); }
   while(ln.childNodes.length>320) ln.removeChild(ln.firstChild);
 }
+chip.addEventListener('click',()=>{ if(!chip.classList.contains('act')) return; attnPend={from:chip.dataset.from,at:performance.now()}; attnJump(); });
 let chipT=null; function tick(t,bad){ chip.textContent=t; chip.dataset.w=''; chip.className='on'+(bad?' bad':''); clearTimeout(chipT);
   chipT=setTimeout(()=>{ chipT=null; chip.className=''; workChip(); },bad?6500:3400); }
 // while Claude works: "⟳ reading app.py · 0:12" stays up top the whole time
@@ -1584,8 +1633,8 @@ $('#clipB').addEventListener('contextmenu',e=>{ e.preventDefault(); e.stopPropag
 const SCREEN_RE=/\b(my|the|this|on( the)?) screen\b|\bscreenshot\b|\bwhat am i looking at\b|\blook at (this|that|it)\b|\bsee (this|that)\b/i;
 const WHOLE_RE=/\b(whole|entire|full) screen\b|\ball (my )?(screens|monitors)\b/i;   // otherwise just the window you're using
 // live view: he sees your screen only while you've told him to — a fresh picture rides along with each thing you say
-const LIVE_ON=/^(?:hey\s+void[,\s]+)?(?:please\s+)?(?:(?:start|turn on|open)\s+)?(?:live view|live mode|watch(?:ing)? (?:my |the )?screen|keep an eye on (?:my |the )?screen|look live|see (?:my screen )?live)\b/i;
-const LIVE_OFF=/^(?:hey\s+void[,\s]+)?(?:please\s+)?(?:stop (?:watching|looking)(?: (?:at )?(?:my |the )?screen)?|(?:turn off|stop|close|end) (?:the )?live(?: view| mode)?|live(?: view)? off)\b/i;
+const LIVE_ON=/^(?:hey\s+nixi[,\s]+)?(?:please\s+)?(?:(?:start|turn on|open)\s+)?(?:live view|live mode|watch(?:ing)? (?:my |the )?screen|keep an eye on (?:my |the )?screen|look live|see (?:my screen )?live)\b/i;
+const LIVE_OFF=/^(?:hey\s+nixi[,\s]+)?(?:please\s+)?(?:stop (?:watching|looking)(?: (?:at )?(?:my |the )?screen)?|(?:turn off|stop|close|end) (?:the )?live(?: view| mode)?|live(?: view)? off)\b/i;
 let liveUntil=0, liveT=null;
 function setLive(on,why){
   clearTimeout(liveT); liveUntil=on?Date.now()+(info.live_minutes||10)*60000:0;
@@ -1603,7 +1652,7 @@ function askPass(ev){
   pwReq=ev; if(hiddenNow) native('show'); if(info.hover) comeBack();
   $('#pwQ').textContent=ev.retry?'That didn\'t work — try again':'He needs root for this';
   $('#pwHint').textContent='typed straight to sudo — never saved';
-  pwIn.value=''; pwEl.classList.add('on'); document.body.classList.add('pw'); if(ev.retry){ pwEl.classList.remove('bad'); void pwEl.offsetWidth; pwEl.classList.add('bad'); }
+  pwIn.value=''; pwEl.classList.add('on'); document.body.classList.add('pw'); if(ev.retry){ pwEl.classList.remove('bad'); pwEl.offsetWidth; pwEl.classList.add('bad'); }
   native('kbd:grab'); setTimeout(()=>pwIn.focus(),60); poke(ev.retry?'sad':'pleading',1600); sfx('remind');
 }
 function pwAnswer(pw){ const r=pwReq; if(!r) return; post('/api/askpass/answer',{id:r.id,pw}); pwClose(); poke(pw==null?'sad':'joy',900); }
@@ -1616,28 +1665,40 @@ pwIn.addEventListener('keydown',e=>{ e.stopPropagation(); if(e.key==='Escape'){ 
 /* ================= approvals ("ask me first") ================= */
 const apprQ=[]; const apEl=$('#appr');
 function queueApproval(ev){ apprQ.push(ev); if(!pendingAppr) nextApproval(); }
+function fitCard(){   // the card grows with the command (wider up to 640px, then taller), and the window grows to hold it
+  const longest=Math.max(0,...String(pendingAppr.detail||'').split('\n').map(x=>x.length)), w=Math.min(640,Math.max(312,Math.ceil(longest*6.9)+50));
+  apEl.style.width=w+'px'; cardW=w; apEl.style.setProperty('--apprMax',Math.round(screen.height*.6)+'px');
+  cardWant=[Math.max(0,w+28-340),Math.max(0,256+apEl.offsetHeight+14-460)]; sizeWindow(); cardPlace(); sendRegion(true); }
+let cardW=312;
+function cardPlace(){   // centred on him, but kept inside the window (it may have grown more on one side)
+  apEl.style.left=clamp(170-cardW/2,4-layoutX,innerWidth-layoutX-cardW-4)+'px'; }
 function nextApproval(){
   pendingAppr=apprQ.shift()||null;
   document.body.classList.toggle('appr',!!pendingAppr); apEl.classList.toggle('on',!!pendingAppr);
-  if(!pendingAppr) return;
+  if(!pendingAppr){ cardWant=[0,0]; sizeWindow(); return; }
   const a=pendingAppr;
   if(hiddenNow) native('show');
   const what=a.tool==='Bash'?'Can I run this?':a.tool==='WebFetch'?'Can I open this page?':a.tool==='WebSearch'?'Can I search the web?':
     /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(a.tool)?'Can I change this file?':`Can I use ${a.tool}?`;
-  $('#apQ').textContent=what; $('#apCmd').textContent=a.detail;
+  $('#apQ').textContent=what; $('#apCmd').textContent=a.detail; fitCard();
   { const al=apEl.querySelector('[data-ans="always"]'); if(al) al.hidden=a.always===false; }   // not for chained commands
   const spoken=a.say||what;   // the server says what it does in plain words (the card shows the real command)
   askAloud(a,spoken);
 }
+// what you said to an approval card → 'yes' | 'no' | 'always' | null. In nixi mode (bridged): "no" words win, only explicit yes
+// words count, and "always" is click-only.
+function voiceAnswer(said,bridged){
+  if(bridged) return /\b(no|nope|nah|don'?t|do not|stop|cancel|wait|never)\b/i.test(said)?'no':/\b(yes|yeah|yep|yup|approve|approved|do it|go ahead)\b/i.test(said)?'yes':null;
+  return /\b(always|every time|don'?t ask)\b/i.test(said)?'always':/\b(no|nope|nah|don'?t|stop|cancel|wait|never)\b/i.test(said)?'no':
+    /\b(yes|yeah|yep|yup|sure|ok|okay|go|go ahead|do it|run it|fine|please|alright|sounds good)\b/i.test(said)?'yes':null; }
 async function askAloud(a,spoken){
   if(!muted){ enqueue(spoken); await untilQuiet(); }
   for(let tries=0; tries<2 && pendingAppr===a; tries++){
     const said=(await startRec('approve'))||'';
     if(pendingAppr!==a) return;
-    const ans=/\b(always|every time|don'?t ask)\b/i.test(said)?'always':/\b(no|nope|nah|don'?t|stop|cancel|wait|never)\b/i.test(said)?'no':
-      /\b(yes|yeah|yep|yup|sure|ok|okay|go|go ahead|do it|run it|fine|please|alright|sounds good)\b/i.test(said)?'yes':null;
+    const ans=voiceAnswer(said,!!info.bridge);
     if(ans){ answer(ans); return; }
-    if(said) tick('say “yes” or “no” (or click)');
+    if(said) tick(info.bridge?'say “yes” or “no” — “always” is click-only':'say “yes” or “no” (or click)');
   }
 }
 function answer(ans){ const a=pendingAppr; if(!a) return;
@@ -1652,22 +1713,22 @@ function approvalGone(id){ if(pendingAppr&&pendingAppr.id===id){ if(rec&&rec.mod
 apEl.addEventListener('click',e=>{ const b=e.target.closest('[data-ans]'); if(b) answer(b.dataset.ans); });
 
 /* ================= talk to claude code ================= */
-const MEM_ADD=/^(?:hey\s+void[,\s]+)?(?:please\s+)?(?:remember|don'?t forget|note down|make a note)\s*(?:that|this|:)?\s+(.{3,})$/i;
-const MEM_DEL=/^(?:hey\s+void[,\s]+)?(?:please\s+)?forget\s+(?:that|about|the)?\s*(.{3,})$/i;
-const CTX_TIDY=/^(?:hey\s+void[,\s]+)?(?:please\s+)?(?:tidy up|clean up your memory|compact (?:your |the )?(?:memory|context|chat))\W*$/i;
-const MEM_SHOW=/^(?:hey\s+void[,\s]+)?what (?:do|did) you (?:remember|know about me)\b/i;
-const PROJ_ADD=/^(?:hey\s+void[,\s]+)?(?:remember|note)\s+(?:that\s+)?((?:my|the)\s+.+?)\s+(?:project\s+|folder\s+|repo\s+)?(?:is|lives)\s+(?:in|at)\s+(~?\/?[\w.\/-]+)\s*\.?$/i;
+const MEM_ADD=/^(?:hey\s+nixi[,\s]+)?(?:please\s+)?(?:remember|don'?t forget|note down|make a note)\s*(?:that|this|:)?\s+(.{3,})$/i;
+const MEM_DEL=/^(?:hey\s+nixi[,\s]+)?(?:please\s+)?forget\s+(?:that|about|the)?\s*(.{3,})$/i;
+const CTX_TIDY=/^(?:hey\s+nixi[,\s]+)?(?:please\s+)?(?:tidy up|clean up your memory|compact (?:your |the )?(?:memory|context|chat))\W*$/i;
+const MEM_SHOW=/^(?:hey\s+nixi[,\s]+)?what (?:do|did) you (?:remember|know about me)\b/i;
+const PROJ_ADD=/^(?:hey\s+nixi[,\s]+)?(?:remember|note)\s+(?:that\s+)?((?:my|the)\s+.+?)\s+(?:project\s+|folder\s+|repo\s+)?(?:is|lives)\s+(?:in|at)\s+(~?\/?[\w.\/-]+)\s*\.?$/i;
 const NICE=/\b(thank(s| you)|good job|well done|nice( one| work)?|love you|you'?re (the best|awesome|cute|great)|good boy|cutie)\b/i;
 async function send(text,opts={}){
   text=(text||'').trim(); if(!text&&!atts.length) return; wake();
-  if(text.startsWith('/')) return slash(text);
+  if(text.startsWith('/') && !(info.bridge && /^\/(mechanic|guide)$/.test(text))) return slash(text);   // nixi's trust: to the server
   // memory: handled right here, instantly
-  let mm; const question=/\?\s*$/.test(text)||/^(?:hey\s+void[,\s]+)?(?:do|did|can|could) you\b|^remember (what|when|how|where|why|which|who|if|the time)\b/i.test(text);
-  if(!question && (mm=text.match(PROJ_ADD))){ const r=await (await post('/api/projects',{op:'add',name:mm[1],path:mm[2]})).json();
+  let mm; const question=/\?\s*$/.test(text)||/^(?:hey\s+nixi[,\s]+)?(?:do|did|can|could) you\b|^remember (what|when|how|where|why|which|who|if|the time)\b/i.test(text);
+  if(!question && !info.bridge && (mm=text.match(PROJ_ADD))){ const r=await (await post('/api/projects',{op:'add',name:mm[1],path:mm[2]})).json();
     if(!r.error){ info.projects=r.projects; capShow(); setYou(text); say(`Got it — say “switch to ${mm[1].replace(/^(my|the) /i,'')}” any time.`); poke('wink',1300); sfx('ok'); return; } }
-  if(!question && (mm=text.match(MEM_ADD))){ const r=await (await post('/api/memory',{op:'add',text:mm[1].replace(/[.!]+$/,'')})).json();
+  if(!question && !info.bridge && (mm=text.match(MEM_ADD))){ const r=await (await post('/api/memory',{op:'add',text:mm[1].replace(/[.!]+$/,'')})).json();
     info.memory_count=r.items.length; capShow(); setYou(text); say(r.added?"Got it — I'll remember that.":'I already had that one!'); poke('wink',1300); return; }
-  if((mm=text.match(MEM_DEL))){ const r=await (await post('/api/memory',{op:'del',match:mm[1].replace(/[.!]+$/,'')})).json();
+  if(!info.bridge && (mm=text.match(MEM_DEL))){ const r=await (await post('/api/memory',{op:'del',match:mm[1].replace(/[.!]+$/,'')})).json();
     info.memory_count=r.items.length; capShow(); setYou(text); say(r.removed?'Okay, forgotten.':"I couldn't find that in my notes — opening them so you can pick."); if(!r.removed) openPanel('memory'); return; }
   if(LIVE_ON.test(text)){ setLive(true); capShow(); setYou(text); say("Okay, I'm watching. Say “stop watching” when you're done."); poke('looking',1400); sfx('ok'); return; }
   if(LIVE_OFF.test(text)){ const was=liveOn(); setLive(false); capShow(); setYou(text); say(was?'Okay, I stopped looking.':"I wasn't looking."); poke('wink',1000); return; }
@@ -1675,7 +1736,7 @@ async function send(text,opts={}){
   if(MEM_SHOW.test(text)){ capShow(); setYou(text); const n=info.memory_count||0; say(n?`I have ${n} note${n>1?'s':''} — here they are.`:"Nothing yet! Say “remember …” and I'll keep it."); openPanel('memory'); return; }
   if(!atts.length && text && !opts.claude){
     try{ const q=await (await post('/api/quick',{text})).json();
-      if(q.handled){ capShow(); setYou(text); say(q.say); poke(q.mood||'happy',1300); if(q.sfx) sfx(q.sfx); if(q.state){ info=q.state; showInfo(); } return; } }catch(e){} }
+      if(q.handled){ capShow(); setYou(text); say(q.say); poke(q.mood||'happy',1300); if(q.sfx) sfx(q.sfx); if(q.monitor) native('monitor:'+q.monitor); if(q.state){ info=q.state; showInfo(); } return; } }catch(e){} }
   if(busy){ tick("one sec — I'm still on the last thing"); return; }
   if(!atts.length && SCREEN_RE.test(text)) await shoot(WHOLE_RE.test(text)?'screen':'window');
   if(liveOn() && !atts.some(a=>['window','screen','region'].includes(a.kind))){ const j=await shoot('window',true); if(j) j.live=true; }
@@ -1714,7 +1775,7 @@ async function send(text,opts={}){
   lastAnswer=answerText; moreEl.classList.toggle('on',answerText.length>220||/```/.test(answerText));
   sfx(failed?'error':stopped?'pop':'done');
   if(hiddenNow && performance.now()-t0>8000){
-    if(info.notify_done) post('/api/notify',{title:failed?'Void hit a problem':'Void is done',body:plain(answerText).slice(0,240)||text});
+    if(info.notify_done) post('/api/notify',{title:failed?'Nixi hit a problem':'Nixi is done',body:plain(answerText).slice(0,240)||text});
     if(info.popup_done) native('show');
   }
   if(failed){ poke('sad',2800); if(barEdge()) notchPulse('#ff2a2a'); return; }
@@ -1847,11 +1908,12 @@ const ICON={
   hide:'<path d="M6 6l12 12M18 6 6 18"/>',
 };
 // (no top bar / blob button: you dock him by dragging him into a screen edge, and pull him out to get the blob back)
+const NX_MENU=['cd','history','look','plugins'];
 const MENU=[['talk','talk'],['cd','folder'],['history','history'],['look','show my screen'],['hover','hover mode'],['plugins','plug-ins'],['set','settings'],['hide','hide']];
 const MENU_XY=[];
 menuEl.innerHTML=MENU.map(([a,l],i)=>{ const ang=(-168+i*(156/(MENU.length-1)))*Math.PI/180, r=122;
   MENU_XY[i]=[Math.cos(ang)*r/1.1, Math.sin(ang)*r/1.1];                 // same spot in the face's SVG units (330px = 300 units)
-  return `<button class="mb" data-a="${a}" style="--x:${(Math.cos(ang)*r).toFixed(0)}px;--y:${(Math.sin(ang)*r).toFixed(0)}px;--d:${(.26+i*.025).toFixed(3)}s" title="${l}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[a]}</svg><span${a==='cd'?' id="cwdLbl"':''}>${l}</span></button>`; }).join('');
+  return `<button class="mb${NX_MENU.includes(a)?' nx':''}" data-a="${a}" style="--x:${(Math.cos(ang)*r).toFixed(0)}px;--y:${(Math.sin(ang)*r).toFixed(0)}px;--d:${(.26+i*.025).toFixed(3)}s" title="${l}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[a]}</svg><span${a==='cd'?' id="cwdLbl"':''}>${l}</span></button>`; }).join('');
 let menuOn=false;
 // in the notch his sparks fan out from it, away from the screen edge (an arc around his eyes), instead of over the ball
 const NOTCH_MENU={top:[170,26,15,165], bottom:[170,434,-165,-15], left:[34,230,-75,75], right:[306,230,105,255]};   // eye centre x,y + arc from/to (deg)
@@ -1877,14 +1939,14 @@ function endListening(){ if(rec&&rec.mode!=='approve') stopRec(true); post('/api
 function setHoverClass(on){ document.body.classList.toggle('hover',on); sendRegion(true); }
 async function toggleHover(force){
   const on=typeof force==='boolean'?force:!info.hover;
-  if(!NATIVE){ tick('hover mode works in the Void window (not the browser fallback)',true); return; }
+  if(!NATIVE){ tick('hover mode works in the Nixi window (not the browser fallback)',true); return; }
   if(on&&document.body.classList.contains('bar')) native('bar:off');      // out of the notch first, then he's your cursor
   await setSetting({hover:on}); native(on?'hover:on':'hover:off'); setHoverClass(on);
   poke(on?'curious':'wink',1200);
 }
-window.voidHover=on=>setHoverClass(on);
+window.nixiHover=on=>setHoverClass(on);
 // the bar: the same eyes merged into a screen edge as a notch. The window docks and undocks itself (drag him onto an
-// edge / pull the bar away) and tells the page with voidDock(edge|''); the menu switch docks him at the top.
+// edge / pull the bar away) and tells the page with nixiDock(edge|''); the menu switch docks him at the top.
 const EDGES=['top','bottom','left','right'];
 // the edge he's docked on, or '' (the e-* class alone isn't enough: it stays a moment after he leaves, for the morph)
 const barEdge=()=>document.body.classList.contains('bar')?(EDGES.find(e=>document.body.classList.contains('e-'+e))||''):'';
@@ -1905,9 +1967,10 @@ function barShape(edge,k){ const W=260,H=52,SW=68,SH=210, o=24;
     return [170-w/2, edge==='top'?-o:460-h, w, h+o]; }
   const h=SH*(.55+.45*k), w=SW*k; return [edge==='left'?-o:340-w, 230-h/2, w+o, h]; }
 // dir 1: the ball flows into the edge and becomes the notch · dir -1: a drop swells out of the notch and becomes him
-// his colour → black as he melts in (and back as he drips out): p 0 = his colour, 1 = black
-function toBlack(p){ const h=(LOOK&&LOOK.body||'#191919').replace('#',''), q=1-Math.min(1,Math.max(0,p));
-  return '#'+[0,2,4].map(i=>Math.round(parseInt(h.substr(i,2),16)*q).toString(16).padStart(2,'0')).join(''); }
+// his colour → the notch colour as he melts in (and back as he drips out): p 0 = his colour, 1 = the notch
+let NOTCH_COL='#000000';                                            // the notch colour (the theme's, or black)
+function toNotch(p){ const h=(LOOK&&LOOK.body||'#191919').replace('#',''), n=NOTCH_COL.replace('#',''), q=Math.min(1,Math.max(0,p));
+  return '#'+[0,2,4].map(i=>{ const a=parseInt(h.substr(i,2),16), b=parseInt(n.substr(i,2),16); return Math.round(a+(b-a)*q).toString(16).padStart(2,'0'); }).join(''); }
 let meltDone=null;                                             // the running morph's ending (to finish it at once)
 // grabbed or re-docked mid-morph: jump straight to how it ends — no animation fighting your hand
 function snapMorph(){ if(!meltDone) return; const d=meltDone; meltDone=null; meltN++;
@@ -1921,7 +1984,7 @@ function melt(edge,dir,done){
   (function frame(now){
     if(n!==meltN) return;
     const t=Math.min(1,(now-t0)/dur), b=ballNow();
-    const col=toBlack(dir>0?smooth(t/.8):1-smooth((t-.2)/.8));                // his colour slides to black (or back)
+    const col=toNotch(dir>0?smooth(t/.8):1-smooth((t-.2)/.8));                // his colour slides to the notch colour (or back)
     for(const el of [ball,drop,...$$('.gooN')]) el.setAttribute('fill',col);
     let k, r;
     if(dir>0){ k=easeOutC((t-.12)/.6); r=R*b.s*(1-easeInC((t-.42)/.55)); }   // the edge swells, then drinks him in
@@ -1972,19 +2035,20 @@ function setBarClass(edge,pulled){
   } else EDGES.forEach(e=>b.classList.remove('e-'+e));
   const l=$('[data-a="bar"] span'); if(l) l.textContent=edge?'blob':'top bar'; sendRegion(true);
 }
-window.voidDock=(edge,how)=>{ edge=EDGES.includes(edge)?edge:''; if(menuOn) menu(false); setBarClass(edge,how==='pull'); info.presence=edge?'bar':'orb'; info.bar_edge=edge||info.bar_edge;
+window.nixiDock=(edge,how)=>{ edge=EDGES.includes(edge)?edge:''; if(menuOn) menu(false); setBarClass(edge,how==='pull'); info.presence=edge?'bar':'orb'; info.bar_edge=edge||info.bar_edge;
   setSetting(edge?{presence:'bar',bar_edge:edge}:{presence:'orb'});
   if(edge) poke('wink',900); };                 // (back out: the pop of his ball is reaction enough — no confetti)
 async function toggleBar(force){
   const on=typeof force==='boolean'?force:info.presence!=='bar';
-  if(!NATIVE){ tick('the top bar works in the Void window (not the browser fallback)',true); return; }
+  if(!NATIVE){ tick('the top bar works in the Nixi window (not the browser fallback)',true); return; }
   if(on&&info.hover) await toggleHover(false);
-  native(on?'bar:top':'bar:off');               // the window moves and answers with voidDock()
+  native(on?'bar:top':'bar:off');               // the window moves and answers with nixiDock()
 }
 // the whole notch is him: click to talk, right-click for the menu, drag it away to pull him out as the blob
 $('#barPill').addEventListener('mousedown',e=>{ if(e.button!==0) return; downAt=[e.clientX,e.clientY]; dragged=false; });
-// in the notch a left click is the menu: the 1st opens it, the 2nd closes it (talk: "hey Void", Space, or 🎙 in the menu)
+// in the notch a left click is the menu: the 1st opens it, the 2nd closes it (talk: "hey Nixi", Space, or 🎙 in the menu)
 $('#barPill').addEventListener('click',e=>{ if(dragged){ dragged=false; return; } downAt=null;
+  if(attnJump()) return;                                // a nudge is waiting: jump to that agent instead of opening the menu
   const was=menuOn; hideAsk(); closePanels(); G.jelly.kick(.4); menu(!was); });
 $('#barPill').addEventListener('contextmenu',e=>{ e.preventDefault(); E.body.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true})); });
 // the notch opens up to hold what's showing in it — his terminal while he works, his words, or both stacked (terminal
@@ -2026,9 +2090,9 @@ function convoCheck(){
   if(hearing) $('#barPill').style.setProperty('--lv',Math.min(1,Math.max(micRaw||0,hearRaw||0)).toFixed(2));
 }
 setInterval(convoCheck,50);
-window.voidBarUnsupported=()=>{ tick('the top bar needs layer-shell or X11 on this desktop',true); setSetting({presence:'orb'}); info.presence='orb'; setBarClass(''); };
-window.voidHoverUnsupported=()=>{ tick('hover mode needs Hyprland or X11 on this desktop',true); setSetting({hover:false}); setHoverClass(false); };
-window.voidLook=(dx,dy)=>{ lastMouse=performance.now(); const m=mood(lastMouse);
+window.nixiBarUnsupported=()=>{ tick('the top bar needs layer-shell or X11 on this desktop',true); setSetting({presence:'orb'}); info.presence='orb'; setBarClass(''); };
+window.nixiHoverUnsupported=()=>{ tick('hover mode needs Hyprland or X11 on this desktop',true); setSetting({hover:false}); setHoverClass(false); };
+window.nixiLook=(dx,dy)=>{ lastMouse=performance.now(); const m=mood(lastMouse);
   if(['idle','listening','talking','curious','surprised','wink','love'].includes(m)||isTalk(m)){ tx=clamp(dx*6,-7,7); ty=clamp(dy*5,-6,6); } };
 
 /* ================= settings ================= */
@@ -2046,8 +2110,8 @@ function settings(on,tab){ setEl.classList.toggle('on',on); document.body.classL
   sendRegion(true); }
 function moveInd(){ const b=$('#tabs button.on'), ind=$('#tabInd'); if(!b||!ind) return; ind.style.width=b.offsetWidth+'px'; ind.style.transform=`translateX(${b.offsetLeft-3}px)`; }
 function showTab(t){ $$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t)); $$('#set .tab').forEach(x=>x.classList.toggle('on',x.dataset.tab===t));
-  moveInd(); try{ localStorage.setItem('void.tab',t); }catch(e){} }
-try{ const t=localStorage.getItem('void.tab'); if(t) showTab(t); }catch(e){}
+  moveInd(); try{ localStorage.setItem('nixi.tab',t); }catch(e){} }
+try{ const t=localStorage.getItem('nixi.tab'); if(t) showTab(t); }catch(e){}
 $('#tabs').addEventListener('click',e=>{ const b=e.target.closest('[data-tab]'); if(b) showTab(b.dataset.tab); });
 
 /* ---------- the colour picker: tap a part of him (or a chip), then pick ---------- */
@@ -2061,20 +2125,20 @@ let pkPart='pupL', pkHSV=[150,.6,.6], saveT=null;
 const hsv2hex=(h,s,v)=>{ const f=n=>{ const k=(n+h/60)%6; return v-v*s*Math.max(0,Math.min(k,4-k,1)); }; return rgb2hex([f(5),f(3),f(1)]); };
 function hex2hsv(hex){ const [r,g,b]=hex2rgb(hex), mx=Math.max(r,g,b), mn=Math.min(r,g,b), d=mx-mn;
   let h=0; if(d){ h=mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4; h*=60; if(h<0) h+=360; } return [h, mx?d/mx:0, mx]; }
-function curLook(){ return {...LOOK_DEFAULT,...(info.look||{})}; }
+function curLook(){ return themed({...LOOK_DEFAULT,...(info.look||{})}); }
 function partColour(L,p){ return p==='skin'?(L.skinColor||L.body):L[p]; }
 function editKeys(L,p){ if(L.link&&(p==='pupL'||p==='pupR')) return ['pupL','pupR']; if(L.link&&(p==='whiteL'||p==='whiteR')) return ['whiteL','whiteR'];
   return [p==='skin'?'skinColor':p]; }
 function setPart(hex,{save=true,fromPicker=false}={}){
-  const L=curLook(); for(const k of editKeys(L,pkPart)) L[k]=hex; L.random=false;
-  info.look=L; applyLook(L); lookShown=JSON.stringify(L);
+  const L=curLook(); for(const k of editKeys(L,pkPart)) L[k]=hex; L.random=false; L.follow_theme=false;   // by hand: stop following the theme
+  info.look=L; applyLook(L); lookShown=JSON.stringify([L,info.theme]);
   if(!fromPicker&&hex){ pkHSV=hex2hsv(hex); }
   drawPicker(); drawPreview();
   if(save){ clearTimeout(saveT); saveT=setTimeout(()=>{ post('/api/settings',{look:curLook()}).then(r=>r.json()).then(j=>{ info=j; }).catch(()=>{}); addRecent(hex); },450); }
 }
-function addRecent(hex){ if(!okHex(hex)) return; let r=[]; try{ r=JSON.parse(localStorage.getItem('void.recent')||'[]'); }catch(e){}
-  r=[hex,...r.filter(x=>x!==hex)].slice(0,10); try{ localStorage.setItem('void.recent',JSON.stringify(r)); }catch(e){} renderRecent(); }
-function renderRecent(){ let r=[]; try{ r=JSON.parse(localStorage.getItem('void.recent')||'[]'); }catch(e){}
+function addRecent(hex){ if(!okHex(hex)) return; let r=[]; try{ r=JSON.parse(localStorage.getItem('nixi.recent')||'[]'); }catch(e){}
+  r=[hex,...r.filter(x=>x!==hex)].slice(0,10); try{ localStorage.setItem('nixi.recent',JSON.stringify(r)); }catch(e){} renderRecent(); }
+function renderRecent(){ let r=[]; try{ r=JSON.parse(localStorage.getItem('nixi.recent')||'[]'); }catch(e){}
   $('#pkRecent').innerHTML=r.map(c=>`<button data-sw="${c}" style="--c:${c}" title="${c}"></button>`).join(''); }
 function selectPart(p){
   const L=curLook(); if(L.link&&p==='pupR') p='pupL'; if(L.link&&p==='whiteR') p='whiteL';
@@ -2089,7 +2153,7 @@ function renderParts(){ const L=curLook();
     :[['body','Body'],['pupL','Left pupil'],['pupR','Right pupil'],['whiteL','Left eye white'],['whiteR','Right eye white']];
   if(L.skin!=='none') list.push(['skin','Skin']);
   $('#partChips').innerHTML=list.map(([p,l])=>`<button data-part="${p}" class="${pkPart===p?'on':''}"><i style="--c:${partColour(L,p)}"></i>${l}</button>`).join(''); }
-function drawPreview(){ const L=curLook(), svg=$('#lookPrev'); miniVoid(svg,L,true);
+function drawPreview(){ const L=curLook(), svg=$('#lookPrev'); miniNixi(svg,L,true);
   const sel=L.link&&pkPart==='pupL'?['pupL','pupR']:L.link&&pkPart==='whiteL'?['whiteL','whiteR']:[pkPart];
   svg.querySelectorAll('[data-part]').forEach(e=>{ if(sel.includes(e.dataset.part)&&e.tagName!=='g') e.classList.add('sel'); }); }
 function drawPicker(){
@@ -2114,24 +2178,25 @@ $('#pkAll').addEventListener('click',()=>{ const L=curLook(), R=randomLook(L); O
   post('/api/settings',{look:L}).then(r=>r.json()).then(j=>{ info=j; }); selectPart(pkPart); poke('excited',900); });
 
 function renderSettings(){
-  { const rr=$('#rootSw').closest('.row'); if(rr) rr.style.display=info.root_ok===false?'none':''; }   // no sudo on Windows
+  { const rr=$('#rootSw').closest('.row'); if(rr) rr.style.display=info.root_ok===false?'none':''; }
   const cur=(info.model||'default');
   $('#effortChips').innerHTML=['',...EFFORTS].map(e=>`<button data-eff="${e}" class="${(info.effort||'')===e?'on':''}">${e||'default'}</button>`).join('');
   $('#modelChips').innerHTML=MODELS.map(([id,l])=>`<button data-m="${id}" class="${cur===id?'on':''}">${l}</button>`).join('');
   $('#voiceChips').innerHTML=(info.voices||[]).map(v=>`<button data-v="${v.id}" class="${info.voice===v.id?'on':''}">${v.label}${v.downloading?'<i>⇣</i>':''}</button>`).join('');
   const sw={rootSw:info.root,speakSw:!muted,wakeSw:info.wake_word,autoSw:info.autostart,listenShowSw:info.listen_on_show,hoverSw:info.hover,
-    clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,rndSw:curLook().random,
+    followSw:!!info.follow_focus,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
     updSw:info.update_check!==false,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
   renderUpdate(); renderPtt();
   for(const k in sw){ const e=document.getElementById(k); if(e) e.checked=!!sw[k]; }
   const ps=restPu();
   $('#pupChips').innerHTML=[['slit','▮ slits'],['circle','● circles'],['dot','• dots']].map(([id,l])=>`<button data-ps="${id}" class="${ps===id?'on':''}">${l}</button>`).join('');
-  for(const bt of document.querySelectorAll('#faceChips button')) bt.classList.toggle('on',(info.code_face||'him')===bt.dataset.face);
+  for(const bt of document.querySelectorAll('#faceChips button')) bt.classList.toggle('on',(info.code_face||'you')===bt.dataset.face);
   { const ve=$('#voiceEng'); if(ve) ve.textContent=({kokoro:'(Kokoro voices)',piper:'(piper voices — run ./install.sh for the nicer Kokoro voices)',espeak:'(robot voice only — run ./install.sh)'})[info.voice_engine]||''; }
   $('#sttChips').innerHTML=STT.map(([id,l])=>`<button data-stt="${id}" class="${(info.whisper_model||'auto')===id?'on':''}">${l}</button>`).join('');
   const tr=info.trust==='root'?'trust':(info.trust||'ask');
   $('#trustOpts').innerHTML=TRUST.map(([id,ic,t,d])=>`<button class="opt${tr===id&&!info.root?' on':''}" data-trust="${id}"><span class="ic">${ic}</span><span><b>${t}</b><small>${d}</small></span></button>`).join('');
+  if(info.bridge) $('#trustOpts').innerHTML=`<div class="h">Trust: ${info.trust||'guide'} (set by nixi: type /mechanic or /guide)</div>`;
   $('#memCount').textContent=info.memory_count?`(${info.memory_count})`:'';
   const pr=info.projects||{};
   $('#projList').innerHTML=Object.keys(pr).length?Object.entries(pr).map(([n,p])=>`<div class="proj"><b>${esc(n)}</b><span title="${esc(p)}">${esc(p.replace(/^\/home\/[^/]+/,'~'))}</span><button data-pdel="${esc(n)}" title="remove">✕</button></div>`).join('')
@@ -2139,22 +2204,18 @@ function renderSettings(){
   // look
   const L=curLook();
   $('#skinGrid').innerHTML=(info.skins||Object.keys(SKIN_LABELS)).map(k=>`<button data-skin="${k}" class="${L.skin===k?'on':''}"><svg viewBox="-125 -150 250 250"></svg>${SKIN_LABELS[k]||k}</button>`).join('');
-  $$('#skinGrid button').forEach(b=>miniVoid(b.querySelector('svg'),{...L,skin:b.dataset.skin},false));
+  $$('#skinGrid button').forEach(b=>miniNixi(b.querySelector('svg'),{...L,skin:b.dataset.skin},false));
   selectPart(pkPart); renderRecent();
 }
-// push-to-talk hotkey: Windows watches the combo itself; on Linux your compositor binds `void ptt-down` / `void ptt-up`
+// push-to-talk hotkey: your compositor binds `nixi-companion ptt-down` / `nixi-companion ptt-up`
 let pttCapture=false;
 function pttLinux(k){                               // "Ctrl+Alt+Space" → Hyprland's "CTRL ALT, SPACE"
   const p=(k||'Ctrl+Alt+Space').split('+'), key=p.pop(); return [p.map(m=>m.toUpperCase().replace('WIN','SUPER')).join(' '), key.toUpperCase()];
 }
 function renderPtt(){
   const k=info.ptt_hotkey||'', b=$('#pttSet');
-  if(info.platform==='windows'){
-    b.textContent=pttCapture?'Press your keys…':(k||'Set a hotkey'); $('#pttOff').hidden=!k||pttCapture;
-  }else{
-    const [m,key]=pttLinux(k); $('#pttBar').hidden=true;
-    $('#pttHelp').innerHTML=`Hold a key combo anywhere to talk. Bind it in your desktop, e.g. Hyprland:<br><code>bind = ${esc(m)}, ${esc(key)}, exec, void ptt-down</code><br><code>bindr = ${esc(m)}, ${esc(key)}, exec, void ptt-up</code><br>sway: <code>bindsym</code> … <code>void ptt-down</code> and <code>bindsym --release</code> … <code>void ptt-up</code>. Other desktops: bind <code>void listen</code>.`;
-  }
+  const [m,key]=pttLinux(k); $('#pttBar').hidden=true;
+  $('#pttHelp').innerHTML=`Hold a key combo anywhere to talk. Bind it in your desktop, e.g. Hyprland:<br><code>bind = ${esc(m)}, ${esc(key)}, exec, nixi-companion ptt-down</code><br><code>bindr = ${esc(m)}, ${esc(key)}, exec, nixi-companion ptt-up</code><br>sway: <code>bindsym</code> … <code>nixi-companion ptt-down</code> and <code>bindsym --release</code> … <code>nixi-companion ptt-up</code>. Other desktops: bind <code>nixi-companion listen</code>.`;
 }
 function pttName(e){                                // a keydown → "Ctrl+Alt+Space", or '' if it's only a modifier
   const c=e.code; let key='';
@@ -2193,9 +2254,9 @@ async function copyDiagnostics(){
 }
 function announceUpdate(){                         // one quiet tick per new version, never a pop-up
   const u=info.update||{}; if(!u.newer) return;
-  let seen=''; try{ seen=localStorage.getItem('void-upd-seen')||''; }catch(e){}
+  let seen=''; try{ seen=localStorage.getItem('nixi-upd-seen')||''; }catch(e){}
   if(seen===u.latest) return;
-  try{ localStorage.setItem('void-upd-seen',u.latest); }catch(e){}
+  try{ localStorage.setItem('nixi-upd-seen',u.latest); }catch(e){}
   tick(`v${u.latest} is out — Settings → More to update`);
 }
 async function loadMics(){
@@ -2203,7 +2264,7 @@ async function loadMics(){
     $('#micSel').innerHTML=`<option value="">System default</option>`+(j.mics||[]).map(m=>`<option value="${esc(m.id)}"${m.id===cur?' selected':''}>${esc(m.label)}</option>`).join('');
   }catch(e){} }
 async function setSetting(b){ try{ info=await (await post('/api/settings',b)).json(); showInfo(); if(setEl.classList.contains('on')) renderSettings(); }catch(e){ tick('settings: '+e.message,true); } }
-function setLook(patch){ clearTimeout(saveT); const L={...curLook(),...patch}; info.look=L; applyLook(L); lookShown=JSON.stringify(L); return setSetting({look:L}); }
+function setLook(patch){ clearTimeout(saveT); const L={...curLook(),...patch}; info.look=L; applyLook(L); lookShown=JSON.stringify([L,info.theme]); return setSetting({look:L}); }
 setEl.addEventListener('click',e=>{
   if(e.target.closest('[data-close]')) return settings(false);
   const g=k=>e.target.closest(`[data-${k}]`);
@@ -2212,7 +2273,7 @@ setEl.addEventListener('click',e=>{
   const part=e.target.closest('#lookPrev [data-part], #partChips [data-part]');
   if(part&&part.dataset.part) return selectPart(part.dataset.part);
   if(bsw){ const v=bsw.dataset.sw; if(v===''){ const L=curLook(); L.skinColor=''; setLook({skinColor:''}).then(()=>selectPart('skin')); } else setPart(v); return; }
-  if(bk){ setLook({skin:bk.dataset.skin}).then(()=>{ poke(bk.dataset.skin==='none'?'wink':'excited',900); if(SKIN_PARTS.earL) earKick(); }); return; }
+  if(bk){ setLook({skin:bk.dataset.skin}).then(()=>{ poke(bk.dataset.skin==='none'?'wink':'excited',900); }); return; }
   if(bm) setSetting({model:bm.dataset.m}).then(()=>tick('model → '+bm.textContent));
   if(bv) setSetting({voice:bv.dataset.v}).then(()=>{ const vv=(info.voices||[]).find(x=>x.id===bv.dataset.v);
     if(vv&&!vv.ready) tick('downloading that voice… using another one till it lands');
@@ -2245,10 +2306,14 @@ setEl.addEventListener('change',e=>{
   if(id==='speakSw' && on===muted) toggleMute();
   if(id==='autoSw') setSetting({autostart:on}).then(()=>tick(on?'I’ll start when you log in':'won’t start at login'));
   if(id==='listenShowSw') setSetting({listen_on_show:on});
-  if(id==='wakeSw') setSetting({wake_word:on}).then(()=>tick(on?'say “hey Void” any time':'wake word off'));
+  if(id==='wakeSw') setSetting({wake_word:on}).then(()=>tick(on?'say “hey Nixi” any time':'wake word off'));
   if(id==='bargeSw') setSetting({barge_in:on});
   if(id==='sfxSw') setSetting({sfx:on}).then(()=>on&&sfx('ok'));
   if(id==='hoverSw') toggleHover(on);
+  if(id==='followSw') setSetting({follow_focus:on}).then(()=>native('follow:'+(on?'on':'off')));
+  if(id==='ambSysSw') setSetting({ambient_system:on});
+  if(id==='ambCalSw') setSetting({ambient_calendar:on});
+  if(id==='ambWxSw') setSetting({ambient_weather:on});
   if(id==='clickSw') setSetting({click_through:on}).then(()=>sendRegion(true));
   if(id==='notifySw') setSetting({notify_done:on});
   if(id==='popupSw') setSetting({popup_done:on});
@@ -2260,6 +2325,7 @@ setEl.addEventListener('change',e=>{
   if(id==='codeSw'){ setSetting({code_panel:on}); if(!on) CP.hide(); }
   if(id==='micSel') setSetting({mic_device:e.target.value}).then(()=>tick('microphone changed'));
   if(id==='linkSw'){ const L=curLook(); const patch={link:on}; if(on){ patch.pupR=L.pupL; patch.whiteR=L.whiteL; } setLook(patch).then(()=>selectPart(pkPart.replace('R','L'))); }
+  if(id==='themeSw') return setLook({follow_theme:on}).then(()=>{ lookShown=''; syncLook(); renderSettings(); });
   if(id==='rndSw') setLook({random:on}).then(()=>{ if(on){ lookRolled=false; syncLook(true); } else { lookShown=''; syncLook(); } renderSettings(); });
 });
 setEl.addEventListener('keydown',e=>{ if(e.target.matches('input[type=text],input[type=number]')) e.stopPropagation(); if(e.key==='Enter'&&(e.target.id==='projPath'||e.target.id==='projName')) $('#projAdd').click(); });
@@ -2304,20 +2370,20 @@ async function slash(cmd){
 }
 
 /* ================= wiring ================= */
-function showInfo(){ syncEye(); document.body.classList.toggle('faceyou',info.code_face==='you'); document.body.classList.toggle('fulltext',!!info.full_text); ctxRender(); input.placeholder=`ask in ${info.cwd_display||'~'}…`; const l=$('#cwdLbl'); if(l) l.textContent=info.cwd_display||'folder';
-  document.body.classList.toggle('root',!!info.root); }
+function showInfo(){ if(info.ambient){ AMB=info.ambient; renderCue(); } syncEye(); document.body.classList.toggle('faceyou',info.code_face==='you'); document.body.classList.toggle('fulltext',!!info.full_text); ctxRender(); input.placeholder=`ask in ${info.cwd_display||'~'}…`; const l=$('#cwdLbl'); if(l) l.textContent=info.cwd_display||'folder';
+  document.body.classList.toggle('root',!!info.root); document.body.classList.toggle('nixi',!!info.bridge); }
 async function refresh(){ try{ await tokenReady; const r=await fetch('/api/state',{headers:hdr()}); const j=await r.json();
   if(!('cwd' in j)) return staleToken();      // no (or an old) token: the server only said it's running
   info=j; showInfo(); announceUpdate(); }catch(e){} }
-function toggleMute(){ muted=!muted; try{localStorage.setItem('void.muted',muted?'1':'0');}catch(e){} if(muted) shush(); tick(muted?'voice off':'voice on'); if(setEl.classList.contains('on')) renderSettings(); }
+function toggleMute(){ muted=!muted; try{localStorage.setItem('nixi.muted',muted?'1':'0');}catch(e){} if(muted) shush(); tick(muted?'voice off':'voice on'); if(setEl.classList.contains('on')) renderSettings(); }
 
-// hidden (Esc, hide, closing him) = fully off: he stops talking and the server closes the mic — no "hey Void" until
-// he's shown again (Start menu, your hotkey, or `void`)
-window.voidHidden=()=>{ hiddenNow=true; endListening(); menu(false); hideAsk(); shush(); post('/api/sleep',{on:true}).catch(()=>{}); };
-window.voidShown=()=>{ hiddenNow=false; post('/api/sleep',{on:false}).catch(()=>{}); entrance(); wake(); refresh().then(()=>{ syncEye(true); if(pendingAppr||busy) return;
+// hidden (Esc, hide, closing him) = fully off: he stops talking and the server closes the mic — no "hey Nixi" until
+// he's shown again (Start menu, your hotkey, or `nixi-companion`)
+window.nixiHidden=()=>{ hiddenNow=true; endListening(); menu(false); hideAsk(); shush(); post('/api/sleep',{on:true}).catch(()=>{}); };
+window.nixiShown=()=>{ hiddenNow=false; post('/api/sleep',{on:false}).catch(()=>{}); entrance(); wake(); refresh().then(()=>{ syncEye(true); if(pendingAppr||busy) return;
   if(info.listen_on_show&&!info.hover) setTimeout(()=>startRec('auto'),450); else setTimeout(()=>poke('wink',900),350); }); };
 async function comeBack(){ if(!info.hover) return; await toggleHover(false); await sleep(700); }
-window.voidCmd=async c=>{ hiddenNow=false;
+window.nixiCmd=async c=>{ hiddenNow=false;
   if(c==='home'){ return comeBack(); }
   if(c==='listen'){ await comeBack(); if(rec) stopRec(false); else startRec('auto'); }
   else if(c==='look'){ await comeBack(); shoot('window').then(j=>{ if(j) startRec('auto'); }); }
@@ -2330,14 +2396,18 @@ window.voidCmd=async c=>{ hiddenNow=false;
 let lastRegion='';
 function calmCheck(){ document.body.classList.toggle('calm', setEl.classList.contains('on')||panelEl.classList.contains('on')||apEl.classList.contains('on')); }
 // the page is laid out for 340×460: if the window ends up a different size, scale/centre it instead of cutting things off
-let fitK=1, layoutX=0;
+let fitK=1, layoutX=0, layoutY=0;
+// room for a long approval card / terminal sheet: ask the window for extra width and height (it shrinks back at [0,0])
+let cardWant=[0,0], sheetWant=[0,0];
+function sizeWindow(){ const w=Math.max(cardWant[0],sheetWant[0]), h=Math.max(cardWant[1],sheetWant[1]);
+  native('size:'+w+','+h); }   // (sent every time: the window ignores a repeat, and a lost message would leave the card clipped)
 function fit(){ const k=Math.min(1, innerWidth/340, innerHeight/460); fitK=k>0.995?1:k; const bs=document.body.style;
-  bs.transformOrigin='0 0'; bs.margin='0'; bs.marginLeft=layoutX+'px';
+  bs.transformOrigin='0 0'; bs.margin='0'; bs.marginLeft=layoutX+'px'; bs.marginTop=layoutY+'px';
   bs.transform=fitK===1?'':`scale(${fitK})`;
-  if(NATIVE&&fitK<1) console.log(`[void] window is ${innerWidth}x${innerHeight} (expected 340x460) — scaling the page to fit`); }
+  if(NATIVE&&fitK<1) console.log(`[nixi] window is ${innerWidth}x${innerHeight} (expected 340x460) — scaling the page to fit`); }
 // the window widened for a panel: it grew to the left by ox px, so shift the page back and he stays exactly where he was
-window.voidLayout=ox=>{ layoutX=ox|0; fit(); sendRegion(true); requestAnimationFrame(moveInd); };
-addEventListener('resize',()=>{ fit(); sendRegion(true); moveInd(); }); fit();
+window.nixiLayout=(ox,oy)=>{ layoutX=ox|0; layoutY=oy|0; fit(); cardPlace(); sendRegion(true); requestAnimationFrame(moveInd); };
+addEventListener('resize',()=>{ fit(); cardPlace(); sendRegion(true); moveInd(); }); fit();
 function sendRegion(force){
   calmCheck();
   if(!NATIVE) return;
@@ -2354,6 +2424,7 @@ function sendRegion(force){
   } else add(E.body,8);
   if(menuOn) $$('.mb').forEach(b=>add(b,2));
   if(ask.classList.contains('on')) add(ask,4);
+  if(chip.classList.contains('act')&&chip.classList.contains('on')) add(chip,4);
   if(setEl.classList.contains('on')) add(setEl,4);
   if(panelEl.classList.contains('on')) add(panelEl,4);
   if(apEl.classList.contains('on')) add(apEl,4); if(pwEl.classList.contains('on')) add(pwEl,4);
@@ -2369,9 +2440,9 @@ addEventListener('transitionend',e=>{ if(e.target.matches&&e.target.matches('#me
 let downAt=null, dragged=false, clicks=[];
 E.body.addEventListener('mousedown',e=>{ if(e.button!==0) return; downAt=[e.clientX,e.clientY]; dragged=false; });
 let mode={layer:false,cursor:true}, dragNative=false;
-window.voidMode=m=>{ mode=m;
+window.nixiMode=m=>{ mode=m;
   // he couldn't be an overlay: say why, right on screen, instead of silently being a window
-  if(m&&!m.layer&&m.why&&!window.__whyShown){ window.__whyShown=true; setTimeout(()=>{ tick("I can't stay on top here — "+m.why,true); console.log('[void] not on top: '+m.why); },2500); } };
+  if(m&&!m.layer&&m.why&&!window.__whyShown){ window.__whyShown=true; setTimeout(()=>{ tick("I can't stay on top here — "+m.why,true); console.log('[nixi] not on top: '+m.why); },2500); } };
 // petting: rub the mouse back and forth over him
 let petDir=0, petFlips=[], petCool=0;
 E.body.addEventListener('mousemove',ev=>{ if(ev.buttons) return; const d=Math.sign(ev.movementX||0); if(!d||Math.abs(ev.movementX)<2) return;
@@ -2393,6 +2464,7 @@ async function interrupt(){ const was=busy; shush(); CP.hide(); sfx('pop'); poke
 let spaceHeld=false;
 // left-click: talk (or cut in) · right-click: his sparks swoosh out into the menu
 E.body.addEventListener('click',()=>{ if(dragged){ dragged=false; return; } downAt=null;
+  if(document.body.classList.contains('hover')&&attnJump()) return;     // (hover mode has no chip: the orb takes the click)
   if(menuOn){ menu(false); return; }                   // menu open: this click just closes it
   if(menuShutAt&&performance.now()-menuShutAt<300) return;   // (it was just closed by the mousedown of this same click)
   const n=performance.now(); clicks=clicks.filter(c=>n-c<1400); clicks.push(n);
@@ -2441,11 +2513,11 @@ addEventListener('blur',()=>{ spaceHeld=false; if(rec&&rec.mode==='ptt') stopRec
    His eyes keep an eye on it. */
 const CP=(()=>{
   const el=$('#code'), out=el.querySelector('.lines'), titleEl=el.querySelector('.tb b'), stEl=el.querySelector('.tb span');
-  const W=136, H=80, ROWS=5;                       // size, visible lines
+  let W=490, H=168; const ROWS=24, MAXH=442;                       // size, visible lines
   let on=false, last=0, wide=false, offT=null, pos=null;
   const sp={x:0,y:0,vx:0,vy:0,r:0};                // held in a "hand": follows where he looks, with a little lag and tilt
   let look=[0,4.5], lookUntil=0, glancing=false;
-  const ball=()=>document.querySelector('#body > circle').getBoundingClientRect();
+  const ball=()=>document.querySelector('#body > .ball').getBoundingClientRect();
 
   // ---- like a guy holding a piece of paper: it sits just under his eyes. By default it's turned to face HIM (you see it
   // from the back: mirrored text, top leaning toward you); Settings → Look → Terminal can turn it to face YOU so you can
@@ -2495,7 +2567,14 @@ const CP=(()=>{
   // ---- show / hide (the window gets a bit wider while it's out, so it has room to go round)
   function show(){ if(info.code_panel===false||document.body.classList.contains('hover')) return; clearTimeout(offT);
     if(!wide){ wide=true; native('code:on'); } if(!on&&!el.classList.contains('on')){ pos=null; glancing=false; lookUntil=performance.now()+4500; } on=true; el.classList.add('on'); document.body.classList.add('term'); }
-  function hide(){ on=false; el.classList.remove('on'); document.body.classList.remove('term'); clearTimeout(offT); offT=setTimeout(()=>{ if(!on&&wide){ wide=false; native('code:off'); } },400); }
+  function fitSheet(){   // the sheet follows its content: wider for long lines (up to 720px, then they wrap), taller for more lines
+    let mx=0; for(const c of out.children) mx=Math.max(mx,c.textContent.length);
+    const w=clamp(Math.ceil(mx*7.9)+30,490,720); if(w!==W){ W=w; el.style.width=w+'px'; }
+    while(out.children.length>8&&el.offsetHeight>MAXH) out.firstChild.remove();
+    H=el.offsetHeight; const want=[Math.max(0,W+28-340),Math.max(0,H-160)];
+    if(want[0]!==sheetWant[0]||want[1]!==sheetWant[1]){ sheetWant=want; sizeWindow(); } }
+  new MutationObserver(()=>{ if(on&&!barEdge()) fitSheet(); }).observe(out,{childList:true,subtree:true,characterData:true});
+  function hide(){ sheetWant=[0,0]; sizeWindow(); on=false; el.classList.remove('on'); document.body.classList.remove('term'); clearTimeout(offT); offT=setTimeout(()=>{ if(!on&&wide){ wide=false; native('code:off'); } },400); }
 
   // ---- writing to it
   const KW=/\b(def|return|if|elif|else|for|while|in|not|and|or|import|from|try|except|with|as|const|let|var|function|async|await|new|null|None|True|False|true|false|fn|pub|use|match|export|raise|throw)\b/g;
@@ -2556,7 +2635,7 @@ const CP=(()=>{
   VIEWS.MultiEdit=VIEWS.Edit; VIEWS.NotebookEdit=VIEWS.Edit; VIEWS.Glob=VIEWS.Grep; VIEWS.LS=VIEWS.Grep; VIEWS.WebFetch=VIEWS.WebSearch;
 
   async function run(){ running=true;
-    while(q.length){ const ev=q.shift(); try{ await (VIEWS[ev.name]||VIEWS.other)(ev); }catch(e){ console.log('[void] terminal',e); } }
+    while(q.length){ const ev=q.shift(); try{ await (VIEWS[ev.name]||VIEWS.other)(ev); }catch(e){ console.log('[nixi] terminal',e); } }
     running=false; if(!busy||answering) hide(); }
   return {
     tool(ev){ if(info.code_panel===false) return; answering=false; q.push(ev); if(!running) run(); },
@@ -2569,8 +2648,9 @@ const CP=(()=>{
 
 refresh().then(()=>{
   if(info.hover && NATIVE){ native('hover:on'); setHoverClass(true); }
-  else if(info.presence==='bar' && NATIVE) native('bar:'+(info.bar_edge||'top'));   // the window docks, then voidDock()
-  if(NATIVE) native('ptt:'+(info.ptt_hotkey||''));          // the Windows window watches this combo (Linux ignores it)
+  else if(info.presence==='bar' && NATIVE) native('bar:'+(info.bar_edge||'top'));   // the window docks, then nixiDock()
+  if(NATIVE) native('follow:'+(info.follow_focus?'on':'off'));
+  if(NATIVE) native('ptt:'+(info.ptt_hotkey||''));        
   if(info.claude===false){ fail("I can't find Claude Code — install it and run `claude` once to sign in."); }
   else if(info.mic===false) tick('no mic recorder — install libpulse or alsa-utils',true);
   else if(!info.tts && !muted) tick('no voice engine — install espeak-ng or piper',true);

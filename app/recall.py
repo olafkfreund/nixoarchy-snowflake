@@ -156,7 +156,7 @@ def answer(text):
     if PATH is None:
         return None
     t = " ".join((text or "").lower().replace("’", "'").split()).strip(" .!?")
-    t = re.sub(r"^(?:hey void|void|ok void|okay void)[,\s]+", "", t)
+    t = re.sub(r"^(?:hey nixi|nixi|ok nixi|okay nixi)[,\s]+", "", t)
     t = re.sub(r"^(?:please|can you|could you|would you|will you)\s+", "", t)
     if not t or len(t) > 120:
         return None
