@@ -310,9 +310,23 @@ def handle(text):
     t = re.sub(r"^(hey nixi|nixi|ok nixi|okay nixi)[,\s]+", "", t)
     t = re.sub(r"^(please|can you|could you|would you|will you)\s+", "", t)
     t = re.sub(r"\s+please$", "", t)
+    # a send keeps its case and its punctuation (it is typed into another session) and may be longer than other phrases (#95)
+    m = re.match(r"^\s*(?:(?:hey )?nixi,?\s+)?tell (?:the |my )?(.+?) session[:,]\s*(.+)$", (text or "").strip()[:600], re.I)
+    if m and len(m.group(2)) <= 500:
+        return {"session_send": [m.group(1).strip().lower(), m.group(2).strip()]}
     if not t or len(t) > 120:
         return None
 
+    # running agent sessions (#95): the server resolves the name and talks to herdr
+    m = re.match(r"^(?:how is|how's|hows) (?:the |my )?(.+?) session (?:doing|going)$", t)
+    if m:
+        return {"session_status": m.group(1)}
+    m = re.match(r"^(?:the )?status of (?:the |my )?(.+?)( session)?$", t)
+    if m:                       # without the word "session" it may be about anything: the server falls through if nothing matches
+        return {"session_status": m.group(1), "loose": not m.group(2)}
+    m = re.match(r"^(?:show|open) me (?:the |my )?(.+?) session$", t)
+    if m:
+        return {"session_show": m.group(1)}
     # switch project / folder
     m = re.match(r"^(?:switch to|go to|jump to|work on|open|cd to|change to)\s+(?:my\s+|the\s+)?(.+?)(?:\s+(?:project|folder|repo|directory))?$", t)
     if m:

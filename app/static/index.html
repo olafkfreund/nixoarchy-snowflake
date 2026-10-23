@@ -626,7 +626,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 <div class="pn" id="panel"><div class="hd"><b id="pTitle"></b><span id="pTools"></span><button class="x" data-close title="Close (Esc)">✕</button></div><div class="bd" id="pBody"></div></div>
 
 <div id="appr"><div class="q">✋ <span id="apQ">Can I run this?</span></div><pre id="apCmd"></pre>
-  <div class="bar"><span class="hint">say “yes” or “no”</span><button class="btn sm" data-ans="always" title="don't ask again for this exact command in this chat">always</button><button class="btn sm" data-ans="no">no</button><button class="btn sm yes" data-ans="yes">yes</button></div></div>
+  <div class="bar"><span class="hint" id="apHint">say “yes” or “no”</span><button class="btn sm" data-ans="always" title="don't ask again for this exact command in this chat">always</button><button class="btn sm" data-ans="no">no</button><button class="btn sm yes" data-ans="yes">yes</button></div></div>
 
 <form id="pwbox" autocomplete="off"><div class="q">🔑 <span id="pwQ">He needs root for this</span></div>
   <div class="pwrow"><input id="pwIn" type="password" spellcheck="false" placeholder="your sudo password" aria-label="sudo password">
@@ -1680,7 +1680,7 @@ function nextApproval(){
   if(hiddenNow) native('show');
   const what=a.tool==='Bash'?'Can I run this?':a.tool==='WebFetch'?'Can I open this page?':a.tool==='WebSearch'?'Can I search the web?':
     /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(a.tool)?'Can I change this file?':`Can I use ${a.tool}?`;
-  $('#apQ').textContent=what; $('#apCmd').textContent=a.detail; fitCard();
+  $('#apHint').textContent=a.confirm==='click'?'click yes or no — voice can\'t confirm sends':'say “yes” or “no”'; $('#apQ').textContent=what; $('#apCmd').textContent=a.detail; fitCard();
   { const al=apEl.querySelector('[data-ans="always"]'); if(al) al.hidden=a.always===false; }   // not for chained commands
   const spoken=a.say||what;   // the server says what it does in plain words (the card shows the real command)
   askAloud(a,spoken);
@@ -1692,6 +1692,7 @@ function voiceAnswer(said,bridged){
   return /\b(always|every time|don'?t ask)\b/i.test(said)?'always':/\b(no|nope|nah|don'?t|stop|cancel|wait|never)\b/i.test(said)?'no':
     /\b(yes|yeah|yep|yup|sure|ok|okay|go|go ahead|do it|run it|fine|please|alright|sounds good)\b/i.test(said)?'yes':null; }
 async function askAloud(a,spoken){
+  if(a.confirm==='click'){ tick('click to confirm sends'); if(!muted) enqueue(spoken); return; }   // a send: the voice never answers it (#95)
   if(!muted){ enqueue(spoken); await untilQuiet(); }
   for(let tries=0; tries<2 && pendingAppr===a; tries++){
     const said=(await startRec('approve'))||'';
@@ -1734,8 +1735,9 @@ async function send(text,opts={}){
   if(LIVE_OFF.test(text)){ const was=liveOn(); setLive(false); capShow(); setYou(text); say(was?'Okay, I stopped looking.':"I wasn't looking."); poke('wink',1000); return; }
   if(CTX_TIDY.test(text)){ capShow(); setYou(text); say('Okay, tidying up.'); tidyNow(); return; }
   if(MEM_SHOW.test(text)){ capShow(); setYou(text); const n=info.memory_count||0; say(n?`I have ${n} note${n>1?'s':''} — here they are.`:"Nothing yet! Say “remember …” and I'll keep it."); openPanel('memory'); return; }
+  let asked=text;                            // what goes to the agent (a session summary asks with the session's text)
   if(!atts.length && text && !opts.claude){
-    try{ const q=await (await post('/api/quick',{text})).json();
+    try{ const q=await (await post('/api/quick',{text})).json(); if(q.ask) asked=q.ask;
       if(q.handled){ capShow(); setYou(text); say(q.say); poke(q.mood||'happy',1300); if(q.sfx) sfx(q.sfx); if(q.monitor) native('monitor:'+q.monitor); if(q.state){ info=q.state; showInfo(); } return; } }catch(e){} }
   if(busy){ tick("one sec — I'm still on the last thing"); return; }
   if(!atts.length && SCREEN_RE.test(text)) await shoot(WHOLE_RE.test(text)?'screen':'window');
@@ -1764,7 +1766,7 @@ async function send(text,opts={}){
     case 'stopped': stopped=true; tick('stopped'); poke('scared',900); break;
     case 'ignored': ignored=true; break; } };   // a follow-up that wasn't meant for him
   try{
-    const res=await post('/api/ask',{prompt:text,attach,follow:!!opts.follow});
+    const res=await post('/api/ask',{prompt:asked,attach,follow:!!opts.follow});
     if(!res.ok){ const j=await res.json().catch(()=>({})); throw new Error(j.error||res.statusText); }
     await readSSE(res,handle);
   }catch(e){ failed=true; himSet(e.message,true); }
@@ -2481,7 +2483,7 @@ addEventListener('mousedown',e=>{ if(!e.target.closest('#body,#barPill,#menu,#as
 
 addEventListener('keydown',e=>{ wake();
   const askOn=ask.classList.contains('on'), k=e.key.toLowerCase(), typing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&document.activeElement!==input;
-  if(pendingAppr && !askOn && !typing){ if(e.key==='Enter'||k==='y'){ e.preventDefault(); return answer('yes'); } if(e.key==='Escape'||k==='n'){ e.preventDefault(); return answer('no'); } }
+  if(pendingAppr && !askOn && !typing){ if((e.key==='Enter'||k==='y')&&pendingAppr.confirm==='click'){ e.preventDefault(); return; } if(e.key==='Enter'||k==='y'){ e.preventDefault(); return answer('yes'); } if(e.key==='Escape'||k==='n'){ e.preventDefault(); return answer('no'); } }
   if(e.key==='Escape'){ e.preventDefault();
     if(menuOn) return menu(false);
     if(setEl.classList.contains('on')||panelEl.classList.contains('on')) return closePanels(), sendRegion(true);
