@@ -69,6 +69,7 @@ body.bar.e-right #stage{transform:translate(136px,68px) scale(.46)}
 /* the morph is liquid (melt()): while his eyes glide up, his ball flows into the screen edge like a drop of liquid
    glass — the edge swells toward it, a neck forms, the ball is drawn in and absorbed — and back out a drop swells out
    of the notch, its neck stretches thin and snaps, and it wobbles round. The real ball parts are hidden meanwhile. */
+body.nixi .nx{display:none!important}
 body.bar #body>.ball,body.bar #body>ellipse,body.bar #orbBack,body.bar #orbFront,body.bar #workW,body.bar #haloW,body.bar #raysW,
 body.bar #vring,body.bar #shadow,body.bar #accBack,body.bar #accFront,body.bar #liveTag,
 body.goohide #body>.ball,body.goohide #body>ellipse,body.goohide #orbBack,body.goohide #orbFront,body.goohide #haloW,
@@ -559,7 +560,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
     <!-- ================= BRAIN ================= -->
     <div class="tab" data-tab="brain">
       <div class="row"><div class="t">How much can he do on his own?</div><div class="opts" id="trustOpts"></div></div>
-      <div class="row"><div class="t">Claude model</div><div class="h">Auto uses the fast model for quick questions and the full one for real work.</div><div class="seg" id="modelChips"></div>
+      <div class="row nx"><div class="t">Claude model</div><div class="h">Auto uses the fast model for quick questions and the full one for real work.</div><div class="seg" id="modelChips"></div>
         <div class="t sub">Thinking effort</div><div class="h">Higher thinks harder on real work, but is slower and uses more of your plan. “default” leaves it to Claude.</div><div class="seg" id="effortChips"></div>
         <label class="tg" style="margin-top:12px;padding-top:12px;border-top:1px solid #1c1c1c"><input type="checkbox" id="leanSw"><span class="sw"></span><span class="l">Light mode<small>Only the tools he needs (files, commands, web), not your other skills or plugins. Every chat starts about half the size, so it uses far less of your plan.</small></span></label>
         <div class="t sub">Stop when usage hits this amount<span class="pct" id="costVal"></span></div>
@@ -569,25 +570,25 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <div class="ctxbar" id="ctxBar"><i></i></div>
         <div class="h" id="ctxTxt"></div>
         <div class="h" id="recallTxt" style="margin-top:-3px"></div>
-        <label class="tg"><input type="checkbox" id="compactSw"><span class="sw"></span><span class="l">Tidy up automatically<small>At about 70% full he writes himself a short note and carries on in a fresh chat, so a long session can't quietly eat your usage.</small></span></label>
-        <div class="bar" style="margin-top:9px"><button class="btn sm" id="ctxTidy">Tidy up now</button><button class="btn sm" id="ctxNew">New chat</button></div></div>
+        <label class="tg nx"><input type="checkbox" id="compactSw"><span class="sw"></span><span class="l">Tidy up automatically<small>At about 70% full he writes himself a short note and carries on in a fresh chat, so a long session can't quietly eat your usage.</small></span></label>
+        <div class="bar" style="margin-top:9px"><button class="btn sm nx" id="ctxTidy">Tidy up now</button><button class="btn sm" id="ctxNew">New chat</button></div></div>
       <div class="row"><div class="t">Projects</div><div class="h">Say “switch to my <i>name</i>” to jump there. Add by voice: “remember my blog is in ~/code/blog”.</div>
         <div id="projList"></div>
         <div class="bar" style="margin-top:7px"><input type="text" id="projName" placeholder="name" style="flex:1 1 80px;min-width:0"><input type="text" id="projPath" placeholder="~/code/app" style="flex:2 1 120px;min-width:0"><button class="btn pri sm" id="projAdd">add</button></div></div>
-      <div class="row"><label class="tg red"><input type="checkbox" id="rootSw"><span class="sw"></span><span class="l">Root mode<small>Runs <b>anything</b>, incl. <code>sudo</code> — a password card appears next to him when he needs root.</small></span></label>
+      <div class="row nx"><label class="tg red"><input type="checkbox" id="rootSw"><span class="sw"></span><span class="l">Root mode<small>Runs <b>anything</b>, incl. <code>sudo</code> — a password card appears next to him when he needs root.</small></span></label>
         </div>
     </div>
     <!-- ================= MORE ================= -->
     <div class="tab" data-tab="more">
       <div class="row tgs">
-        <label class="tg"><input type="checkbox" id="autoSw"><span class="sw"></span><span class="l">Start when I log in<small>Ready and listening for “hey Void”.</small></span></label>
+        <label class="tg nx"><input type="checkbox" id="autoSw"><span class="sw"></span><span class="l">Start when I log in<small>Ready and listening for “hey Void”.</small></span></label>
         <label class="tg"><input type="checkbox" id="notifySw"><span class="sw"></span><span class="l">Notify me when a long task finishes<small>…while he's hidden.</small></span></label>
         <label class="tg"><input type="checkbox" id="popupSw"><span class="sw"></span><span class="l">Pop back up when it's done</span></label>
-        <label class="tg"><input type="checkbox" id="updSw"><span class="sw"></span><span class="l">Check for updates<small>Asks GitHub for the latest version when he starts, every few hours and when you open Settings. Nothing about you is sent.</small></span></label>
+        <label class="tg nx"><input type="checkbox" id="updSw"><span class="sw"></span><span class="l">Check for updates<small>Asks GitHub for the latest version when he starts, every few hours and when you open Settings. Nothing about you is sent.</small></span></label>
       </div>
       <div class="row"><div class="t">Memory &amp; history</div><div class="h">Say “remember …” and he keeps it for every future chat.</div>
-        <div class="bar"><button class="btn" data-open="memory">🧠 Memory <i id="memCount"></i></button><button class="btn" data-open="history">🕘 History</button></div></div>
-      <div class="row"><div class="t">Void <span id="verTxt"></span></div><div class="h" id="updTxt"></div>
+        <div class="bar"><button class="btn" data-open="memory">🧠 Memory <i id="memCount"></i></button><button class="btn nx" data-open="history">🕘 History</button></div></div>
+      <div class="row nx"><div class="t">Void <span id="verTxt"></span></div><div class="h" id="updTxt"></div>
         <div class="bar"><button class="btn" id="updNow" hidden>⬇ Update now</button><button class="btn" id="updCheck">Check now</button></div></div>
       <div class="row"><div class="t">Need help?</div><div class="h">Copies a report (versions, mic, voice, the end of his log) to paste when you ask for help. Nothing is sent; your name and folders are blanked out.</div>
         <div class="bar"><button class="btn" id="diagCopy">📋 Copy diagnostics</button><button class="btn" id="diagReport">Report a problem</button></div>
@@ -614,7 +615,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
   <div class="hint" id="pwHint">typed straight to sudo — never saved</div></form>
 
 <form id="ask" autocomplete="off">
-  <button id="clipB" class="round" type="button" title="Attach a screenshot (right-click: clipboard)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+  <button id="clipB" class="round nx" type="button" title="Attach a screenshot (right-click: clipboard)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
   <input id="input" spellcheck="false" placeholder="ask anything…">
   <button id="go" class="round" type="submit" title="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
 </form>
@@ -1861,11 +1862,12 @@ const ICON={
   hide:'<path d="M6 6l12 12M18 6 6 18"/>',
 };
 // (no top bar / blob button: you dock him by dragging him into a screen edge, and pull him out to get the blob back)
+const NX_MENU=['history','look','plugins'];
 const MENU=[['talk','talk'],['cd','folder'],['history','history'],['look','show my screen'],['hover','hover mode'],['plugins','plug-ins'],['set','settings'],['hide','hide']];
 const MENU_XY=[];
 menuEl.innerHTML=MENU.map(([a,l],i)=>{ const ang=(-168+i*(156/(MENU.length-1)))*Math.PI/180, r=122;
   MENU_XY[i]=[Math.cos(ang)*r/1.1, Math.sin(ang)*r/1.1];                 // same spot in the face's SVG units (330px = 300 units)
-  return `<button class="mb" data-a="${a}" style="--x:${(Math.cos(ang)*r).toFixed(0)}px;--y:${(Math.sin(ang)*r).toFixed(0)}px;--d:${(.26+i*.025).toFixed(3)}s" title="${l}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[a]}</svg><span${a==='cd'?' id="cwdLbl"':''}>${l}</span></button>`; }).join('');
+  return `<button class="mb${NX_MENU.includes(a)?' nx':''}" data-a="${a}" style="--x:${(Math.cos(ang)*r).toFixed(0)}px;--y:${(Math.sin(ang)*r).toFixed(0)}px;--d:${(.26+i*.025).toFixed(3)}s" title="${l}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[a]}</svg><span${a==='cd'?' id="cwdLbl"':''}>${l}</span></button>`; }).join('');
 let menuOn=false;
 // in the notch his sparks fan out from it, away from the screen edge (an arc around his eyes), instead of over the ball
 const NOTCH_MENU={top:[170,26,15,165], bottom:[170,434,-165,-15], left:[34,230,-75,75], right:[306,230,105,255]};   // eye centre x,y + arc from/to (deg)
@@ -2146,6 +2148,7 @@ function renderSettings(){
   $('#sttChips').innerHTML=STT.map(([id,l])=>`<button data-stt="${id}" class="${(info.whisper_model||'auto')===id?'on':''}">${l}</button>`).join('');
   const tr=info.trust==='root'?'trust':(info.trust||'ask');
   $('#trustOpts').innerHTML=TRUST.map(([id,ic,t,d])=>`<button class="opt${tr===id&&!info.root?' on':''}" data-trust="${id}"><span class="ic">${ic}</span><span><b>${t}</b><small>${d}</small></span></button>`).join('');
+  if(info.bridge) $('#trustOpts').innerHTML=`<div class="h">Trust: ${info.trust||'guide'} (set by nixi: type /mechanic or /guide)</div>`;
   $('#memCount').textContent=info.memory_count?`(${info.memory_count})`:'';
   const pr=info.projects||{};
   $('#projList').innerHTML=Object.keys(pr).length?Object.entries(pr).map(([n,p])=>`<div class="proj"><b>${esc(n)}</b><span title="${esc(p)}">${esc(p.replace(/^\/home\/[^/]+/,'~'))}</span><button data-pdel="${esc(n)}" title="remove">✕</button></div>`).join('')
@@ -2319,7 +2322,7 @@ async function slash(cmd){
 
 /* ================= wiring ================= */
 function showInfo(){ syncEye(); document.body.classList.toggle('faceyou',info.code_face==='you'); document.body.classList.toggle('fulltext',!!info.full_text); ctxRender(); input.placeholder=`ask in ${info.cwd_display||'~'}…`; const l=$('#cwdLbl'); if(l) l.textContent=info.cwd_display||'folder';
-  document.body.classList.toggle('root',!!info.root); }
+  document.body.classList.toggle('root',!!info.root); document.body.classList.toggle('nixi',!!info.bridge); }
 async function refresh(){ try{ await tokenReady; const r=await fetch('/api/state',{headers:hdr()}); const j=await r.json();
   if(!('cwd' in j)) return staleToken();      // no (or an old) token: the server only said it's running
   info=j; showInfo(); announceUpdate(); }catch(e){} }
