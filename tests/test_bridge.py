@@ -35,7 +35,7 @@ class BridgeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls._orig_env = os.environ.copy()
-        cls.tmp = Path(tempfile.mkdtemp(prefix="void-bridge-test-"))
+        cls.tmp = Path(tempfile.mkdtemp(prefix="nixi-bridge-test-"))
         home = cls.tmp / "home"
         config_home = home / ".config"
         data_home = home / ".local" / "share"

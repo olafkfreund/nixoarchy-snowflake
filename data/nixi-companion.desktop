@@ -1,8 +1,8 @@
 [Desktop Entry]
-Name=Void
+Name=Nixi
 Comment=Voice shell for Claude Code
-Exec=void
-Icon=void
+Exec=nixi-companion
+Icon=nixi-companion
 Type=Application
 Categories=Utility;Development;
-StartupWMClass=Void
+StartupWMClass=Nixi

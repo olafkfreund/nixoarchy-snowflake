@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Void installer — Arch, Debian/Ubuntu and Fedora (and their relatives). Everything goes in your home folder;
+# Nixi installer — Arch, Debian/Ubuntu and Fedora (and their relatives). Everything goes in your home folder;
 # only the system packages below need sudo.
 #   ./install.sh          everything (system packages, the app, your voice + speech models)
-#   ./install.sh --user   just your part (voice + speech models) — what `void setup` runs after a system-wide
+#   ./install.sh --user   just your part (voice + speech models) — what `nixi-companion setup` runs after a system-wide
 #                         `sudo ninja -C build install` (Gentoo & co.)
 set -euo pipefail
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 USER_ONLY=0; [ "${1:-}" = --user ] && USER_ONLY=1
-ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/void"
+ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/nixi-companion"
 BIN="$HOME/.local/bin"
-VOICE="${VOID_VOICE:-en_US-amy-medium}"   # any piper voice name, e.g. en_US-ryan-medium, en_GB-alba-medium
+VOICE="${NIXI_COMPANION_VOICE:-en_US-amy-medium}"   # any piper voice name, e.g. en_US-ryan-medium, en_GB-alba-medium
 say(){ printf '\033[1;32m●\033[0m %s\n' "$*"; }
 warn(){ printf '\033[1;33m!\033[0m %s\n' "$*"; }
 export PATH="$BIN:$PATH"
@@ -85,7 +85,7 @@ fi
 
 mkdir -p "$ROOT/voices" "$BIN" "$HOME/.local/share/applications"
 if [ $USER_ONLY = 1 ]; then
-  APPD="$SRC/app"             # the system-wide copy (e.g. /usr/share/void/app)
+  APPD="$SRC/app"             # the system-wide copy (e.g. /usr/share/nixi-companion/app)
 else
   say "Copying app to $ROOT"
   rm -rf "$ROOT/app"; cp -r "$SRC/app" "$ROOT/app"
@@ -106,7 +106,7 @@ if [ ! -x "$ROOT/venv/bin/python" ]; then
 fi
 uv pip install --python "$ROOT/venv/bin/python" -U faster-whisper pillow   # pillow: shrinks screenshots (fewer tokens)
 uv pip install --python "$ROOT/venv/bin/python" -U piper-tts \
-  || warn "piper-tts failed to install — Void will use espeak-ng (robotic) instead"
+  || warn "piper-tts failed to install — Nixi will use espeak-ng (robotic) instead"
 
 # Kokoro: his main voice — far more natural than piper, still all local. Small int8 model (~120 MB with the voices).
 # GitHub first; if that's blocked, kokoro_fetch.py builds the same files from Hugging Face.
@@ -114,9 +114,9 @@ KDIR="$ROOT/voices/kokoro"
 if uv pip install --python "$ROOT/venv/bin/python" -U kokoro-onnx; then
   say "Kokoro voice…"
   "$ROOT/venv/bin/python" "$APPD/kokoro_fetch.py" "$KDIR" \
-    || { rm -f "$KDIR"/*.part; warn "Kokoro download failed — Void will use piper until it can fetch it"; }
+    || { rm -f "$KDIR"/*.part; warn "Kokoro download failed — Nixi will use piper until it can fetch it"; }
 else
-  warn "kokoro-onnx failed to install — Void will use piper instead"
+  warn "kokoro-onnx failed to install — Nixi will use piper instead"
 fi
 
 IFS=- read -r loc spk q <<<"$VOICE"; lang="${loc%%_*}"
@@ -141,18 +141,18 @@ say "Fetching the speech-recognition model…"
 "$ROOT/venv/bin/python" "$APPD/server.py" --warm \
   || warn "couldn't pre-load the speech model; it will download on first use"
 
-[ $USER_ONLY = 1 ] || install -m755 "$SRC/bin/void" "$BIN/void"
+[ $USER_ONLY = 1 ] || install -m755 "$SRC/bin/nixi-companion" "$BIN/nixi-companion"
 "$ROOT/venv/bin/python" "$APPD/server.py" --sync-autostart >/dev/null 2>&1 \
-  && say "Void will start when you log in (turn off: Settings → More)" || true
-[ $USER_ONLY = 1 ] || cat > "$HOME/.local/share/applications/void.desktop" <<DESK
+  && say "Nixi will start when you log in (turn off: Settings → More)" || true
+[ $USER_ONLY = 1 ] || cat > "$HOME/.local/share/applications/nixi-companion.desktop" <<DESK
 [Desktop Entry]
-Name=Void
+Name=Nixi
 Comment=Voice shell for Claude Code
-Exec=$BIN/void
+Exec=$BIN/nixi-companion
 Icon=$ROOT/app/static/icon.png
 Type=Application
 Categories=Utility;Development;
-StartupWMClass=Void
+StartupWMClass=Nixi
 DESK
 
 # restart a running server/window so they pick up the new files
@@ -166,7 +166,7 @@ if ! command -v claude >/dev/null 2>&1 && [ ! -x "$BIN/claude" ]; then
   echo "    curl -fsSL https://claude.ai/install.sh | bash"
 fi
 [ $USER_ONLY = 1 ] || case ":$PATH:" in *":$BIN:"*) ;; *) warn "$BIN isn't on your PATH — add it to your shell rc";; esac
-say "Done! Run:  void        (again to hide him · 'void doctor' if the mic acts up)"
-echo "   Tip: bind a key to 'void listen' in your desktop's keyboard shortcuts, e.g."
-echo "     Hyprland: bind = SUPER, A, exec, void listen      sway / i3: bindsym \$mod+a exec void listen"
-echo "     GNOME / KDE / XFCE: Settings → Keyboard → Shortcuts → add a custom one running: void listen"
+say "Done! Run:  nixi-companion        (again to hide him · 'nixi-companion doctor' if the mic acts up)"
+echo "   Tip: bind a key to 'nixi-companion listen' in your desktop's keyboard shortcuts, e.g."
+echo "     Hyprland: bind = SUPER, A, exec, nixi-companion listen      sway / i3: bindsym \$mod+a exec nixi-companion listen"
+echo "     GNOME / KDE / XFCE: Settings → Keyboard → Shortcuts → add a custom one running: nixi-companion listen"

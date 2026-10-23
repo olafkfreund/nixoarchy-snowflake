@@ -40,7 +40,7 @@ let
   ]);
 in
 stdenvNoCC.mkDerivation {
-  pname = "void";
+  pname = "nixi-companion";
   version = "0.1.0";
   src = ../.;
 
@@ -65,13 +65,13 @@ stdenvNoCC.mkDerivation {
 
   installPhase = ''
     runHook preInstall
-    mkdir -p $out/share/void $out/bin $out/share/applications $out/share/icons/hicolor/512x512/apps
-    cp -r app $out/share/void/app
-    install -m755 bin/void $out/bin/void
-    install -m644 data/void.desktop $out/share/applications/void.desktop
-    install -m644 app/static/icon.png $out/share/icons/hicolor/512x512/apps/void.png
+    mkdir -p $out/share/nixi-companion $out/bin $out/share/applications $out/share/icons/hicolor/512x512/apps
+    cp -r app $out/share/nixi-companion/app
+    install -m755 bin/nixi-companion $out/bin/nixi-companion
+    install -m644 data/nixi-companion.desktop $out/share/applications/nixi-companion.desktop
+    install -m644 app/static/icon.png $out/share/icons/hicolor/512x512/apps/nixi-companion.png
     ${lib.optionalString (nixiBridge != null) ''
-      substituteInPlace $out/share/void/app/server.py \
+      substituteInPlace $out/share/nixi-companion/app/server.py \
         --replace-fail '"@nixiBridge@"' ${lib.escapeShellArg (builtins.toJSON (builtins.toJSON nixiBridge))}
     ''}
     runHook postInstall
@@ -79,9 +79,9 @@ stdenvNoCC.mkDerivation {
 
   # gappsWrapperArgs is only filled in during fixup
   postFixup = ''
-    wrapProgram $out/bin/void \
-      --set VOID_PYTHON ${py}/bin/python \
-      --set VOID_APP $out/share/void/app \
+    wrapProgram $out/bin/nixi-companion \
+      --set NIXI_COMPANION_PYTHON ${py}/bin/python \
+      --set NIXI_COMPANION_APP $out/share/nixi-companion/app \
       --prefix PATH : ${
         lib.makeBinPath [
           grim

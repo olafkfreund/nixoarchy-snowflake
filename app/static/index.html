@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Void</title>
+<title>Nixi</title>
 <link rel="icon" href="icon.png">
 <script>if(/[?&]native=1/.test(location.search)) document.documentElement.classList.add('native');</script>
 <style>
@@ -99,7 +99,7 @@ body.bar.hearing #barPill{transition:box-shadow .08s linear,height .5s var(--app
 body.bar.speaking:not(.hearing) #barPill{animation:speakGlow 1.1s ease-in-out infinite}
 @keyframes speakGlow{0%,100%{box-shadow:0 0 0 2px var(--glow),0 0 12px 3px var(--glow),var(--gx) var(--gy) 26px -6px var(--glow)}
   50%{box-shadow:0 0 0 3.5px var(--glow),0 0 18px 6px var(--glow),calc(var(--gx) * 1.8) calc(var(--gy) * 1.8) 34px -6px var(--glow)}}
-/* the round flashes and shock rings ("hey Void", happy, error…) become a flash of the notch itself */
+/* the round flashes and shock rings ("hey Nixi", happy, error…) become a flash of the notch itself */
 body.bar #barPill.pulse{animation:notchPulse .9s var(--ease)}
 @keyframes notchPulse{0%{box-shadow:0 0 0 2px var(--pulse,var(--glow)),0 0 6px 2px var(--pulse,var(--glow))}
   35%{box-shadow:0 0 0 3px var(--pulse,var(--glow)),0 0 18px 6px var(--pulse,var(--glow)),var(--gx) var(--gy) 34px -6px var(--pulse,var(--glow))}
@@ -591,15 +591,15 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       </div>
       <div class="row"><div class="t">Memory &amp; history</div><div class="h">Say “remember …” and he keeps it for every future chat.</div>
         <div class="bar"><button class="btn nx" data-open="memory">🧠 Memory <i id="memCount"></i></button><button class="btn nx" data-open="history">🕘 History</button></div></div>
-      <div class="row nx"><div class="t">Void <span id="verTxt"></span></div><div class="h" id="updTxt"></div>
+      <div class="row nx"><div class="t">Nixi <span id="verTxt"></span></div><div class="h" id="updTxt"></div>
         <div class="bar"><button class="btn" id="updNow" hidden>⬇ Update now</button><button class="btn" id="updCheck">Check now</button></div></div>
       <div class="row"><div class="t">Need help?</div><div class="h">Copies a report (versions, mic, voice, the end of his log) to paste when you ask for help. Nothing is sent; your name and folders are blanked out.</div>
         <div class="bar"><button class="btn" id="diagCopy">📋 Copy diagnostics</button><button class="btn" id="diagReport">Report a problem</button></div>
         <pre id="diagPrev" hidden style="max-height:160px;overflow:auto;font-size:10.5px;white-space:pre-wrap;user-select:text;margin:8px 0 0"></pre></div>
       <div class="row"><div class="t">Things you can just say</div>
         <div class="keys"><kbd>volume up</kbd><span>also mute, set volume to 40</span><kbd>pause / next song</kbd><span>needs playerctl</span><kbd>timer 10 minutes</kbd><span>“remind me at 5 to…”</span><kbd>what time is it</kbd><span>and the date</span><kbd>open firefox</kbd><span>any app</span><kbd>lock my screen</kbd><span></span><kbd>switch to my app</kbd><span>your projects</span></div></div>
-      <div class="row"><div class="t">Hotkeys</div><div class="h">Bind in your desktop, e.g. Hyprland <code>bind = SUPER, A, exec, void listen</code></div>
-        <div class="keys"><kbd>void listen</kbd><span>pop up &amp; listen</span><kbd>void look</kbd><span>screenshot, then listen</span><kbd>void hover</kbd><span>be my cursor / come back</span><kbd>void</kbd><span>show / hide</span></div></div>
+      <div class="row"><div class="t">Hotkeys</div><div class="h">Bind in your desktop, e.g. Hyprland <code>bind = SUPER, A, exec, nixi-companion listen</code></div>
+        <div class="keys"><kbd>nixi-companion listen</kbd><span>pop up &amp; listen</span><kbd>nixi-companion look</kbd><span>screenshot, then listen</span><kbd>nixi-companion hover</kbd><span>be my cursor / come back</span><kbd>nixi-companion</kbd><span>show / hide</span></div></div>
       <div class="row"><div class="t">While he's open</div>
         <div class="keys"><kbd>Space</kbd><span>hold to talk · tap to stop him</span><kbd>Enter</kbd><span>type</span><kbd>Esc</kbd><span>back / stop / hide</span><kbd>Ctrl+N</kbd><span>new chat</span><kbd>Ctrl+H</kbd><span>history</span><kbd>Ctrl+M</kbd><span>mute</span></div></div>
     </div>
@@ -632,8 +632,8 @@ const tokenReady=(async()=>{
   const h=new URLSearchParams(location.hash.slice(1));
   if(h.get('t')) TOKEN=h.get('t');
   else if(h.get('ticket')){ try{ const r=await fetch('/api/claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticket:h.get('ticket')})}); TOKEN=(await r.json()).token||''; }catch(e){} }
-  if(TOKEN){ try{ sessionStorage.setItem('void-t',TOKEN); }catch(e){} }
-  else{ try{ TOKEN=sessionStorage.getItem('void-t')||''; }catch(e){} }
+  if(TOKEN){ try{ sessionStorage.setItem('nixi-t',TOKEN); }catch(e){} }
+  else{ try{ TOKEN=sessionStorage.getItem('nixi-t')||''; }catch(e){} }
   if(location.hash) history.replaceState(null,'',location.pathname+location.search);   // out of the address bar / history
 })();
 const NATIVE=document.documentElement.classList.contains('native');
@@ -641,24 +641,24 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const input=$('#input'), youEl=$('#you'), himEl=$('#him'), cap=$('#cap'), chip=$('#chip'), ask=$('#ask'), menuEl=$('#menu');
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), lerp=(a,b,k)=>a+(b-a)*k;
 const approach=(a,b,dt,rate)=>a+(b-a)*(1-Math.exp(-rate*dt));      // frame-rate independent smoothing
-const hdr=x=>Object.assign({'X-Void-Token':TOKEN},x||{});
+const hdr=x=>Object.assign({'X-Nixi-Token':TOKEN},x||{});
 const post=(u,b,o)=>tokenReady.then(()=>fetch(u,Object.assign({method:'POST',headers:hdr({'Content-Type':'application/json'}),body:JSON.stringify(b||{})},o||{})))
   .then(r=>{ if(r.status===403) staleToken(); return r; });
 function staleToken(){                       // the server restarted with a new token: ask the window for it (at most every 10 s)
-  let last=0; try{ last=+sessionStorage.getItem('void-reload')||0; }catch(e){}
+  let last=0; try{ last=+sessionStorage.getItem('nixi-reload')||0; }catch(e){}
   if(Date.now()-last<10000) return;
-  try{ sessionStorage.setItem('void-reload',Date.now()); sessionStorage.removeItem('void-t'); }catch(e){}
-  if(!native('reauth')) tick('Void restarted — close this window and run “void” again',true);
+  try{ sessionStorage.setItem('nixi-reload',Date.now()); sessionStorage.removeItem('nixi-t'); }catch(e){}
+  if(!native('reauth')) tick('Nixi restarted — close this window and run “nixi-companion” again',true);
 }
-const native=msg=>{ try{ window.webkit.messageHandlers.voidui.postMessage(msg); return true; }catch(e){ return false; } };
+const native=msg=>{ try{ window.webkit.messageHandlers.nixiui.postMessage(msg); return true; }catch(e){ return false; } };
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 let workAmt=0, workRot=0, workWhat='', workT0=0;
 let busy=false, toolMood=null, muted=false, info={}, lastActive=performance.now(), hiddenNow=false;
 let transient=null, transientUntil=0, errorUntil=0;
-let rec=null, transcribing=false, micRaw=0, follow=false, hearRaw=0;   // follow: the no-"hey Void" window after he talks
-try{ muted=localStorage.getItem('void.muted')==='1'; }catch(e){}
+let rec=null, transcribing=false, micRaw=0, follow=false, hearRaw=0;   // follow: the no-"hey Nixi" window after he talks
+try{ muted=localStorage.getItem('nixi.muted')==='1'; }catch(e){}
 
 /* ================= his look: body colour, each pupil, each eye white, a skin =================
    Everything is a CSS variable, so changes glide in. UI accents (glow, sparks, menus) follow the left pupil. */
@@ -758,9 +758,9 @@ function drawSkin(back,front,L,bodyFill='url(#ballG)'){
   }
   return parts;
 }
-// little mini-Void for the settings preview + skin gallery (static, clickable parts)
+// little mini-Nixi for the settings preview + skin gallery (static, clickable parts)
 let miniN=0;
-function miniVoid(svg,L,clickable){
+function miniNixi(svg,L,clickable){
   svg.innerHTML=''; const id='mg'+(miniN++), [b0,b1,b2]=bodyStops(L.body);
   const defs=sv('defs',{},svg), gr=sv('radialGradient',{id,cx:-24,cy:-30,r:112,gradientUnits:'userSpaceOnUse'},defs);
   [[0,b0],[.55,b1],[1,b2]].forEach(([o,c])=>sv('stop',{offset:o,'stop-color':c},gr));
@@ -1009,8 +1009,8 @@ function tear(side){ const g=mk('path',{d:'M0-6C3-1 4.5 2 4.5 4.2A4.5 4.5 0 0 1-
     g.setAttribute('transform',`translate(${(x+Math.sin(p*5)*1.5).toFixed(1)},${(30+p*p*48).toFixed(1)}) scale(${(.5+Math.min(1,p*4)*.5).toFixed(2)})`);
     g.setAttribute('opacity',(p<.15?p/.15:p>.75?(1-p)/.25:1).toFixed(2)); return true; }); }
 const flashEl=$('#flash');
-function notchPulse(col){ const p=$('#barPill'); if(col) p.style.setProperty('--pulse',col); p.classList.remove('pulse'); void p.offsetWidth; p.classList.add('pulse'); }
-function flash(col){ if(document.body.classList.contains('bar')) return notchPulse(col); flashEl.style.setProperty('--flash',col); flashEl.classList.remove('go'); void flashEl.offsetWidth; flashEl.classList.add('go'); }
+function notchPulse(col){ const p=$('#barPill'); if(col) p.style.setProperty('--pulse',col); p.classList.remove('pulse'); p.offsetWidth; p.classList.add('pulse'); }
+function flash(col){ if(document.body.classList.contains('bar')) return notchPulse(col); flashEl.style.setProperty('--flash',col); flashEl.classList.remove('go'); flashEl.offsetWidth; flashEl.classList.add('go'); }
 
 function onMood(m){
   document.body.classList.forEach(c=>{ if(c.startsWith('m-')) document.body.classList.remove(c); }); document.body.classList.add('m-'+m);
@@ -1062,7 +1062,7 @@ function earKick(){ G.earL.kick(-120); G.earR.kick(120); } const paintEl=documen
 function frame(ts){
   const rawDt=(ts-(lastTs||ts))/1000, dt=clamp(rawDt,0,.05); lastTs=ts; const t=ts/1000;
   if(!lowFx && rawDt>0 && rawDt<.25 && document.visibilityState==='visible'){ perfAcc+=rawDt; perfN++;
-    if(perfN>=120){ if(perfAcc/perfN>.032){ lowFx=true; ['orbBack','orbFront','vring','workW'].forEach(k=>E[k].removeAttribute('filter')); console.log('[void] slow frames — glow off'); } perfAcc=0; perfN=0; } }
+    if(perfN>=120){ if(perfAcc/perfN>.032){ lowFx=true; ['orbBack','orbFront','vring','workW'].forEach(k=>E[k].removeAttribute('filter')); console.log('[nixi] slow frames — glow off'); } perfAcc=0; perfN=0; } }
   const m=mood(ts), T=MOODS[m], A=AURA[m];
   if(m!==prevMood){ onMood(m); prevMood=m; }
   // idle routines (not while he's the cursor, or busy with anything)
@@ -1244,7 +1244,7 @@ function frame(ts){
   E.zz.setAttribute('transform',`translate(0,${(-((t*6)%14)).toFixed(1)})`);
   for(let i=parts.length-1;i>=0;i--) if(!parts[i](ts,dt)) parts.splice(i,1);
   capTick(ts);
-  if(NATIVE&&!window.voidQt){ const a=(frameN++&1)?'rgba(0,0,0,.004)':'rgba(0,0,0,.006)';   // forces WebKit to repaint the whole window every frame —
+  if(NATIVE&&!window.nixiQt){ const a=(frameN++&1)?'rgba(0,0,0,.004)':'rgba(0,0,0,.006)';   // forces WebKit to repaint the whole window every frame —
     paintEl.style.background=a; document.documentElement.style.background=a; }  // both the page and the root, so the widened edge is covered too
     // (not on Windows: Chromium repaints fine, and there the near-black fill shows as a dim box around him)
   requestAnimationFrame(frame);
@@ -1268,8 +1268,8 @@ function enqueue(text,o={}){
     return; }
   const g=gen; q.push({cap:o.cap?(o.cap===true?text:o.cap):'',fresh:!!o.fresh,
     p:post('/api/tts',{text}).then(async r=>{ if(r.status!==200) return null;
-      const rate=+(r.headers.get('X-Void-Rate')||1), pause=+(r.headers.get('X-Void-Pause')||.08);
-      let words=null; try{ words=JSON.parse(r.headers.get('X-Void-Words')||'null'); }catch(e){}
+      const rate=+(r.headers.get('X-Nixi-Rate')||1), pause=+(r.headers.get('X-Nixi-Pause')||.08);
+      let words=null; try{ words=JSON.parse(r.headers.get('X-Nixi-Words')||'null'); }catch(e){}
       const b=await ac().decodeAudioData(await r.arrayBuffer()); return {b,rate,pause,words}; }).catch(()=>null).then(x=>g===gen?x:null)});
   pump();
 }
@@ -1445,9 +1445,9 @@ async function tidyNow(){ tick('tidying up…'); const r=await post('/api/compac
 async function readSSE(res,handle){
   const rd=res.body.getReader(), dec=new TextDecoder(); let pend='';
   for(;;){ const {value,done}=await rd.read(); if(done) break; pend+=dec.decode(value,{stream:true}); let i;
-    while((i=pend.indexOf('\n\n'))>=0){ const c=pend.slice(0,i); pend=pend.slice(i+2); if(c.startsWith('data: ')) try{ handle(JSON.parse(c.slice(6))); }catch(e){ console.log('[void] event error',e); } } }
+    while((i=pend.indexOf('\n\n'))>=0){ const c=pend.slice(0,i); pend=pend.slice(i+2); if(c.startsWith('data: ')) try{ handle(JSON.parse(c.slice(6))); }catch(e){ console.log('[nixi] event error',e); } } }
 }
-// one long-lived stream for things the server starts: "hey Void", approval questions
+// one long-lived stream for things the server starts: "hey Nixi", approval questions
 async function events(){
   for(;;){
     try{ const r=await post('/api/events'); if(r.ok) await readSSE(r,onEvent); }catch(e){}
@@ -1455,15 +1455,15 @@ async function events(){
   }
 }
 function onEvent(ev){
-  if(ev.t==='saw'){ poke('looking',1800); wake(); return; }   // Claude took a look at your screen (`void see`)
+  if(ev.t==='saw'){ poke('looking',1800); wake(); return; }   // Claude took a look at your screen (`nixi-companion see`)
   if(ev.t==='ctx'){ onContext(ev); return; }
   if(ev.t==='follow'){ follow=!!ev.on; hearRaw=0; if(follow) wake(); return; }
   if(ev.t==='hear'){ hearRaw=ev.v; return; }
   if(ev.t==='wake'){ if(rec||transcribing) return;
-    if(ev.follow&&hiddenNow) return;          // you sent him away: talking afterwards isn't for him (only "hey Void" is)
+    if(ev.follow&&hiddenNow) return;          // you sent him away: talking afterwards isn't for him (only "hey Nixi" is)
     if(hiddenNow) native('show');
     if(info.hover){ comeBack().then(()=>onEvent(ev)); return; }
-    if(ev.follow){ if(busy) return; wake(); send(ev.text,{follow:true}); return; }   // talked right after he answered: no "hey Void" needed
+    if(ev.follow){ if(busy) return; wake(); send(ev.text,{follow:true}); return; }   // talked right after he answered: no "hey Nixi" needed
     poke('surprised',500); wake(); sfx('wake');
     if(ev.text && ev.text.split(/\s+/).length>=2) send(ev.text); else if(!busy) startRec('auto'); else tick("one sec — I'm still on the last thing");
   }
@@ -1532,7 +1532,7 @@ function capTick(ts){ if(!capOn){ if(kara.length) karaTick(ts); if(moreEl.classL
   karaTick(ts);
   if(busy||playing||kara.length||rec||transcribing||ask.classList.contains('on')){ quietSince=ts; return; }
   if(ts-quietSince>(himEl.classList.contains('err')?9000:6500)){ cap.classList.add('off'); capOn=false; } }
-function setYou(t){ youEl.textContent=t; youEl.classList.remove('pop'); void youEl.offsetWidth; youEl.classList.add('pop'); }
+function setYou(t){ youEl.textContent=t; youEl.classList.remove('pop'); youEl.offsetWidth; youEl.classList.add('pop'); }
 function himSet(t,bad){ karaDrop(); himEl.classList.toggle('err',!!bad); himEl.textContent=''; shownTxt=''; if(t) showHim(t,true); }
 function showHim(s,end){
   const p=untag(plain(s)).trim(); let ln=himEl.querySelector('.ln'), fresh=false;
@@ -1597,8 +1597,8 @@ $('#clipB').addEventListener('contextmenu',e=>{ e.preventDefault(); e.stopPropag
 const SCREEN_RE=/\b(my|the|this|on( the)?) screen\b|\bscreenshot\b|\bwhat am i looking at\b|\blook at (this|that|it)\b|\bsee (this|that)\b/i;
 const WHOLE_RE=/\b(whole|entire|full) screen\b|\ball (my )?(screens|monitors)\b/i;   // otherwise just the window you're using
 // live view: he sees your screen only while you've told him to — a fresh picture rides along with each thing you say
-const LIVE_ON=/^(?:hey\s+void[,\s]+)?(?:please\s+)?(?:(?:start|turn on|open)\s+)?(?:live view|live mode|watch(?:ing)? (?:my |the )?screen|keep an eye on (?:my |the )?screen|look live|see (?:my screen )?live)\b/i;
-const LIVE_OFF=/^(?:hey\s+void[,\s]+)?(?:please\s+)?(?:stop (?:watching|looking)(?: (?:at )?(?:my |the )?screen)?|(?:turn off|stop|close|end) (?:the )?live(?: view| mode)?|live(?: view)? off)\b/i;
+const LIVE_ON=/^(?:hey\s+nixi[,\s]+)?(?:please\s+)?(?:(?:start|turn on|open)\s+)?(?:live view|live mode|watch(?:ing)? (?:my |the )?screen|keep an eye on (?:my |the )?screen|look live|see (?:my screen )?live)\b/i;
+const LIVE_OFF=/^(?:hey\s+nixi[,\s]+)?(?:please\s+)?(?:stop (?:watching|looking)(?: (?:at )?(?:my |the )?screen)?|(?:turn off|stop|close|end) (?:the )?live(?: view| mode)?|live(?: view)? off)\b/i;
 let liveUntil=0, liveT=null;
 function setLive(on,why){
   clearTimeout(liveT); liveUntil=on?Date.now()+(info.live_minutes||10)*60000:0;
@@ -1616,7 +1616,7 @@ function askPass(ev){
   pwReq=ev; if(hiddenNow) native('show'); if(info.hover) comeBack();
   $('#pwQ').textContent=ev.retry?'That didn\'t work — try again':'He needs root for this';
   $('#pwHint').textContent='typed straight to sudo — never saved';
-  pwIn.value=''; pwEl.classList.add('on'); document.body.classList.add('pw'); if(ev.retry){ pwEl.classList.remove('bad'); void pwEl.offsetWidth; pwEl.classList.add('bad'); }
+  pwIn.value=''; pwEl.classList.add('on'); document.body.classList.add('pw'); if(ev.retry){ pwEl.classList.remove('bad'); pwEl.offsetWidth; pwEl.classList.add('bad'); }
   native('kbd:grab'); setTimeout(()=>pwIn.focus(),60); poke(ev.retry?'sad':'pleading',1600); sfx('remind');
 }
 function pwAnswer(pw){ const r=pwReq; if(!r) return; post('/api/askpass/answer',{id:r.id,pw}); pwClose(); poke(pw==null?'sad':'joy',900); }
@@ -1665,17 +1665,17 @@ function approvalGone(id){ if(pendingAppr&&pendingAppr.id===id){ if(rec&&rec.mod
 apEl.addEventListener('click',e=>{ const b=e.target.closest('[data-ans]'); if(b) answer(b.dataset.ans); });
 
 /* ================= talk to claude code ================= */
-const MEM_ADD=/^(?:hey\s+void[,\s]+)?(?:please\s+)?(?:remember|don'?t forget|note down|make a note)\s*(?:that|this|:)?\s+(.{3,})$/i;
-const MEM_DEL=/^(?:hey\s+void[,\s]+)?(?:please\s+)?forget\s+(?:that|about|the)?\s*(.{3,})$/i;
-const CTX_TIDY=/^(?:hey\s+void[,\s]+)?(?:please\s+)?(?:tidy up|clean up your memory|compact (?:your |the )?(?:memory|context|chat))\W*$/i;
-const MEM_SHOW=/^(?:hey\s+void[,\s]+)?what (?:do|did) you (?:remember|know about me)\b/i;
-const PROJ_ADD=/^(?:hey\s+void[,\s]+)?(?:remember|note)\s+(?:that\s+)?((?:my|the)\s+.+?)\s+(?:project\s+|folder\s+|repo\s+)?(?:is|lives)\s+(?:in|at)\s+(~?\/?[\w.\/-]+)\s*\.?$/i;
+const MEM_ADD=/^(?:hey\s+nixi[,\s]+)?(?:please\s+)?(?:remember|don'?t forget|note down|make a note)\s*(?:that|this|:)?\s+(.{3,})$/i;
+const MEM_DEL=/^(?:hey\s+nixi[,\s]+)?(?:please\s+)?forget\s+(?:that|about|the)?\s*(.{3,})$/i;
+const CTX_TIDY=/^(?:hey\s+nixi[,\s]+)?(?:please\s+)?(?:tidy up|clean up your memory|compact (?:your |the )?(?:memory|context|chat))\W*$/i;
+const MEM_SHOW=/^(?:hey\s+nixi[,\s]+)?what (?:do|did) you (?:remember|know about me)\b/i;
+const PROJ_ADD=/^(?:hey\s+nixi[,\s]+)?(?:remember|note)\s+(?:that\s+)?((?:my|the)\s+.+?)\s+(?:project\s+|folder\s+|repo\s+)?(?:is|lives)\s+(?:in|at)\s+(~?\/?[\w.\/-]+)\s*\.?$/i;
 const NICE=/\b(thank(s| you)|good job|well done|nice( one| work)?|love you|you'?re (the best|awesome|cute|great)|good boy|cutie)\b/i;
 async function send(text,opts={}){
   text=(text||'').trim(); if(!text&&!atts.length) return; wake();
   if(text.startsWith('/') && !(info.bridge && /^\/(mechanic|guide)$/.test(text))) return slash(text);   // nixi's trust: to the server
   // memory: handled right here, instantly
-  let mm; const question=/\?\s*$/.test(text)||/^(?:hey\s+void[,\s]+)?(?:do|did|can|could) you\b|^remember (what|when|how|where|why|which|who|if|the time)\b/i.test(text);
+  let mm; const question=/\?\s*$/.test(text)||/^(?:hey\s+nixi[,\s]+)?(?:do|did|can|could) you\b|^remember (what|when|how|where|why|which|who|if|the time)\b/i.test(text);
   if(!question && !info.bridge && (mm=text.match(PROJ_ADD))){ const r=await (await post('/api/projects',{op:'add',name:mm[1],path:mm[2]})).json();
     if(!r.error){ info.projects=r.projects; capShow(); setYou(text); say(`Got it — say “switch to ${mm[1].replace(/^(my|the) /i,'')}” any time.`); poke('wink',1300); sfx('ok'); return; } }
   if(!question && !info.bridge && (mm=text.match(MEM_ADD))){ const r=await (await post('/api/memory',{op:'add',text:mm[1].replace(/[.!]+$/,'')})).json();
@@ -1727,7 +1727,7 @@ async function send(text,opts={}){
   lastAnswer=answerText; moreEl.classList.toggle('on',answerText.length>220||/```/.test(answerText));
   sfx(failed?'error':stopped?'pop':'done');
   if(hiddenNow && performance.now()-t0>8000){
-    if(info.notify_done) post('/api/notify',{title:failed?'Void hit a problem':'Void is done',body:plain(answerText).slice(0,240)||text});
+    if(info.notify_done) post('/api/notify',{title:failed?'Nixi hit a problem':'Nixi is done',body:plain(answerText).slice(0,240)||text});
     if(info.popup_done) native('show');
   }
   if(failed){ poke('sad',2800); if(barEdge()) notchPulse('#ff2a2a'); return; }
@@ -1891,14 +1891,14 @@ function endListening(){ if(rec&&rec.mode!=='approve') stopRec(true); post('/api
 function setHoverClass(on){ document.body.classList.toggle('hover',on); sendRegion(true); }
 async function toggleHover(force){
   const on=typeof force==='boolean'?force:!info.hover;
-  if(!NATIVE){ tick('hover mode works in the Void window (not the browser fallback)',true); return; }
+  if(!NATIVE){ tick('hover mode works in the Nixi window (not the browser fallback)',true); return; }
   if(on&&document.body.classList.contains('bar')) native('bar:off');      // out of the notch first, then he's your cursor
   await setSetting({hover:on}); native(on?'hover:on':'hover:off'); setHoverClass(on);
   poke(on?'curious':'wink',1200);
 }
-window.voidHover=on=>setHoverClass(on);
+window.nixiHover=on=>setHoverClass(on);
 // the bar: the same eyes merged into a screen edge as a notch. The window docks and undocks itself (drag him onto an
-// edge / pull the bar away) and tells the page with voidDock(edge|''); the menu switch docks him at the top.
+// edge / pull the bar away) and tells the page with nixiDock(edge|''); the menu switch docks him at the top.
 const EDGES=['top','bottom','left','right'];
 // the edge he's docked on, or '' (the e-* class alone isn't enough: it stays a moment after he leaves, for the morph)
 const barEdge=()=>document.body.classList.contains('bar')?(EDGES.find(e=>document.body.classList.contains('e-'+e))||''):'';
@@ -1986,18 +1986,18 @@ function setBarClass(edge,pulled){
   } else EDGES.forEach(e=>b.classList.remove('e-'+e));
   const l=$('[data-a="bar"] span'); if(l) l.textContent=edge?'blob':'top bar'; sendRegion(true);
 }
-window.voidDock=(edge,how)=>{ edge=EDGES.includes(edge)?edge:''; if(menuOn) menu(false); setBarClass(edge,how==='pull'); info.presence=edge?'bar':'orb'; info.bar_edge=edge||info.bar_edge;
+window.nixiDock=(edge,how)=>{ edge=EDGES.includes(edge)?edge:''; if(menuOn) menu(false); setBarClass(edge,how==='pull'); info.presence=edge?'bar':'orb'; info.bar_edge=edge||info.bar_edge;
   setSetting(edge?{presence:'bar',bar_edge:edge}:{presence:'orb'});
   if(edge) poke('wink',900); };                 // (back out: the pop of his ball is reaction enough — no confetti)
 async function toggleBar(force){
   const on=typeof force==='boolean'?force:info.presence!=='bar';
-  if(!NATIVE){ tick('the top bar works in the Void window (not the browser fallback)',true); return; }
+  if(!NATIVE){ tick('the top bar works in the Nixi window (not the browser fallback)',true); return; }
   if(on&&info.hover) await toggleHover(false);
-  native(on?'bar:top':'bar:off');               // the window moves and answers with voidDock()
+  native(on?'bar:top':'bar:off');               // the window moves and answers with nixiDock()
 }
 // the whole notch is him: click to talk, right-click for the menu, drag it away to pull him out as the blob
 $('#barPill').addEventListener('mousedown',e=>{ if(e.button!==0) return; downAt=[e.clientX,e.clientY]; dragged=false; });
-// in the notch a left click is the menu: the 1st opens it, the 2nd closes it (talk: "hey Void", Space, or 🎙 in the menu)
+// in the notch a left click is the menu: the 1st opens it, the 2nd closes it (talk: "hey Nixi", Space, or 🎙 in the menu)
 $('#barPill').addEventListener('click',e=>{ if(dragged){ dragged=false; return; } downAt=null;
   const was=menuOn; hideAsk(); closePanels(); G.jelly.kick(.4); menu(!was); });
 $('#barPill').addEventListener('contextmenu',e=>{ e.preventDefault(); E.body.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true})); });
@@ -2040,9 +2040,9 @@ function convoCheck(){
   if(hearing) $('#barPill').style.setProperty('--lv',Math.min(1,Math.max(micRaw||0,hearRaw||0)).toFixed(2));
 }
 setInterval(convoCheck,50);
-window.voidBarUnsupported=()=>{ tick('the top bar needs layer-shell or X11 on this desktop',true); setSetting({presence:'orb'}); info.presence='orb'; setBarClass(''); };
-window.voidHoverUnsupported=()=>{ tick('hover mode needs Hyprland or X11 on this desktop',true); setSetting({hover:false}); setHoverClass(false); };
-window.voidLook=(dx,dy)=>{ lastMouse=performance.now(); const m=mood(lastMouse);
+window.nixiBarUnsupported=()=>{ tick('the top bar needs layer-shell or X11 on this desktop',true); setSetting({presence:'orb'}); info.presence='orb'; setBarClass(''); };
+window.nixiHoverUnsupported=()=>{ tick('hover mode needs Hyprland or X11 on this desktop',true); setSetting({hover:false}); setHoverClass(false); };
+window.nixiLook=(dx,dy)=>{ lastMouse=performance.now(); const m=mood(lastMouse);
   if(['idle','listening','talking','curious','surprised','wink','love'].includes(m)||isTalk(m)){ tx=clamp(dx*6,-7,7); ty=clamp(dy*5,-6,6); } };
 
 /* ================= settings ================= */
@@ -2060,8 +2060,8 @@ function settings(on,tab){ setEl.classList.toggle('on',on); document.body.classL
   sendRegion(true); }
 function moveInd(){ const b=$('#tabs button.on'), ind=$('#tabInd'); if(!b||!ind) return; ind.style.width=b.offsetWidth+'px'; ind.style.transform=`translateX(${b.offsetLeft-3}px)`; }
 function showTab(t){ $$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t)); $$('#set .tab').forEach(x=>x.classList.toggle('on',x.dataset.tab===t));
-  moveInd(); try{ localStorage.setItem('void.tab',t); }catch(e){} }
-try{ const t=localStorage.getItem('void.tab'); if(t) showTab(t); }catch(e){}
+  moveInd(); try{ localStorage.setItem('nixi.tab',t); }catch(e){} }
+try{ const t=localStorage.getItem('nixi.tab'); if(t) showTab(t); }catch(e){}
 $('#tabs').addEventListener('click',e=>{ const b=e.target.closest('[data-tab]'); if(b) showTab(b.dataset.tab); });
 
 /* ---------- the colour picker: tap a part of him (or a chip), then pick ---------- */
@@ -2086,9 +2086,9 @@ function setPart(hex,{save=true,fromPicker=false}={}){
   drawPicker(); drawPreview();
   if(save){ clearTimeout(saveT); saveT=setTimeout(()=>{ post('/api/settings',{look:curLook()}).then(r=>r.json()).then(j=>{ info=j; }).catch(()=>{}); addRecent(hex); },450); }
 }
-function addRecent(hex){ if(!okHex(hex)) return; let r=[]; try{ r=JSON.parse(localStorage.getItem('void.recent')||'[]'); }catch(e){}
-  r=[hex,...r.filter(x=>x!==hex)].slice(0,10); try{ localStorage.setItem('void.recent',JSON.stringify(r)); }catch(e){} renderRecent(); }
-function renderRecent(){ let r=[]; try{ r=JSON.parse(localStorage.getItem('void.recent')||'[]'); }catch(e){}
+function addRecent(hex){ if(!okHex(hex)) return; let r=[]; try{ r=JSON.parse(localStorage.getItem('nixi.recent')||'[]'); }catch(e){}
+  r=[hex,...r.filter(x=>x!==hex)].slice(0,10); try{ localStorage.setItem('nixi.recent',JSON.stringify(r)); }catch(e){} renderRecent(); }
+function renderRecent(){ let r=[]; try{ r=JSON.parse(localStorage.getItem('nixi.recent')||'[]'); }catch(e){}
   $('#pkRecent').innerHTML=r.map(c=>`<button data-sw="${c}" style="--c:${c}" title="${c}"></button>`).join(''); }
 function selectPart(p){
   const L=curLook(); if(L.link&&p==='pupR') p='pupL'; if(L.link&&p==='whiteR') p='whiteL';
@@ -2103,7 +2103,7 @@ function renderParts(){ const L=curLook();
     :[['body','Body'],['pupL','Left pupil'],['pupR','Right pupil'],['whiteL','Left eye white'],['whiteR','Right eye white']];
   if(L.skin!=='none') list.push(['skin','Skin']);
   $('#partChips').innerHTML=list.map(([p,l])=>`<button data-part="${p}" class="${pkPart===p?'on':''}"><i style="--c:${partColour(L,p)}"></i>${l}</button>`).join(''); }
-function drawPreview(){ const L=curLook(), svg=$('#lookPrev'); miniVoid(svg,L,true);
+function drawPreview(){ const L=curLook(), svg=$('#lookPrev'); miniNixi(svg,L,true);
   const sel=L.link&&pkPart==='pupL'?['pupL','pupR']:L.link&&pkPart==='whiteL'?['whiteL','whiteR']:[pkPart];
   svg.querySelectorAll('[data-part]').forEach(e=>{ if(sel.includes(e.dataset.part)&&e.tagName!=='g') e.classList.add('sel'); }); }
 function drawPicker(){
@@ -2154,10 +2154,10 @@ function renderSettings(){
   // look
   const L=curLook();
   $('#skinGrid').innerHTML=(info.skins||Object.keys(SKIN_LABELS)).map(k=>`<button data-skin="${k}" class="${L.skin===k?'on':''}"><svg viewBox="-125 -150 250 250"></svg>${SKIN_LABELS[k]||k}</button>`).join('');
-  $$('#skinGrid button').forEach(b=>miniVoid(b.querySelector('svg'),{...L,skin:b.dataset.skin},false));
+  $$('#skinGrid button').forEach(b=>miniNixi(b.querySelector('svg'),{...L,skin:b.dataset.skin},false));
   selectPart(pkPart); renderRecent();
 }
-// push-to-talk hotkey: Windows watches the combo itself; on Linux your compositor binds `void ptt-down` / `void ptt-up`
+// push-to-talk hotkey: Windows watches the combo itself; on Linux your compositor binds `nixi-companion ptt-down` / `nixi-companion ptt-up`
 let pttCapture=false;
 function pttLinux(k){                               // "Ctrl+Alt+Space" → Hyprland's "CTRL ALT, SPACE"
   const p=(k||'Ctrl+Alt+Space').split('+'), key=p.pop(); return [p.map(m=>m.toUpperCase().replace('WIN','SUPER')).join(' '), key.toUpperCase()];
@@ -2168,7 +2168,7 @@ function renderPtt(){
     b.textContent=pttCapture?'Press your keys…':(k||'Set a hotkey'); $('#pttOff').hidden=!k||pttCapture;
   }else{
     const [m,key]=pttLinux(k); $('#pttBar').hidden=true;
-    $('#pttHelp').innerHTML=`Hold a key combo anywhere to talk. Bind it in your desktop, e.g. Hyprland:<br><code>bind = ${esc(m)}, ${esc(key)}, exec, void ptt-down</code><br><code>bindr = ${esc(m)}, ${esc(key)}, exec, void ptt-up</code><br>sway: <code>bindsym</code> … <code>void ptt-down</code> and <code>bindsym --release</code> … <code>void ptt-up</code>. Other desktops: bind <code>void listen</code>.`;
+    $('#pttHelp').innerHTML=`Hold a key combo anywhere to talk. Bind it in your desktop, e.g. Hyprland:<br><code>bind = ${esc(m)}, ${esc(key)}, exec, nixi-companion ptt-down</code><br><code>bindr = ${esc(m)}, ${esc(key)}, exec, nixi-companion ptt-up</code><br>sway: <code>bindsym</code> … <code>nixi-companion ptt-down</code> and <code>bindsym --release</code> … <code>nixi-companion ptt-up</code>. Other desktops: bind <code>nixi-companion listen</code>.`;
   }
 }
 function pttName(e){                                // a keydown → "Ctrl+Alt+Space", or '' if it's only a modifier
@@ -2208,9 +2208,9 @@ async function copyDiagnostics(){
 }
 function announceUpdate(){                         // one quiet tick per new version, never a pop-up
   const u=info.update||{}; if(!u.newer) return;
-  let seen=''; try{ seen=localStorage.getItem('void-upd-seen')||''; }catch(e){}
+  let seen=''; try{ seen=localStorage.getItem('nixi-upd-seen')||''; }catch(e){}
   if(seen===u.latest) return;
-  try{ localStorage.setItem('void-upd-seen',u.latest); }catch(e){}
+  try{ localStorage.setItem('nixi-upd-seen',u.latest); }catch(e){}
   tick(`v${u.latest} is out — Settings → More to update`);
 }
 async function loadMics(){
@@ -2324,15 +2324,15 @@ function showInfo(){ syncEye(); document.body.classList.toggle('faceyou',info.co
 async function refresh(){ try{ await tokenReady; const r=await fetch('/api/state',{headers:hdr()}); const j=await r.json();
   if(!('cwd' in j)) return staleToken();      // no (or an old) token: the server only said it's running
   info=j; showInfo(); announceUpdate(); }catch(e){} }
-function toggleMute(){ muted=!muted; try{localStorage.setItem('void.muted',muted?'1':'0');}catch(e){} if(muted) shush(); tick(muted?'voice off':'voice on'); if(setEl.classList.contains('on')) renderSettings(); }
+function toggleMute(){ muted=!muted; try{localStorage.setItem('nixi.muted',muted?'1':'0');}catch(e){} if(muted) shush(); tick(muted?'voice off':'voice on'); if(setEl.classList.contains('on')) renderSettings(); }
 
-// hidden (Esc, hide, closing him) = fully off: he stops talking and the server closes the mic — no "hey Void" until
-// he's shown again (Start menu, your hotkey, or `void`)
-window.voidHidden=()=>{ hiddenNow=true; endListening(); menu(false); hideAsk(); shush(); post('/api/sleep',{on:true}).catch(()=>{}); };
-window.voidShown=()=>{ hiddenNow=false; post('/api/sleep',{on:false}).catch(()=>{}); entrance(); wake(); refresh().then(()=>{ syncEye(true); if(pendingAppr||busy) return;
+// hidden (Esc, hide, closing him) = fully off: he stops talking and the server closes the mic — no "hey Nixi" until
+// he's shown again (Start menu, your hotkey, or `nixi-companion`)
+window.nixiHidden=()=>{ hiddenNow=true; endListening(); menu(false); hideAsk(); shush(); post('/api/sleep',{on:true}).catch(()=>{}); };
+window.nixiShown=()=>{ hiddenNow=false; post('/api/sleep',{on:false}).catch(()=>{}); entrance(); wake(); refresh().then(()=>{ syncEye(true); if(pendingAppr||busy) return;
   if(info.listen_on_show&&!info.hover) setTimeout(()=>startRec('auto'),450); else setTimeout(()=>poke('wink',900),350); }); };
 async function comeBack(){ if(!info.hover) return; await toggleHover(false); await sleep(700); }
-window.voidCmd=async c=>{ hiddenNow=false;
+window.nixiCmd=async c=>{ hiddenNow=false;
   if(c==='home'){ return comeBack(); }
   if(c==='listen'){ await comeBack(); if(rec) stopRec(false); else startRec('auto'); }
   else if(c==='look'){ await comeBack(); shoot('window').then(j=>{ if(j) startRec('auto'); }); }
@@ -2349,9 +2349,9 @@ let fitK=1, layoutX=0;
 function fit(){ const k=Math.min(1, innerWidth/340, innerHeight/460); fitK=k>0.995?1:k; const bs=document.body.style;
   bs.transformOrigin='0 0'; bs.margin='0'; bs.marginLeft=layoutX+'px';
   bs.transform=fitK===1?'':`scale(${fitK})`;
-  if(NATIVE&&fitK<1) console.log(`[void] window is ${innerWidth}x${innerHeight} (expected 340x460) — scaling the page to fit`); }
+  if(NATIVE&&fitK<1) console.log(`[nixi] window is ${innerWidth}x${innerHeight} (expected 340x460) — scaling the page to fit`); }
 // the window widened for a panel: it grew to the left by ox px, so shift the page back and he stays exactly where he was
-window.voidLayout=ox=>{ layoutX=ox|0; fit(); sendRegion(true); requestAnimationFrame(moveInd); };
+window.nixiLayout=ox=>{ layoutX=ox|0; fit(); sendRegion(true); requestAnimationFrame(moveInd); };
 addEventListener('resize',()=>{ fit(); sendRegion(true); moveInd(); }); fit();
 function sendRegion(force){
   calmCheck();
@@ -2384,9 +2384,9 @@ addEventListener('transitionend',e=>{ if(e.target.matches&&e.target.matches('#me
 let downAt=null, dragged=false, clicks=[];
 E.body.addEventListener('mousedown',e=>{ if(e.button!==0) return; downAt=[e.clientX,e.clientY]; dragged=false; });
 let mode={layer:false,cursor:true}, dragNative=false;
-window.voidMode=m=>{ mode=m;
+window.nixiMode=m=>{ mode=m;
   // he couldn't be an overlay: say why, right on screen, instead of silently being a window
-  if(m&&!m.layer&&m.why&&!window.__whyShown){ window.__whyShown=true; setTimeout(()=>{ tick("I can't stay on top here — "+m.why,true); console.log('[void] not on top: '+m.why); },2500); } };
+  if(m&&!m.layer&&m.why&&!window.__whyShown){ window.__whyShown=true; setTimeout(()=>{ tick("I can't stay on top here — "+m.why,true); console.log('[nixi] not on top: '+m.why); },2500); } };
 // petting: rub the mouse back and forth over him
 let petDir=0, petFlips=[], petCool=0;
 E.body.addEventListener('mousemove',ev=>{ if(ev.buttons) return; const d=Math.sign(ev.movementX||0); if(!d||Math.abs(ev.movementX)<2) return;
@@ -2571,7 +2571,7 @@ const CP=(()=>{
   VIEWS.MultiEdit=VIEWS.Edit; VIEWS.NotebookEdit=VIEWS.Edit; VIEWS.Glob=VIEWS.Grep; VIEWS.LS=VIEWS.Grep; VIEWS.WebFetch=VIEWS.WebSearch;
 
   async function run(){ running=true;
-    while(q.length){ const ev=q.shift(); try{ await (VIEWS[ev.name]||VIEWS.other)(ev); }catch(e){ console.log('[void] terminal',e); } }
+    while(q.length){ const ev=q.shift(); try{ await (VIEWS[ev.name]||VIEWS.other)(ev); }catch(e){ console.log('[nixi] terminal',e); } }
     running=false; if(!busy||answering) hide(); }
   return {
     tool(ev){ if(info.code_panel===false) return; answering=false; q.push(ev); if(!running) run(); },
@@ -2584,7 +2584,7 @@ const CP=(()=>{
 
 refresh().then(()=>{
   if(info.hover && NATIVE){ native('hover:on'); setHoverClass(true); }
-  else if(info.presence==='bar' && NATIVE) native('bar:'+(info.bar_edge||'top'));   // the window docks, then voidDock()
+  else if(info.presence==='bar' && NATIVE) native('bar:'+(info.bar_edge||'top'));   // the window docks, then nixiDock()
   if(NATIVE) native('ptt:'+(info.ptt_hotkey||''));          // the Windows window watches this combo (Linux ignores it)
   if(info.claude===false){ fail("I can't find Claude Code — install it and run `claude` once to sign in."); }
   else if(info.mic===false) tick('no mic recorder — install libpulse or alsa-utils',true);

@@ -1,6 +1,0 @@
-#!/bin/sh
-set -e
-if [ "$1" = configure ]; then
-  echo "Void is installed. Each user: run 'void setup' once (downloads your voice and speech models), then 'void'."
-  echo "He needs Claude Code too: https://docs.anthropic.com/en/docs/claude-code"
-fi

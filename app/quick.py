@@ -1,4 +1,4 @@
-"""Instant local commands: things Void can do himself in a blink instead of asking Claude.
+"""Instant local commands: things Nixi can do himself in a blink instead of asking Claude.
 
     handle(text) -> None (not a quick command → goes to Claude) or a dict:
         {"say": "...", "mood": "happy", "cd": "/path" (switch folder), "sfx": "ok"}
@@ -11,9 +11,7 @@ import re
 import shlex
 import shutil
 import subprocess
-WIN = os.name == "nt"
-if WIN:
-    import winsys   # Windows versions of volume / media keys / brightness / apps / lock
+WIN = False                                  # Linux only (upstream's Windows port is gone; the `if WIN:` branches are dead)
 import threading
 import time
 from datetime import datetime, timedelta
@@ -143,7 +141,7 @@ def _fire(item):
     what = item["what"]
     msg = f"Reminder: {what}" if what else "Time's up!"
     if notify:
-        notify("Void", msg)
+        notify("Nixi", msg)
     if publish:
         publish(t="remind", text=msg)
 
@@ -335,7 +333,7 @@ def _find_project(name):
 # ---------------------------------------------------------------- the matcher
 def handle(text):
     t = " ".join((text or "").lower().replace("’", "'").split()).strip(" .!?")
-    t = re.sub(r"^(hey nixi|nixi|ok nixi|okay nixi|hey void|void|ok void|okay void)[,\s]+", "", t)
+    t = re.sub(r"^(hey nixi|nixi|ok nixi|okay nixi[,\s]+", "", t)
     t = re.sub(r"^(please|can you|could you|would you|will you)\s+", "", t)
     t = re.sub(r"\s+please$", "", t)
     if not t or len(t) > 120:

@@ -1,7 +1,0 @@
-#!/bin/sh
-# Gentoo-style install:  ./configure && ninja -C build && sudo ninja -C build install
-# (needs meson + ninja; install the other dependencies first — see "Gentoo" in the README)
-# Options go straight to meson, e.g. ./configure --prefix=/usr/local
-command -v meson >/dev/null 2>&1 || { echo "configure: meson isn't installed (Gentoo: emerge dev-build/meson)" >&2; exit 1; }
-if [ -d build ]; then exec meson setup --reconfigure build --prefix="${PREFIX:-/usr}" "$@"; fi
-exec meson setup build --prefix="${PREFIX:-/usr}" "$@"
