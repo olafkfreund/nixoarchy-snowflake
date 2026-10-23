@@ -26,7 +26,7 @@ button{font:inherit;color:inherit}
 body.hover #stage{transform:scale(.17)}
 #stage{transition:transform .65s cubic-bezier(.34,1.3,.5,1)}
 body.bar #stage,body.unfold #stage{transition:transform .36s cubic-bezier(.3,1.25,.5,1)}   /* into / out of the notch: quick */
-body.snap #stage,body.snap #barPill,body.snap #body>circle,body.snap #body>ellipse,body.snap #orbBack,body.snap #orbFront,
+body.snap #stage,body.snap #barPill,body.snap #body>.ball,body.snap #body>ellipse,body.snap #orbBack,body.snap #orbFront,
 body.snap #haloW,body.snap #shadow,body.snap #accBack,body.snap #accFront{transition:none!important}  /* grabbed mid-morph */
 body.hover #orbBack,body.hover #orbFront,body.hover #workW,body.hover #haloW,body.hover #vring,body.hover #raysW,body.hover #fx,body.hover #fxBack,
 body.hover #think,body.hover #anger,body.hover #sweat,body.hover #zz,body.hover #qmark,body.hover #tears,body.hover #cap,body.hover #chip,body.hover #atts{display:none}
@@ -69,20 +69,20 @@ body.bar.e-right #stage{transform:translate(136px,68px) scale(.46)}
 /* the morph is liquid (melt()): while his eyes glide up, his ball flows into the screen edge like a drop of liquid
    glass — the edge swells toward it, a neck forms, the ball is drawn in and absorbed — and back out a drop swells out
    of the notch, its neck stretches thin and snaps, and it wobbles round. The real ball parts are hidden meanwhile. */
-body.bar #body>circle,body.bar #body>ellipse,body.bar #orbBack,body.bar #orbFront,body.bar #workW,body.bar #haloW,body.bar #raysW,
+body.bar #body>.ball,body.bar #body>ellipse,body.bar #orbBack,body.bar #orbFront,body.bar #workW,body.bar #haloW,body.bar #raysW,
 body.bar #vring,body.bar #shadow,body.bar #accBack,body.bar #accFront,body.bar #liveTag,
-body.goohide #body>circle,body.goohide #body>ellipse,body.goohide #orbBack,body.goohide #orbFront,body.goohide #haloW,
+body.goohide #body>.ball,body.goohide #body>ellipse,body.goohide #orbBack,body.goohide #orbFront,body.goohide #haloW,
 body.goohide #shadow,body.goohide #accBack,body.goohide #accFront{opacity:0;transition:none}
-body.unfold #body>circle,body.unfold #body>ellipse,body.unfold #shadow,body.unfold #accBack,body.unfold #accFront{transition:opacity .12s linear}
+body.unfold #body>.ball,body.unfold #body>ellipse,body.unfold #shadow,body.unfold #accBack,body.unfold #accFront{transition:opacity .12s linear}
 body.unfold #orbBack,body.unfold #orbFront,body.unfold #haloW{transition:opacity .25s linear .08s}
 /* pulled out of the notch by the mouse: the ball pops in where he is (the notch melts on the wall, not here) */
-#body>circle{transform-box:fill-box;transform-origin:center}
-body.popout #body>circle{animation:popOut .34s var(--pop)}
+#body>.ball{transform-box:fill-box;transform-origin:center}
+body.popout #body>.ball{animation:popOut .34s var(--pop)}
 @keyframes popOut{from{transform:scale(.55);opacity:.4}to{transform:none;opacity:1}}
 #goo{position:absolute;left:0;top:0;width:340px;height:460px;overflow:visible;pointer-events:none;z-index:0;display:none}
 body.gooing #goo{display:block}
 body.bar.bar-done #orbBack,body.bar.bar-done #orbFront,body.bar.bar-done #workW,body.bar.bar-done #haloW,body.bar.bar-done #raysW,
-body.bar.bar-done #vring,body.bar.bar-done #shadow,body.bar.bar-done #body>circle,body.bar.bar-done #body>ellipse,
+body.bar.bar-done #vring,body.bar.bar-done #shadow,body.bar.bar-done #body>.ball,body.bar.bar-done #body>ellipse,
 body.bar.bar-done #accBack,body.bar.bar-done #accFront,body.bar.bar-done #liveTag{display:none}
 /* talking with him: the whole notch wears his halo, bright and unmistakable.
    .hearing = he's listening to you: a thick ring that swells with your voice (--lv, 0–1, from the mic level)
@@ -476,7 +476,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <g id="qmark" opacity="0"><text class="qm" x="70" y="-70">?</text></g>
       <g id="body">
         <g id="accBack"></g>
-        <circle r="76" fill="url(#ballG)"/>
+        <path class="ball" fill="url(#ballG)"/>
         <g id="face">
           <g id="eL"><path class="eye" id="pL"/><g clip-path="url(#clipL)"><path class="slit" id="hlL"/></g></g>
           <g id="eR"><path class="eye" id="pR"/><g clip-path="url(#clipR)"><path class="slit" id="hlR"/></g></g>
@@ -485,7 +485,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <!-- the glass dome: soft reflection + rim -->
         <ellipse cx="-30" cy="-46" rx="38" ry="15" transform="rotate(-30 -30 -46)" fill="url(#glossG)" pointer-events="none"/>
         <ellipse cx="34" cy="50" rx="18" ry="6" transform="rotate(-40 34 50)" fill="url(#glossG)" opacity=".45" pointer-events="none"/>
-        <circle id="rim" r="75" fill="none" stroke-width="1.6" pointer-events="none"/>
+        <path id="rim" class="ball" fill="none" stroke-width="1.6" stroke-linejoin="round" pointer-events="none"/>
         <g id="accFront"></g>
         <g id="liveTag" transform="translate(50 58) rotate(-14)" display="none"><rect x="-21" y="-8.5" width="42" height="17" rx="6" fill="#2f8f66" stroke="#7fd6ae" stroke-width="1"/><circle id="liveDot" cx="-12" cy="0" r="2.6" fill="#fff"/><text x="4" y="3.6" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff" font-family="monospace" letter-spacing="1">LIVE</text></g>
         <g id="think" opacity="0"><circle class="thk" cx="64" cy="-70" r="4"/><circle class="thk" cx="79" cy="-86" r="6"/><circle class="thk" cx="99" cy="-106" r="9"/></g>
@@ -760,7 +760,7 @@ function miniVoid(svg,L,clickable){
   svg.innerHTML=''; const id='mg'+(miniN++), [b0,b1,b2]=bodyStops(L.body);
   const defs=sv('defs',{},svg), gr=sv('radialGradient',{id,cx:-24,cy:-30,r:112,gradientUnits:'userSpaceOnUse'},defs);
   [[0,b0],[.55,b1],[1,b2]].forEach(([o,c])=>sv('stop',{offset:o,'stop-color':c},gr));
-  const back=sv('g',{'data-part':clickable?'skin':''},svg), ball=sv('circle',{r:76,fill:`url(#${id})`,stroke:lum(L.body)<.12?'#2a2a2a':shade(L.body,-.12),'stroke-width':1.6,'data-part':'body'},svg);
+  const back=sv('g',{'data-part':clickable?'skin':''},svg), ball=sv('path',{d:snowPath(),'stroke-linejoin':'round',fill:`url(#${id})`,stroke:lum(L.body)<.12?'#2a2a2a':shade(L.body,-.12),'stroke-width':1.6,'data-part':'body'},svg);
   for(const s of [-1,1]){ const k=s<0?'L':'R';
     sv('ellipse',{cx:s*25.5,cy:-4.5,rx:23.5,ry:40.5,transform:`rotate(${-s*9} ${s*25.5} -4.5)`,fill:L['white'+k],'data-part':'white'+k},svg);
     sv('ellipse',{cx:s*10.5,cy:-4,rx:clickable?4.2:3.2,ry:12.5,transform:`rotate(${-s*8} ${s*10.5} -4)`,fill:L['pup'+k],'data-part':'pup'+k},svg); }
@@ -777,6 +777,20 @@ function miniVoid(svg,L,clickable){
    Lids cut the finished shape: top – 0..1 from the top, tilted by `sl` (+ = inner corner down → cross, − = worried),
    sagged by `tc`; bot – lower lid from the bottom, `bow` arches it. sq squashes the oval, es scales one eye.
    Asleep (`shut`) an oval melts into a thin "‿" arc (per eye, so he can wink).  */
+// snowflake silhouette: hexagonal plate (flat top/bottom, inradius core) + six arms to reach, each with two pairs of side thorns
+function snowPath(core=62, reach=104){
+  const R=core/Math.cos(Math.PI/6), w=6, k=Math.sqrt(3)/2, P=[];
+  for(let i=0;i<6;i++){
+    const a=i*Math.PI/3, c=Math.cos(a), s=Math.sin(a);
+    const side=[[R-w*Math.tan(Math.PI/6),-w]];
+    for(const [x0,x1,L] of [[R+4,R+16,16],[R+19,R+27,10]]) side.push([x0,-w],[x0+L/2,-w-L*k],[x1,-w]);
+    side.push([reach-6,-w],[reach,-2.5]);
+    const loc=side.concat(side.slice().reverse().map(([x,y])=>[x,-y]));
+    for(const [x,y] of loc) P.push([x*c-y*s,x*s+y*c]);
+  }
+  return 'M'+P.map(([x,y])=>x.toFixed(1)+' '+y.toFixed(1)).join('L')+'Z';
+}
+document.querySelectorAll('#body>.ball').forEach(e=>e.setAttribute('d',snowPath()));
 const EYE={rx:23.5, ry:40.5, cx:27.5, cy:-4.5, tilt:0.157};
 const EYE_HALFW=Math.hypot(EYE.rx*Math.cos(EYE.tilt),EYE.ry*Math.sin(EYE.tilt));   // half the width of one leaning eye
 /* pupils morph smoothly between shapes — all flat, solid colour:
@@ -2445,7 +2459,7 @@ const CP=(()=>{
   let on=false, last=0, wide=false, offT=null, pos=null;
   const sp={x:0,y:0,vx:0,vy:0,r:0};                // held in a "hand": follows where he looks, with a little lag and tilt
   let look=[0,4.5], lookUntil=0, glancing=false;
-  const ball=()=>document.querySelector('#body > circle').getBoundingClientRect();
+  const ball=()=>document.querySelector('#body > .ball').getBoundingClientRect();
 
   // ---- like a guy holding a piece of paper: it sits just under his eyes. By default it's turned to face HIM (you see it
   // from the back: mirrored text, top leaning toward you); Settings → Look → Terminal can turn it to face YOU so you can
