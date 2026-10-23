@@ -1678,15 +1678,20 @@ function nextApproval(){
   const spoken=a.say||what;   // the server says what it does in plain words (the card shows the real command)
   askAloud(a,spoken);
 }
+// what you said to an approval card → 'yes' | 'no' | 'always' | null. In nixi mode (bridged): "no" words win, only explicit yes
+// words count, and "always" is click-only.
+function voiceAnswer(said,bridged){
+  if(bridged) return /\b(no|nope|nah|don'?t|do not|stop|cancel|wait|never)\b/i.test(said)?'no':/\b(yes|yeah|yep|yup|approve|approved|do it|go ahead)\b/i.test(said)?'yes':null;
+  return /\b(always|every time|don'?t ask)\b/i.test(said)?'always':/\b(no|nope|nah|don'?t|stop|cancel|wait|never)\b/i.test(said)?'no':
+    /\b(yes|yeah|yep|yup|sure|ok|okay|go|go ahead|do it|run it|fine|please|alright|sounds good)\b/i.test(said)?'yes':null; }
 async function askAloud(a,spoken){
   if(!muted){ enqueue(spoken); await untilQuiet(); }
   for(let tries=0; tries<2 && pendingAppr===a; tries++){
     const said=(await startRec('approve'))||'';
     if(pendingAppr!==a) return;
-    const ans=/\b(always|every time|don'?t ask)\b/i.test(said)?'always':/\b(no|nope|nah|don'?t|stop|cancel|wait|never)\b/i.test(said)?'no':
-      /\b(yes|yeah|yep|yup|sure|ok|okay|go|go ahead|do it|run it|fine|please|alright|sounds good)\b/i.test(said)?'yes':null;
+    const ans=voiceAnswer(said,!!info.bridge);
     if(ans){ answer(ans); return; }
-    if(said) tick('say “yes” or “no” (or click)');
+    if(said) tick(info.bridge?'say “yes” or “no” — “always” is click-only':'say “yes” or “no” (or click)');
   }
 }
 function answer(ans){ const a=pendingAppr; if(!a) return;
