@@ -1246,7 +1246,6 @@ function frame(ts){
   capTick(ts);
   if(NATIVE&&!window.nixiQt){ const a=(frameN++&1)?'rgba(0,0,0,.004)':'rgba(0,0,0,.006)';   // forces WebKit to repaint the whole window every frame —
     paintEl.style.background=a; document.documentElement.style.background=a; }  // both the page and the root, so the widened edge is covered too
-    // (not on Windows: Chromium repaints fine, and there the near-black fill shows as a dim box around him)
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -2128,7 +2127,7 @@ $('#pkAll').addEventListener('click',()=>{ const L=curLook(), R=randomLook(L); O
   post('/api/settings',{look:L}).then(r=>r.json()).then(j=>{ info=j; }); selectPart(pkPart); poke('excited',900); });
 
 function renderSettings(){
-  { const rr=$('#rootSw').closest('.row'); if(rr) rr.style.display=info.root_ok===false?'none':''; }   // no sudo on Windows
+  { const rr=$('#rootSw').closest('.row'); if(rr) rr.style.display=info.root_ok===false?'none':''; }
   const cur=(info.model||'default');
   $('#effortChips').innerHTML=['',...EFFORTS].map(e=>`<button data-eff="${e}" class="${(info.effort||'')===e?'on':''}">${e||'default'}</button>`).join('');
   $('#modelChips').innerHTML=MODELS.map(([id,l])=>`<button data-m="${id}" class="${cur===id?'on':''}">${l}</button>`).join('');
@@ -2157,19 +2156,15 @@ function renderSettings(){
   $$('#skinGrid button').forEach(b=>miniNixi(b.querySelector('svg'),{...L,skin:b.dataset.skin},false));
   selectPart(pkPart); renderRecent();
 }
-// push-to-talk hotkey: Windows watches the combo itself; on Linux your compositor binds `nixi-companion ptt-down` / `nixi-companion ptt-up`
+// push-to-talk hotkey: your compositor binds `nixi-companion ptt-down` / `nixi-companion ptt-up`
 let pttCapture=false;
 function pttLinux(k){                               // "Ctrl+Alt+Space" → Hyprland's "CTRL ALT, SPACE"
   const p=(k||'Ctrl+Alt+Space').split('+'), key=p.pop(); return [p.map(m=>m.toUpperCase().replace('WIN','SUPER')).join(' '), key.toUpperCase()];
 }
 function renderPtt(){
   const k=info.ptt_hotkey||'', b=$('#pttSet');
-  if(info.platform==='windows'){
-    b.textContent=pttCapture?'Press your keys…':(k||'Set a hotkey'); $('#pttOff').hidden=!k||pttCapture;
-  }else{
-    const [m,key]=pttLinux(k); $('#pttBar').hidden=true;
-    $('#pttHelp').innerHTML=`Hold a key combo anywhere to talk. Bind it in your desktop, e.g. Hyprland:<br><code>bind = ${esc(m)}, ${esc(key)}, exec, nixi-companion ptt-down</code><br><code>bindr = ${esc(m)}, ${esc(key)}, exec, nixi-companion ptt-up</code><br>sway: <code>bindsym</code> … <code>nixi-companion ptt-down</code> and <code>bindsym --release</code> … <code>nixi-companion ptt-up</code>. Other desktops: bind <code>nixi-companion listen</code>.`;
-  }
+  const [m,key]=pttLinux(k); $('#pttBar').hidden=true;
+  $('#pttHelp').innerHTML=`Hold a key combo anywhere to talk. Bind it in your desktop, e.g. Hyprland:<br><code>bind = ${esc(m)}, ${esc(key)}, exec, nixi-companion ptt-down</code><br><code>bindr = ${esc(m)}, ${esc(key)}, exec, nixi-companion ptt-up</code><br>sway: <code>bindsym</code> … <code>nixi-companion ptt-down</code> and <code>bindsym --release</code> … <code>nixi-companion ptt-up</code>. Other desktops: bind <code>nixi-companion listen</code>.`;
 }
 function pttName(e){                                // a keydown → "Ctrl+Alt+Space", or '' if it's only a modifier
   const c=e.code; let key='';
@@ -2585,7 +2580,7 @@ const CP=(()=>{
 refresh().then(()=>{
   if(info.hover && NATIVE){ native('hover:on'); setHoverClass(true); }
   else if(info.presence==='bar' && NATIVE) native('bar:'+(info.bar_edge||'top'));   // the window docks, then nixiDock()
-  if(NATIVE) native('ptt:'+(info.ptt_hotkey||''));          // the Windows window watches this combo (Linux ignores it)
+  if(NATIVE) native('ptt:'+(info.ptt_hotkey||''));        
   if(info.claude===false){ fail("I can't find Claude Code — install it and run `claude` once to sign in."); }
   else if(info.mic===false) tick('no mic recorder — install libpulse or alsa-utils',true);
   else if(!info.tts && !muted) tick('no voice engine — install espeak-ng or piper',true);

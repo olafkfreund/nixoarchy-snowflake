@@ -35,7 +35,6 @@ APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 import quick  # noqa: E402
 import recall  # noqa: E402
-WIN = False                                  # Linux only: the fork dropped upstream's Windows port (the `if WIN:` branches below are dead)
 STATIC = APP_DIR / "static"
 try:                                            # written by the release build (and kept in git for git installs)
     VERSION = (APP_DIR / "VERSION").read_text(encoding="utf-8").strip() or "0.0.0"
@@ -137,12 +136,11 @@ DEFAULTS = {
     "stt_hint": "Hey Nixi, Claude, Claude Code, Nixi, git, commit, README, Python, JavaScript, npm, pacman, sudo, Arch Linux, "
                 "Hyprland, folder, directory, file, terminal, config, server, function, bug, refactor.",
     "whisper_device": "auto",
-    # keep the mic at a level he hears well: turn the Windows mic level up when your voice comes in quiet, down when it
-    # clips, and boost it himself past 100%
+    # keep your voice at a level he hears well: boost what the speech detector sees when it comes in quiet, undo that when it clips
     "mic_auto": True,
     # ask GitHub twice a day whether a newer Nixi is out (nothing about you is sent) and offer "Update now"
     "update_check": True,
-    # hold this anywhere to talk, let go to send (Windows watches it itself; on Linux bind `nixi-companion ptt-down` / `ptt-up`)
+    # hold this anywhere to talk, let go to send (bind `nixi-companion ptt-down` / `ptt-up`)
     "ptt_hotkey": "Ctrl+Alt+Space",
     # how he sits on your desktop: "orb" (the floating blob) or "bar" (his eyes in a notch at the top of the screen)
     "presence": "orb",
@@ -424,15 +422,6 @@ def sync_autostart():
     if BRIDGED:
         return
     on = bool(CFG.get("autostart"))
-    if WIN:                                   # a shortcut in the Startup folder that runs the launcher quietly
-        link = winsys.startup_link()
-        if on:
-            pyw = Path(sys.executable).with_name("pythonw.exe")
-            winsys.shortcut(link, str(pyw if pyw.exists() else sys.executable), f'"{APP_DIR / "launch_win.py"}" show',
-                            icon=str(STATIC / "icon.ico"))
-        else:
-            link.unlink(missing_ok=True)
-        return
     launcher = shutil.which("nixi-companion") or str(Path.home() / ".local/bin/nixi-companion")     # ~/.local/bin, or /usr/bin after ninja install
     try:
         if on:
@@ -547,10 +536,6 @@ def sensitive_paths():
     files = [h / n for n in (".bashrc", ".bash_profile", ".bash_login", ".bash_logout", ".profile", ".zshrc", ".zprofile",
                              ".zshenv", ".zlogin", ".xprofile", ".xinitrc", ".xsession", ".gitconfig", ".npmrc", ".pypirc",
                              ".netrc", ".claude.json")]
-    if WIN:
-        appdata = Path(os.environ.get("APPDATA") or h / "AppData" / "Roaming")
-        docs = h / "Documents"
-        dirs += [appdata / "Microsoft" / "Windows" / "Start Menu", docs / "WindowsPowerShell", docs / "PowerShell"]
     return [d.resolve() for d in dirs], [f.resolve() for f in files]
 
 
@@ -559,7 +544,7 @@ def edit_needs_card(path):
     git repo's hooks and config."""
     if path is None:
         return True
-    norm = (lambda x: str(x).lower()) if WIN else str
+    norm = str
     dirs, files = sensitive_paths()
     if any(norm(path) == norm(f) for f in files) or ".git" in path.parts:
         return True
@@ -746,7 +731,7 @@ def approval_text(tool, inp):
 
 
 # ---------------------------------------------------------------- screenshots, clipboard, notifications
-SHOTS = (winsys.cache_dir() if WIN else Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "nixi-companion") / "shots"
+SHOTS = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "nixi-companion" / "shots"
 
 
 def _run(cmd, **kw):
@@ -804,17 +789,6 @@ def capture(kind):
     for old in sorted(SHOTS.glob("nixi-*.*"))[:-30]:        # keep the folder small
         old.unlink(missing_ok=True)
     out = SHOTS / f"nixi-{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}.png"
-    if WIN:
-        if kind == "clipboard":
-            what, val = winsys.clipboard(out)
-            if what == "image":
-                return {"kind": "clipimg", "path": str(_shrink(Path(val))), "label": "copied image"}
-            if not val.strip():
-                raise RuntimeError("the clipboard is empty")
-            return {"kind": "clip", "text": val[:12000], "label": "copied text"}
-        got = winsys.screenshot(kind, out)
-        return {"kind": got, "path": str(_shrink(out)),
-                "label": {"screen": "screenshot", "window": "your window", "region": "screen area"}[got]}
     wayland = bool(os.environ.get("WAYLAND_DISPLAY"))
     geo = _active_window() if kind == "window" else None
     if kind == "window" and not geo and not (wayland and (shutil.which("spectacle") or shutil.which("gnome-screenshot"))):
@@ -908,8 +882,6 @@ def attach_prompt(atts):
 
 
 def notify(title, body):
-    if WIN:
-        return winsys.notify(title, body)
     if shutil.which("notify-send"):
         subprocess.Popen(["notify-send", "-a", "Nixi", "-i", str(STATIC / "icon.png"), title, body[:300]],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -928,9 +900,6 @@ _whisper_lock = threading.Lock()
 def _preload_cuda_libs():
     """faster-whisper needs cuBLAS + cuDNN for the GPU. The installer puts them in the venv (pip nvidia-* wheels);
     load them by full path so ctranslate2 finds them without LD_LIBRARY_PATH."""
-    if WIN:
-        winsys.add_cuda_dirs()
-        return 1
     import ctypes
     import glob
     import site
@@ -949,7 +918,7 @@ def _preload_cuda_libs():
 
 
 def _gpu_ok():
-    if CFG["whisper_device"] == "cpu" or not (winsys.gpu_ok() if WIN else os.path.exists("/proc/driver/nvidia/version")):
+    if CFG["whisper_device"] == "cpu" or not os.path.exists("/proc/driver/nvidia/version"):
         return False
     try:
         import ctranslate2
@@ -1103,8 +1072,8 @@ def last_speech_end(pcm: bytes):
 
 
 class MicAuto:
-    """Keeps your voice at a level he hears well. After you speak: if it came in quiet, turn the mic's Windows level up;
-    if it clipped, turn it down. Once Windows is at 100% and you're still quiet, `soft` boosts what the speech detector
+    """Keeps your voice at a level he hears well. After you speak: if it came in quiet, boost what
+    the speech detector sees when it came in quiet (and undo that if it clipped): `soft` boosts what the speech detector
     sees (transcribe_pcm already evens out what Whisper gets)."""
     soft = 1.0
     last = 0.0
@@ -1123,22 +1092,11 @@ class MicAuto:
         if pk < 0.003:                            # dead or muted input: nothing to learn (Listen says so)
             return
         cls.last, cls.last_peak = time.monotonic(), pk
-        hint = CFG.get("mic_device") or ""
-        hw = winsys.mic_level(hint) if WIN else None
         if clipped > 0.002 or pk > cls.LOUD:
-            if hw is not None and hw > 0.15:
-                winsys.set_mic_level(hw * 0.8, hint)
-                print(f"[nixi] mic: your voice clipped — Windows mic level {hw:.0%} → {hw * 0.8:.0%}", file=sys.stderr)
             cls.soft = 1.0
         elif pk * cls.soft < cls.QUIET:
-            want = min(2.0, cls.TARGET / pk)      # how much louder it should be, at most double per step
-            if hw is not None and hw < 0.99:
-                new = min(1.0, hw * want)
-                winsys.set_mic_level(new, hint)
-                print(f"[nixi] mic: your voice came in quiet — Windows mic level {hw:.0%} → {new:.0%}", file=sys.stderr)
-            else:
-                cls.soft = min(8.0, cls.TARGET / pk)
-                print(f"[nixi] mic: still quiet at full level — boosting it {cls.soft:.1f}×", file=sys.stderr)
+            cls.soft = min(8.0, cls.TARGET / pk)
+            print(f"[nixi] mic: still quiet at full level — boosting it {cls.soft:.1f}×", file=sys.stderr)
         elif cls.soft > 1.0 and pk * cls.soft > 0.7:
             cls.soft = max(1.0, 0.5 / pk)
 
@@ -1161,8 +1119,7 @@ def mic_cmds():
 
 
 class LinuxMic:
-    """A recorder program's output: read(timeout) → bytes (b"" = nothing yet; EOFError if it stopped), close(). On
-    Windows, winsys.Mic has the same shape."""
+    """A recorder program's output: read(timeout) → bytes (b"" = nothing yet; EOFError if it stopped), close()."""
 
     def __init__(self, proc, name):
         self.proc, self.name, self.fd = proc, name, proc.stdout.fileno()
@@ -1185,13 +1142,6 @@ class LinuxMic:
 
 def open_mic():
     """Start the first recorder that actually produces audio. Returns (mic, name, first_bytes)."""
-    if WIN:
-        mic = winsys.Mic(RATE, CFG.get("mic_device"))
-        first = mic.read(2.5)
-        if not first:
-            mic.close()
-            raise RuntimeError("couldn't open the mic — no sound came in (Settings → Privacy → Microphone?)")
-        return mic, mic.name, first
     errs = []
     for c in mic_cmds():
         try:
@@ -1213,13 +1163,10 @@ def open_mic():
 
 def spawn_kw():
     """Start a child in its own group, so stopping it also stops whatever it started."""
-    return {"creationflags": 0x00000200 | winsys.NO_WINDOW} if WIN else {"start_new_session": True}
+    return {"start_new_session": True}
 
 
 def kill(p):
-    if p and p.poll() is None and WIN:
-        p.kill()
-        return
     if p and p.poll() is None:
         try:
             os.killpg(p.pid, signal.SIGTERM)
@@ -1334,8 +1281,6 @@ def reset_whisper():
 
 
 def list_mics():
-    if WIN:
-        return winsys.list_mics()
     if not shutil.which("pactl"):
         return []
     out = subprocess.run(["pactl", "-f", "json", "list", "sources"], capture_output=True, text=True).stdout
@@ -1529,12 +1474,7 @@ class Wake:
 
 def doctor():
     print(f"Nixi doctor (version {VERSION})\n")
-    if WIN:
-        print("inputs (any part of a name works as mic_device):")
-        for m in winsys.list_mics():
-            print("  " + m["label"])
-        print()
-    elif shutil.which("pactl"):
+    if shutil.which("pactl"):
         out = subprocess.run(["pactl", "list", "short", "sources"], capture_output=True, text=True).stdout
         dflt = subprocess.run(["pactl", "get-default-source"], capture_output=True, text=True).stdout.strip()
         print("inputs (use the 2nd column as mic_device):")
@@ -1542,14 +1482,10 @@ def doctor():
             if ".monitor" not in ln:
                 print("  " + ln + ("   <- default" if dflt and dflt in ln else ""))
         print()
-    print("recorders tried in order:", "sounddevice" if WIN else (", ".join(c[0] for c in mic_cmds()) or "NONE"))
+    print("recorders tried in order:", ", ".join(c[0] for c in mic_cmds()) or "NONE")
     print("recording 3 seconds — keep talking the whole time…", flush=True)
     try:
-        if WIN:                                     # (keep every channel, to see which one your voice is on)
-            mic = winsys.Mic(RATE, CFG.get("mic_device"), keep_raw=True)
-            name, buf = mic.name, b""
-        else:
-            mic, name, buf = open_mic()
+        mic, name, buf = open_mic()
         t0, data = time.monotonic(), bytearray(buf)
         while time.monotonic() - t0 < 3:
             try:
@@ -1558,22 +1494,12 @@ def doctor():
                 break
         mic.close()
         data = bytes(data[: len(data) // 2 * 2])
-        if WIN:
-            i = mic.info
-            ch, switched = mic.channel
-            print(f"  device: {i['name']} · {i['driver']} · {i['channels']} channel(s) · {i['rate']} Hz"
-                  + (f" · recording channel {ch}" + (" (the other is near silent)" if switched else "")
-                     if mic.channels == 2 else ""))
         s = memoryview(data).cast("h")
         peak = max((abs(x) for x in s), default=0) / 32768
         bar = "#" * int(min(1, peak * 3) * 30)
         print(f"  {name}: {len(data) / 32000:.1f}s captured, loudest {peak:.3f}  [{bar:<30}]")
         # what each channel carries: how loud, and whether there's any talking in it at all
         chans = {"": data}
-        if WIN and mic.channels == 2 and mic.raw:
-            import numpy as np
-            st = np.frombuffer(bytes(mic.raw[: len(mic.raw) // 4 * 4]), dtype=np.int16).reshape(-1, 2)
-            chans = {f"channel {c + 1}": np.ascontiguousarray(st[:, c]).tobytes() for c in (0, 1)}
         talk = {}
         for k, pcm in chans.items():
             try:
@@ -1588,16 +1514,15 @@ def doctor():
         try:
             import wave as _w
             with _w.open(str(wav), "wb") as w:
-                raw = bytes(mic.raw) if WIN and mic.channels == 2 and mic.raw else data
-                w.setnchannels(2 if raw is not data else 1)
+                raw = data
+                w.setnchannels(1)
                 w.setsampwidth(2)
                 w.setframerate(RATE)
                 w.writeframes(raw)
         except Exception:  # noqa: BLE001
             wav = None
         if peak > 0.98:
-            print("  -> CLIPPING: input is too loud — turn the mic down to ~65% in Sound settings" if WIN else
-                  "  -> CLIPPING: input is too loud — try: wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 0.65")
+            print("  -> CLIPPING: input is too loud — try: wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 0.65")
         elif talk.get("") == 0 or (len(talk) == 2 and not heard_any):
             print("  -> NO VOICE in what this mic sends, only background noise. Is the mic muted on the headset "
                   "(a button, or its own app, e.g. INZONE Hub / Logitech G HUB)? Is it the mic you're talking into? "
@@ -1622,17 +1547,13 @@ def doctor():
                 print("  speech-to-text failed:", e)
     except Exception as e:  # noqa: BLE001
         print("  MIC FAILED:", e)
-    if WIN:
-        lv = winsys.mic_level(CFG.get("mic_device") or "")
-        print(f"  Windows mic level: {'?' if lv is None else f'{lv:.0%}'}"
-              + ("  (Nixi adjusts it as you talk: mic_auto)" if CFG.get("mic_auto", True) else ""))
     print("\nvoice:", tts_engine() or "none (install espeak-ng / piper)")
     print("claude:", claude_bin() or "NOT FOUND")
 
 
 # ---------------------------------------------------------------- text to speech
 def piper_bin():
-    local = Path(sys.executable).parent / ("piper.exe" if WIN else "piper")
+    local = Path(sys.executable).parent / "piper"
     if local.exists():
         return str(local)
     return shutil.which("piper") or shutil.which("piper-tts")
@@ -1976,9 +1897,7 @@ def audio_player_cmd(rate):
 
 
 def make_player(rate):
-    """Something that takes raw 16-bit mono on .stdin: paplay/aplay on Linux, sounddevice on Windows."""
-    if WIN:
-        return winsys.Player(rate)
+    """Something that takes raw 16-bit mono on .stdin: paplay/aplay on Linux."""
     return subprocess.Popen(audio_player_cmd(rate), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL)
 
@@ -2015,7 +1934,7 @@ class Speaker:
 
     @classmethod
     def available(cls):
-        return CFG.get("voice_out", "auto") != "page" and (winsys.can_play() if WIN else audio_player_cmd(22050) is not None)
+        return CFG.get("voice_out", "auto") != "page" and audio_player_cmd(22050) is not None
 
     @classmethod
     def _start(cls):
@@ -2212,7 +2131,7 @@ def stress_voice(silent=False):
         globals()["audio_player_cmd"] = lambda rate: [sys.executable, "-c", "import sys\nwhile sys.stdin.buffer.read(65536): pass"]
         globals()["make_player"] = lambda rate: subprocess.Popen(audio_player_cmd(rate), stdin=subprocess.PIPE)
     else:
-        cmd = True if WIN and winsys.can_play() else audio_player_cmd(22050)
+        cmd = audio_player_cmd(22050)
         if not cmd:
             print("no audio player (paplay / aplay) — install libpulse or alsa-utils"); return 1
         print(f"player: {cmd[0]}   (you'll hear him say the same few sentences three times)")
@@ -2330,7 +2249,7 @@ def claude_bin():
     found = shutil.which(b)
     if found:
         return found
-    for c in (Path.home() / ".local/bin/claude", Path.home() / ".local/bin/claude.exe", Path.home() / ".claude/local/claude",
+    for c in (Path.home() / ".local/bin/claude", Path.home() / ".claude/local/claude",
               Path("/usr/bin/claude"), Path("/usr/local/bin/claude")):
         if c.exists():
             return str(c)
@@ -2402,7 +2321,7 @@ def result_text(c):
 
 
 def trust():
-    return "root" if CFG.get("root_mode") and not WIN else (CFG.get("trust") if CFG.get("trust") in ("ask", "trust", "readonly") else "ask")
+    return "root" if CFG.get("root_mode") else (CFG.get("trust") if CFG.get("trust") in ("ask", "trust", "readonly") else "ask")
 
 
 HOOKS_PATH = DATA_DIR / "hooks.json"
@@ -2410,8 +2329,7 @@ HOOKS_PATH = DATA_DIR / "hooks.json"
 
 def hooks_file():
     """Claude Code settings that route commands / web requests through approve.py (→ a yes/no card under Nixi)."""
-    cmd = (f'"{sys.executable}" "{APP_DIR / "approve.py"}"' if WIN else
-           f"{shlex.quote(sys.executable)} {shlex.quote(str(APP_DIR / 'approve.py'))}")
+    cmd = f"{shlex.quote(sys.executable)} {shlex.quote(str(APP_DIR / 'approve.py'))}"
     data = {"hooks": {"PreToolUse": [{"matcher": "Bash|WebFetch|WebSearch|Edit|Write|MultiEdit|NotebookEdit|mcp__.*",
                                       "hooks": [{"type": "command", "command": cmd, "timeout": 900}]}]}}
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -2551,7 +2469,7 @@ def run_claude(prompt, emit, partial):
         return "done"
     env = dict(os.environ)
     env["PATH"] = str(Path.home() / ".local" / "bin") + os.pathsep + env.get("PATH", "")
-    if CFG.get("root_mode") and not WIN:
+    if CFG.get("root_mode"):
         env["SUDO_ASKPASS"] = str(APP_DIR / "askpass.py")
     env["NIXI_COMPANION_PORT"], env["NIXI_COMPANION_TOKEN"] = str(CFG["port"]), TOOL_TOKEN   # (the limited one: every command Claude runs sees it)
     proc = subprocess.Popen(build_cmd(binary, partial), cwd=ST.cwd, env=env, stdin=subprocess.PIPE,
@@ -2817,10 +2735,6 @@ def stop_proc():
     p = ST.proc
     if p and p.poll() is None:
         ST.stopped = True
-        if WIN:                               # no process groups: take down Claude and everything it started
-            subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True,
-                           creationflags=winsys.NO_WINDOW)
-            return
         try:
             os.killpg(p.pid, signal.SIGTERM)
         except ProcessLookupError:
@@ -2839,9 +2753,8 @@ def vtuple(v):
 
 class Updates:
     """Is a newer Nixi out? Asks GitHub's public "latest release" — at most twice a day; nothing about you is sent —
-    and installs it on request: on Windows by running the new NixiSetup.exe (it stops Nixi, updates and starts him
-    again), on a git install of Linux by `git pull` + install.sh + `nixi-companion show`."""
-    info = {}                    # {"latest", "url", "setup", "checked"} — also kept in update.json
+    and installs it on request: on a git install of Linux by `git pull` + install.sh + `nixi-companion show`."""
+    info = {}                    # {"latest", "url", "checked"} — also kept in update.json
     state, error = "idle", ""    # idle | updating | failed
 
     @classmethod
@@ -2895,7 +2808,6 @@ class Updates:
         def pick(test):
             return next((u for n, u in assets.items() if test(n)), "")
         cls.info = {"latest": str(rel.get("tag_name") or "").lstrip("v"), "url": rel.get("html_url") or "",
-                    "setup": assets.get("NixiSetup.exe", ""),
                     "deb": pick(lambda n: n.startswith("nixi-companion_") and n.endswith(".deb")),
                     "rpm": pick(lambda n: n.startswith("nixi-companion-") and n.endswith(".noarch.rpm")),
                     "arch": pick(lambda n: n.startswith("nixi-companion-") and n.endswith(".pkg.tar.zst")),
@@ -2908,9 +2820,7 @@ class Updates:
 
     @classmethod
     def how(cls):
-        """setup (Windows) | git (Linux, installed from a clone) | package (AUR/.deb/meson) | manual"""
-        if WIN:
-            return "setup"
+        """git (Linux, installed from a clone) | package (AUR/.deb/meson) | manual"""
         try:
             src = (DATA_DIR / "source").read_text().strip()
         except OSError:
@@ -2946,8 +2856,6 @@ class Updates:
     @classmethod
     def can_install(cls):
         how = cls.how()
-        if WIN:
-            return bool(cls.info.get("setup"))
         if how == "git":
             return True
         return how == "package" and bool(cls.pkg_kind() and cls.info.get(cls.pkg_kind()) and shutil.which("pkexec"))
@@ -2956,7 +2864,7 @@ class Updates:
     def status(cls):
         latest = cls.info.get("latest") or ""
         return {"current": VERSION, "latest": latest, "newer": bool(latest) and vtuple(latest) > vtuple(VERSION),
-                "url": cls.info.get("url") or "", "how": cls.how(), "pkg": "" if WIN else cls.pkg_kind(),
+                "url": cls.info.get("url") or "", "how": cls.how(), "pkg": cls.pkg_kind(),
                 "can_install": cls.can_install(), "state": cls.state, "error": cls.error}
 
     @classmethod
@@ -2969,32 +2877,6 @@ class Updates:
     @classmethod
     def _install(cls):
         try:
-            if WIN:
-                import urllib.request
-                if not cls.info.get("setup"):
-                    raise RuntimeError("this release has no NixiSetup.exe")
-                exe = Path(tempfile.gettempdir()) / "NixiSetup-update.exe"
-                urllib.request.urlretrieve(cls.info["setup"], exe)
-                # A hidden helper runs setup, waits for it, then starts Nixi again. A short-lived PowerShell starts the
-                # helper and exits, so the helper isn't in our process tree and survives setup stopping Nixi (and this
-                # server). The helper's script goes in base64 (-EncodedCommand): no quoting to get wrong.
-                import base64
-
-                def q(s):                                              # a PowerShell '...' string
-                    return "'" + str(s).replace("'", "''") + "'"
-                pyw = Path(sys.executable).with_name("pythonw.exe")
-                pyw = pyw if pyw.exists() else Path(sys.executable)
-                log = DATA_DIR / "update-setup.log"
-                helper = ("Start-Process -Wait -FilePath " + q(exe) + " -ArgumentList '/SILENT','/SUPPRESSMSGBOXES',"
-                          "'/NORESTART','/UPDATER'," + q('/LOG="' + str(log) + '"') + "\n"
-                          "Start-Process -FilePath " + q(pyw) + " -ArgumentList " + q('"' + str(APP_DIR / "launch_win.py") + '"')
-                          + ",'show'\n")
-                enc = base64.b64encode(helper.encode("utf-16-le")).decode()
-                subprocess.Popen(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
-                                  "Start-Process powershell -WindowStyle Hidden -ArgumentList '-NoProfile -EncodedCommand "
-                                  + enc + "'"], creationflags=winsys.NO_WINDOW, close_fds=True)
-                print(f"[nixi] update: running {exe}", flush=True)
-                return                                 # setup stops us and updates Nixi; the helper starts him again
             how = cls.how()
             if how == "package":
                 return cls._install_package()
@@ -3073,9 +2955,8 @@ def diagnostics():
         L.append(f"{k:<18} {v}")
     add("nixi-companion", f"{VERSION} ({Updates.how()} install; latest seen: {Updates.info.get('latest') or '?'})")
     add("system", platform.platform())
-    if not WIN:
-        add("desktop", " / ".join(x for x in (os.environ.get("XDG_CURRENT_DESKTOP"), os.environ.get("XDG_SESSION_TYPE"),
-                                              "hyprland" if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") else "") if x) or "?")
+    add("desktop", " / ".join(x for x in (os.environ.get("XDG_CURRENT_DESKTOP"), os.environ.get("XDG_SESSION_TYPE"),
+                                          "hyprland" if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") else "") if x) or "?")
     add("python", platform.python_version())
     cb = claude_bin()
     cv = "not found"
@@ -3096,20 +2977,6 @@ def diagnostics():
         cuda = False
     add("cuda libraries", "yes" if cuda else "no")
     add("mic", f"device: {CFG.get('mic_device') or 'system default'}")
-    if WIN:
-        lv = winsys.mic_level(CFG.get("mic_device") or "")
-        add("mic level", "?" if lv is None else f"{lv:.0%} (Windows)")
-        m = getattr(winsys.Mic, "last", None)
-        if m:
-            add("mic stream", f"{m.info['driver']} · {m.channels} of {m.info['channels']} channel(s) · {m.info['rate']} Hz"
-                              f" · recording channel {m.channel[0]}" + (" (switched: the other is near silent)" if m.channel[1] else ""))
-        try:
-            import winreg
-            k = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64", 0,
-                               winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
-            add("vc++ runtime", winreg.QueryValueEx(k, "Version")[0])
-        except OSError:
-            add("vc++ runtime", "not found")
     add("mic auto-level", f"{'on' if CFG.get('mic_auto', True) else 'off'}, boost {MicAuto.soft:.1f}x, last voice peak "
                           + ("-" if MicAuto.last_peak is None else f"{MicAuto.last_peak:.3f}"))
     add("settings", ", ".join(f"{k}={CFG.get(k)}" for k in ("trust", "wake_word", "barge_in", "follow_up", "tts",
@@ -3130,13 +2997,13 @@ def state_info():
     return {
         "bridge": BRIDGED,
         "version": VERSION, "update": Updates.status(), "update_check": bool(CFG.get("update_check", True)),
-        "platform": "windows" if WIN else "linux", "ptt_hotkey": CFG.get("ptt_hotkey", "") or "",
+        "platform": "linux", "ptt_hotkey": CFG.get("ptt_hotkey", "") or "",
         "presence": "bar" if CFG.get("presence") == "bar" else "orb",
         "bar_edge": CFG.get("bar_edge") if CFG.get("bar_edge") in ("top", "bottom", "left", "right") else "top",
         "cwd": ST.cwd, "cwd_display": pretty_path(ST.cwd), "session": bool(ST.session),
-        "tts": tts_engine(), "mic": WIN or bool(mic_cmds()), "stt": "ready" if _whisper else (_whisper_err or "loading"),
+        "tts": tts_engine(), "mic": bool(mic_cmds()), "stt": "ready" if _whisper else (_whisper_err or "loading"),
         "trust": trust_nixi() if BRIDGED else trust(), "model": CFG["model"] or "default", "effort": CFG.get("effort") or "", "lean": bool(CFG.get("lean", True)), "max_cost_usd": CFG.get("max_cost_usd") or 0,
-        "compact_tokens": CFG.get("compact_tokens") or 0, "root": bool(CFG.get("root_mode")) and not WIN, "root_ok": not WIN,
+        "compact_tokens": CFG.get("compact_tokens") or 0, "root": bool(CFG.get("root_mode")), "root_ok": True,
 
         "wake_word": bool(CFG.get("wake_word")), "notify_done": bool(CFG.get("notify_done")),
         "popup_done": bool(CFG.get("popup_done")), "hover": bool(CFG.get("hover")), "code_panel": CFG.get("code_panel", True) is not False, "live_minutes": int(CFG.get("live_minutes") or 10), "voice_native": Speaker.available(), "code_face": "you" if CFG.get("code_face") == "you" else "him",
@@ -3146,7 +3013,7 @@ def state_info():
         "projects": quick.projects(),
         "quick_actions": CFG.get("quick_actions") or [], "memory_count": len(mem_load()),
         "mic_device": CFG.get("mic_device") or "", "whisper_model": CFG.get("whisper_model") or "auto",
-        "can_shoot": WIN or any(shutil.which(t) for t in ("grim", "spectacle", "gnome-screenshot", "maim", "scrot", "import")),
+        "can_shoot": any(shutil.which(t) for t in ("grim", "spectacle", "gnome-screenshot", "maim", "scrot", "import")),
         "eye_color": CFG.get("eye_color") or "#3e5993", "eye_white": CFG.get("eye_white") or "#ffffff",
         "pupil_style": CFG.get("pupil_style") or "slit",
         "voice": CFG.get("voice") or "girl", "voice_pitch": voice_preset().get("pitch", 1.0),
@@ -3313,7 +3180,7 @@ class Handler(BaseHTTPRequestHandler):
                     if VOICES[b["voice"]].get("piper"):
                         fetch_voice(VOICES[b["voice"]]["piper"])
                 if "root" in b:
-                    upd["root_mode"] = bool(b["root"]) and not WIN
+                    upd["root_mode"] = bool(b["root"])
                 if upd.get("root_mode") is False:
                     AskPass.forget()
                 for key in ("eye_color", "eye_white"):
@@ -3417,7 +3284,7 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/askpass":                   # askpass.py (sudo -A) is waiting for the password
                 if BRIDGED:
                     return self._json({"error": "off in nixi mode"}, 403)
-                if WIN or not CFG.get("root_mode"):   # the password card only exists in root mode
+                if not CFG.get("root_mode"):   # the password card only exists in root mode
                     return self._json({"error": "root mode is off"}, 403)
                 b = json.loads(self._body() or b"{}")
                 return self._json(AskPass.ask(str(b.get("prompt") or "Password:")))
@@ -3548,7 +3415,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 self.wfile.write(b"data: " + json.dumps(kw).encode() + b"\n\n")
                 self.wfile.flush()
-            except ConnectionError:                 # (broken pipe / reset / Windows' "aborted": the window went away)
+            except ConnectionError:                 # (broken pipe / reset: the window went away)
                 alive[0] = False
         return emit, alive
 
