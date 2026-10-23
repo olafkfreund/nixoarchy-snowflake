@@ -49,7 +49,7 @@ STATE_PATH = DATA_DIR / "state.json"
 # password helper) and only works for those: asking you to approve, looking at the screen, and the sudo card in root mode.
 TOKEN = secrets.token_urlsafe(24)
 TOOL_TOKEN = secrets.token_urlsafe(24)
-TOOL_PATHS = {"/api/approve", "/api/capture", "/api/askpass"}
+TOOL_PATHS = {"/api/approve", "/api/capture", "/api/askpass", "/api/theme"}   # /api/theme: the omarchy theme hook
 
 VOICE_PROMPT = (
     "You are being driven from Nixi, a small voice-first desktop shell for Claude Code. "
@@ -242,15 +242,42 @@ def look():
     pup = ec if HEX.fullmatch(ec) else "#3e5993"
     wht = ew if HEX.fullmatch(ew) else "#ffffff"
     out = {"body": "#1b2a4a", "pupL": pup, "pupR": pup, "whiteL": wht, "whiteR": wht, "skin": "none",
-           "skinColor": "", "link": True, "random": ec == "random" or ew == "random"}
+           "skinColor": "", "link": True, "random": ec == "random" or ew == "random", "follow_theme": True}
     for k, v in lk.items():
         if k in ("body", "pupL", "pupR", "whiteL", "whiteR", "skinColor") and isinstance(v, str) and (HEX.fullmatch(v.lower()) or (k == "skinColor" and v == "")):
             out[k] = v.lower()
         elif k == "skin" and v in SKINS:
             out[k] = v
-        elif k in ("link", "random"):
+        elif k in ("link", "random", "follow_theme"):
             out[k] = bool(v)
     return out
+
+
+THEME_KEYS = ("accent", "background", "darker_background", "lighter_background", "foreground", "bright_foreground", "blue", "cyan")
+
+
+def theme_colors():
+    """The current Omarchy theme's colours (from its colors.toml), or None when there is no theme or anything is off."""
+    try:
+        import tomllib
+        name = subprocess.run(["omarchy", "theme", "current"], capture_output=True, text=True, timeout=5).stdout.strip().lower().replace(" ", "-")
+        if not name:
+            return None
+        f = Path.home() / ".config/omarchy/themes" / name / "colors.toml"
+        if not f.is_file():
+            d = subprocess.run(["omarchy", "theme", "dir", name], capture_output=True, text=True, timeout=5).stdout.strip()
+            f = Path(d) / "colors.toml"
+        t = tomllib.loads(f.read_text())
+        out = {k: str(t[k]).lower() for k in THEME_KEYS}
+        if not all(HEX.fullmatch(v) for v in out.values()):
+            return None
+        out["mode"] = "light" if t.get("mode") == "light" else "dark"
+        return out
+    except Exception:  # noqa: BLE001
+        return None
+
+
+THEME = theme_colors()
 
 
 # ---------------------------------------------------------------- state
@@ -2995,7 +3022,7 @@ def trust_nixi():
 
 def state_info():
     return {
-        "bridge": BRIDGED,
+        "bridge": BRIDGED, "theme": THEME,
         "version": VERSION, "update": Updates.status(), "update_check": bool(CFG.get("update_check", True)),
         "platform": "linux", "ptt_hotkey": CFG.get("ptt_hotkey", "") or "",
         "presence": "bar" if CFG.get("presence") == "bar" else "orb",
@@ -3091,6 +3118,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if p == "/api/ticket":                 # (window token only) a one-time ticket for the browser fallback
                 return self._json({"ticket": Tickets.new()})
+            if p == "/api/theme":                  # the Omarchy theme changed: re-read it and tell the page
+                global THEME
+                THEME = theme_colors()
+                BUS.pub(t="theme", theme=THEME)
+                return self._json({"theme": THEME})
             if p == "/api/ask":
                 return self.ask()
             if p == "/api/tts":
@@ -3617,8 +3649,17 @@ def main():
     ap.add_argument("--sync-autostart", action="store_true", help="add/remove login startup to match the config")
     ap.add_argument("--stress-voice", action="store_true", help="test the voice for stutters under heavy load")
     ap.add_argument("--silent", action="store_true", help="with --stress-voice: don't actually play the sound")
+    ap.add_argument("--theme-changed", action="store_true", help="`nixi-companion theme-changed`: tell the running Nixi to re-read the Omarchy theme")
     ap.add_argument("--see", choices=("window", "screen"), help="`nixi-companion see`: ask the running Nixi for a picture, print its path")
     args = ap.parse_args()
+    if args.theme_changed:                       # best effort: not running = nothing to do
+        try:
+            rt = json.loads((DATA_DIR / "runtime.json").read_text())
+            import urllib.request
+            urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{rt['port']}/api/theme", data=b"{}", headers={"Content-Type": "application/json", "X-Nixi-Token": rt["tool_token"]}), timeout=5)
+        except Exception:  # noqa: BLE001
+            pass
+        sys.exit(0)
     if args.see:                                 # view-only: no clicking or typing, ever
         try:
             rt = json.loads((DATA_DIR / "runtime.json").read_text())

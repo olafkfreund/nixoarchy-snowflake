@@ -539,6 +539,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
           <div class="swatches" id="pkSw"></div>
           <div class="recent" id="pkRecent"></div>
         </div>
+        <label class="tg" style="margin-top:9px"><input type="checkbox" id="themeSw"><span class="sw"></span><span class="l">Follow desktop theme<small>Colours follow your Omarchy theme. Picking a colour by hand turns this off.</small></span></label>
         <label class="tg" style="margin-top:9px"><input type="checkbox" id="linkSw"><span class="sw"></span><span class="l">Matching eyes<small>Change both eyes (and both whites) together.</small></span></label>
         <label class="tg" style="margin-top:7px"><input type="checkbox" id="rndSw"><span class="sw"></span><span class="l">Surprise me<small>New random colours every time he pops up.</small></span></label>
       </div>
@@ -689,7 +690,15 @@ function applyAccent(hex){
     '--tint':hsl2hex(h,s?.55:0,.86),'--accA':acc+'1f','--accB':acc+'59'};
   for(const k in v) st.setProperty(k,v[k]);
 }
+// the Omarchy theme paints the face while look.follow_theme is on (and he isn't rolling random colours)
+const themed=L=>{ const t=info&&info.theme; if(!t||L.follow_theme===false||L.random) return L;
+  const lt=t.mode==='light'; return {...L,body:lt?t.lighter_background:t.darker_background,pupL:t.accent,pupR:t.accent,whiteL:t.bright_foreground,whiteR:t.bright_foreground}; };
+const NIX_STOPS={nixD:['#3e5993','#4564a5','#4d6fb7'],nixL:['#6d9bbc','#72a9cf','#77b6e1']};
+function applyLambdas(t){   // lambdas: blue (dark ones) and cyan (light ones), each a shaded gradient; no theme = the NixOS blues
+  const c=t?{nixD:[shade(t.blue,-.15),t.blue,shade(t.blue,.08)],nixL:[shade(t.cyan,-.1),t.cyan,shade(t.cyan,.1)]}:NIX_STOPS;
+  for(const id in c) document.querySelectorAll(`#${id} stop`).forEach((e,i)=>e.setAttribute('stop-color',c[id][i])); }
 function applyLook(L){
+  const fl=L.follow_theme!==false&&info&&info.theme; applyLambdas(fl&&!L.random?info.theme:null); L=themed(L);
   LOOK={...LOOK_DEFAULT,...L};
   const st=document.documentElement.style, [b0,b1,b2]=bodyStops(LOOK.body);
   st.setProperty('--pupL',LOOK.pupL); st.setProperty('--pupR',LOOK.pupR);
@@ -713,9 +722,9 @@ function randomLook(L){
 }
 let lookShown='', lookRolled=false;
 function syncLook(reroll){
-  const L={...LOOK_DEFAULT,...(info.look||{})};
+  const L=themed({...LOOK_DEFAULT,...(info.look||{})});
   if(L.random){ if(reroll||!lookRolled){ applyLook({...L,...randomLook(L)}); lookRolled=true; lookShown=''; } else if(L.skin!==LOOK.skin) applyLook({...LOOK,skin:L.skin}); return; }
-  lookRolled=false; const k=JSON.stringify(L); if(k!==lookShown){ applyLook(L); lookShown=k; }
+  lookRolled=false; const k=JSON.stringify([L,info.theme]); if(k!==lookShown){ applyLook(L); lookShown=k; }
 }
 const syncEye=syncLook;
 
@@ -1459,6 +1468,7 @@ async function events(){
   }
 }
 function onEvent(ev){
+  if(ev.t==='theme'){ info.theme=ev.theme; lookShown=''; syncLook(); if(setEl.classList.contains('on')) renderSettings(); return; }
   if(ev.t==='saw'){ poke('looking',1800); wake(); return; }   // Claude took a look at your screen (`nixi-companion see`)
   if(ev.t==='ctx'){ onContext(ev); return; }
   if(ev.t==='follow'){ follow=!!ev.on; hearRaw=0; if(follow) wake(); return; }
@@ -2079,13 +2089,13 @@ let pkPart='pupL', pkHSV=[150,.6,.6], saveT=null;
 const hsv2hex=(h,s,v)=>{ const f=n=>{ const k=(n+h/60)%6; return v-v*s*Math.max(0,Math.min(k,4-k,1)); }; return rgb2hex([f(5),f(3),f(1)]); };
 function hex2hsv(hex){ const [r,g,b]=hex2rgb(hex), mx=Math.max(r,g,b), mn=Math.min(r,g,b), d=mx-mn;
   let h=0; if(d){ h=mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4; h*=60; if(h<0) h+=360; } return [h, mx?d/mx:0, mx]; }
-function curLook(){ return {...LOOK_DEFAULT,...(info.look||{})}; }
+function curLook(){ return themed({...LOOK_DEFAULT,...(info.look||{})}); }
 function partColour(L,p){ return p==='skin'?(L.skinColor||L.body):L[p]; }
 function editKeys(L,p){ if(L.link&&(p==='pupL'||p==='pupR')) return ['pupL','pupR']; if(L.link&&(p==='whiteL'||p==='whiteR')) return ['whiteL','whiteR'];
   return [p==='skin'?'skinColor':p]; }
 function setPart(hex,{save=true,fromPicker=false}={}){
-  const L=curLook(); for(const k of editKeys(L,pkPart)) L[k]=hex; L.random=false;
-  info.look=L; applyLook(L); lookShown=JSON.stringify(L);
+  const L=curLook(); for(const k of editKeys(L,pkPart)) L[k]=hex; L.random=false; L.follow_theme=false;   // by hand: stop following the theme
+  info.look=L; applyLook(L); lookShown=JSON.stringify([L,info.theme]);
   if(!fromPicker&&hex){ pkHSV=hex2hsv(hex); }
   drawPicker(); drawPreview();
   if(save){ clearTimeout(saveT); saveT=setTimeout(()=>{ post('/api/settings',{look:curLook()}).then(r=>r.json()).then(j=>{ info=j; }).catch(()=>{}); addRecent(hex); },450); }
@@ -2138,7 +2148,7 @@ function renderSettings(){
   $('#modelChips').innerHTML=MODELS.map(([id,l])=>`<button data-m="${id}" class="${cur===id?'on':''}">${l}</button>`).join('');
   $('#voiceChips').innerHTML=(info.voices||[]).map(v=>`<button data-v="${v.id}" class="${info.voice===v.id?'on':''}">${v.label}${v.downloading?'<i>⇣</i>':''}</button>`).join('');
   const sw={rootSw:info.root,speakSw:!muted,wakeSw:info.wake_word,autoSw:info.autostart,listenShowSw:info.listen_on_show,hoverSw:info.hover,
-    clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,rndSw:curLook().random,
+    clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
     updSw:info.update_check!==false,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
   renderUpdate(); renderPtt();
@@ -2218,7 +2228,7 @@ async function loadMics(){
     $('#micSel').innerHTML=`<option value="">System default</option>`+(j.mics||[]).map(m=>`<option value="${esc(m.id)}"${m.id===cur?' selected':''}>${esc(m.label)}</option>`).join('');
   }catch(e){} }
 async function setSetting(b){ try{ info=await (await post('/api/settings',b)).json(); showInfo(); if(setEl.classList.contains('on')) renderSettings(); }catch(e){ tick('settings: '+e.message,true); } }
-function setLook(patch){ clearTimeout(saveT); const L={...curLook(),...patch}; info.look=L; applyLook(L); lookShown=JSON.stringify(L); return setSetting({look:L}); }
+function setLook(patch){ clearTimeout(saveT); const L={...curLook(),...patch}; info.look=L; applyLook(L); lookShown=JSON.stringify([L,info.theme]); return setSetting({look:L}); }
 setEl.addEventListener('click',e=>{
   if(e.target.closest('[data-close]')) return settings(false);
   const g=k=>e.target.closest(`[data-${k}]`);
@@ -2275,6 +2285,7 @@ setEl.addEventListener('change',e=>{
   if(id==='codeSw'){ setSetting({code_panel:on}); if(!on) CP.hide(); }
   if(id==='micSel') setSetting({mic_device:e.target.value}).then(()=>tick('microphone changed'));
   if(id==='linkSw'){ const L=curLook(); const patch={link:on}; if(on){ patch.pupR=L.pupL; patch.whiteR=L.whiteL; } setLook(patch).then(()=>selectPart(pkPart.replace('R','L'))); }
+  if(id==='themeSw') return setLook({follow_theme:on}).then(()=>{ lookShown=''; syncLook(); renderSettings(); });
   if(id==='rndSw') setLook({random:on}).then(()=>{ if(on){ lookRolled=false; syncLook(true); } else { lookShown=''; syncLook(); } renderSettings(); });
 });
 setEl.addEventListener('keydown',e=>{ if(e.target.matches('input[type=text],input[type=number]')) e.stopPropagation(); if(e.key==='Enter'&&(e.target.id==='projPath'||e.target.id==='projName')) $('#projAdd').click(); });
