@@ -2483,7 +2483,7 @@ addEventListener('mousedown',e=>{ if(!e.target.closest('#body,#barPill,#menu,#as
 
 addEventListener('keydown',e=>{ wake();
   const askOn=ask.classList.contains('on'), k=e.key.toLowerCase(), typing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&document.activeElement!==input;
-  if(pendingAppr && !askOn && !typing){ if(e.key==='Enter'||k==='y'){ e.preventDefault(); return answer('yes'); } if(e.key==='Escape'||k==='n'){ e.preventDefault(); return answer('no'); } }
+  if(pendingAppr && !askOn && !typing){ if((e.key==='Enter'||k==='y')&&pendingAppr.confirm==='click'){ e.preventDefault(); return; } if(e.key==='Enter'||k==='y'){ e.preventDefault(); return answer('yes'); } if(e.key==='Escape'||k==='n'){ e.preventDefault(); return answer('no'); } }
   if(e.key==='Escape'){ e.preventDefault();
     if(menuOn) return menu(false);
     if(setEl.classList.contains('on')||panelEl.classList.contains('on')) return closePanels(), sendRegion(true);

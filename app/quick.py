@@ -310,10 +310,10 @@ def handle(text):
     t = re.sub(r"^(hey nixi|nixi|ok nixi|okay nixi)[,\s]+", "", t)
     t = re.sub(r"^(please|can you|could you|would you|will you)\s+", "", t)
     t = re.sub(r"\s+please$", "", t)
-    # a send keeps its case (it is typed into another session) and may be longer than other phrases (#95)
-    m = re.match(r"^\s*(?:(?:hey )?nixi,?\s+)?(?:tell|ask) (?:the |my )?(.+?) session[:,]\s*(.+)$|^\s*on (.+?):\s*(.+)$", (text or "").strip(" .!?")[:600], re.I)
-    if m and len((m.group(2) or m.group(4))) <= 500:
-        return {"session_send": [(m.group(1) or m.group(3)).strip().lower(), (m.group(2) or m.group(4)).strip()]}
+    # a send keeps its case and its punctuation (it is typed into another session) and may be longer than other phrases (#95)
+    m = re.match(r"^\s*(?:(?:hey )?nixi,?\s+)?tell (?:the |my )?(.+?) session[:,]\s*(.+)$", (text or "").strip()[:600], re.I)
+    if m and len(m.group(2)) <= 500:
+        return {"session_send": [m.group(1).strip().lower(), m.group(2).strip()]}
     if not t or len(t) > 120:
         return None
 
