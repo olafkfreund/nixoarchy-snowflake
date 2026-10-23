@@ -1692,6 +1692,7 @@ function voiceAnswer(said,bridged){
   return /\b(always|every time|don'?t ask)\b/i.test(said)?'always':/\b(no|nope|nah|don'?t|stop|cancel|wait|never)\b/i.test(said)?'no':
     /\b(yes|yeah|yep|yup|sure|ok|okay|go|go ahead|do it|run it|fine|please|alright|sounds good)\b/i.test(said)?'yes':null; }
 async function askAloud(a,spoken){
+  if(a.confirm==='click'){ tick('click to confirm sends'); if(!muted) enqueue(spoken); return; }   // a send: the voice never answers it (#95)
   if(!muted){ enqueue(spoken); await untilQuiet(); }
   for(let tries=0; tries<2 && pendingAppr===a; tries++){
     const said=(await startRec('approve'))||'';

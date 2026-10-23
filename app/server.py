@@ -671,7 +671,7 @@ class Approvals:
             return {"ok": False, "why": "the user didn't answer in time, so it wasn't run"}
         return {"ok": False}
 
-    def ask_bridge(self, title, options, detail="", timeout=600):
+    def ask_bridge(self, title, options, detail="", timeout=600, confirm=None):
         """nixi's permission request on Nixi's card. Never touches self.always. Returns the picked option id ("" = none)."""
         kinds = {o.get("kind"): o.get("id") for o in reversed(options)}      # first option of each kind wins
         rej = kinds.get("reject_once") or next((o.get("id") for o in options if str(o.get("kind")).startswith("reject")), "")
@@ -680,7 +680,7 @@ class Approvals:
         item = {"id": aid, "tool": title, "key": aid, "detail": detail, "ev": ev, "ans": None}
         with self.lock:
             self.pending[aid] = item
-        BUS.pub(t="approve", id=aid, tool=title, detail=detail, key=aid, say=title, always="allow_always" in kinds)
+        BUS.pub(t="approve", id=aid, tool=title, detail=detail, key=aid, say=title, always="allow_always" in kinds, confirm=confirm)
         ev.wait(timeout)
         with self.lock:
             self.pending.pop(aid, None)
@@ -2956,6 +2956,27 @@ def session_show(name):
     return f"Opening the {hits[0].get('terminal_title_stripped') or name} session."
 
 
+def session_send(name, text):
+    """Same shape as session_status. The send itself is nixi's agent's Bash call, which the bridge turns into a click-only card."""
+    if (nixi_conf().get("agent") or "claude") != "claude":
+        return ("Sending to sessions works with Claude as nixi's agent for now.", None)
+    agents = herdr_agents()
+    if not agents:
+        return ("I can't read herdr right now.", None)
+    hits = resolve_session(name, agents)
+    if not hits:
+        return (f"I can't find a session called {name}.", None)
+    if len(hits) > 1:
+        return ("Which one: " + ", ".join(str(a.get("terminal_title_stripped") or a.get("cwd")) for a in hits[:4]) + "?", None)
+    pane = hits[0].get("pane_id")
+    if not isinstance(pane, str) or not PANE_RE.fullmatch(pane):
+        return ("I can't use that session's id.", None)
+    title = " ".join(str(hits[0].get("terminal_title_stripped") or name).split())
+    return (None, f"Start your reply with exactly this: I'll ask to send '{text}' to {title} — check the card. "
+                  f"Then run exactly this one command and nothing else: herdr agent prompt {pane} {shlex.quote(text)}\n"
+                  f"(Why: the user asked by voice to send that text to the \"{title}\" session.)")
+
+
 def run_bridge(prompt, emit):
     """One turn through nixi's bridge; the events are mapped as in the plan. Returns "done"."""
     try:
@@ -2966,7 +2987,8 @@ def run_bridge(prompt, emit):
 
     def approve(o):                                      # (a worker: the card waits for you, the reader goes on)
         opts = [x for x in o.get("options") or [] if isinstance(x, dict)]
-        pick = APPROVALS.ask_bridge(str(o.get("title") or "Use a tool"), opts, str(o.get("detail") or ""))
+        pick = APPROVALS.ask_bridge(str(o.get("title") or "Use a tool"), opts, str(o.get("detail") or ""),
+                                    confirm=o.get("confirm"))      # "click": a send, voice cannot answer it (#95)
         if BRIDGE.proc is p:                             # (ids restart per bridge: never answer a newer one's request)
             BRIDGE.send({"type": "permission", "id": o.get("id"), "optionId": pick})
 
@@ -3578,15 +3600,13 @@ class Handler(BaseHTTPRequestHandler):
                 if mem:
                     return self._json({"handled": True, "say": mem, "mood": "happy", "state": state_info()})
                 r = quick.handle(said)
-                if r and "session_status" in r:           # the summary is nixi's agent's, as an ordinary ask (#95)
-                    say, ask = session_status(r["session_status"], r.get("loose"))
+                if r and ("session_status" in r or "session_send" in r):    # nixi's agent does the work, as an ordinary ask (#95)
+                    say, ask = session_send(*r["session_send"]) if "session_send" in r else session_status(r["session_status"], r.get("loose"))
                     if ask:
                         return self._json({"handled": False, "ask": ask})
                     r = {"say": say, "mood": "curious"} if say else None
                 elif r and "session_show" in r:
                     r = {"say": session_show(r["session_show"]), "mood": "happy"}
-                elif r and "session_send" in r:
-                    r = None                              # P7
                 if r and r.get("cd") and BRIDGED:        # nixi picks where its agent works; Nixi's folders don't apply
                     r = {"say": "Folders are nixi's job here — I always work from nixi's own place.", "mood": "shy"}
                 elif r and r.get("cd"):

@@ -113,6 +113,34 @@ class SessionsTest(unittest.TestCase):
             self.assertIn("can't find", s.session_show("zzz"))
             popen.assert_not_called()
 
+    def test_send_prompt_quotes_text_and_requires_claude(self):
+        s = self.server
+        nasty = "it's; rm x && echo \"hi\" $(id)"
+        with mock.patch.object(s, "herdr_agents", return_value=AGENTS), mock.patch.object(s, "nixi_conf", return_value={}):
+            say, ask = s.session_send("factory", nasty)
+            self.assertIsNone(say)
+            self.assertIn("herdr agent prompt w1A:p1 " + s.shlex.quote(nasty), ask)
+            self.assertIn("check the card", ask)
+            self.assertEqual(s.session_send("zzz", "hi")[1], None)
+            self.assertEqual(s.shlex.split(ask.split("nothing else: ")[1].split("\n")[0])[4], nasty)
+        with mock.patch.object(s, "herdr_agents", return_value=AGENTS), mock.patch.object(s, "nixi_conf", return_value={"agent": "codex"}):
+            self.assertEqual(s.session_send("factory", "hi"),
+                             ("Sending to sessions works with Claude as nixi's agent for now.", None))
+
+    def test_confirm_click_reaches_the_card(self):
+        s = self.server
+        with mock.patch.object(s.BUS, "pub") as pub:
+            s.APPROVALS.ask_bridge("Bash", [{"id": "a", "kind": "allow_once"}], "cmd", timeout=0.01, confirm="click")
+        card = [c for c in pub.call_args_list if c.kwargs.get("t") == "approve"][0]
+        self.assertEqual(card.kwargs["confirm"], "click")
+
+    def test_long_send_phrase(self):
+        h = self.quick.handle
+        long = "word " * 60
+        self.assertEqual(h("tell the factory session: " + long)["session_send"][1], long.strip())
+        self.assertIsNone(h("tell the factory session: " + "x" * 600))
+        self.assertIsNone(h("what time is it " + "x" * 200))
+
     def test_phrases(self):
         h = self.quick.handle
         self.assertEqual(h("How is the Factory session doing?"), {"session_status": "factory"})

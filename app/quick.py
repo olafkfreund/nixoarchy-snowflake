@@ -310,6 +310,10 @@ def handle(text):
     t = re.sub(r"^(hey nixi|nixi|ok nixi|okay nixi)[,\s]+", "", t)
     t = re.sub(r"^(please|can you|could you|would you|will you)\s+", "", t)
     t = re.sub(r"\s+please$", "", t)
+    # a send keeps its case (it is typed into another session) and may be longer than other phrases (#95)
+    m = re.match(r"^\s*(?:(?:hey )?nixi,?\s+)?(?:tell|ask) (?:the |my )?(.+?) session[:,]\s*(.+)$|^\s*on (.+?):\s*(.+)$", (text or "").strip(" .!?")[:600], re.I)
+    if m and len((m.group(2) or m.group(4))) <= 500:
+        return {"session_send": [(m.group(1) or m.group(3)).strip().lower(), (m.group(2) or m.group(4)).strip()]}
     if not t or len(t) > 120:
         return None
 
@@ -323,11 +327,6 @@ def handle(text):
     m = re.match(r"^(?:show|open) me (?:the |my )?(.+?) session$", t)
     if m:
         return {"session_show": m.group(1)}
-    # the text keeps its case: it is typed into another session
-    m = re.match(r"^\s*(?:(?:hey )?nixi,?\s+)?(?:tell|ask) (?:the |my )?(.+?) session[:,]\s*(.+)$|^\s*on (.+?):\s*(.+)$", (text or "").strip(" .!?"), re.I)
-    if m:
-        return {"session_send": [(m.group(1) or m.group(3)).strip().lower(), (m.group(2) or m.group(4)).strip()]}
-
     # switch project / folder
     m = re.match(r"^(?:switch to|go to|jump to|work on|open|cd to|change to)\s+(?:my\s+|the\s+)?(.+?)(?:\s+(?:project|folder|repo|directory))?$", t)
     if m:
