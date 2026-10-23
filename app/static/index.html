@@ -169,6 +169,10 @@ input[type=range]{accent-color:var(--acc)}
   background:color-mix(in srgb,var(--panel) 87%,transparent);border:1px solid var(--edge);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;z-index:9;
   opacity:0;transform:translate(-50%,-6px) scale(.94);transition:opacity .5s var(--ease),transform .7s var(--ease)}
 #chip.on{opacity:1;transform:translate(-50%,0)}
+@keyframes glint{0%,100%{filter:none}40%{filter:brightness(2.4) saturate(1.4) drop-shadow(0 0 6px #77b6e1)}}
+.nix.glint{animation:glint 1.5s ease-in-out}   /* a new NixOS generation: one blue glint across the lambdas */
+@keyframes cuep{0%,100%{opacity:1}50%{opacity:.55}} #cue.attn{animation:cuep 1.1s infinite}
+#chip.act{pointer-events:auto;cursor:pointer}   /* an agent's nudge: click to jump to it */
 #chip.bad{color:#ff9b9b;border-color:#5a1a1a}
 #chip.work{color:var(--text);border-color:var(--edge2);box-shadow:0 0 12px var(--accA)}
 #chip .spin{display:inline-block;width:8px;height:8px;margin-right:7px;border-radius:50%;border:1.6px solid var(--hot);border-right-color:transparent;
@@ -496,6 +500,8 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <ellipse cx="34" cy="50" rx="18" ry="6" transform="rotate(-40 34 50)" fill="url(#glossG)" opacity=".45" pointer-events="none"/>
         <path id="rim" class="ball" fill="none" stroke-width="1.6" stroke-linejoin="round" pointer-events="none"/>
         <g id="accFront"></g>
+        <g id="frost" display="none" pointer-events="none"></g>
+        <g id="cue" display="none" transform="translate(8 -122)" style="cursor:pointer"><circle id="cueD" r="10" stroke="#0008" stroke-width="1"/><text id="cueT" text-anchor="middle" y="4.5" font-size="12" pointer-events="none"></text></g>
         <g id="liveTag" transform="translate(50 58) rotate(-14)" display="none"><rect x="-21" y="-8.5" width="42" height="17" rx="6" fill="#2f8f66" stroke="#7fd6ae" stroke-width="1"/><circle id="liveDot" cx="-12" cy="0" r="2.6" fill="#fff"/><text x="4" y="3.6" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff" font-family="monospace" letter-spacing="1">LIVE</text></g>
         <g id="think" opacity="0"><circle class="thk" cx="64" cy="-70" r="4"/><circle class="thk" cx="79" cy="-86" r="6"/><circle class="thk" cx="99" cy="-106" r="9"/></g>
         <g id="anger" opacity="0"><path class="ang" d="M-10-3Q-3-3-3-10M3-10Q3-3 10-3M10 3Q3 3 3 10M-3 10Q-3 3-10 3"/></g>
@@ -548,6 +554,10 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="codeSw"><span class="sw"></span><span class="l">Terminal<small>While he works he holds a little terminal showing the code he writes and the commands he runs.</small></span></label>
         <div class="seg" id="faceChips" style="margin-top:9px"><button data-face="him">Faces him</button><button data-face="you">Faces you (readable)</button></div></div>
       <div class="row"><label class="tg"><input type="checkbox" id="hoverSw"><span class="sw"></span><span class="l">Hover mode<small>He becomes your mouse cursor. Call him to bring him back.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="ambSysSw"><span class="sw"></span><span class="l">System health<small>A mark on his tip when a user service fails, a glint after each new NixOS generation. Local only.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="ambCalSw"><span class="sw"></span><span class="l">Next calendar item (uses gog)<small>Ten minutes before, a calendar mark and the title. Asks Google Calendar every 15 minutes.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="ambWxSw"><span class="sw"></span><span class="l">Weather look (uses omarchy weather)<small>Frost on his tips below 0 °C, a slight thaw above 28 °C. Fetches the weather every 30 minutes.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="followSw"><span class="sw"></span><span class="l">Follow my focused screen<small>When you focus another monitor he moves there too (Hyprland). Also: "move to the other screen", or bind <code>nixi-companion monitor next</code>.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="clickSw"><span class="sw"></span><span class="l">Click through around him<small>Clicks on the empty space around him go to the window behind. Turn off if he flickers.</small></span></label></div>
     </div>
     <!-- ================= VOICE ================= -->
@@ -1451,6 +1461,24 @@ async function events(){
     await sleep(2000);
   }
 }
+/* lambda-tip cues: one at a time, attention > calendar > system; the weather look (frost / thaw) is the quietest */
+let AMB={sys:[],cal:null,weather:null};
+const CUES={attn:['#ff8a2a','!'],cal:['#4d6fb7','📅'],sys:['#e5a50a','⚠']};
+function ambKind(){ if(attnPend&&performance.now()-attnPend.at<60000) return 'attn'; if(AMB.cal) return 'cal'; if(AMB.sys&&AMB.sys.length) return 'sys'; return ''; }
+function renderCue(){ const k=ambKind(), g=$('#cue'), bar=document.body.classList.contains('bar');   // (the notch only pulses)
+  g.setAttribute('display',k&&!bar?'':'none'); g.setAttribute('class',k);
+  if(k){ $('#cueD').setAttribute('fill',CUES[k][0]); $('#cueT').textContent=CUES[k][1]; }
+  const w=!k&&!bar&&AMB.weather, fr=$('#frost');
+  if(!fr.firstChild) fr.innerHTML=[0,1,2,3,4,5].map(i=>`<g transform="rotate(${i*60})"><circle cx="-8" cy="124" r="4"/><circle cx="-24" cy="118" r="2.2"/><circle cx="-56" cy="120" r="2.6"/></g>`).join('');
+  fr.setAttribute('display',w?'':'none'); fr.setAttribute('fill',AMB.weather==='cold'?'#e6f4ff':'#ffb36b'); fr.setAttribute('opacity',AMB.weather==='cold'?.9:.55); }   // frost on the tips / a slight warm thaw
+new MutationObserver(renderCue).observe(document.body,{attributes:true,attributeFilter:['class']});   // notch in / out: show or hide the mark
+$('#cue').addEventListener('click',e=>{ e.stopPropagation(); const k=ambKind();
+  if(k==='attn'){ attnJump(); renderCue(); }
+  else if(k==='cal'&&AMB.cal) tick('📅 '+AMB.cal.time+' '+AMB.cal.title);
+  else if(k==='sys') tick('failed: '+AMB.sys.join(', '),true); });
+let attnPend=null;     // the last agent nudge nobody has acted on yet (≤ 60 s): where a click on the notch / hovering orb jumps to
+function attnJump(){ const p=attnPend; attnPend=null; if(!p||performance.now()-p.at>60000) return false;
+  post('/api/attention/focus',{from:p.from}).catch(()=>{}); chip.classList.remove('on','act'); renderCue(); sendRegion(); return true; }
 function onEvent(ev){
   if(ev.t==='theme'){ info.theme=ev.theme; lookShown=''; syncLook(); if(setEl.classList.contains('on')) renderSettings(); return; }
   if(ev.t==='saw'){ poke('looking',1800); wake(); return; }   // Claude took a look at your screen (`nixi-companion see`)
@@ -1478,8 +1506,12 @@ function onEvent(ev){
   else if(ev.t==='attention'){                            // an agent (claude/codex/agy…) is waiting for you: `nixi-companion attention`
     const msg=ev.name+' needs you'+(ev.text?': '+ev.text:'');
     if(hiddenNow){ post('/api/notify',{title:'Nixi',body:msg}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
-    if(info.hover) comeBack(); wake(); sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(msg);
+    if(info.hover) comeBack(); wake(); sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(msg); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
     if(!muted) say(ev.name+' needs you'); }
+  else if(ev.t==='ambient'){ const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue();
+    if(ev.glint){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
+    if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')) flash('#4d6fb7'); }   // (never spoken)
+    else if(more&&document.body.classList.contains('bar')) flash('#e5a50a'); }
   else if(ev.t==='approve_done') approvalGone(ev.id);
   else if(ev.t==='askpass') askPass(ev);
   else if(ev.t==='askpass_done') pwGone(ev.id);
@@ -1551,6 +1583,7 @@ function showHim(s,end){
     ln.appendChild(w); }
   while(ln.childNodes.length>320) ln.removeChild(ln.firstChild);
 }
+chip.addEventListener('click',()=>{ if(!chip.classList.contains('act')) return; attnPend={from:chip.dataset.from,at:performance.now()}; attnJump(); });
 let chipT=null; function tick(t,bad){ chip.textContent=t; chip.dataset.w=''; chip.className='on'+(bad?' bad':''); clearTimeout(chipT);
   chipT=setTimeout(()=>{ chipT=null; chip.className=''; workChip(); },bad?6500:3400); }
 // while Claude works: "⟳ reading app.py · 0:12" stays up top the whole time
@@ -1691,7 +1724,7 @@ async function send(text,opts={}){
   if(MEM_SHOW.test(text)){ capShow(); setYou(text); const n=info.memory_count||0; say(n?`I have ${n} note${n>1?'s':''} — here they are.`:"Nothing yet! Say “remember …” and I'll keep it."); openPanel('memory'); return; }
   if(!atts.length && text && !opts.claude){
     try{ const q=await (await post('/api/quick',{text})).json();
-      if(q.handled){ capShow(); setYou(text); say(q.say); poke(q.mood||'happy',1300); if(q.sfx) sfx(q.sfx); if(q.state){ info=q.state; showInfo(); } return; } }catch(e){} }
+      if(q.handled){ capShow(); setYou(text); say(q.say); poke(q.mood||'happy',1300); if(q.sfx) sfx(q.sfx); if(q.monitor) native('monitor:'+q.monitor); if(q.state){ info=q.state; showInfo(); } return; } }catch(e){} }
   if(busy){ tick("one sec — I'm still on the last thing"); return; }
   if(!atts.length && SCREEN_RE.test(text)) await shoot(WHOLE_RE.test(text)?'screen':'window');
   if(liveOn() && !atts.some(a=>['window','screen','region'].includes(a.kind))){ const j=await shoot('window',true); if(j) j.live=true; }
@@ -2003,6 +2036,7 @@ async function toggleBar(force){
 $('#barPill').addEventListener('mousedown',e=>{ if(e.button!==0) return; downAt=[e.clientX,e.clientY]; dragged=false; });
 // in the notch a left click is the menu: the 1st opens it, the 2nd closes it (talk: "hey Nixi", Space, or 🎙 in the menu)
 $('#barPill').addEventListener('click',e=>{ if(dragged){ dragged=false; return; } downAt=null;
+  if(attnJump()) return;                                // a nudge is waiting: jump to that agent instead of opening the menu
   const was=menuOn; hideAsk(); closePanels(); G.jelly.kick(.4); menu(!was); });
 $('#barPill').addEventListener('contextmenu',e=>{ e.preventDefault(); E.body.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true})); });
 // the notch opens up to hold what's showing in it — his terminal while he works, his words, or both stacked (terminal
@@ -2138,7 +2172,7 @@ function renderSettings(){
   $('#modelChips').innerHTML=MODELS.map(([id,l])=>`<button data-m="${id}" class="${cur===id?'on':''}">${l}</button>`).join('');
   $('#voiceChips').innerHTML=(info.voices||[]).map(v=>`<button data-v="${v.id}" class="${info.voice===v.id?'on':''}">${v.label}${v.downloading?'<i>⇣</i>':''}</button>`).join('');
   const sw={rootSw:info.root,speakSw:!muted,wakeSw:info.wake_word,autoSw:info.autostart,listenShowSw:info.listen_on_show,hoverSw:info.hover,
-    clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
+    followSw:!!info.follow_focus,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
     updSw:info.update_check!==false,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
   renderUpdate(); renderPtt();
@@ -2264,6 +2298,10 @@ setEl.addEventListener('change',e=>{
   if(id==='bargeSw') setSetting({barge_in:on});
   if(id==='sfxSw') setSetting({sfx:on}).then(()=>on&&sfx('ok'));
   if(id==='hoverSw') toggleHover(on);
+  if(id==='followSw') setSetting({follow_focus:on}).then(()=>native('follow:'+(on?'on':'off')));
+  if(id==='ambSysSw') setSetting({ambient_system:on});
+  if(id==='ambCalSw') setSetting({ambient_calendar:on});
+  if(id==='ambWxSw') setSetting({ambient_weather:on});
   if(id==='clickSw') setSetting({click_through:on}).then(()=>sendRegion(true));
   if(id==='notifySw') setSetting({notify_done:on});
   if(id==='popupSw') setSetting({popup_done:on});
@@ -2320,7 +2358,7 @@ async function slash(cmd){
 }
 
 /* ================= wiring ================= */
-function showInfo(){ syncEye(); document.body.classList.toggle('faceyou',info.code_face==='you'); document.body.classList.toggle('fulltext',!!info.full_text); ctxRender(); input.placeholder=`ask in ${info.cwd_display||'~'}…`; const l=$('#cwdLbl'); if(l) l.textContent=info.cwd_display||'folder';
+function showInfo(){ if(info.ambient){ AMB=info.ambient; renderCue(); } syncEye(); document.body.classList.toggle('faceyou',info.code_face==='you'); document.body.classList.toggle('fulltext',!!info.full_text); ctxRender(); input.placeholder=`ask in ${info.cwd_display||'~'}…`; const l=$('#cwdLbl'); if(l) l.textContent=info.cwd_display||'folder';
   document.body.classList.toggle('root',!!info.root); document.body.classList.toggle('nixi',!!info.bridge); }
 async function refresh(){ try{ await tokenReady; const r=await fetch('/api/state',{headers:hdr()}); const j=await r.json();
   if(!('cwd' in j)) return staleToken();      // no (or an old) token: the server only said it's running
@@ -2370,6 +2408,7 @@ function sendRegion(force){
   } else add(E.body,8);
   if(menuOn) $$('.mb').forEach(b=>add(b,2));
   if(ask.classList.contains('on')) add(ask,4);
+  if(chip.classList.contains('act')&&chip.classList.contains('on')) add(chip,4);
   if(setEl.classList.contains('on')) add(setEl,4);
   if(panelEl.classList.contains('on')) add(panelEl,4);
   if(apEl.classList.contains('on')) add(apEl,4); if(pwEl.classList.contains('on')) add(pwEl,4);
@@ -2409,6 +2448,7 @@ async function interrupt(){ const was=busy; shush(); CP.hide(); sfx('pop'); poke
 let spaceHeld=false;
 // left-click: talk (or cut in) · right-click: his sparks swoosh out into the menu
 E.body.addEventListener('click',()=>{ if(dragged){ dragged=false; return; } downAt=null;
+  if(document.body.classList.contains('hover')&&attnJump()) return;     // (hover mode has no chip: the orb takes the click)
   if(menuOn){ menu(false); return; }                   // menu open: this click just closes it
   if(menuShutAt&&performance.now()-menuShutAt<300) return;   // (it was just closed by the mousedown of this same click)
   const n=performance.now(); clicks=clicks.filter(c=>n-c<1400); clicks.push(n);
@@ -2586,6 +2626,7 @@ const CP=(()=>{
 refresh().then(()=>{
   if(info.hover && NATIVE){ native('hover:on'); setHoverClass(true); }
   else if(info.presence==='bar' && NATIVE) native('bar:'+(info.bar_edge||'top'));   // the window docks, then nixiDock()
+  if(NATIVE) native('follow:'+(info.follow_focus?'on':'off'));
   if(NATIVE) native('ptt:'+(info.ptt_hotkey||''));        
   if(info.claude===false){ fail("I can't find Claude Code — install it and run `claude` once to sign in."); }
   else if(info.mic===false) tick('no mic recorder — install libpulse or alsa-utils',true);

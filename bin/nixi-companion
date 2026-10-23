@@ -31,11 +31,25 @@ if [ "${1:-}" = attention ]; then shift; FROM=agent
   [ "${1:-}" = --from ] && { FROM="${2:-agent}"; shift 2 || shift; }
   "${NIXI_COMPANION_PYTHON:-python3}" -c 'import json,sys,os,urllib.request as u
 try:
+    e, pids, pid = os.environ, [], os.getppid()          # where the agent lives: its herdr pane, and the ancestors (one is its terminal window)
+    try:
+        while pid > 1 and len(pids) < 32:
+            pids.append(pid)
+            pid = int(open("/proc/%d/stat" % pid).read().rsplit(")", 1)[1].split()[1])
+    except (OSError, ValueError, IndexError):
+        pass
+    tgt = {"pids": pids, "herdr": {"pane": e.get("HERDR_PANE_ID"), "session": e.get("HERDR_SESSION")} if e.get("HERDR_ENV") == "1" else None}
     rt = json.load(open(os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "nixi-companion", "runtime.json")))
-    u.urlopen(u.Request("http://127.0.0.1:%s/api/attention" % rt["port"], json.dumps({"from": sys.argv[1], "text": " ".join(sys.argv[2:])}).encode(),
+    u.urlopen(u.Request("http://127.0.0.1:%s/api/attention" % rt["port"], json.dumps({"from": sys.argv[1], "text": " ".join(sys.argv[2:]), "target": tgt}).encode(),
               {"Content-Type": "application/json", "X-Nixi-Token": rt["token"]}), timeout=3).read()
 except Exception:
     pass' "$FROM" "$@" >/dev/null 2>&1
+  exit 0
+fi
+# move him to another screen from a key bind: nixi-companion monitor next|prev|focused|<name> (e.g. DP-1)
+if [ "${1:-}" = monitor ]; then
+  PSOCK="${XDG_RUNTIME_DIR:-/tmp}/nixi-companion-$(id -u).sock"
+  [ -S "$PSOCK" ] && "${NIXI_COMPANION_PYTHON:-python3}" -c 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); s.sendall(("monitor:"+sys.argv[2]).encode())' "$PSOCK" "${2:-next}" 2>/dev/null
   exit 0
 fi
 # push-to-talk from a desktop key binding (one call on press, one on release): straight to the running window, fast
