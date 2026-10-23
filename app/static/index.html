@@ -7,7 +7,7 @@
 <link rel="icon" href="icon.png">
 <script>if(/[?&]native=1/.test(location.search)) document.documentElement.classList.add('native');</script>
 <style>
-:root{--eye:#1b4f8a;--sclera:#ffffff;--acc:#5aa9e6;--hot:#a9d8ff;--edge:#16304a;--edge2:#2a5f8f;--deep:#0b1b2d;--tint:#d6ecff;
+:root{--eye:#3e5993;--sclera:#ffffff;--acc:#4d6fb7;--hot:#9cc4f0;--edge:#16304a;--edge2:#2a5f8f;--deep:#0b1b2d;--tint:#d6ecff;
   --accA:#5aa9e61f;--accB:#5aa9e659;--glow:var(--acc);--text:#f3f3f3;--dim:#a3a3a3;--panel:#0b0b0b;
   --mono:"JetBrains Mono","Fira Code",ui-monospace,monospace;--ease:cubic-bezier(.22,1,.36,1)}
 body.m-error,body.m-annoyed{--glow:#ff2a2a} body.m-listening,body.m-happy,body.m-excited,body.m-love{--glow:var(--hot)}
@@ -462,6 +462,8 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <filter id="glow" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
       <radialGradient id="ballG" cx="-24" cy="-30" r="112" gradientUnits="userSpaceOnUse"><stop offset="0" class="b0"/><stop offset=".55" class="b1"/><stop offset="1" class="b2"/></radialGradient>
       <radialGradient id="glossG"><stop offset="0" stop-color="#fff" stop-opacity=".17"/><stop offset=".6" stop-color="#fff" stop-opacity=".05"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+      <linearGradient id="nixD" gradientUnits="userSpaceOnUse" x1="-80.6" y1="0" x2="-24.2" y2="97.7"><stop offset="0" stop-color="#3e5993"/><stop offset=".25" stop-color="#4564a5"/><stop offset="1" stop-color="#4d6fb7"/></linearGradient>
+      <linearGradient id="nixL" gradientUnits="userSpaceOnUse" x1="-80.6" y1="0" x2="-24.2" y2="97.7"><stop offset="0" stop-color="#6d9bbc"/><stop offset=".25" stop-color="#72a9cf"/><stop offset="1" stop-color="#77b6e1"/></linearGradient>
       <clipPath id="clipL"><path id="cpL"/></clipPath>
       <clipPath id="clipR"><path id="cpR"/></clipPath>
     </defs>
@@ -478,7 +480,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <g id="body">
         <g id="accBack"></g>
         <path class="ball" fill="url(#ballG)"/>
-        <path class="ball facet" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="1" pointer-events="none"/>
+        <g class="ball nix"></g>
         <g id="face">
           <g id="eL"><path class="eye" id="pL"/><g clip-path="url(#clipL)"><path class="slit" id="hlL"/></g></g>
           <g id="eR"><path class="eye" id="pR"/><g clip-path="url(#clipR)"><path class="slit" id="hlR"/></g></g>
@@ -660,7 +662,7 @@ try{ muted=localStorage.getItem('void.muted')==='1'; }catch(e){}
 
 /* ================= his look: body colour, each pupil, each eye white, a skin =================
    Everything is a CSS variable, so changes glide in. UI accents (glow, sparks, menus) follow the left pupil. */
-const LOOK_DEFAULT={body:'#5aa9e6',pupL:'#1b4f8a',pupR:'#1b4f8a',whiteL:'#ffffff',whiteR:'#ffffff',skin:'none',skinColor:'',link:true,random:false};
+const LOOK_DEFAULT={body:'#1b2a4a',pupL:'#3e5993',pupR:'#3e5993',whiteL:'#ffffff',whiteR:'#ffffff',skin:'none',skinColor:'',link:true,random:false};
 let LOOK={...LOOK_DEFAULT};
 const EC={eye:LOOK.pupL,acc:LOOK.pupL,hot:'#7fd6ae',sclera:LOOK.whiteL};
 const hex2rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255);
@@ -763,6 +765,7 @@ function miniVoid(svg,L,clickable){
   const defs=sv('defs',{},svg), gr=sv('radialGradient',{id,cx:-24,cy:-30,r:112,gradientUnits:'userSpaceOnUse'},defs);
   [[0,b0],[.55,b1],[1,b2]].forEach(([o,c])=>sv('stop',{offset:o,'stop-color':c},gr));
   const back=sv('g',{'data-part':clickable?'skin':''},svg), ball=sv('path',{d:snowPath(),'stroke-linejoin':'round',fill:`url(#${id})`,stroke:lum(L.body)<.12?'#2a2a2a':shade(L.body,-.12),'stroke-width':1.6,'data-part':'body'},svg);
+  sv('g',{'data-part':'body'},svg).innerHTML=nixLambdas();
   for(const s of [-1,1]){ const k=s<0?'L':'R';
     sv('ellipse',{cx:s*25.5,cy:-4.5,rx:23.5,ry:40.5,transform:`rotate(${-s*9} ${s*25.5} -4.5)`,fill:L['white'+k],'data-part':'white'+k},svg);
     sv('ellipse',{cx:s*10.5,cy:-4,rx:clickable?4.2:3.2,ry:12.5,transform:`rotate(${-s*8} ${s*10.5} -4)`,fill:L['pup'+k],'data-part':'pup'+k},svg); }
@@ -779,28 +782,14 @@ function miniVoid(svg,L,clickable){
    Lids cut the finished shape: top – 0..1 from the top, tilted by `sl` (+ = inner corner down → cross, − = worried),
    sagged by `tc`; bot – lower lid from the bottom, `bow` arches it. sq squashes the oval, es scales one eye.
    Asleep (`shut`) an oval melts into a thin "‿" arc (per eye, so he can wink).  */
-// snowflake silhouette, one closed outline: hexagonal plate (flat top/bottom, inradius core), six tapering arms with a diamond tip
-// and three thorn pairs each, and a short spike from the middle of every hex edge
-function snowPath(core=62, reach=138){
-  const T=Math.PI/3, R=core/Math.cos(T/2), k=Math.sqrt(3)/2, P=[], rot=(a,x,y)=>[x*Math.cos(a)-y*Math.sin(a),x*Math.sin(a)+y*Math.cos(a)];
-  const t0=reach-22, hw=x=>x<=t0?5-2.5*(x-R)/(t0-R):2.5;   // half-width: 5 at the plate, 2.5 near the tip
-  const side=[[R-5*Math.tan(T/2),-5]];
-  for(const [d,L] of [[6,30],[24,22],[40,13]]){ const x=R+d, x2=x+5.8; side.push([x,-hw(x)],[x+L/2,-hw(x)-L*k],[x2,-hw(x2)]); }
-  side.push([t0,-2.5],[reach-10,-5]);
-  for(let i=0;i<6;i++){
-    const a=i*T, loc=side.concat([[reach,0]],side.slice().reverse().map(([x,y])=>[x,-y]));
-    for(const [x,y] of loc) P.push(rot(a,x,y));
-    const m=a+T/2, c=Math.cos(m), s=Math.sin(m);   // spike on the edge between this arm and the next
-    P.push([62*c+3.5*s,62*s-3.5*c],[84*c,84*s],[62*c-3.5*s,62*s+3.5*c]);
-  }
-  return 'M'+P.map(([x,y])=>x.toFixed(1)+' '+y.toFixed(1)).join('L')+'Z';
-}
-// crystal facets: spokes to the hex vertices + an inner hexagon
-function facetPath(core=62, inner=36){
-  const R=core/Math.cos(Math.PI/6), v=(r,i)=>(r*Math.cos(i*Math.PI/3)).toFixed(1)+' '+(r*Math.sin(i*Math.PI/3)).toFixed(1), n=[0,1,2,3,4,5];
-  return n.map(i=>`M0 0L${v(R,i)}`).join('')+'M'+n.map(i=>v(inner,i)).join('L')+'Z';
-}
-document.querySelectorAll('#body>.ball').forEach(e=>e.setAttribute('d',e.classList.contains('facet')?facetPath():snowPath()));
+// the snowflake is the NixOS logo: six lambdas (scaled 145/1152, its two blues alternating) around a hexagonal hole of
+// inradius 55.8; snowPath() is the plate in that hole, just under the lambdas, that carries his face (flat top, like the hole)
+const LAMBDA='M-78.5 31.4L-62.4 3.5L8.1 125.6L-24.2 125.6L-40.3 97.7L-56.4 125.6L-72.5 125.6L-80.6 111.6L-56.4 69.8Z';
+function snowPath(core=58){ const R=core/Math.cos(Math.PI/6);
+  return 'M'+[0,1,2,3,4,5].map(i=>(R*Math.cos(i*Math.PI/3)).toFixed(1)+' '+(R*Math.sin(i*Math.PI/3)).toFixed(1)).join('L')+'Z'; }
+const nixLambdas=()=>[0,1,2,3,4,5].map(i=>`<path d="${LAMBDA}" transform="rotate(${i*60})" fill="url(#nix${i%2?'L':'D'})"/>`).join('');
+document.querySelectorAll('#body>path.ball').forEach(e=>e.setAttribute('d',snowPath()));
+document.querySelectorAll('#body>.nix').forEach(g=>g.innerHTML=nixLambdas());
 const EYE={rx:23.5, ry:40.5, cx:27.5, cy:-4.5, tilt:0.157};
 const EYE_HALFW=Math.hypot(EYE.rx*Math.cos(EYE.tilt),EYE.ry*Math.sin(EYE.tilt));   // half the width of one leaning eye
 /* pupils morph smoothly between shapes — all flat, solid colour:

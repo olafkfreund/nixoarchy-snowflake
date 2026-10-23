@@ -170,9 +170,9 @@ DEFAULTS = {
     "root_mode": False,
     "cpu_split": True,       # face (window) and voice/brain (server) on separate CPU cores (4+ cores only)
     # pupil colour: "#rrggbb", or "random" for a new one every time he pops up
-    "eye_color": "#3d9b74",
+    "eye_color": "#3e5993",
     # eye-white colour: "#rrggbb" or "random" (a soft pastel each time)
-    "eye_white": "#f3dccf",
+    "eye_white": "#ffffff",
     # resting pupil shape: slit | circle | dot  (they still change shape with his mood)
     "pupil_style": "slit",
     # "hey Void" wake word (keeps the mic open and listens for his name; nothing leaves your machine)
@@ -249,10 +249,10 @@ HEX = re.compile(r"#[0-9a-f]{6}")
 
 def look():
     lk = dict(CFG.get("look") or {})
-    ec, ew = (CFG.get("eye_color") or "#3d9b74").lower(), (CFG.get("eye_white") or "#f3dccf").lower()
-    pup = ec if HEX.fullmatch(ec) else "#3d9b74"
-    wht = ew if HEX.fullmatch(ew) else "#f3dccf"
-    out = {"body": "#0b0b0b", "pupL": pup, "pupR": pup, "whiteL": wht, "whiteR": wht, "skin": "none",
+    ec, ew = (CFG.get("eye_color") or "#3e5993").lower(), (CFG.get("eye_white") or "#ffffff").lower()   # NixOS blues
+    pup = ec if HEX.fullmatch(ec) else "#3e5993"
+    wht = ew if HEX.fullmatch(ew) else "#ffffff"
+    out = {"body": "#1b2a4a", "pupL": pup, "pupR": pup, "whiteL": wht, "whiteR": wht, "skin": "none",
            "skinColor": "", "link": True, "random": ec == "random" or ew == "random"}
     for k, v in lk.items():
         if k in ("body", "pupL", "pupR", "whiteL", "whiteR", "skinColor") and isinstance(v, str) and (HEX.fullmatch(v.lower()) or (k == "skinColor" and v == "")):
@@ -3149,7 +3149,7 @@ def state_info():
         "quick_actions": CFG.get("quick_actions") or [], "memory_count": len(mem_load()),
         "mic_device": CFG.get("mic_device") or "", "whisper_model": CFG.get("whisper_model") or "auto",
         "can_shoot": WIN or any(shutil.which(t) for t in ("grim", "spectacle", "gnome-screenshot", "maim", "scrot", "import")),
-        "eye_color": CFG.get("eye_color") or "#3d9b74", "eye_white": CFG.get("eye_white") or "#f3dccf",
+        "eye_color": CFG.get("eye_color") or "#3e5993", "eye_white": CFG.get("eye_white") or "#ffffff",
         "pupil_style": CFG.get("pupil_style") or "slit",
         "voice": CFG.get("voice") or "girl", "voice_pitch": voice_preset().get("pitch", 1.0),
         "voices": [{"id": k, "label": v["label"],
