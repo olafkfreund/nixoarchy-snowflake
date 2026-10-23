@@ -534,7 +534,10 @@ class NixiWindow:
         base = self.mx + self.wide_shift                 # where his own 340px strip starts on the monitor
         if self.layer:
             gw = self._geom()[1].width
-            L, R = min(L, max(0, base)), min(R, max(0, gw - base - W))
+            aL, aR = max(0, base), max(0, gw - base - W)
+            if xw:                                   # next to a screen edge: what doesn't fit on one side goes to the other
+                L, R = L + max(0, R - aR), R + max(0, L - aL)
+            L, R = min(L, aL), min(R, aR)
         elif not (self.want_bar and not (self.want_panel or self.want_code)):
             L, R = 0, L + R                              # a normal window only grows to the right (it isn't moved)…
         # height: grow downward as far as the monitor allows, then upward (the page is shifted down by T so he stays put)

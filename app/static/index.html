@@ -14,7 +14,7 @@ body.m-error,body.m-annoyed{--glow:#ff2a2a} body.m-listening,body.m-happy,body.m
 body.m-sleepy{--glow:var(--edge2)} body.m-pleading{--glow:#ffb02a}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;overflow:hidden}
-body{position:relative;width:340px;height:460px;margin:0}
+body{position:relative;width:340px;height:460px;margin:0;overflow:visible}   /* visible: the card and sheet reach past the 340px strip when the window is wider (html clips to the window) */
 html{background:transparent}
 body{background:radial-gradient(70% 52% at 50% 36%,var(--panel2) 0%,#090909 78%);color:var(--text);
   font:14px/1.45 "Inter",system-ui,sans-serif;user-select:none;-webkit-user-select:none}
@@ -1667,8 +1667,11 @@ const apprQ=[]; const apEl=$('#appr');
 function queueApproval(ev){ apprQ.push(ev); if(!pendingAppr) nextApproval(); }
 function fitCard(){   // the card grows with the command (wider up to 640px, then taller), and the window grows to hold it
   const longest=Math.max(0,...String(pendingAppr.detail||'').split('\n').map(x=>x.length)), w=Math.min(640,Math.max(312,Math.ceil(longest*6.9)+50));
-  apEl.style.width=w+'px'; apEl.style.left=(170-w/2)+'px'; apEl.style.setProperty('--apprMax',Math.round(screen.height*.6)+'px');
-  cardWant=[Math.max(0,w+28-340),Math.max(0,256+apEl.offsetHeight+14-460)]; sizeWindow(); sendRegion(true); }
+  apEl.style.width=w+'px'; cardW=w; apEl.style.setProperty('--apprMax',Math.round(screen.height*.6)+'px');
+  cardWant=[Math.max(0,w+28-340),Math.max(0,256+apEl.offsetHeight+14-460)]; sizeWindow(); cardPlace(); sendRegion(true); }
+let cardW=312;
+function cardPlace(){   // centred on him, but kept inside the window (it may have grown more on one side)
+  apEl.style.left=clamp(170-cardW/2,4-layoutX,innerWidth-layoutX-cardW-4)+'px'; }
 function nextApproval(){
   pendingAppr=apprQ.shift()||null;
   document.body.classList.toggle('appr',!!pendingAppr); apEl.classList.toggle('on',!!pendingAppr);
@@ -2395,16 +2398,16 @@ function calmCheck(){ document.body.classList.toggle('calm', setEl.classList.con
 // the page is laid out for 340×460: if the window ends up a different size, scale/centre it instead of cutting things off
 let fitK=1, layoutX=0, layoutY=0;
 // room for a long approval card / terminal sheet: ask the window for extra width and height (it shrinks back at [0,0])
-let cardWant=[0,0], sheetWant=[0,0], sizeKey='';
-function sizeWindow(){ const w=Math.max(cardWant[0],sheetWant[0]), h=Math.max(cardWant[1],sheetWant[1]), k=w+','+h;
-  if(k!==sizeKey){ sizeKey=k; native('size:'+k); } }
+let cardWant=[0,0], sheetWant=[0,0];
+function sizeWindow(){ const w=Math.max(cardWant[0],sheetWant[0]), h=Math.max(cardWant[1],sheetWant[1]);
+  native('size:'+w+','+h); }   // (sent every time: the window ignores a repeat, and a lost message would leave the card clipped)
 function fit(){ const k=Math.min(1, innerWidth/340, innerHeight/460); fitK=k>0.995?1:k; const bs=document.body.style;
   bs.transformOrigin='0 0'; bs.margin='0'; bs.marginLeft=layoutX+'px'; bs.marginTop=layoutY+'px';
   bs.transform=fitK===1?'':`scale(${fitK})`;
   if(NATIVE&&fitK<1) console.log(`[nixi] window is ${innerWidth}x${innerHeight} (expected 340x460) — scaling the page to fit`); }
 // the window widened for a panel: it grew to the left by ox px, so shift the page back and he stays exactly where he was
-window.nixiLayout=(ox,oy)=>{ layoutX=ox|0; layoutY=oy|0; fit(); sendRegion(true); requestAnimationFrame(moveInd); };
-addEventListener('resize',()=>{ fit(); sendRegion(true); moveInd(); }); fit();
+window.nixiLayout=(ox,oy)=>{ layoutX=ox|0; layoutY=oy|0; fit(); cardPlace(); sendRegion(true); requestAnimationFrame(moveInd); };
+addEventListener('resize',()=>{ fit(); cardPlace(); sendRegion(true); moveInd(); }); fit();
 function sendRegion(force){
   calmCheck();
   if(!NATIVE) return;
