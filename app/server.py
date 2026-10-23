@@ -192,7 +192,7 @@ DEFAULTS = {
     "notify_done": True,
     "popup_done": False,
     "code_panel": True,      # the floating code / terminal panel while he works
-    "code_face": "him",      # which way the terminal faces: "him" (you see the back, mirrored) or "you" (readable)
+    "code_face": "you",      # which way the terminal faces: "you" (readable) or "him" (you see the back, mirrored)
     # hover mode: he floats next to your mouse cursor
     "hover": False,
     # clicks on the see-through space around him go to the window behind (can flicker with some GPU drivers)
@@ -232,7 +232,7 @@ def load_config():
 
 CFG = load_config()
 
-SKINS = ["none", "cat", "bunny", "bear", "antenna", "devil", "halo", "crown", "sprout", "party", "headphones", "bow"]
+SKINS = ["none", "halo", "crown", "sprout", "bow"]
 HEX = re.compile(r"#[0-9a-f]{6}")
 
 
@@ -271,6 +271,9 @@ def theme_colors():
         out = {k: str(t[k]).lower() for k in THEME_KEYS}
         if not all(HEX.fullmatch(v) for v in out.values()):
             return None
+        for k in ("dark_foreground", "muted", "selection"):    # optional: the panels' dim text and borders
+            if isinstance(t.get(k), str) and HEX.fullmatch(t[k].lower()):
+                out[k] = t[k].lower()
         out["mode"] = "light" if t.get("mode") == "light" else "dark"
         return out
     except Exception:  # noqa: BLE001

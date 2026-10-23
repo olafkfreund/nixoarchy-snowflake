@@ -8,7 +8,7 @@
 <script>if(/[?&]native=1/.test(location.search)) document.documentElement.classList.add('native');</script>
 <style>
 :root{--eye:#3e5993;--sclera:#ffffff;--acc:#4d6fb7;--hot:#9cc4f0;--edge:#16304a;--edge2:#2a5f8f;--deep:#0b1b2d;--tint:#d6ecff;
-  --accA:#5aa9e61f;--accB:#5aa9e659;--glow:var(--acc);--text:#f3f3f3;--dim:#a3a3a3;--panel:#0b0b0b;
+  --accA:#5aa9e61f;--accB:#5aa9e659;--glow:var(--acc);--text:#f3f3f3;--dim:#a3a3a3;--panel:var(--panel);
   --mono:"JetBrains Mono","Fira Code",ui-monospace,monospace;--ease:cubic-bezier(.22,1,.36,1)}
 body.m-error,body.m-annoyed{--glow:#ff2a2a} body.m-listening,body.m-happy,body.m-excited,body.m-love{--glow:var(--hot)}
 body.m-sleepy{--glow:var(--edge2)} body.m-pleading{--glow:#ffb02a}
@@ -16,7 +16,7 @@ body.m-sleepy{--glow:var(--edge2)} body.m-pleading{--glow:#ffb02a}
 html,body{height:100%;margin:0;overflow:hidden}
 body{position:relative;width:340px;height:460px;margin:0}
 html{background:transparent}
-body{background:radial-gradient(70% 52% at 50% 36%,#161616 0%,#090909 78%);color:var(--text);
+body{background:radial-gradient(70% 52% at 50% 36%,var(--panel2) 0%,#090909 78%);color:var(--text);
   font:14px/1.45 "Inter",system-ui,sans-serif;user-select:none;-webkit-user-select:none}
 html.native body{background:transparent}
 button{font:inherit;color:inherit}
@@ -36,7 +36,7 @@ body.hover #shadow{display:none}
    change of size on Apple's spring-like curve. Docks on any edge: body.bar + .e-top / .e-bottom / .e-left / .e-right.
    The edge class stays a moment after .bar goes (setBarClass), so the notch can fold back into the edge it came from. */
 :root{--apple:cubic-bezier(.32,.72,0,1);--pop:cubic-bezier(.34,1.56,.64,1)}
-#barPill{position:absolute;background:#000;pointer-events:none;z-index:0;opacity:0;--r:18px;
+#barPill{position:absolute;background:var(--notch);pointer-events:none;z-index:0;opacity:0;--r:18px;
   transition:opacity .12s linear,box-shadow .5s var(--ease),height .5s var(--apple),
              width .5s var(--apple),margin .5s var(--apple),border-radius .5s var(--apple)}
 body.bar #barPill{opacity:1;pointer-events:auto;cursor:pointer;transition:opacity .08s linear,box-shadow .5s var(--ease),
@@ -47,17 +47,17 @@ body.bar #barPill.big{--r:26px;--gx:0px!important;--gy:0px!important}   /* open:
 body.e-top #barPill,body.e-bottom #barPill{left:50%;width:260px;height:52px;margin-left:-130px}
 body.e-left #barPill,body.e-right #barPill{top:50%;width:68px;height:210px;margin-top:-105px}
 body.e-top #barPill{top:0;border-radius:0 0 var(--r) var(--r)}
-body.e-top #barPill::before{top:0;left:-10px;background:radial-gradient(circle at 0 100%,transparent 9.5px,#000 10px)}
-body.e-top #barPill::after{top:0;right:-10px;background:radial-gradient(circle at 100% 100%,transparent 9.5px,#000 10px)}
+body.e-top #barPill::before{top:0;left:-10px;background:radial-gradient(circle at 0 100%,transparent 9.5px,var(--notch) 10px)}
+body.e-top #barPill::after{top:0;right:-10px;background:radial-gradient(circle at 100% 100%,transparent 9.5px,var(--notch) 10px)}
 body.e-bottom #barPill{bottom:0;border-radius:var(--r) var(--r) 0 0}
-body.e-bottom #barPill::before{bottom:0;left:-10px;background:radial-gradient(circle at 0 0,transparent 9.5px,#000 10px)}
-body.e-bottom #barPill::after{bottom:0;right:-10px;background:radial-gradient(circle at 100% 0,transparent 9.5px,#000 10px)}
+body.e-bottom #barPill::before{bottom:0;left:-10px;background:radial-gradient(circle at 0 0,transparent 9.5px,var(--notch) 10px)}
+body.e-bottom #barPill::after{bottom:0;right:-10px;background:radial-gradient(circle at 100% 0,transparent 9.5px,var(--notch) 10px)}
 body.e-left #barPill{left:0;border-radius:0 var(--r) var(--r) 0}
-body.e-left #barPill::before{left:0;top:-10px;background:radial-gradient(circle at 100% 0,transparent 9.5px,#000 10px)}
-body.e-left #barPill::after{left:0;bottom:-10px;background:radial-gradient(circle at 100% 100%,transparent 9.5px,#000 10px)}
+body.e-left #barPill::before{left:0;top:-10px;background:radial-gradient(circle at 100% 0,transparent 9.5px,var(--notch) 10px)}
+body.e-left #barPill::after{left:0;bottom:-10px;background:radial-gradient(circle at 100% 100%,transparent 9.5px,var(--notch) 10px)}
 body.e-right #barPill{right:0;border-radius:var(--r) 0 0 var(--r)}
-body.e-right #barPill::before{right:0;top:-10px;background:radial-gradient(circle at 0 0,transparent 9.5px,#000 10px)}
-body.e-right #barPill::after{right:0;bottom:-10px;background:radial-gradient(circle at 0 100%,transparent 9.5px,#000 10px)}
+body.e-right #barPill::before{right:0;top:-10px;background:radial-gradient(circle at 0 0,transparent 9.5px,var(--notch) 10px)}
+body.e-right #barPill::after{right:0;bottom:-10px;background:radial-gradient(circle at 0 100%,transparent 9.5px,var(--notch) 10px)}
 /* in the notch his glow may reach past his 340px strip: the window grows around the notch to make room for it
    (set_wide "bar"), and nothing here may cut it off */
 body.bar{overflow:visible}
@@ -128,15 +128,15 @@ body.bar #code .l.out{color:#b5b5b5}
 #body{pointer-events:visiblePainted;cursor:pointer}
 #pL{fill:var(--whiteL);stroke:var(--lineL,none)} #pR{fill:var(--whiteR);stroke:var(--lineR,none)}
 .eye{stroke-width:1.6;transition:fill .6s,stroke .6s}
-.b0{stop-color:var(--body0,#191919)} .b1{stop-color:var(--body1,#0a0a0a)} .b2{stop-color:var(--body2,#020202)} .b0,.b1,.b2{transition:stop-color .6s}
-#rim{stroke:var(--rim,#262626)}
+.b0{stop-color:var(--body0,#191919)} .b1{stop-color:var(--body1,var(--panel))} .b2{stop-color:var(--body2,#020202)} .b0,.b1,.b2{transition:stop-color .6s}
+#rim{stroke:var(--rim,var(--line))}
 #hlL{fill:var(--pupL)} #hlR{fill:var(--pupR)} .slit{transition:fill .6s}
 .hs{stop-color:var(--glow);transition:stop-color .8s}
 .orb line{stroke:var(--hot);stroke-linecap:round}
 #vring{fill:none;stroke:var(--hot);stroke-width:1.6;stroke-linejoin:round}
 .zz{font:700 15px var(--mono);fill:var(--hot)}
 .qm{font:800 24px "Inter",system-ui,sans-serif;fill:var(--hot)}
-.thk{fill:#111;stroke:var(--acc);stroke-width:2}
+.thk{fill:var(--panel2);stroke:var(--acc);stroke-width:2}
 .rs{stop-color:var(--acc);transition:stop-color .8s}
 .ang{fill:none;stroke:#ff2a2a;stroke-width:4;stroke-linecap:round}
 
@@ -151,13 +151,13 @@ body.bar #code .l.out{color:#b5b5b5}
 /* "Show everything I said": the last few lines of it, wrapped, instead of one cut-off line */
 body.fulltext #cap{top:248px;height:148px}      /* same bottom edge as before; it grows up into the gap under his body, not down */
 body.fulltext #you{white-space:normal;max-height:4.3em;line-height:1.4;font-size:12.5px;color:#c4c4c4;display:flex;flex-direction:column;justify-content:flex-end;text-overflow:clip;margin-bottom:2px}
-.row .t.sub{margin-top:14px;padding-top:12px;border-top:1px solid #1c1c1c}
-.row .t .pct{margin-left:auto;font:600 11.5px var(--mono);color:#aaa}
+.row .t.sub{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.row .t .pct{margin-left:auto;font:600 11.5px var(--mono);color:var(--dim)}
 .ctxbar{height:14px;border-radius:7px;background:#ffffff1a;overflow:hidden;margin:8px 0 8px}
 .ctxbar i{display:block;height:100%;width:0;background:var(--acc);transition:width .6s var(--ease),background .6s}
 .ctxbar.warn i{background:#e89a2c} .ctxbar.full i{background:#d8453a}
 input[type=range]{accent-color:var(--acc)}
-#ctxTxt{font-size:13px;font-weight:600;color:#ddd} #ctxTxt.warn{color:#e89a2c} #ctxTxt.full{color:#ef6a60}
+#ctxTxt{font-size:13px;font-weight:600;color:var(--text)} #ctxTxt.warn{color:#e89a2c} #ctxTxt.full{color:#ef6a60}
 #him{font-size:14.5px;font-weight:500;max-height:4.5em;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;width:100%}
 #him.err{color:#ff8a8a}
 #him .ln{display:block}
@@ -166,7 +166,7 @@ input[type=range]{accent-color:var(--acc)}
 @keyframes wIn{from{opacity:0;transform:translateY(.5em);filter:blur(5px)}to{opacity:1;transform:none;filter:none}}
 
 #chip{position:absolute;top:10px;left:50%;max-width:92%;padding:3px 11px;border-radius:999px;font:11px var(--mono);color:var(--tint);
-  background:#0b0b0bdd;border:1px solid var(--edge);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;z-index:9;
+  background:color-mix(in srgb,var(--panel) 87%,transparent);border:1px solid var(--edge);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;z-index:9;
   opacity:0;transform:translate(-50%,-6px) scale(.94);transition:opacity .5s var(--ease),transform .7s var(--ease)}
 #chip.on{opacity:1;transform:translate(-50%,0)}
 #chip.bad{color:#ff9b9b;border-color:#5a1a1a}
@@ -180,20 +180,20 @@ input[type=range]{accent-color:var(--acc)}
 #him .w.k{animation-duration:.32s}
 
 #ask{position:absolute;left:20px;right:20px;bottom:18px;height:40px;display:flex;align-items:center;gap:8px;padding:0 5px 0 16px;border-radius:20px;
-  background:#0b0b0bf2;border:1px solid var(--edge);box-shadow:0 4px 12px #0009,0 0 14px var(--accA);
+  background:color-mix(in srgb,var(--panel) 95%,transparent);border:1px solid var(--edge);box-shadow:0 4px 12px #0009,0 0 14px var(--accA);
   opacity:0;transform:translateY(16px) scale(.92);pointer-events:none;transition:opacity .45s var(--ease),transform .7s var(--ease)}
 #ask.on{opacity:1;transform:none;pointer-events:auto}
 #input{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--text);font:inherit;caret-color:var(--hot)}
 #input::placeholder{color:#5e5e5e}
 .round{flex:none;width:30px;height:30px;border-radius:50%;border:0;display:grid;place-items:center;cursor:pointer}
 #go{background:var(--acc);color:#fff}
-#clipB{background:#1a1a1a;color:#bbb} #clipB:hover{color:#fff}
+#clipB{background:var(--panel2);color:var(--dim)} #clipB:hover{color:#fff}
 .round svg{width:14px;height:14px}
 
 /* things he'll look at with your next message */
 #atts{position:absolute;left:20px;right:20px;bottom:64px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap;pointer-events:none}
 #atts .at{pointer-events:auto;display:flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border-radius:999px;font-size:12px;
-  background:#0d0d0df2;border:1px solid var(--edge2);box-shadow:0 3px 10px #0008;animation:wIn .5s var(--ease) both}
+  background:color-mix(in srgb,var(--panel2) 95%,transparent);border:1px solid var(--edge2);box-shadow:0 3px 10px #0008;animation:wIn .5s var(--ease) both}
 #atts .at img{width:22px;height:16px;object-fit:cover;border-radius:3px}
 #atts .at button{background:none;border:0;color:#999;cursor:pointer;font-size:12px;padding:0 3px}
 
@@ -220,76 +220,76 @@ body.gooing #menu:not(.on) .mb{transform:translate(0,0) scale(.1);transition:tra
 .pn .hd{display:flex;align-items:center;gap:8px;padding:11px 12px 6px 15px}
 .pn .hd b{font:600 13px "Inter",system-ui,sans-serif;flex:1}
 .pn .x{background:none;border:0;color:#888;cursor:pointer;font-size:14px;width:26px;height:26px;border-radius:50%}
-.pn .x:hover{background:#1c1c1c;color:#fff}
+.pn .x:hover{background:var(--line);color:#fff}
 .pn .bd{overflow-y:auto;padding:2px 15px 14px;scrollbar-width:thin;scrollbar-color:var(--edge2) transparent}
 .pn .bd::-webkit-scrollbar{width:6px} .pn .bd::-webkit-scrollbar-thumb{background:var(--edge2);border-radius:3px}
-.tabs{display:flex;gap:4px;padding:2px 12px 8px;border-bottom:1px solid #1d1d1d}
+.tabs{display:flex;gap:4px;padding:2px 12px 8px;border-bottom:1px solid var(--line)}
 .tabs button{flex:1;background:none;border:0;border-radius:10px;padding:6px 0;color:#9a9a9a;cursor:pointer;font-size:12px;transition:all .25s}
-.tabs button:hover{color:#ddd;background:#151515}
+.tabs button:hover{color:var(--text);background:var(--panel2)}
 .tabs button.on{color:#fff;background:var(--deep);box-shadow:inset 0 0 0 1px var(--edge2)}
 .tab{display:none} .tab.on{display:block;animation:wIn .45s var(--ease) both}
 .row{padding:11px 0;border-bottom:1px solid #191919} .row:last-child{border-bottom:0}
 .row .t{font-weight:600;font-size:12.5px;margin-bottom:2px;display:flex;align-items:center;gap:8px}
 .row .h{color:#8d8d8d;font-size:11.5px;line-height:1.35;margin-bottom:7px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
-.chips button{padding:5px 11px;border-radius:999px;border:1px solid #2c2c2c;background:#141414;color:#ddd;cursor:pointer;transition:all .25s var(--ease)}
+.chips button{padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;transition:all .25s var(--ease)}
 .chips button:hover{border-color:var(--edge2)}
 .chips button.on{background:var(--acc);border-color:var(--hot);color:#fff;box-shadow:0 0 12px var(--accB)}
 .chips button i{font-style:normal;opacity:.6;margin-left:4px}
 .chips.eyes{gap:7px;align-items:center}
-.chips.eyes .sw{width:24px;height:24px;padding:0;border-radius:50%;background:var(--c);border:2px solid #2c2c2c}
+.chips.eyes .sw{width:24px;height:24px;padding:0;border-radius:50%;background:var(--c);border:2px solid var(--line)}
 .chips.eyes .sw.on{border-color:#fff;box-shadow:0 0 0 2px var(--c),0 0 12px var(--c)}
 .chips.eyes label.sw{position:relative;overflow:hidden;cursor:pointer;background:conic-gradient(#f55,#fd5,#5f8,#5df,#86f,#f5d,#f55)}
 .chips.eyes label.sw input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .chips.eyes .rnd{padding:4px 10px}
 .opts{display:flex;flex-direction:column;gap:6px}
-.opt{display:flex;gap:10px;align-items:flex-start;text-align:left;padding:9px 11px;border-radius:12px;border:1px solid #262626;background:#121212;cursor:pointer;transition:all .25s}
+.opt{display:flex;gap:10px;align-items:flex-start;text-align:left;padding:9px 11px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);cursor:pointer;transition:all .25s}
 .opt:hover{border-color:var(--edge2)}
 .opt.on{border-color:var(--hot);background:var(--deep);box-shadow:0 0 12px var(--accA)}
-.opt .ic{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#1d1d1d;font-size:12px}
+.opt .ic{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--line);font-size:12px}
 .opt.on .ic{background:var(--acc)}
 .opt b{display:block;font-size:12.5px} .opt small{color:#8d8d8d;font-size:11.2px;line-height:1.3}
-.tg{display:flex;gap:10px;align-items:center;cursor:pointer;color:#ddd;line-height:1.35;padding:2px 0}
+.tg{display:flex;gap:10px;align-items:center;cursor:pointer;color:var(--text);line-height:1.35;padding:2px 0}
 .tg input{display:none}
-.tg .sw{flex:none;width:34px;height:20px;border-radius:10px;background:#222;border:1px solid #333;position:relative;transition:background .3s}
+.tg .sw{flex:none;width:34px;height:20px;border-radius:10px;background:var(--line);border:1px solid #333;position:relative;transition:background .3s}
 .tg .sw::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#888;transition:transform .35s var(--ease),background .3s}
 .tg input:checked+.sw{background:var(--acc);border-color:var(--hot)}
 .tg input:checked+.sw::after{transform:translateX(14px);background:#fff}
 .tg.red input:checked+.sw{background:#7a0000;border-color:#ff3b3b}
 .tg span.l{flex:1} .tg small{display:block;color:#8d8d8d;font-size:11.2px}
-code{font:11px var(--mono);color:var(--tint);background:#161616;border-radius:5px;padding:1px 5px}
-select,.pn input[type=text],.pn textarea{width:100%;background:#121212;color:#eee;border:1px solid #2a2a2a;border-radius:10px;padding:7px 9px;font:inherit;outline:0}
+code{font:11px var(--mono);color:var(--tint);background:var(--panel2);border-radius:5px;padding:1px 5px}
+select,.pn input[type=text],.pn textarea{width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:7px 9px;font:inherit;outline:0}
 /* WebKitGTK paints <select> with the GTK theme (light Adwaita when the Nix wrapper can't see yours): draw it ourselves */
 :root{color-scheme:dark}
 select{-webkit-appearance:none;appearance:none;padding-right:28px;cursor:pointer;
-  background:#121212 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23aaa' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 10px center/10px 6px}
-select option{background:#121212;color:#eee}
+  background:var(--panel2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23aaa' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 10px center/10px 6px}
+select option{background:var(--panel2);color:var(--text)}
 select:focus,.pn input[type=text]:focus,.pn textarea:focus{border-color:var(--edge2)}
 .pn textarea{resize:vertical;min-height:52px}
-.btn{padding:6px 12px;border-radius:999px;border:1px solid #2c2c2c;background:#161616;color:#ddd;cursor:pointer;transition:all .2s}
+.btn{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;transition:all .2s}
 .btn:hover{border-color:var(--edge2);color:#fff} .btn.pri{background:var(--acc);border-color:var(--hot);color:#fff}
 .btn.sm{padding:3px 9px;font-size:11.5px} .btn.danger:hover{border-color:#a33;color:#ff9b9b}
 .bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.keys{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;color:#aaa;font-size:11.5px}
-.keys kbd{font:10.5px var(--mono);color:#ddd;background:#181818;border:1px solid #2c2c2c;border-radius:5px;padding:1px 5px;justify-self:start}
+.keys{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;color:var(--dim);font-size:11.5px}
+.keys kbd{font:10.5px var(--mono);color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 5px;justify-self:start}
 .empty{color:#777;text-align:center;padding:22px 6px;font-size:12px;line-height:1.5}
-.item{padding:9px 10px;border-radius:12px;background:#111;border:1px solid #1e1e1e;margin-bottom:6px;cursor:pointer;transition:border-color .2s}
+.item{padding:9px 10px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);margin-bottom:6px;cursor:pointer;transition:border-color .2s}
 .item:hover{border-color:var(--edge2)}
 .item .meta{font:10.5px var(--mono);color:#777;margin-bottom:3px;display:flex;gap:6px}
 .item .meta .bad{color:#ff8a8a}
 .item .y{color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .item .a{color:#8d8d8d;font-size:11.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px}
-.item.open .a{display:block;-webkit-line-clamp:unset;white-space:pre-wrap;color:#ddd;max-height:190px;overflow-y:auto;user-select:text;-webkit-user-select:text}
+.item.open .a{display:block;-webkit-line-clamp:unset;white-space:pre-wrap;color:var(--text);max-height:190px;overflow-y:auto;user-select:text;-webkit-user-select:text}
 .item .bar{margin-top:8px;display:none} .item.open .bar{display:flex}
-.note{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;background:#111;border:1px solid #1e1e1e;margin-bottom:6px;user-select:text;-webkit-user-select:text}
-.note span{flex:1;color:#ddd}
+.note{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);margin-bottom:6px;user-select:text;-webkit-user-select:text}
+.note span{flex:1;color:var(--text)}
 .note button{background:none;border:0;color:#777;cursor:pointer} .note button:hover{color:#ff9b9b}
 .qa{display:flex;flex-direction:column;gap:6px}
-.qa button{text-align:left;padding:10px 12px;border-radius:12px;border:1px solid #232323;background:#121212;color:#eee;cursor:pointer;transition:all .2s}
+.qa button{text-align:left;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;transition:all .2s}
 .qa button:hover{border-color:var(--hot);background:var(--deep)}
 .qa button small{display:block;color:#888;font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .qedit{display:flex;gap:6px;align-items:center;margin-bottom:5px}
-.qedit span{flex:1;padding:6px 9px;border-radius:9px;background:#121212;border:1px solid #222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qedit span{flex:1;padding:6px 9px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* "can I run this?" */
 #appr{position:absolute;left:14px;right:14px;top:256px;padding:11px 12px 12px;border-radius:16px;background:#0c0c0cf7;
@@ -297,7 +297,7 @@ select:focus,.pn input[type=text]:focus,.pn textarea:focus{border-color:var(--ed
   opacity:0;transform:translateY(12px) scale(.95);pointer-events:none;transition:opacity .4s var(--ease),transform .6s var(--ease)}
 #appr.on{opacity:1;transform:none;pointer-events:auto}
 #appr .q{font-size:12.5px;color:#ffd38a;margin-bottom:6px;display:flex;gap:6px;align-items:center}
-#appr pre{margin:0 0 9px;padding:7px 9px;border-radius:9px;background:#151515;border:1px solid #262626;font:11.5px/1.4 var(--mono);color:#eee;
+#appr pre{margin:0 0 9px;padding:7px 9px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);font:11.5px/1.4 var(--mono);color:var(--text);
   max-height:64px;overflow:auto;white-space:pre-wrap;word-break:break-all;user-select:text;-webkit-user-select:text}
 #appr .bar{justify-content:flex-end}
 #appr .yes{background:#2f7d4f;border-color:#55c285;color:#fff}
@@ -308,7 +308,7 @@ select:focus,.pn input[type=text]:focus,.pn textarea:focus{border-color:var(--ed
 #pwbox.on{opacity:1;transform:none;pointer-events:auto}
 #pwbox .q{font-size:12.5px;color:#ff9b9b;margin-bottom:7px;display:flex;gap:6px;align-items:center}
 #pwbox .pwrow{display:flex;gap:6px}
-#pwbox input{flex:1;min-width:0;background:#151515;border:1px solid #3a1a1a;border-radius:9px;color:#eee;font:13px var(--mono);padding:6px 9px;outline:0}
+#pwbox input{flex:1;min-width:0;background:var(--panel2);border:1px solid #3a1a1a;border-radius:9px;color:var(--text);font:13px var(--mono);padding:6px 9px;outline:0}
 #pwbox input:focus{border-color:#a02828}
 #pwbox .yes{background:#8a1414;border-color:#d04040;color:#fff}
 #pwbox .hint{margin-top:6px;color:#777;font-size:10.5px}
@@ -325,39 +325,39 @@ body.calm #orbBack,body.calm #orbFront,body.calm #raysW,body.calm #vring,body.ca
 
 @keyframes flash{0%{opacity:.18}100%{opacity:0}}
 /* ===== settings, take two: cards, a sliding tab pill, a live clickable preview and a proper colour picker ===== */
-#set{background:linear-gradient(180deg,#141414 0,#0c0c0c 120px,#0b0b0b 100%)}
+#set{background:linear-gradient(180deg,var(--panel2) 0,var(--panel) 120px,var(--panel) 100%)}
 #set .hd{padding:12px 12px 8px 14px}
 #set .hd .logo{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%,var(--body0,#1b1b1b),var(--body2,#030303) 70%);
   box-shadow:0 0 0 1.5px var(--edge2),0 0 10px var(--accA);position:relative}
 #set .hd .logo::before,#set .hd .logo::after{content:"";position:absolute;top:5px;width:4px;height:7px;border-radius:50%;background:var(--whiteL,#f3dccf)}
 #set .hd .logo::before{left:4.5px} #set .hd .logo::after{right:4.5px;background:var(--whiteR,#f3dccf)}
 #set .hd b{font-size:14px;letter-spacing:.01em}
-#tabs{position:relative;display:flex;gap:0;margin:0 12px 8px;padding:3px;border:0;border-radius:13px;background:#151515;box-shadow:inset 0 0 0 1px #1f1f1f}
+#tabs{position:relative;display:flex;gap:0;margin:0 12px 8px;padding:3px;border:0;border-radius:13px;background:var(--panel2);box-shadow:inset 0 0 0 1px #1f1f1f}
 #tabs button{position:relative;z-index:1;flex:1;display:flex;align-items:center;justify-content:center;gap:5px;background:none;border:0;border-radius:10px;
   padding:6px 0;color:#8f8f8f;font-size:12px;font-weight:500;cursor:pointer;transition:color .25s}
 #tabs button svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-#tabs button:hover{color:#ddd;background:none}
+#tabs button:hover{color:var(--text);background:none}
 #tabs button.on{color:#fff;background:none;box-shadow:none}
 #tabs .ind{position:absolute;z-index:0;top:3px;bottom:3px;left:3px;border-radius:10px;background:linear-gradient(180deg,var(--acc),var(--edge2));
   box-shadow:0 2px 10px var(--accB);transition:transform .45s var(--ease),width .45s var(--ease)}
 #set .bd{padding:2px 12px 14px}
-#set .tab .row{background:#111;border:1px solid #1c1c1c;border-radius:14px;padding:11px 12px;margin:0 0 8px}
-#set .tab .row:last-child{border-bottom:1px solid #1c1c1c}
+#set .tab .row{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:11px 12px;margin:0 0 8px}
+#set .tab .row:last-child{border-bottom:1px solid var(--line)}
 #set .row .t{font-size:12.8px}
 #set .row.tgs{display:flex;flex-direction:column;gap:10px}
-#set .tg .sw{width:36px;height:21px;border-radius:11px;background:#232323;border:1px solid #2e2e2e}
+#set .tg .sw{width:36px;height:21px;border-radius:11px;background:var(--line);border:1px solid #2e2e2e}
 #set .tg .sw::after{top:2.5px;left:2.5px;width:14px;height:14px;box-shadow:0 1px 3px #0008}
 #set .tg input:checked+.sw{background:linear-gradient(180deg,var(--hot),var(--acc));border-color:transparent}
 #set .tg input:checked+.sw::after{transform:translateX(15px)}
 #set .tg.red input:checked+.sw{background:linear-gradient(180deg,#ff5050,#8a0000)}
 /* segmented control */
 .seg{display:flex;flex-wrap:wrap;gap:3px;padding:3px;border-radius:11px;background:#171717;box-shadow:inset 0 0 0 1px #212121}
-.seg button{flex:1 1 0;min-width:0;padding:6px 3px;border:0;border-radius:8px;background:none;color:#aaa;font-size:11.8px;cursor:pointer;transition:all .2s;white-space:nowrap}
+.seg button{flex:1 1 0;min-width:0;padding:6px 3px;border:0;border-radius:8px;background:none;color:var(--dim);font-size:11.8px;cursor:pointer;transition:all .2s;white-space:nowrap}
 .seg button:hover{color:#fff}
 .seg button.on{background:var(--acc);color:#fff;box-shadow:0 1px 8px var(--accB)}
 /* voices */
 .voices{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
-.voices button{display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:10px;border:1px solid #242424;background:#151515;color:#ddd;cursor:pointer;font-size:12px;transition:all .2s}
+.voices button{display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;font-size:12px;transition:all .2s}
 .voices button::before{content:"";width:0;height:0;border-left:7px solid currentColor;border-top:4.5px solid transparent;border-bottom:4.5px solid transparent;opacity:.6}
 .voices button:hover{border-color:var(--edge2)} .voices button.on{border-color:var(--hot);background:var(--deep);color:#fff}
 .voices button i{font-style:normal;opacity:.6}
@@ -383,7 +383,7 @@ body.calm #orbBack,body.calm #orbFront,body.calm #raysW,body.calm #vring,body.ca
 .picker .hue .dot{top:50%}
 .pkrow{display:flex;gap:6px;align-items:center}
 .pkrow .cur{flex:none;width:30px;height:30px;border-radius:9px;background:var(--c,#000);box-shadow:inset 0 0 0 1px #fff3}
-.pkrow input{flex:1;min-width:0;background:#151515;border:1px solid #262626;border-radius:9px;color:#eee;font:12.5px var(--mono);padding:6px 9px;outline:0;text-transform:lowercase}
+.pkrow input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--text);font:12.5px var(--mono);padding:6px 9px;outline:0;text-transform:lowercase}
 .pkrow input:focus{border-color:var(--edge2)}
 .swatches,.recent{display:flex;flex-wrap:wrap;gap:6px}
 .swatches button,.recent button{width:22px;height:22px;padding:0;border-radius:7px;border:0;background:var(--c);cursor:pointer;box-shadow:inset 0 0 0 1px #ffffff26;transition:transform .15s}
@@ -392,38 +392,38 @@ body.calm #orbBack,body.calm #orbFront,body.calm #raysW,body.calm #vring,body.ca
 .recent:empty{display:none} .recent::before{content:"recent";font:10px var(--mono);color:#666;align-self:center;margin-right:2px}
 /* skins gallery */
 .skins{display:grid;grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:6px}
-.skins button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 2px 6px;border-radius:11px;border:1px solid #222;background:#141414;color:#aaa;font-size:10.5px;cursor:pointer;transition:all .2s}
+.skins button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 2px 6px;border-radius:11px;border:1px solid var(--line);background:var(--panel2);color:var(--dim);font-size:10.5px;cursor:pointer;transition:all .2s}
 .skins button svg{width:52px;height:52px;overflow:visible}
 .skins button:hover{border-color:var(--edge2);color:#fff}
 .skins button.on{border-color:var(--hot);background:var(--deep);color:#fff;box-shadow:0 0 12px var(--accA)}
 /* projects */
-.proj{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:10px;background:#151515;border:1px solid #222;margin-bottom:5px}
+.proj{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);margin-bottom:5px}
 .proj b{font-size:12px} .proj span{flex:1;font:11px var(--mono);color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .proj button{background:none;border:0;color:#777;cursor:pointer} .proj button:hover{color:#ff9b9b}
 /* the "full answer" button + reply panel */
 #moreB{position:absolute;left:50%;top:398px;transform:translateX(-50%);z-index:8;padding:3px 10px;border-radius:999px;border:1px solid var(--edge2);
-  background:#0d0d0df2;color:var(--tint);font-size:11px;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .4s}
+  background:color-mix(in srgb,var(--panel2) 95%,transparent);color:var(--tint);font-size:11px;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .4s}
 #moreB.on{opacity:1;pointer-events:auto}
 body.hover #moreB,body.pnl #moreB,body.appr #moreB{display:none}
 .md{font-size:12.8px;line-height:1.5;color:#e6e6e6;user-select:text;-webkit-user-select:text}
 .md p{margin:0 0 8px} .md ul{margin:0 0 8px;padding-left:18px} .md li{margin:2px 0}
 .md code{font-size:11.5px}
-.md .cb{position:relative;margin:0 0 9px;border-radius:10px;background:#151515;border:1px solid #242424}
+.md .cb{position:relative;margin:0 0 9px;border-radius:10px;background:var(--panel2);border:1px solid var(--line)}
 .md .cb pre{margin:0;padding:9px 10px;font:11.5px/1.45 var(--mono);color:#e8e8e8;overflow-x:auto;white-space:pre}
-.md .cb button{position:absolute;top:5px;right:5px;padding:2px 8px;border-radius:7px;border:1px solid #333;background:#1c1c1c;color:#bbb;font-size:10.5px;cursor:pointer}
+.md .cb button{position:absolute;top:5px;right:5px;padding:2px 8px;border-radius:7px;border:1px solid #333;background:var(--line);color:var(--dim);font-size:10.5px;cursor:pointer}
 .md .cb button:hover{color:#fff;border-color:var(--edge2)}
 .md h1,.md h2,.md h3{font-size:13.5px;margin:10px 0 6px}
 /* ===== the terminal: a small flat sheet he holds under his eyes while he works ===== */
 #stage{z-index:2}
-#code{position:fixed;left:0;top:0;width:136px;height:80px;z-index:3;pointer-events:none;border-radius:10px;
-  background:#0b0b0bf2;border:1px solid var(--edge2);box-shadow:0 8px 18px #000b;font:8.5px/12px var(--mono);color:#d6d6d6;
+#code{position:fixed;left:0;top:0;width:490px;height:166px;z-index:3;pointer-events:none;border-radius:10px;
+  background:color-mix(in srgb,var(--panel) 95%,transparent);border:1px solid var(--edge2);box-shadow:0 8px 18px #000b;font:13px/17px var(--mono);color:var(--text);
   opacity:0;scale:.5;transition:opacity .3s,scale .4s cubic-bezier(.3,1.5,.5,1)}
 #code.on{opacity:1;scale:1}
-#code .tb{display:flex;align-items:center;gap:6px;height:17px;padding:0 8px;border-bottom:1px solid #1d1d1d;color:var(--hot);font-weight:600}
+#code .tb{display:flex;align-items:center;gap:6px;height:24px;padding:0 10px;font-size:12px;border-bottom:1px solid var(--line);color:var(--hot);font-weight:600}
 #code .tb b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 #code .tb span{color:#777} #code .tb span.ok{color:var(--hot)} #code .tb span.bad{color:#ff6b6b}
 #code.root{border-color:#7a1414} #code.root .tb b::before{content:"root · ";color:#ff5a5a}
-#code .lines{padding:3px 8px;height:60px;overflow:hidden}
+#code .lines{padding:3px 10px;height:140px;overflow:hidden}
 /* root mode: a red sticker on the side of the paper you see — so it reads the right way round even though the page is
    turned toward him */
 #liveDot{animation:liveBeat 1.6s ease-in-out infinite} @keyframes liveBeat{50%{opacity:.25}} body.hover #liveTag{display:none}
@@ -431,12 +431,12 @@ body.hover #moreB,body.pnl #moreB,body.appr #moreB{display:none}
   color:#fff;background:#9a0000;border-radius:6px;padding:3px 6px;box-shadow:0 0 10px #ff000066,0 2px 6px #000a}
 #code.rootmode .rootb{display:block}
 body.faceyou #code .rootb{transform:none;left:auto;right:-9px}
-#code .l{height:12px;white-space:pre;overflow:hidden}
+#code .l{height:17px;white-space:pre;overflow:hidden}
 #code .l.add{color:#bfe8d3} #code .l.del{color:#ff8b8b}
 #code .l.out{color:#9a9a9a} #code .l.bad{color:#ff8b8b}
 #code i{font-style:normal} #code .k{color:var(--hot)} #code .s{color:var(--whiteL,#f3dccf)} #code .c{color:#5f5f5f}
 #code .pr,#code .ok{color:var(--hot)} #code .rt{color:#ff5a5a}
-#code .cur{display:inline-block;width:5px;height:9px;margin-left:1px;vertical-align:-1px;background:var(--hot);animation:cpBlink .9s steps(1) infinite}
+#code .cur{display:inline-block;width:7px;height:13px;margin-left:1px;vertical-align:-1px;background:var(--hot);animation:cpBlink .9s steps(1) infinite}
 @keyframes cpBlink{50%{opacity:0}}
 body.hover #code{display:none}
 body.term #chip.work{opacity:0}          /* the terminal already says what he's doing */
@@ -453,7 +453,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
     <feGaussianBlur in="SourceGraphic" stdDeviation="9" result="b"/>
     <feColorMatrix in="b" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 26 -11"/>
   </filter></defs>
-  <g filter="url(#gooF)" fill="#000"><rect id="gooBar" rx="18"/><ellipse id="gooBall"/><circle id="gooDrop"/><circle class="gooN"/><circle class="gooN"/><circle class="gooN"/></g>
+  <g filter="url(#gooF)" style="fill:var(--notch)"><rect id="gooBar" rx="18"/><ellipse id="gooBall"/><circle id="gooDrop"/><circle class="gooN"/><circle class="gooN"/><circle class="gooN"/></g>
 </svg>
 <div id="stage">
   <svg id="guy" viewBox="-150 -150 300 300">
@@ -543,7 +543,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <label class="tg" style="margin-top:9px"><input type="checkbox" id="linkSw"><span class="sw"></span><span class="l">Matching eyes<small>Change both eyes (and both whites) together.</small></span></label>
         <label class="tg" style="margin-top:7px"><input type="checkbox" id="rndSw"><span class="sw"></span><span class="l">Surprise me<small>New random colours every time he pops up.</small></span></label>
       </div>
-      <div class="row"><div class="t">Skin</div><div class="h">Something to wear. Cat ears twitch, antennas wobble.</div><div class="skins" id="skinGrid"></div></div>
+      <div class="row"><div class="t">Skin</div><div class="h">Something to wear. The sprout sways.</div><div class="skins" id="skinGrid"></div></div>
       <div class="row"><div class="t">Resting pupils</div><div class="h">His everyday look — they still change with his mood.</div><div class="seg" id="pupChips"></div></div>
       <div class="row"><label class="tg"><input type="checkbox" id="codeSw"><span class="sw"></span><span class="l">Terminal<small>While he works he holds a little terminal showing the code he writes and the commands he runs.</small></span></label>
         <div class="seg" id="faceChips" style="margin-top:9px"><button data-face="him">Faces him</button><button data-face="you">Faces you (readable)</button></div></div>
@@ -697,8 +697,14 @@ const NIX_STOPS={nixD:['#3e5993','#4564a5','#4d6fb7'],nixL:['#6d9bbc','#72a9cf',
 function applyLambdas(t){   // lambdas: blue (dark ones) and cyan (light ones), each a shaded gradient; no theme = the NixOS blues
   const c=t?{nixD:[shade(t.blue,-.15),t.blue,shade(t.blue,.08)],nixL:[shade(t.cyan,-.1),t.cyan,shade(t.cyan,.1)]}:NIX_STOPS;
   for(const id in c) document.querySelectorAll(`#${id} stop`).forEach((e,i)=>e.setAttribute('stop-color',c[id][i])); }
+function applyThemeVars(t){   // the desktop theme's colours for the notch, panels and text (null = the built-in dark ones)
+  const st=document.documentElement.style, lt=t&&t.mode==='light';
+  const v=t?{'--notch':lt?shade(t.background,-.1):t.darker_background,'--panel':t.background,'--panel2':t.lighter_background,'--text':t.foreground,
+    '--dim':t.dark_foreground||t.muted||t.foreground,'--line':t.selection||t.lighter_background}:{};
+  for(const k of ['--notch','--panel','--panel2','--text','--dim','--line']) v[k]?st.setProperty(k,v[k]):st.removeProperty(k);
+  NOTCH=v['--notch']||'#000000'; }
 function applyLook(L){
-  const fl=L.follow_theme!==false&&info&&info.theme; applyLambdas(fl&&!L.random?info.theme:null); L=themed(L);
+  const fl=L.follow_theme!==false&&info&&info.theme; applyLambdas(fl&&!L.random?info.theme:null); applyThemeVars(fl?info.theme:null); L=themed(L);
   LOOK={...LOOK_DEFAULT,...L};
   const st=document.documentElement.style, [b0,b1,b2]=bodyStops(LOOK.body);
   st.setProperty('--pupL',LOOK.pupL); st.setProperty('--pupR',LOOK.pupR);
@@ -731,44 +737,27 @@ const syncEye=syncLook;
 /* ---------------- skins: things he can wear. Drawn into a group behind the ball (ears etc.) and one in front (hats) */
 const SVGNS='http://www.w3.org/2000/svg';
 const sv=(tag,at,par)=>{ const e=document.createElementNS(SVGNS,tag); for(const k in at) e.setAttribute(k,at[k]); if(par) par.appendChild(e); return e; };
-const SKIN_LABELS={none:'none',cat:'cat ears',bunny:'bunny',bear:'bear',antenna:'antenna',devil:'devil',halo:'halo',crown:'crown',
-  sprout:'sprout',party:'party hat',headphones:'headphones',bow:'bow'};
+const SKIN_LABELS={none:'none',halo:'halo',crown:'crown',sprout:'sprout',bow:'bow'};
 let SKIN_PARTS={};
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
 function drawSkin(back,front,L,bodyFill='url(#ballG)'){
   back.innerHTML=''; front.innerHTML='';
   const F=L.skinColor||bodyFill, acc=L.skinColor||L.pupL, soft=L.skinColor||L.whiteL, parts={pivots:{}};
   const R=(at)=>({...at,'stroke-linejoin':'round','stroke-linecap':'round'});
-  const pair=fn=>{ for(const s of [-1,1]){ const g=sv('g',{},back); fn(g,s); parts[s<0?'earL':'earR']=g; } };
   switch(L.skin){
-    case 'cat': pair((g,s)=>{ sv('path',R({d:`M${52*s} -48L${50*s} -96L${20*s} -68Z`,fill:F,stroke:F,'stroke-width':13}),g);
-        parts.pivots[s<0?'earL':'earR']=[36*s,-58]; }); break;
-    case 'bunny': pair((g,s)=>{ sv('ellipse',{cx:24*s,cy:-110,rx:13,ry:38,fill:F,transform:`rotate(${14*s} ${20*s} -74)`},g);
-        parts.pivots[s<0?'earL':'earR']=[20*s,-74]; }); break;
-    case 'bear': pair((g,s)=>{ sv('circle',{cx:50*s,cy:-56,r:19,fill:F},g); parts.pivots[s<0?'earL':'earR']=[44*s,-50]; }); break;
-    case 'antenna': { const g=sv('g',{},back);
-        sv('line',R({x1:0,y1:-72,x2:0,y2:-106,stroke:F,'stroke-width':4.5}),g); sv('circle',{cx:0,cy:-110,r:7.5,fill:acc},g);
-        parts.wob=g; parts.pivots.wob=[0,-72]; break; }
-    case 'devil': pair((g,s)=>{ sv('path',R({d:`M${24*s} -70C${26*s} -86 ${36*s} -96 ${48*s} -102C${40*s} -92 ${38*s} -78 ${38*s} -64Z`,fill:acc,stroke:acc,'stroke-width':2.5}),g);
-        parts.pivots[s<0?'earL':'earR']=[31*s,-67]; }); break;
     case 'halo': { const g=sv('g',{},front);
-        sv('ellipse',{cx:0,cy:-102,rx:30,ry:7,fill:'none',stroke:soft,'stroke-width':5},g); parts.halo=g; break; }
-    case 'crown': { const g=sv('g',{},front);
+        sv('ellipse',{cx:0,cy:-134,rx:36,ry:6,fill:'none',stroke:soft,'stroke-width':4},g); parts.halo=g; break; }
+    case 'crown': { const g=sv('g',{transform:'translate(0 -58) scale(.85) translate(0 68)'},front);
         sv('path',R({d:'M-22 -68L-26 -94L-11 -80L0 -98L11 -80L26 -94L22 -68Z',fill:soft,stroke:soft,'stroke-width':6}),g); break; }
-    case 'sprout': { const g=sv('g',{},back);
-        sv('path',R({d:'M0 -72Q-2 -88 3 -98',fill:'none',stroke:acc,'stroke-width':3.5}),g);
-        sv('ellipse',{cx:-8,cy:-101,rx:10,ry:5,fill:acc,transform:'rotate(-28 -8 -101)'},g);
-        sv('ellipse',{cx:14,cy:-103,rx:11,ry:5.5,fill:acc,transform:'rotate(26 14 -103)'},g);
-        parts.wob=g; parts.pivots.wob=[0,-72]; break; }
-    case 'party': { const g=sv('g',{transform:'rotate(12 4 -70)'},front);
-        sv('path',R({d:'M-16 -68L22 -68L5 -116Z',fill:acc,stroke:acc,'stroke-width':7}),g); sv('circle',{cx:5,cy:-120,r:6,fill:soft},g); break; }
-    case 'headphones': { const g=sv('g',{},front);
-        sv('path',R({d:'M-80 -6A82 82 0 0 1 80 -6',fill:'none',stroke:acc,'stroke-width':6}),g);
-        for(const s of [-1,1]) sv('rect',{x:80*s-9,y:-24,width:18,height:40,rx:9,fill:acc},g); break; }
-    case 'bow': { const g=sv('g',{transform:'translate(38 -62) rotate(20)'},front);
-        sv('path',{d:'M0 0C-8 -13 -24 -12 -24 0C-24 12 -8 13 0 0Z',fill:acc},g);
-        sv('path',{d:'M0 0C8 -13 24 -12 24 0C24 12 8 13 0 0Z',fill:acc},g);
-        sv('circle',{r:5,fill:shade(acc,-.08)},g); break; }
+    case 'sprout': { const g=sv('g',{},front);   // in front: the lambdas would hide it
+        sv('path',R({d:'M0 -58Q-3 -76 2 -90',fill:'none',stroke:soft,'stroke-width':3.5}),g);
+        sv('ellipse',{cx:-9,cy:-93,rx:10,ry:5,fill:soft,transform:'rotate(-28 -9 -93)'},g);
+        sv('ellipse',{cx:13,cy:-96,rx:11,ry:5.5,fill:soft,transform:'rotate(26 13 -96)'},g);
+        parts.wob=g; parts.pivots.wob=[0,-58]; break; }
+    case 'bow': { const g=sv('g',{transform:'translate(33.5 -58) rotate(30)'},front);
+        sv('path',{d:'M0 0C-8 -13 -24 -12 -24 0C-24 12 -8 13 0 0Z',fill:soft},g);
+        sv('path',{d:'M0 0C8 -13 24 -12 24 0C24 12 8 13 0 0Z',fill:soft},g);
+        sv('circle',{r:5,fill:shade(soft,-.15)},g); break; }
   }
   return parts;
 }
@@ -961,7 +950,7 @@ class Spring{   // f = natural frequency (Hz), z = damping ratio (1 = no oversho
 const S={L:{},R:{}}; for(const k of EYE_KEYS){ S.L[k]=new Spring(val(MOODS.idle[k],0),2.1,.82); S.R[k]=new Spring(val(MOODS.idle[k],1),2.1,.82); }
 const SP={L:{},R:{}}; for(const k of PUP_KEYS){ SP.L[k]=new Spring(val(PUP.slit[k],0),2.3,.78); SP.R[k]=new Spring(val(PUP.slit[k],1),2.3,.78); }
 const G={ sz:new Spring(1,2,.75), tilt:new Spring(0,.8,.85), dx:new Spring(0,2.4,.55),
-  earL:new Spring(0,3.2,.32), earR:new Spring(0,3.2,.32), wob:new Spring(0,1.7,.22),
+  wob:new Spring(0,1.7,.22),
   gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), zoom:new Spring(1,1.6,.7),
   appear:new Spring(.2,1.5,.55), open:new Spring(0,1.8,.55), think:new Spring(0,1.6,.6), anger:new Spring(0,1.8,.55), qm:new Spring(0,1.8,.55),
   rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
@@ -1030,7 +1019,7 @@ function onMood(m){
   document.body.classList.forEach(c=>{ if(c.startsWith('m-')) document.body.classList.remove(c); }); document.body.classList.add('m-'+m);
   if(!opened) return;
   if(isTalk(m)){ for(const e of [S.L,S.R]) e.es.kick(m==='t_excited'?.7:.35); if(m==='t_excited'||m==='t_beam') popPupils(); if(m==='t_beam') G.jelly.kick(.25); return; }
-  G.sz.kick(.12); G.jelly.kick(.15); popPupils(); G.earL.kick((Math.random()-.5)*80); G.earR.kick((Math.random()-.5)*80);
+  G.sz.kick(.12); G.jelly.kick(.15); popPupils();
   for(const e of [S.L,S.R]){ e.sq.kick(-1.1); e.es.kick(.8); }          // eyes "pop" with every new feeling
   if(m==='happy'){ setTimeout(()=>confetti(18),120); burstLines(EC.hot,10); shock(EC.acc,true); flash(EC.acc); G.zoom.kick(.25); G.jelly.kick(.7); }
   else if(m==='excited'){ burstLines('#ffffff',12,90); shock(EC.hot,true); flash(EC.hot); G.zoom.kick(.4); G.jelly.kick(.9); }
@@ -1071,8 +1060,8 @@ const FIDGETS={
   shake:     {dur:1000, start:()=>{ shakeAmp=3; G.jelly.kick(.9); }, f:p=>({eye:{shut:.7*(1-bump(p,.5,1))},pu:'circle'})},
   blinks:    {dur:1100, start:()=>{ const n=performance.now(); blinkAt=n; setTimeout(()=>blinkAt=performance.now(),300); setTimeout(()=>blinkAt=performance.now(),600); }, f:()=>({})},
 };
-let FID=null, nextFidAt=performance.now()+6000, lastFid='', earTwAt=0;
-function earKick(){ G.earL.kick(-120); G.earR.kick(120); } const paintEl=document.getElementById('paint');
+let FID=null, nextFidAt=performance.now()+6000, lastFid='';
+const paintEl=document.getElementById('paint');
 function frame(ts){
   const rawDt=(ts-(lastTs||ts))/1000, dt=clamp(rawDt,0,.05); lastTs=ts; const t=ts/1000;
   if(!lowFx && rawDt>0 && rawDt<.25 && document.visibilityState==='visible'){ perfAcc+=rawDt; perfN++;
@@ -1241,13 +1230,8 @@ function frame(ts){
   const sw=(t%1.8)/1.8;
   E.sweat.setAttribute('opacity',m==='running'||m==='pleading'?(sw<.75?1:1-(sw-.75)/.25).toFixed(2):'0');
   E.sweat.setAttribute('transform',`translate(-70,${(-44+eOut(sw)*18).toFixed(1)}) scale(${(.6+Math.min(sw*3,1)*.4).toFixed(2)})`);
-  // skin: ears follow his mood (droop, perk, flatten) and twitch now and then; antennas/sprouts wobble; halos float
+  // skin: sprouts wobble, halos float
   const SP2=SKIN_PARTS||{};
-  if(SP2.earL||SP2.earR){
-    const base={sad:24,sleepy:20,bored:16,annoyed:34,error:30,listening:-10,surprised:-12,excited:-8,scared:-14,joy:6,purr:10,happy:4}[m]||0;
-    if(ts>earTwAt){ earTwAt=ts+3500+Math.random()*6000; (Math.random()<.5?G.earL:G.earR).kick((Math.random()<.5?-1:1)*90); }
-    for(const [side,key] of [[-1,'earL'],[1,'earR']]){ const g=SP2[key], pv=SP2.pivots[key]; if(!g||!pv) continue;
-      const a=side*(base+G[key].to(0,dt)); g.setAttribute('transform',`rotate(${a.toFixed(2)} ${pv[0]} ${pv[1]})`); } }
   if(SP2.wob){ const pv=SP2.pivots.wob, w=G.wob.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)+(LOOK.skin==='sprout'?Math.sin(t*1.3)*3:0);
     SP2.wob.setAttribute('transform',`rotate(${w.toFixed(2)} ${pv[0]} ${pv[1]})`); }
   if(SP2.halo) SP2.halo.setAttribute('transform',`translate(0,${(Math.sin(t*1.6)*2.2).toFixed(2)})`);
@@ -1938,9 +1922,10 @@ function barShape(edge,k){ const W=260,H=52,SW=68,SH=210, o=24;
     return [170-w/2, edge==='top'?-o:460-h, w, h+o]; }
   const h=SH*(.55+.45*k), w=SW*k; return [edge==='left'?-o:340-w, 230-h/2, w+o, h]; }
 // dir 1: the ball flows into the edge and becomes the notch · dir -1: a drop swells out of the notch and becomes him
-// his colour → black as he melts in (and back as he drips out): p 0 = his colour, 1 = black
-function toBlack(p){ const h=(LOOK&&LOOK.body||'#191919').replace('#',''), q=1-Math.min(1,Math.max(0,p));
-  return '#'+[0,2,4].map(i=>Math.round(parseInt(h.substr(i,2),16)*q).toString(16).padStart(2,'0')).join(''); }
+// his colour → the notch colour as he melts in (and back as he drips out): p 0 = his colour, 1 = the notch
+let NOTCH='#000000';                                            // the notch colour (the theme's, or black)
+function toNotch(p){ const h=(LOOK&&LOOK.body||'#191919').replace('#',''), n=NOTCH.replace('#',''), q=Math.min(1,Math.max(0,p));
+  return '#'+[0,2,4].map(i=>{ const a=parseInt(h.substr(i,2),16), b=parseInt(n.substr(i,2),16); return Math.round(a+(b-a)*q).toString(16).padStart(2,'0'); }).join(''); }
 let meltDone=null;                                             // the running morph's ending (to finish it at once)
 // grabbed or re-docked mid-morph: jump straight to how it ends — no animation fighting your hand
 function snapMorph(){ if(!meltDone) return; const d=meltDone; meltDone=null; meltN++;
@@ -1954,7 +1939,7 @@ function melt(edge,dir,done){
   (function frame(now){
     if(n!==meltN) return;
     const t=Math.min(1,(now-t0)/dur), b=ballNow();
-    const col=toBlack(dir>0?smooth(t/.8):1-smooth((t-.2)/.8));                // his colour slides to black (or back)
+    const col=toNotch(dir>0?smooth(t/.8):1-smooth((t-.2)/.8));                // his colour slides to the notch colour (or back)
     for(const el of [ball,drop,...$$('.gooN')]) el.setAttribute('fill',col);
     let k, r;
     if(dir>0){ k=easeOutC((t-.12)/.6); r=R*b.s*(1-easeInC((t-.42)/.55)); }   // the edge swells, then drinks him in
@@ -2160,7 +2145,7 @@ function renderSettings(){
   for(const k in sw){ const e=document.getElementById(k); if(e) e.checked=!!sw[k]; }
   const ps=restPu();
   $('#pupChips').innerHTML=[['slit','▮ slits'],['circle','● circles'],['dot','• dots']].map(([id,l])=>`<button data-ps="${id}" class="${ps===id?'on':''}">${l}</button>`).join('');
-  for(const bt of document.querySelectorAll('#faceChips button')) bt.classList.toggle('on',(info.code_face||'him')===bt.dataset.face);
+  for(const bt of document.querySelectorAll('#faceChips button')) bt.classList.toggle('on',(info.code_face||'you')===bt.dataset.face);
   { const ve=$('#voiceEng'); if(ve) ve.textContent=({kokoro:'(Kokoro voices)',piper:'(piper voices — run ./install.sh for the nicer Kokoro voices)',espeak:'(robot voice only — run ./install.sh)'})[info.voice_engine]||''; }
   $('#sttChips').innerHTML=STT.map(([id,l])=>`<button data-stt="${id}" class="${(info.whisper_model||'auto')===id?'on':''}">${l}</button>`).join('');
   const tr=info.trust==='root'?'trust':(info.trust||'ask');
@@ -2242,7 +2227,7 @@ setEl.addEventListener('click',e=>{
   const part=e.target.closest('#lookPrev [data-part], #partChips [data-part]');
   if(part&&part.dataset.part) return selectPart(part.dataset.part);
   if(bsw){ const v=bsw.dataset.sw; if(v===''){ const L=curLook(); L.skinColor=''; setLook({skinColor:''}).then(()=>selectPart('skin')); } else setPart(v); return; }
-  if(bk){ setLook({skin:bk.dataset.skin}).then(()=>{ poke(bk.dataset.skin==='none'?'wink':'excited',900); if(SKIN_PARTS.earL) earKick(); }); return; }
+  if(bk){ setLook({skin:bk.dataset.skin}).then(()=>{ poke(bk.dataset.skin==='none'?'wink':'excited',900); }); return; }
   if(bm) setSetting({model:bm.dataset.m}).then(()=>tick('model → '+bm.textContent));
   if(bv) setSetting({voice:bv.dataset.v}).then(()=>{ const vv=(info.voices||[]).find(x=>x.id===bv.dataset.v);
     if(vv&&!vv.ready) tick('downloading that voice… using another one till it lands');
@@ -2472,7 +2457,7 @@ addEventListener('blur',()=>{ spaceHeld=false; if(rec&&rec.mode==='ptt') stopRec
    His eyes keep an eye on it. */
 const CP=(()=>{
   const el=$('#code'), out=el.querySelector('.lines'), titleEl=el.querySelector('.tb b'), stEl=el.querySelector('.tb span');
-  const W=136, H=80, ROWS=5;                       // size, visible lines
+  const W=490, H=166, ROWS=8;                       // size, visible lines
   let on=false, last=0, wide=false, offT=null, pos=null;
   const sp={x:0,y:0,vx:0,vy:0,r:0};                // held in a "hand": follows where he looks, with a little lag and tilt
   let look=[0,4.5], lookUntil=0, glancing=false;
