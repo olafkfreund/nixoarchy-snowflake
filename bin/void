@@ -19,7 +19,7 @@
 #   void setup      first run after a system-wide install (ninja install): your voice + speech models
 set -euo pipefail
 export PATH="$HOME/.local/bin:$PATH"
-ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/void"
+ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/void"; mkdir -p "$ROOT"   # first run under Nix: nothing else creates it
 # the app lives in your home folder (./install.sh) or next to this launcher (system-wide: /usr/bin → /usr/share/void)
 SHARE="$(cd "$(dirname "$(readlink -f "$0")")/../share/void" 2>/dev/null && pwd || true)"
 if [ -d "$ROOT/app" ] || [ -z "$SHARE" ] || [ ! -d "$SHARE/app" ]; then APP="$ROOT/app"; else APP="$SHARE/app"; fi
