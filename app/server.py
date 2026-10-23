@@ -2681,7 +2681,24 @@ class Bridge:
                                          encoding="utf-8", errors="replace", start_new_session=True)
         threading.Thread(target=lambda: [print(f"[bridge] {l.rstrip()}", file=sys.stderr) for l in p.stderr],
                          daemon=True).start()
-        return p
+        # a prompt sent before the session exists is refused ("ACP session is not ready"): wait for "ready"
+        timer = threading.Timer(30, p.kill)                # (readline, not select: the text pipe buffers lines)
+        timer.start()
+        try:
+            for line in p.stdout:
+                try:
+                    o = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(o, dict) and o.get("type") == "ready":
+                    return p
+                if isinstance(o, dict) and o.get("type") == "fatal":
+                    self.close()
+                    raise OSError(str(o.get("message") or "the nixi bridge stopped"))
+        finally:
+            timer.cancel()
+        self.close()
+        raise OSError("the nixi bridge did not start (no \"ready\" within 30 seconds)")
 
     def send(self, obj):
         with self.lock:
