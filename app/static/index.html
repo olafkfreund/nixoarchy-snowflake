@@ -568,6 +568,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="ambSysSw"><span class="sw"></span><span class="l">System health<small>A mark on his tip when a user service fails, a glint after each new NixOS generation. Local only.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="ambCalSw"><span class="sw"></span><span class="l">Next calendar item (uses gog)<small>Ten minutes before, a calendar mark and the title. Asks Google Calendar every 15 minutes.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="ambWxSw"><span class="sw"></span><span class="l">Weather look (uses omarchy weather)<small>Frost on his tips below 0 °C, a slight thaw above 28 °C. Fetches the weather every 30 minutes.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="asideSw"><span class="sw"></span><span class="l">Step aside for Nixi's card<small>When nixi's card opens he slides out of its way, and comes back when it closes (Hyprland).</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="followSw"><span class="sw"></span><span class="l">Follow my focused screen<small>When you focus another monitor he moves there too (Hyprland). Also: "move to the other screen", or bind <code>nixi-companion monitor next</code>.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="clickSw"><span class="sw"></span><span class="l">Click through around him<small>Clicks on the empty space around him go to the window behind. Turn off if he flickers.</small></span></label></div>
     </div>
@@ -2200,7 +2201,7 @@ function renderSettings(){
   $('#modelChips').innerHTML=MODELS.map(([id,l])=>`<button data-m="${id}" class="${cur===id?'on':''}">${l}</button>`).join('');
   $('#voiceChips').innerHTML=(info.voices||[]).map(v=>`<button data-v="${v.id}" class="${info.voice===v.id?'on':''}">${v.label}${v.downloading?'<i>⇣</i>':''}</button>`).join('');
   const sw={rootSw:info.root,speakSw:!muted,wakeSw:info.wake_word,autoSw:info.autostart,listenShowSw:info.listen_on_show,hoverSw:info.hover,
-    followSw:!!info.follow_focus,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
+    followSw:!!info.follow_focus,asideSw:info.step_aside!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
     updSw:info.update_check!==false,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
   renderUpdate(); renderPtt();
@@ -2324,6 +2325,7 @@ setEl.addEventListener('change',e=>{
   if(id==='bargeSw') setSetting({barge_in:on});
   if(id==='sfxSw') setSetting({sfx:on}).then(()=>on&&sfx('ok'));
   if(id==='hoverSw') toggleHover(on);
+  if(id==='asideSw') setSetting({step_aside:on}).then(()=>native('aside:set-'+(on?'on':'off')));
   if(id==='followSw') setSetting({follow_focus:on}).then(()=>native('follow:'+(on?'on':'off')));
   if(id==='ambSysSw') setSetting({ambient_system:on});
   if(id==='ambCalSw') setSetting({ambient_calendar:on});
@@ -2646,6 +2648,7 @@ refresh().then(()=>{
   if(info.hover && NATIVE){ native('hover:on'); setHoverClass(true); }
   else if(info.presence==='bar' && NATIVE) native('bar:'+(info.bar_edge||'top'));   // the window docks, then nixiDock()
   if(NATIVE) native('follow:'+(info.follow_focus?'on':'off'));
+  if(NATIVE) native('aside:set-'+(info.step_aside===false?'off':'on'));
   if(NATIVE) native('ptt:'+(info.ptt_hotkey||''));        
   if(info.claude===false){ fail("I can't find Claude Code — install it and run `claude` once to sign in."); }
   else if(info.mic===false) tick('no mic recorder — install libpulse or alsa-utils',true);

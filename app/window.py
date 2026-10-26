@@ -27,6 +27,8 @@ import sys
 import threading
 import time
 
+import aside
+
 # He's an overlay (a layer-shell surface, like a bar or a notification), which only works when GTK talks Wayland.
 # Lots of setups (NVIDIA ones especially) set GDK_BACKEND=x11, or start apps without WAYLAND_DISPLAY — then GTK quietly
 # uses XWayland and he ends up as an ordinary app window. Fix that up before GTK loads.
@@ -325,6 +327,8 @@ class NixiWindow:
         self.glide_end = 0.0
         self.follow_focus = False               # move to the monitor you focus (the page tells us; Hyprland only)
         self.follow_t = None
+        self.step_aside = True                  # slide out of the way of nixi's card (the page tells us)
+        self.aside = None                       # while aside: {"home": (mon, x, y), "mode": side|monitor|hover, "parked": (mon, x, y)|None}
         self.dragging = False                   # (set before _place() can run — it checks this)
         self.hover = False
         self.bar, self.bar_home = None, None    # top bar: merged into a screen edge as a notch (None = the blob)
@@ -642,11 +646,79 @@ class NixiWindow:
                     buf += d
                     *lines, buf = buf.split(b"\n")
                     for ln in lines:
+                        ev = aside.layer_event(ln)
+                        if ev:
+                            GLib.idle_add(self.aside_on if ev == "open" else self.aside_off, *([True] if ev == "open" else []))
                         if ln.startswith(b"focusedmon>>") and self.follow_focus:
                             GLib.idle_add(self._follow, ln[12:].decode(errors="replace").split(",")[0])
             except OSError:
                 pass
             time.sleep(2)
+
+    def aside_on(self, hypr=False):
+        """The card opened: slide to the nearer side of this screen, beside it (or to another screen, or hover mode if there
+        is no room), then re-map so he stacks above the card. `hypr`: the event came from Hyprland, so check the card's screen."""
+        if self.aside and aside.may_return(self._spot(), self.aside["parked"]):
+            return False                                           # already aside
+        self.aside = None                                          # (he was moved since: start afresh)
+        if not (self.step_aside and self.layer and self.win.get_visible()) or self.dragging or self.pmoving or self.bar or self.hover:
+            return False
+        ms = self._hmons() if self.hypr.ok() else []
+        if hypr:
+            try:
+                cm = aside.card_monitor(json.loads(self.hypr.req("j/layers")))
+            except Exception:  # noqa: BLE001
+                return False
+            if cm != next((n for n, i, _ in ms if i == self.mon_i), cm):
+                return False                                       # the card is on another screen
+        g = self._geom()[1]
+        home = self._spot()
+        mode = aside.plan(g.width, len(ms) > 1)
+        self.aside = {"home": home, "mode": mode, "parked": None}
+        if mode == "side":
+            tx, ty = aside.target(g.width, g.height, home[1], W, H)
+            self._save_pos()
+            self._glide_to(tx - self.wide_shift, ty - self.top_shift, self._parked)
+            self.aside["glide"] = self.glide_n                     # (closed before it lands: still ours to undo)
+        elif mode == "monitor" and self.go_monitor("next"):
+            self.aside["parked"] = self._spot()
+        elif self.hypr.ok():
+            self.aside["mode"] = "hover"
+            self.set_hover(True)
+            self._remap()                                          # above the card, or its veil hides the pointer he shows
+        else:
+            self.aside = None
+        return False
+
+    def _spot(self):
+        return (self.mon_i, self.mx + self.wide_shift, self.my + self.top_shift)
+
+    def _parked(self):
+        if self.aside:
+            self.aside["parked"] = self._spot()
+            self._remap()
+
+    def _remap(self):
+        """Re-map at the GTK level only (no page callbacks: nixiHidden would put him to sleep) → stacks above the card."""
+        self.win.hide()
+        GLib.timeout_add(30, lambda: (self.win.show_all(), self._apply_region(), False)[2])
+
+    def aside_off(self):
+        a, self.aside = self.aside, None
+        if not a:
+            return False
+        if a["mode"] == "hover":
+            self.set_hover(False)
+        elif aside.may_return(self._spot(), a["parked"]) or (a["parked"] is None and a.get("glide") == self.glide_n):
+            h = a["home"]
+            if a["mode"] == "monitor":
+                name = next((n for n, i, _ in self._hmons() if i == h[0]), None)
+                if name:
+                    self.go_monitor(name)
+            else:
+                self._glide_to(h[1] - self.wide_shift, h[2] - self.top_shift)
+                GLib.timeout_add(int(GLIDE * 1000) + 300, lambda: (self.aside or self._save_pos(), False)[1])   # (not if aside again)
+        return False
 
     def _follow(self, name):
         if self.follow_t:
@@ -1166,6 +1238,7 @@ class NixiWindow:
          "code:on": lambda: self.set_wide(True, "code"), "code:off": lambda: self.set_wide(False, "code"),
          "peek:hide": self.win.hide, "peek:show": self.show,
          "follow:on": lambda: setattr(self, "follow_focus", True), "follow:off": lambda: setattr(self, "follow_focus", False),
+         "aside:set-on": lambda: setattr(self, "step_aside", True), "aside:set-off": lambda: setattr(self, "step_aside", False),
          }.get(msg, (lambda: self.go_monitor(msg[8:])) if msg.startswith("monitor:") else
                (lambda: self.set_wide((int(msg[5:].split(",")[0]), int(msg[5:].split(",")[1])), "size")) if msg.startswith("size:") else (lambda: None))()
 
@@ -1185,7 +1258,7 @@ class NixiWindow:
             finally:
                 c.close()
             fn = (lambda: (self.go_monitor(cmd[8:]), False)[1]) if cmd.startswith("monitor:") else {"toggle": self.toggle, "show": self.show, "hide": self.hide, "quit": self.quit,
-                  "listen": lambda: self.cmd("listen"), "look": lambda: self.cmd("look"), "live": lambda: self.cmd("live"),
+                  "aside:on": self.aside_on, "aside:off": self.aside_off, "listen": lambda: self.cmd("listen"), "look": lambda: self.cmd("look"), "live": lambda: self.cmd("live"),
                   "hover": lambda: self.cmd("hover"), "hover-on": lambda: self.cmd("hover-on"),
                   "hover-off": lambda: self.cmd("hover-off"),
                   "ptt-down": lambda: self.cmd("ptt-down"), "ptt-up": lambda: self._js("window.nixiCmd&&nixiCmd('ptt-up')")}.get(cmd)
