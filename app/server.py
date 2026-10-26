@@ -307,6 +307,7 @@ class State:
         self.compacting = False
         self.auto_pick = ""
         self.last_worked = False                   # did the last answer use tools? then a short "yes" is still work
+        self.last_you = ""                         # the last request, for "continue in nixi" (nixi mode keeps no history)
 
     def save(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -3083,6 +3084,27 @@ def bridge_trust(level):
     return "The nixi bridge stopped before it confirmed the trust level."
 
 
+def open_in_nixi(text=None):
+    """Hand over to nixi's card (S20): only the user's own words, never the agent's answer or tool output."""
+    text = ((text or "").strip() or ST.last_you.strip())[:2000]
+    if not text:
+        return "What should I ask Nixi?"
+    off = "Nixi's card is off. Turn it on in Setup → Plugins."
+    nixi = shutil.which("nixi")
+    if not nixi:
+        return off
+    try:                                         # no setsid/uwsm-app: they hide nixi's exit code, and a summon is only a message
+        p = subprocess.Popen([nixi, "--ask", text], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if p.wait(timeout=3):                    # card off exits 1 at once
+            return off
+    except subprocess.TimeoutExpired:            # still running after 3s = summoned
+        pass
+    except OSError:
+        return off
+    stop_proc()                                  # only once the card has it: two agents shouldn't do the same work
+    return "Over to Nixi."
+
+
 def stop_proc():
     APPROVALS.cancel_all()
     if BRIDGED:
@@ -3625,6 +3647,8 @@ class Handler(BaseHTTPRequestHandler):
                     if ask:
                         return self._json({"handled": False, "ask": ask})
                     r = {"say": say, "mood": "curious"} if say else None
+                elif r and "nixi_ask" in r:
+                    r = {"say": open_in_nixi(r["nixi_ask"]), "mood": "happy"} if BRIDGED else None
                 elif r and "session_show" in r:
                     r = {"say": session_show(r["session_show"]), "mood": "happy"}
                 if r and r.get("cd") and BRIDGED:        # nixi picks where its agent works; Nixi's folders don't apply
@@ -3636,6 +3660,10 @@ class Handler(BaseHTTPRequestHandler):
                     APPROVALS.reset()
                     r["state"] = state_info()
                 return self._json({"handled": bool(r), **(r or {})})
+            if p == "/api/nixi-ask":
+                if not BRIDGED:
+                    return self._json({"error": "only in nixi mode"}, 403)
+                return self._json({"say": open_in_nixi(json.loads(self._body() or b"{}").get("text"))})
             if p == "/api/projects":
                 if BRIDGED:
                     return self._json({"error": "off in nixi mode"}, 403)
@@ -3958,6 +3986,8 @@ class Handler(BaseHTTPRequestHandler):
             if gate["ignored"]:
                 return
             rec["session"] = ST.session
+            if isinstance(body.get("you"), str):       # what the user said, not `prompt`: a session summary's prompt carries its output
+                ST.last_you = body["you"]
             rec["him"] = untag(rec["him"]).strip()[-6000:]
             try:
                 ST.last_worked = bool(rec["tools"])

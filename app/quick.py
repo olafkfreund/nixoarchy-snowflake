@@ -305,6 +305,9 @@ def _find_project(name):
 
 
 # ---------------------------------------------------------------- the matcher
+NIXI = r"(?:nixi's|nixi|nixie|nixy|nixey|nixee|nicksy|nicksie)"   # how speech-to-text spells him (as WAKE_RE)
+
+
 def handle(text):
     t = " ".join((text or "").lower().replace("’", "'").split()).strip(" .!?")
     t = re.sub(r"^(hey nixi|nixi|ok nixi|okay nixi)[,\s]+", "", t)
@@ -314,6 +317,15 @@ def handle(text):
     m = re.match(r"^\s*(?:(?:hey )?nixi,?\s+)?tell (?:the |my )?(.+?) session[:,]\s*(.+)$", (text or "").strip()[:600], re.I)
     if m and len(m.group(2)) <= 500:
         return {"session_send": [m.group(1).strip().lower(), m.group(2).strip()]}
+    # hand the conversation to nixi's card (S20): with or without a new request, which keeps its case
+    m = re.match(r"^\W*(?:(?:hey|hi|ok|okay)\W+)?(?:" + NIXI + r"\W+)?(?:open|go to|switch to) " + NIXI
+                 + r"(?: and| &)? ask(?: (?:him|it)\b)?[,:]?\s+(.+)$", (text or "").strip()[:2100], re.I)
+    if m and m.group(1).strip(" ,.:!?").lower() not in ("him", "it"):
+        return {"nixi_ask": m.group(1).strip()}
+    if re.fullmatch(r"(?:continue|carry on|keep going)(?: with)?(?: this| that| it)? in " + NIXI
+                    + r"|(?:open|hand|send|move|take)(?: this| that| it)?(?: over)?(?: to| in| into) " + NIXI,
+                    re.sub(r"^\W*(?:(?:hey|hi|ok|okay)\W+)?" + NIXI + r"\W+", "", t)):
+        return {"nixi_ask": None}
     if not t or len(t) > 120:
         return None
 
