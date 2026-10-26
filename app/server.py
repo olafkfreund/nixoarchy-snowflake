@@ -275,7 +275,7 @@ def theme_colors():
         out = {k: str(t[k]).lower() for k in THEME_KEYS}
         if not all(HEX.fullmatch(v) for v in out.values()):
             return None
-        for k in ("dark_foreground", "muted", "selection"):    # optional: the panels' dim text and borders
+        for k in ("dark_foreground", "muted", "selection", "red", "green", "yellow"):    # optional: dim text, borders, the bubble's terminal colours
             if isinstance(t.get(k), str) and HEX.fullmatch(t[k].lower()):
                 out[k] = t[k].lower()
         out["mode"] = "light" if t.get("mode") == "light" else "dark"

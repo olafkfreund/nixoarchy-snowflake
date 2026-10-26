@@ -423,27 +423,33 @@ body.hover #nixiB,body.pnl #nixiB,body.appr #nixiB{display:none!important}
 .md h1,.md h2,.md h3{font-size:13.5px;margin:10px 0 6px}
 /* ===== the terminal: a small flat sheet he holds under his eyes while he works ===== */
 #stage{z-index:2}
-#code{position:fixed;left:0;top:0;width:490px;height:auto;z-index:3;pointer-events:none;border-radius:10px;
-  background:color-mix(in srgb,var(--panel) 95%,transparent);border:1px solid var(--edge2);box-shadow:0 8px 18px #000b;font:13px/17px var(--mono);color:var(--text);
+#code{position:fixed;left:0;top:0;width:380px;height:auto;z-index:3;pointer-events:none;border-radius:22px;
+  background:var(--tbg,var(--panel));border:2.5px solid var(--ink,var(--edge2));box-shadow:5px 6px 0 var(--inksh,#000c);font:15px/21px var(--mono);color:var(--text);
   opacity:0;scale:.5;transition:opacity .3s,scale .4s cubic-bezier(.3,1.5,.5,1)}
 #code.on{opacity:1;scale:1}
-#code .tb{display:flex;align-items:center;gap:6px;height:24px;padding:0 10px;font-size:12px;border-bottom:1px solid var(--line);color:var(--hot);font-weight:600}
+#code .tb{display:flex;align-items:center;gap:6px;height:30px;padding:0 16px;font-size:13px;border-bottom:2px dashed var(--line);color:var(--tacc,var(--hot));font-weight:600}
 #code .tb b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
-#code .tb span{color:var(--dim)} #code .tb span.ok{color:var(--hot)} #code .tb span.bad{color:#ff6b6b}
+#code .tb span{color:var(--dim)} #code .tb span.ok{color:var(--tgreen,var(--hot))} #code .tb span.bad{color:var(--tred,#ff6b6b)}
 #code.root{border-color:#7a1414} #code.root .tb b::before{content:"root · ";color:#ff5a5a}
-#code .lines{padding:3px 10px 5px;min-height:144px;overflow:hidden}
+#code .lines{padding:6px 16px 10px;min-height:42px;overflow:hidden}
+/* the tail, on the side facing him, pointing at his face (--ty); the fill overlaps the outline so there's no seam */
+#code::before,#code::after{content:"";position:absolute;top:var(--ty,50%);border-style:solid;border-color:transparent}
+#code::before{left:-24px;margin-top:-13px;border-width:13px 24px 13px 0;border-right-color:var(--ink,var(--edge2))}
+#code::after{left:-17px;margin-top:-9px;border-width:9px 20px 9px 0;border-right-color:var(--tbg,var(--panel))}
+#code.tr::before{left:auto;right:-24px;border-width:13px 0 13px 24px;border-right-color:transparent;border-left-color:var(--ink,var(--edge2))}
+#code.tr::after{left:auto;right:-17px;border-width:9px 0 9px 20px;border-right-color:transparent;border-left-color:var(--tbg,var(--panel))}
+body.bar #code::before,body.bar #code::after{display:none}
 /* root mode: a red sticker on the side of the paper you see — so it reads the right way round even though the page is
    turned toward him */
 #liveDot{animation:liveBeat 1.6s ease-in-out infinite} @keyframes liveBeat{50%{opacity:.25}} body.hover #liveTag{display:none}
-#code .rootb{display:none;position:absolute;top:-13px;left:-9px;transform:rotateY(180deg);font:700 9px var(--mono);letter-spacing:.12em;
+#code .rootb{display:none;position:absolute;top:-13px;right:-9px;font:700 9px var(--mono);letter-spacing:.12em;
   color:#fff;background:#9a0000;border-radius:6px;padding:3px 6px;box-shadow:0 0 10px #ff000066,0 2px 6px #000a}
 #code.rootmode .rootb{display:block}
-body.faceyou #code .rootb{transform:none;left:auto;right:-9px}
-#code .l{min-height:17px;white-space:pre-wrap;word-break:break-all}
-#code .l.add{color:#bfe8d3} #code .l.del{color:#ff8b8b}
-#code .l.out{color:var(--dim)} #code .l.bad{color:#ff8b8b}
-#code i{font-style:normal} #code .k{color:var(--hot)} #code .s{color:var(--whiteL,#f3dccf)} #code .c{color:#5f5f5f}
-#code .pr,#code .ok{color:var(--hot)} #code .rt{color:#ff5a5a}
+#code .l{min-height:21px;white-space:pre-wrap;word-break:break-all}
+#code .l.add{color:var(--tgreen,#bfe8d3)} #code .l.del{color:var(--tred,#ff8b8b)}
+#code .l.out{color:var(--dim)} #code .l.bad{color:var(--tred,#ff8b8b)}
+#code i{font-style:normal} #code .k{color:var(--tyellow,var(--hot))} #code .s{color:var(--whiteL,#f3dccf)} #code .c{color:#5f5f5f}
+#code .pr,#code .ok{color:var(--tacc,var(--hot))} #code .rt{color:#ff5a5a}
 #code .cur{display:inline-block;width:7px;height:13px;margin-left:1px;vertical-align:-1px;background:var(--hot);animation:cpBlink .9s steps(1) infinite}
 @keyframes cpBlink{50%{opacity:0}}
 body.hover #code{display:none}
@@ -557,7 +563,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><div class="t">Skin</div><div class="h">Something to wear. The sprout sways.</div><div class="skins" id="skinGrid"></div></div>
       <div class="row"><div class="t">Resting pupils</div><div class="h">His everyday look — they still change with his mood.</div><div class="seg" id="pupChips"></div></div>
       <div class="row"><label class="tg"><input type="checkbox" id="codeSw"><span class="sw"></span><span class="l">Terminal<small>While he works he holds a little terminal showing the code he writes and the commands he runs.</small></span></label>
-        <div class="seg" id="faceChips" style="margin-top:9px"><button data-face="him">Faces him</button><button data-face="you">Faces you (readable)</button></div></div>
+</div>
       <div class="row"><label class="tg"><input type="checkbox" id="hoverSw"><span class="sw"></span><span class="l">Hover mode<small>He becomes your mouse cursor. Call him to bring him back.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="ambSysSw"><span class="sw"></span><span class="l">System health<small>A mark on his tip when a user service fails, a glint after each new NixOS generation. Local only.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="ambCalSw"><span class="sw"></span><span class="l">Next calendar item (uses gog)<small>Ten minutes before, a calendar mark and the title. Asks Google Calendar every 15 minutes.</small></span></label></div>
@@ -715,8 +721,9 @@ function applyLambdas(t){   // lambdas: blue (dark ones) and cyan (light ones), 
 function applyThemeVars(t){   // the desktop theme's colours for the notch, panels and text (null = the built-in dark ones)
   const st=document.documentElement.style, lt=t&&t.mode==='light';
   const v=t?{'--notch':lt?shade(t.background,-.1):t.darker_background,'--panel':t.background,'--panel2':t.lighter_background,'--text':t.foreground,
-    '--dim':t.dark_foreground||t.muted||t.foreground,'--line':t.selection||t.lighter_background}:{};
-  for(const k of ['--notch','--panel','--panel2','--text','--dim','--line']) v[k]?st.setProperty(k,v[k]):st.removeProperty(k);
+    '--dim':t.dark_foreground||t.muted||t.foreground,'--line':t.selection||t.lighter_background,
+    '--tbg':t.background,'--ink':t.foreground,'--inksh':t.darker_background,'--tacc':t.accent,'--tred':t.red,'--tgreen':t.green,'--tyellow':t.yellow}:{};   // the bubble: the terminal's own colours
+  for(const k of ['--notch','--panel','--panel2','--text','--dim','--line','--tbg','--ink','--inksh','--tacc','--tred','--tgreen','--tyellow']) v[k]?st.setProperty(k,v[k]):st.removeProperty(k);
   NOTCH_COL=v['--notch']||'#000000'; }
 function applyLook(L){
   const fl=L.follow_theme!==false&&info&&info.theme; applyLambdas(fl&&!L.random?info.theme:null); applyThemeVars(fl?info.theme:null); L=themed(L);
@@ -2200,7 +2207,6 @@ function renderSettings(){
   for(const k in sw){ const e=document.getElementById(k); if(e) e.checked=!!sw[k]; }
   const ps=restPu();
   $('#pupChips').innerHTML=[['slit','▮ slits'],['circle','● circles'],['dot','• dots']].map(([id,l])=>`<button data-ps="${id}" class="${ps===id?'on':''}">${l}</button>`).join('');
-  for(const bt of document.querySelectorAll('#faceChips button')) bt.classList.toggle('on',(info.code_face||'you')===bt.dataset.face);
   { const ve=$('#voiceEng'); if(ve) ve.textContent=({kokoro:'(Kokoro voices)',piper:'(piper voices — run ./install.sh for the nicer Kokoro voices)',espeak:'(robot voice only — run ./install.sh)'})[info.voice_engine]||''; }
   $('#sttChips').innerHTML=STT.map(([id,l])=>`<button data-stt="${id}" class="${(info.whisper_model||'auto')===id?'on':''}">${l}</button>`).join('');
   const tr=info.trust==='root'?'trust':(info.trust||'ask');
@@ -2289,7 +2295,6 @@ setEl.addEventListener('click',e=>{
     if(muted) toggleMute(); shush(); say(['hi! this is my new voice.','how do i sound?','ooh, i like this one.'][Math.random()*3|0]); });
   if(bp) setSetting({pupil_style:bp.dataset.ps}).then(()=>{ idlePu=null; idleSwapAt=performance.now()+12000; popPupils(); });
   if(bs) setSetting({whisper_model:bs.dataset.stt}).then(()=>tick('speech recognition: '+bs.textContent+' (loading…)'));
-  const bf=e.target.closest('[data-face]'); if(bf) setSetting({code_face:bf.dataset.face}).then(()=>{ document.body.classList.toggle('faceyou',info.code_face==='you'); tick(info.code_face==='you'?'terminal faces you now':'terminal faces him now'); });
   if(bt){ const tr=bt.dataset.trust; setSetting({trust:tr}).then(()=>{ poke(tr==='trust'?'excited':tr==='readonly'?'curious':'wink',1000);
     tick({ask:"I'll ask before running anything",trust:"okay — I'll just do it",readonly:"looking only, no touching"}[tr]); }); }
   if(bpd) post('/api/projects',{op:'del',name:bpd.dataset.pdel}).then(()=>refresh()).then(renderSettings);
@@ -2379,7 +2384,7 @@ async function slash(cmd){
 }
 
 /* ================= wiring ================= */
-function showInfo(){ if(info.ambient){ AMB=info.ambient; renderCue(); } syncEye(); document.body.classList.toggle('faceyou',info.code_face==='you'); document.body.classList.toggle('fulltext',!!info.full_text); ctxRender(); input.placeholder=`ask in ${info.cwd_display||'~'}…`; const l=$('#cwdLbl'); if(l) l.textContent=info.cwd_display||'folder';
+function showInfo(){ if(info.ambient){ AMB=info.ambient; renderCue(); } syncEye(); document.body.classList.toggle('fulltext',!!info.full_text); ctxRender(); input.placeholder=`ask in ${info.cwd_display||'~'}…`; const l=$('#cwdLbl'); if(l) l.textContent=info.cwd_display||'folder';
   document.body.classList.toggle('root',!!info.root); document.body.classList.toggle('nixi',!!info.bridge); }
 async function refresh(){ try{ await tokenReady; const r=await fetch('/api/state',{headers:hdr()}); const j=await r.json();
   if(!('cwd' in j)) return staleToken();      // no (or an old) token: the server only said it's running
@@ -2522,65 +2527,47 @@ addEventListener('blur',()=>{ spaceHeld=false; if(rec&&rec.mode==='ptt') stopRec
    His eyes keep an eye on it. */
 const CP=(()=>{
   const el=$('#code'), out=el.querySelector('.lines'), titleEl=el.querySelector('.tb b'), stEl=el.querySelector('.tb span');
-  let W=490, H=168; const ROWS=24, MAXH=442;                       // size, visible lines
+  let W=380, H=120; const ROWS=24, MAXH=442;                       // size, visible lines
   let on=false, last=0, wide=false, offT=null, pos=null;
   const sp={x:0,y:0,vx:0,vy:0,r:0};                // held in a "hand": follows where he looks, with a little lag and tilt
-  let look=[0,4.5], lookUntil=0, glancing=false;
   const ball=()=>document.querySelector('#body > .ball').getBoundingClientRect();
 
-  // ---- like a guy holding a piece of paper: it sits just under his eyes. By default it's turned to face HIM (you see it
-  // from the back: mirrored text, top leaning toward you); Settings → Look → Terminal can turn it to face YOU so you can
-  // read along. While he reads, his eyes rest on it and the paper stays put. Only when he looks away does he take the
-  // paper with him — and only to a side where there's room (he's often parked in a screen corner).
-  const faceYou=()=>info.code_face==='you';
-  function geo(){ const b=ball(); return {cx:b.left+b.width/2, cy:b.top+b.height/2, r:b.width/2}; }
-  function roomFor(gx){ if(!gx) return true; const {cx}=geo(), x=cx+gx*15, half=W/2+14;     // would the paper fit there?
-    return x-half>=0 && x+half<=innerWidth; }
-  window.gazeHook=(tx,ty,m,ts)=>{
-    if(!on) return null;
-    if(ts>lookUntil){
-      glancing=!glancing&&Math.random()<.75;
-      if(glancing){
-        const opts=[[-7.5,-1],[7.5,-1],[-7,-3.5],[7,-3.5],[-6,2.5],[6,2.5],[0,0],[0,0]].filter(l=>roomFor(l[0]));
-        look=opts[Math.random()*opts.length|0]; lookUntil=ts+1600+Math.random()*1200;
-      } else lookUntil=ts+6000+Math.random()*5000;
-    }
-    return glancing?look:[Math.sin(ts/2600)*1.2,4.2];     // reading: eyes down on the page, a slow small drift
-  };
+  // ---- a cartoon speech bubble beside him (S22): on the side with more room (the window grows away from a screen
+  // edge), centred on his face, tail pointing at him, always readable. His eyes rest on it while it's out.
+  let side=1;
+  function geo(){ const b=ball(), n=document.querySelector('#body .nix');     // reach: the tips of his arms, not the plate
+    return {cx:b.left+b.width/2, cy:b.top+b.height/2, r:b.width/2, reach:n?n.getBoundingClientRect().width/2:b.width/2}; }
+  window.gazeHook=(tx,ty,m,ts)=>on?[side*6.5+Math.sin(ts/2600)*.8,.5]:null;
   function tick(ts){
     requestAnimationFrame(tick);
     const dt=Math.min(.05,(ts-(last||ts))/1000); last=ts;
     if(!on&&!el.classList.contains('on')) return;
     const edge=barEdge();
     if(edge){ pos={x:170,y:230,cx:170,cy:230}; return; }  // the notch: CSS puts it inside the notch (see body.bar #code)
-    const {cx,cy,r}=geo();
-    // the paper only goes where he's *looking away to* — not with every flick of his eyes
-    const gx=glancing?look[0]:0, gy=glancing?look[1]:4.2, half=W/2+14;
-    const tx=clamp(cx+gx*15,half,innerWidth-half);          // never off the edge (rotation + tilt included)
-    const dx=tx-cx, clear=Math.abs(dx)-(W/2+r*.62);          // > 0: it's fully beside his face, so it may come up
-    const under=cy+r*.56+H/2+2, side=clamp(clear/(r*.4),0,1);
-    const yMin=under+(cy-r*.5-under)*side;
-    const ty=clamp(Math.max(cy+r*.5+gy*6,yMin)+Math.sin(ts/1400)*.8,H/2+4,innerHeight-H/2-4);
-    if(!pos){ sp.x=cx; sp.y=cy+r*.4; sp.vx=sp.vy=0; }      // comes out from in front of him
+    const {cx,cy,reach}=geo(), half=W/2+14, rr=innerWidth-cx;
+    if(side>0?cx>rr+40:rr>cx+40) side=-side;                 // (a margin, so it doesn't flip back and forth)
+    const tx=clamp(cx+side*(reach*.92+18+W/2),half,innerWidth-half);
+    const ty=clamp(cy+Math.sin(ts/1400)*2,H/2+4,innerHeight-H/2-4);
+    if(!pos){ sp.x=cx; sp.y=cy; sp.vx=sp.vy=0; }            // pops out of him
     sp.vx+=((tx-sp.x)*45-sp.vx*9.5)*dt; sp.vy+=((ty-sp.y)*45-sp.vy*9.5)*dt; sp.x+=sp.vx*dt; sp.y+=sp.vy*dt;
     sp.x=clamp(sp.x,half-6,innerWidth-half+6);              // a springy overshoot mustn't poke out of the window
     sp.r+=(clamp(sp.vx*.02,-6,6)-sp.r)*Math.min(1,dt*8);   // tips a little only while it's moving
     pos={x:sp.x,y:sp.y,cx,cy};
-    // flat to you, never turned sideways (that made one edge taller than the other). Facing him: flipped and leaning
-    // back toward his eyes; facing you: straight on, readable
-    const yaw=faceYou()?0:180, lean=faceYou()?0:22-clamp((cy-sp.y)/r,0,1)*14;
-    el.style.transform=`translate(${(sp.x-W/2).toFixed(1)}px,${(sp.y-H/2).toFixed(1)}px) rotate(${sp.r.toFixed(2)}deg) perspective(420px) rotateY(${yaw.toFixed(1)}deg) rotateX(${lean.toFixed(1)}deg)`;
+    el.classList.toggle('tr',side<0);
+    el.style.setProperty('--ty',clamp(cy-(sp.y-H/2),24,H-24).toFixed(0)+'px');
+    el.style.transform=`translate(${(sp.x-W/2).toFixed(1)}px,${(sp.y-H/2).toFixed(1)}px) rotate(${(sp.r-1).toFixed(2)}deg)`;
   }
   requestAnimationFrame(tick);
 
   // ---- show / hide (the window gets a bit wider while it's out, so it has room to go round)
   function show(){ if(info.code_panel===false||document.body.classList.contains('hover')) return; clearTimeout(offT);
-    if(!wide){ wide=true; native('code:on'); } if(!on&&!el.classList.contains('on')){ pos=null; glancing=false; lookUntil=performance.now()+4500; } on=true; el.classList.add('on'); document.body.classList.add('term'); }
+    if(!wide){ wide=true; native('code:on'); } if(!on&&!el.classList.contains('on')) pos=null; on=true; el.classList.add('on'); document.body.classList.add('term'); }
   function fitSheet(){   // the sheet follows its content: wider for long lines (up to 720px, then they wrap), taller for more lines
     let mx=0; for(const c of out.children) mx=Math.max(mx,c.textContent.length);
-    const w=clamp(Math.ceil(mx*7.9)+30,490,720); if(w!==W){ W=w; el.style.width=w+'px'; }
+    const w=clamp(Math.ceil(mx*9.1)+36,380,760); if(w!==W){ W=w; el.style.width=w+'px'; }
     while(out.children.length>8&&el.offsetHeight>MAXH) out.firstChild.remove();
-    H=el.offsetHeight; const want=[Math.max(0,W+28-340),Math.max(0,H-160)];
+    // room for it beside him on one side: the window grows evenly, and away from a screen edge
+    H=el.offsetHeight; const want=[2*Math.max(0,Math.ceil(geo().reach*.92+18+W+16-170)),Math.max(0,H+16-460)];
     if(want[0]!==sheetWant[0]||want[1]!==sheetWant[1]){ sheetWant=want; sizeWindow(); } }
   new MutationObserver(()=>{ if(on&&!barEdge()) fitSheet(); }).observe(out,{childList:true,subtree:true,characterData:true});
   function hide(){ sheetWant=[0,0]; sizeWindow(); on=false; el.classList.remove('on'); document.body.classList.remove('term'); clearTimeout(offT); offT=setTimeout(()=>{ if(!on&&wide){ wide=false; native('code:off'); } },400); }
