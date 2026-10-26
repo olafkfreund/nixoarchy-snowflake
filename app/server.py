@@ -21,6 +21,7 @@ import shlex
 import secrets
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -189,6 +190,7 @@ DEFAULTS = {
     "look": {},
     # lambda-tip cues: failed user units + new generation (local); next calendar item (gog) and weather look (network): off
     "follow_focus": False,                  # move to the screen you focus (Hyprland)
+    "step_aside": True,                     # slide out of the way while nixi's card is open
     "ambient_system": True, "ambient_calendar": False, "ambient_weather": False,
     # projects you can switch to by voice: {"delivery app": "/home/you/code/diq"}
     "projects": {},
@@ -3101,6 +3103,15 @@ def open_in_nixi(text=None):
         pass
     except OSError:
         return off
+    if CFG.get("step_aside", True) is not False and not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        try:                                     # no layer events without Hyprland: tell the window ourselves (no automatic return)
+            s = socket.socket(socket.AF_UNIX)
+            s.settimeout(1)
+            s.connect(os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", f"nixi-companion-{os.getuid()}.sock"))
+            s.sendall(b"aside:on")
+            s.close()
+        except OSError:
+            pass
     stop_proc()                                  # only once the card has it: two agents shouldn't do the same work
     return "Over to Nixi."
 
@@ -3390,7 +3401,7 @@ def state_info():
         "click_through": bool(CFG.get("click_through")),
         "autostart": bool(CFG.get("autostart")), "listen_on_show": bool(CFG.get("listen_on_show")),
         "barge_in": bool(CFG.get("barge_in")), "sfx": bool(CFG.get("sfx")), "look": look(), "skins": SKINS, "ambient": Ambient.snapshot(),
-        "follow_focus": bool(CFG.get("follow_focus")),
+        "follow_focus": bool(CFG.get("follow_focus")), "step_aside": CFG.get("step_aside", True) is not False,
         **{k: bool(CFG.get(k, k == "ambient_system")) for k in Ambient.FLAG.values()},
         "projects": quick.projects(),
         "quick_actions": CFG.get("quick_actions") or [], "memory_count": len(mem_load()),
@@ -3598,7 +3609,7 @@ class Handler(BaseHTTPRequestHandler):
                 except (TypeError, ValueError):
                     pass
                 for key in ("wake_word", "notify_done", "popup_done", "code_panel", "hover", "click_through", "autostart", "listen_on_show",
-                            "barge_in", "sfx", "update_check", "auto_compact", "full_text", "lean", "follow_focus", "ambient_system", "ambient_calendar", "ambient_weather"):
+                            "barge_in", "sfx", "update_check", "auto_compact", "full_text", "lean", "follow_focus", "step_aside", "ambient_system", "ambient_calendar", "ambient_weather"):
                     if key in b:
                         upd[key] = bool(b[key])
                 if "ptt_hotkey" in b:
