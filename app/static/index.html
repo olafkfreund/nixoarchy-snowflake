@@ -2561,7 +2561,8 @@ const CP=(()=>{
 
   // ---- show / hide (the window gets a bit wider while it's out, so it has room to go round)
   function show(){ if(info.code_panel===false||document.body.classList.contains('hover')) return; clearTimeout(offT);
-    if(!wide){ wide=true; native('code:on'); } if(!on&&!el.classList.contains('on')) pos=null; on=true; el.classList.add('on'); document.body.classList.add('term'); }
+    if(!wide){ wide=true; native('code:on'); } if(!on&&!el.classList.contains('on')) pos=null; on=true; el.classList.add('on'); document.body.classList.add('term');
+    if(!barEdge()) fitSheet(); }   // ask for room beside him now: a tool that writes no lines would never ask
   function fitSheet(){   // the sheet follows its content: wider for long lines (up to 720px, then they wrap), taller for more lines
     let mx=0; for(const c of out.children) mx=Math.max(mx,c.textContent.length);
     const w=clamp(Math.ceil(mx*9.1)+36,380,760); if(w!==W){ W=w; el.style.width=w+'px'; }
