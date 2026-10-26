@@ -72,11 +72,13 @@ fi
 PORT="$("$PY" "$APP/server.py" --print-port)"
 URL="http://127.0.0.1:$PORT/"
 up(){ curl -fs -o /dev/null "${URL}api/state"; }
-stop(){ pkill -f "$APP/server.py" >/dev/null 2>&1 || true; }
+# any build's server/window, not only this $APP: after an update the running copy is still the old store path
+SRV_RE='python[^ ]* [^ ]*nixi-companion/app/server\.py'; WIN_RE='python[^ ]* [^ ]*nixi-companion/app/window\.py'
+stop(){ pkill -f "$SRV_RE" >/dev/null 2>&1 || true; }
 
 # the old browser-window fallback (a normal app window) — always clean it up so it can't linger looking like Nixi
 killbrowser(){ pkill -f -- "--user-data-dir=$ROOT/browser" >/dev/null 2>&1 || true; }
-quitwin(){ pkill -f "$APP/window.py" >/dev/null 2>&1 || true; killbrowser
+quitwin(){ pkill -f "$WIN_RE" >/dev/null 2>&1 || true; killbrowser
   command -v hyprctl >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && { [ "$(hyprctl keyword cursor:invisible false 2>&1)" = ok ] || hyprctl eval 'hl.config({ cursor = { invisible = false } })' >/dev/null 2>&1; } || true; }
 
 case "${1:-}" in
@@ -88,12 +90,12 @@ case "${1:-}" in
   doctor)  echo "── window ──"
            for c in "${NIXI_COMPANION_PYTHON:-}" /usr/bin/python3 /usr/bin/python; do [ -x "$c" ] && { "$c" "$APP/window.py" --check 2>&1 | tail -n 3 || echo "overlay: window can't start (pacman -S python-gobject webkit2gtk-4.1 gtk-layer-shell)"; break; }; done
            echo "env: WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-unset} GDK_BACKEND=${GDK_BACKEND:-unset} XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-unset}"
-           pgrep -f "$APP/window.py" >/dev/null && echo "running: overlay window process" || echo "running: no window process"
+           pgrep -f "$WIN_RE" >/dev/null && echo "running: overlay window process" || echo "running: no window process"
            pgrep -f -- "--user-data-dir=$ROOT/browser" >/dev/null && echo "running: a BROWSER window (the old fallback — 'nixi-companion stop' closes it)"
            [ -f "$LOG" ] && { echo "last window notes:"; grep -E "overlay:|window:|window died|renderer" "$LOG" | tail -n 6 | sed 's/^/  /'; }
            echo "── voice & mic ──"
            exec "$PY" "$APP/server.py" --doctor ;;
-  restart) stop; sleep 0.6 ;;
+  restart) stop; quitwin; sleep 0.6 ;;
   log)     exec tail -n 50 -f "$LOG" ;;
   render)  # pick how the window is drawn: default (GPU) · nodmabuf · nocomp (no GPU layers — steadiest)
            case "${2:-}" in default|nodmabuf|nocomp) echo "$2" > "$ROOT/window.mode"; quitwin; sleep 0.4; exec "$0" show ;;
@@ -115,7 +117,7 @@ FIRST="$CMD"; [ "$FIRST" = toggle ] && FIRST=show
 
 # Preferred: a native see-through window that's just the little guy (system python + GTK + WebKit).
 SOCK="${XDG_RUNTIME_DIR:-/tmp}/nixi-companion-$(id -u).sock"
-winalive(){ pgrep -f "$APP/window.py" >/dev/null 2>&1; }
+winalive(){ pgrep -f "$WIN_RE" >/dev/null 2>&1; }
 # On Hyprland, apply the window rules ourselves: floating, pinned, no border / shadow / blur / rounding.
 # (Rule syntax changed across Hyprland versions — try old and new spellings, keep whichever is accepted.)
 hypr_rules(){
