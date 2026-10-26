@@ -231,6 +231,30 @@ request goes to the agent through nixi's bridge on your machine. The bridge's ev
 done, error, fatal) drive the face. The server only listens on `127.0.0.1` behind a per-launch token, so nothing else on
 your network can talk to it.
 
+### The app icon
+
+`app/static/icon.png` is used three times: in desktop notifications (`notify-send -i` in `app/server.py`), as the
+launcher icon (`nix/package.nix` installs it as `hicolor/512x512/apps/nixi-companion.png`), and as the page's favicon.
+It is a picture of the face drawn by `miniNixi()` in `index.html` with the default look. Nothing updates it
+automatically, so if the face changes, render it again: load the page headless, hide everything else, and draw one
+face into a 512×512 transparent SVG. The viewBox `-150 -150 300 300` fits the lambdas.
+
+```bash
+S=$(mktemp -d); R=$PWD/app/static
+sed "s|<head>|<head><base href=\"file://$R/\">|" $R/index.html > $S/icon.html
+cat >> $S/icon.html <<'EOF'
+<script>setTimeout(()=>{ for(const e of document.body.children) e.style.visibility='hidden';
+  document.documentElement.style.background=document.body.style.background='transparent';
+  const s=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  s.setAttribute('viewBox','-150 -150 300 300'); s.setAttribute('width',512); s.setAttribute('height',512);
+  s.style.cssText='position:fixed;left:0;top:0;visibility:visible;z-index:99999';
+  document.body.appendChild(s); miniNixi(s,curLook(),false); },500);</script>
+EOF
+chromium --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files \
+  --default-background-color=00000000 --window-size=512,512 --virtual-time-budget=3000 \
+  --screenshot=$R/icon.png "file://$S/icon.html"
+```
+
 ---
 
 <p align="center"><a href="../README.md">← Back to the README</a></p>
