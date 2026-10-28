@@ -71,3 +71,15 @@ class ThemeTreeTest(_ServerEnv):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BridgeQuestionTest(_ServerEnv):
+    """S26: nixi mode asks with the tool's own description, else the title."""
+
+    def test_summary_is_the_question(self):
+        q = self.server.bridge_question("seq 1 12; sleep 1", "Print twelve numbered test lines, one per second")
+        self.assertEqual(q, "Can I print twelve numbered test lines, one per second?")
+
+    def test_title_when_no_summary(self):
+        for s in (None, "", "  "):
+            self.assertEqual(self.server.bridge_question("ls -la", s), "ls -la")

@@ -531,6 +531,12 @@ def summarize_command(cmd):
     return line if 0 < len(line) < 120 else None
 
 
+def bridge_question(title, summary=""):
+    """The card's question and spoken line in nixi mode: the tool's plain description ("Can I print ...?"), else the title (for Bash that is the raw command)."""
+    s = " ".join(str(summary or "").split()).rstrip(".?")
+    return f"Can I {s[0].lower() + s[1:]}?" if s else title
+
+
 def approval_say(tool, inp):
     """What he asks out loud: what the thing does, not the raw command (the card still shows the real thing)."""
     inp = inp if isinstance(inp, dict) else {}
@@ -678,7 +684,7 @@ class Approvals:
             return {"ok": False, "why": "the user didn't answer in time, so it wasn't run"}
         return {"ok": False}
 
-    def ask_bridge(self, title, options, detail="", timeout=600, confirm=None):
+    def ask_bridge(self, title, options, detail="", timeout=600, confirm=None, summary=""):
         """nixi's permission request on Nixi's card. Never touches self.always. Returns the picked option id ("" = none)."""
         kinds = {o.get("kind"): o.get("id") for o in reversed(options)}      # first option of each kind wins
         rej = kinds.get("reject_once") or next((o.get("id") for o in options if str(o.get("kind")).startswith("reject")), "")
@@ -687,7 +693,8 @@ class Approvals:
         item = {"id": aid, "tool": title, "key": aid, "detail": detail, "ev": ev, "ans": None}
         with self.lock:
             self.pending[aid] = item
-        BUS.pub(t="approve", id=aid, tool=title, detail=detail, key=aid, say=title, always="allow_always" in kinds, confirm=confirm)
+        ask = bridge_question(title, summary)
+        BUS.pub(t="approve", id=aid, tool=title, detail=detail, key=aid, say=ask, q=ask, always="allow_always" in kinds, confirm=confirm)
         ev.wait(timeout)
         with self.lock:
             self.pending.pop(aid, None)
@@ -3016,7 +3023,7 @@ def run_bridge(prompt, emit):
     def approve(o):                                      # (a worker: the card waits for you, the reader goes on)
         opts = [x for x in o.get("options") or [] if isinstance(x, dict)]
         pick = APPROVALS.ask_bridge(str(o.get("title") or "Use a tool"), opts, str(o.get("detail") or ""),
-                                    confirm=o.get("confirm"))      # "click": a send, voice cannot answer it (#95)
+                                    confirm=o.get("confirm"), summary=o.get("summary"))      # "click": a send, voice cannot answer it (#95)
         if BRIDGE.proc is p:                             # (ids restart per bridge: never answer a newer one's request)
             BRIDGE.send({"type": "permission", "id": o.get("id"), "optionId": pick})
 
