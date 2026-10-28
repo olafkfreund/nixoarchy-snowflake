@@ -262,14 +262,17 @@ def look():
 THEME_KEYS = ("accent", "background", "darker_background", "lighter_background", "foreground", "bright_foreground", "blue", "cyan")
 
 
-def theme_colors():
-    """The current Omarchy theme's colours (from its colors.toml), or None when there is no theme or anything is off."""
+def theme_colors(omarchy_path=None):
+    """The current Omarchy theme's colours (from its colors.toml), or None when there is no theme or anything is off.
+    `omarchy_path` is the theme hook's own tree: ours is the one we started in, which a rebuild leaves behind (S25)."""
     try:
         import tomllib
         name = subprocess.run(["omarchy", "theme", "current"], capture_output=True, text=True, timeout=5).stdout.strip().lower().replace(" ", "-")
         if not name:
             return None
         f = Path.home() / ".config/omarchy/themes" / name / "colors.toml"
+        if not f.is_file() and omarchy_path and "/" not in name and ".." not in name:
+            f = Path(omarchy_path) / "themes" / name / "colors.toml"    # read directly: the caller's path runs nothing
         if not f.is_file():
             d = subprocess.run(["omarchy", "theme", "dir", name], capture_output=True, text=True, timeout=5).stdout.strip()
             f = Path(d) / "colors.toml"
@@ -527,6 +530,12 @@ def summarize_command(cmd):
     return line if 0 < len(line) < 120 else None
 
 
+def bridge_question(title, summary=""):
+    """The card's question and spoken line in nixi mode: the tool's plain description ("Can I print ...?"), else the title (for Bash that is the raw command)."""
+    s = " ".join(str(summary or "").split()).rstrip(".?")
+    return f"Can I {s[0].lower() + s[1:]}?" if s else title
+
+
 def approval_say(tool, inp):
     """What he asks out loud: what the thing does, not the raw command (the card still shows the real thing)."""
     inp = inp if isinstance(inp, dict) else {}
@@ -674,7 +683,7 @@ class Approvals:
             return {"ok": False, "why": "the user didn't answer in time, so it wasn't run"}
         return {"ok": False}
 
-    def ask_bridge(self, title, options, detail="", timeout=600, confirm=None):
+    def ask_bridge(self, title, options, detail="", timeout=600, confirm=None, summary=""):
         """nixi's permission request on Nixi's card. Never touches self.always. Returns the picked option id ("" = none)."""
         kinds = {o.get("kind"): o.get("id") for o in reversed(options)}      # first option of each kind wins
         rej = kinds.get("reject_once") or next((o.get("id") for o in options if str(o.get("kind")).startswith("reject")), "")
@@ -683,7 +692,8 @@ class Approvals:
         item = {"id": aid, "tool": title, "key": aid, "detail": detail, "ev": ev, "ans": None}
         with self.lock:
             self.pending[aid] = item
-        BUS.pub(t="approve", id=aid, tool=title, detail=detail, key=aid, say=title, always="allow_always" in kinds, confirm=confirm)
+        ask = bridge_question(title, summary)
+        BUS.pub(t="approve", id=aid, tool=title, detail=detail, key=aid, say=ask, q=ask, always="allow_always" in kinds, confirm=confirm)
         ev.wait(timeout)
         with self.lock:
             self.pending.pop(aid, None)
@@ -1815,6 +1825,7 @@ def say_path(p):
 def speakable(t: str) -> str:
     t = untag(t)
     t = re.sub(r"```.*?```", " I put some code on screen. ", t, flags=re.S)
+    t = re.sub(r"`(?![\w ]+(?:\s*\+\s*[\w ]+)+`)([^`]*\s[^`]*)`", "the command on screen", t)   # a command is pointed at, never read out (S24); a key combo is still said
     t = re.sub(r"`([^`]*)`", r"\1", t)
     t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)
     t = re.sub(r"https?://\S+", "a link", t)
@@ -3011,7 +3022,7 @@ def run_bridge(prompt, emit):
     def approve(o):                                      # (a worker: the card waits for you, the reader goes on)
         opts = [x for x in o.get("options") or [] if isinstance(x, dict)]
         pick = APPROVALS.ask_bridge(str(o.get("title") or "Use a tool"), opts, str(o.get("detail") or ""),
-                                    confirm=o.get("confirm"))      # "click": a send, voice cannot answer it (#95)
+                                    confirm=o.get("confirm"), summary=o.get("summary"))      # "click": a send, voice cannot answer it (#95)
         if BRIDGE.proc is p:                             # (ids restart per bridge: never answer a newer one's request)
             BRIDGE.send({"type": "permission", "id": o.get("id"), "optionId": pick})
 
@@ -3486,7 +3497,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ticket": Tickets.new()})
             if p == "/api/theme":                  # the Omarchy theme changed: re-read it and tell the page
                 global THEME
-                THEME = theme_colors()
+                b = json.loads(self._body() or b"{}")
+                op = b.get("omarchy_path") if isinstance(b, dict) else None
+                THEME = theme_colors(op if isinstance(op, str) else None)
                 BUS.pub(t="theme", theme=THEME)
                 return self._json({"theme": THEME})
             if p == "/api/ask":
@@ -4047,7 +4060,7 @@ def main():
         try:
             rt = json.loads((DATA_DIR / "runtime.json").read_text())
             import urllib.request
-            urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{rt['port']}/api/theme", data=b"{}", headers={"Content-Type": "application/json", "X-Nixi-Token": rt["tool_token"]}), timeout=5)
+            urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{rt['port']}/api/theme", data=json.dumps({"omarchy_path": os.environ.get("OMARCHY_PATH", "")}).encode(), headers={"Content-Type": "application/json", "X-Nixi-Token": rt["tool_token"]}), timeout=5)
         except Exception:  # noqa: BLE001
             pass
         sys.exit(0)

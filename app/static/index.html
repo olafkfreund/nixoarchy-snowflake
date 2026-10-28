@@ -146,6 +146,7 @@ body.bar #code .l.out{color:var(--dim)}
   -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 34%);mask-image:linear-gradient(to bottom,transparent 0,#000 34%);
   text-shadow:0 1px 2px #000,0 0 8px #000,0 0 16px #000a}
 #cap.off,body.appr #cap,body.pnl #cap{opacity:0;transform:translateY(6px)}
+#wk{position:absolute;left:12px;right:12px;top:404px;text-align:center;font:11px var(--mono);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}   /* nixi mode: what the agent is doing */
 #you{font-size:12px;color:var(--dim);text-shadow:0 1px 2px #000,0 0 5px #0009;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 #you.pop{animation:wIn .7s var(--ease) both}
 /* "Show everything I said": the last few lines of it, wrapped, instead of one cut-off line */
@@ -302,7 +303,7 @@ select:focus,.pn input[type=text]:focus,.pn textarea:focus{border-color:var(--ed
 #appr.on{opacity:1;transform:none;pointer-events:auto}
 #appr .q{font-size:12.5px;color:#ffd38a;margin-bottom:6px;display:flex;gap:6px;align-items:flex-start;overflow-wrap:anywhere}
 #appr pre{margin:0 0 9px;padding:7px 9px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);font:11.5px/1.4 var(--mono);color:var(--text);
-  max-height:var(--apprMax,60vh);overflow:auto;white-space:pre-wrap;word-break:break-all;user-select:text;-webkit-user-select:text}
+  max-height:var(--apprMax,60vh);overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
 #appr .bar{justify-content:flex-end}
 #appr .yes{background:#2f7d4f;border-color:#55c285;color:#fff}
 #appr .hint{flex:1;color:var(--dim);font-size:11px}
@@ -526,6 +527,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 <div id="code"><div class="tb"><b></b><span></span></div><div class="lines"></div><i class="rootb" title="Root mode: Claude can run anything, incl. sudo">ROOT</i></div>
 <div id="chip"></div>
 <div id="cap" class="off"><div id="you"></div><div id="him"></div></div>
+<div id="wk"></div>
 <div id="atts"></div>
 <button id="moreB" type="button" title="read the whole answer">↗ full answer</button>
 <button id="nixiB" type="button" title="continue this in Nixi's card">Open in Nixi</button>
@@ -1683,10 +1685,12 @@ function queueApproval(ev){ apprQ.push(ev); if(!pendingAppr) nextApproval(); }
 function fitCard(){   // the card grows with the command (wider up to 640px, then taller), and the window grows to hold it
   const longest=Math.max(0,...String(pendingAppr.detail||'').split('\n').map(x=>x.length)), w=Math.min(640,Math.max(312,Math.ceil(longest*6.9)+50));
   apEl.style.width=w+'px'; cardW=w; apEl.style.setProperty('--apprMax',Math.round(screen.height*.6)+'px');
-  cardWant=[Math.max(0,w+28-340),Math.max(0,256+apEl.offsetHeight+14-460)]; sizeWindow(); cardPlace(); sendRegion(true); }
-let cardW=312;
-function cardPlace(){   // centred on him, but kept inside the window (it may have grown more on one side)
-  apEl.style.left=clamp(170-cardW/2,4-layoutX,innerWidth-layoutX-cardW-4)+'px'; }
+  cardPlace(); cardWant=[Math.max(0,w+28-340),Math.max(0,cardTop+apEl.offsetHeight+14-460)]; sizeWindow(); cardPlace(); sendRegion(true); }
+let cardW=312, cardTop=256;
+function cardPlace(){   // centred on him, below his arms (reach, as CP.geo), inside the window; only re-run when he or the window moves
+  const b=document.querySelector('#body > .ball').getBoundingClientRect(), n=document.querySelector('#body .nix'), reach=n?n.getBoundingClientRect().width/2:b.width/2;
+  cardTop=Math.round(clamp(b.top+b.height/2+reach+10-layoutY,4-layoutY,Math.max(4-layoutY,innerHeight-layoutY-apEl.offsetHeight-4)));
+  apEl.style.top=cardTop+'px'; apEl.style.left=clamp(170-cardW/2,4-layoutX,innerWidth-layoutX-cardW-4)+'px'; }
 function nextApproval(){
   pendingAppr=apprQ.shift()||null;
   document.body.classList.toggle('appr',!!pendingAppr); apEl.classList.toggle('on',!!pendingAppr);
@@ -1695,7 +1699,7 @@ function nextApproval(){
   if(hiddenNow) native('show');
   const what=a.tool==='Bash'?'Can I run this?':a.tool==='WebFetch'?'Can I open this page?':a.tool==='WebSearch'?'Can I search the web?':
     /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(a.tool)?'Can I change this file?':`Can I use ${a.tool}?`;
-  $('#apHint').textContent=a.confirm==='click'?'click yes or no — voice can\'t confirm sends':'say “yes” or “no”'; $('#apQ').textContent=what; $('#apCmd').textContent=a.detail; fitCard();
+  $('#apHint').textContent=a.confirm==='click'?'click yes or no — voice can\'t confirm sends':'say “yes” or “no”'; $('#apQ').textContent=a.q||what; $('#apCmd').textContent=a.detail; fitCard();
   { const al=apEl.querySelector('[data-ans="always"]'); if(al) al.hidden=a.always===false; }   // not for chained commands
   const spoken=a.say||what;   // the server says what it does in plain words (the card shows the real command)
   askAloud(a,spoken);
@@ -1772,11 +1776,11 @@ async function send(text,opts={}){
   const handle=ev=>{ switch(ev.t){
     case 'break': flush(true); if(buf.trim()) fresh=true; buf=''; spoken=0; break;
     case 'delta': CP.answer(); toolMood=null; workWhat='answering'; buf+=ev.text; all+=ev.text; if(!kv) showHim(buf); flush(false); break;
-    case 'tool': tools++; toolMood=TOOL_MOOD[ev.name]||'thinking'; workWhat=toolLabel(ev.name,ev.detail); CP.tool(ev); break;
+    case 'tool': if(info.bridge) $('#wk').textContent='working: '+ev.name; tools++; toolMood=TOOL_MOOD[ev.name]||'thinking'; workWhat=toolLabel(ev.name,ev.detail); CP.tool(ev); break;
     case 'toolres': CP.result(ev); break;
     case 'denied': tick('✕ not allowed: '+ev.tools.join(', ')+' — change “How much can he do” in settings',true); poke('sad',2200); break;
     case 'note': tick(ev.text); break;
-    case 'result': if(ev.is_error) failed=true; if(!all.trim()&&ev.text){ buf=ev.text; if(!kv||ev.is_error) showHim(ev.text,true); } break;
+    case 'result': $('#wk').textContent=''; if(ev.is_error) failed=true; if(!all.trim()&&ev.text){ buf=ev.text; if(!kv||ev.is_error) showHim(ev.text,true); } break;
     case 'error': failed=true; himSet(ev.text.split('\n').slice(-3).join(' '),true); break;
     case 'stopped': stopped=true; tick('stopped'); poke('scared',900); break;
     case 'ignored': ignored=true; break; } };   // a follow-up that wasn't meant for him
@@ -1785,7 +1789,7 @@ async function send(text,opts={}){
     if(!res.ok){ const j=await res.json().catch(()=>({})); throw new Error(j.error||res.statusText); }
     await readSSE(res,handle);
   }catch(e){ failed=true; himSet(e.message,true); }
-  busy=false; toolMood=null; wake(); capQuiet(); document.body.classList.remove('busy'); workChip(); CP.done();
+  busy=false; $('#wk').textContent=''; toolMood=null; wake(); capQuiet(); document.body.classList.remove('busy'); workChip(); CP.done();
   while(apprQ.length) apprQ.pop(); if(pendingAppr){ pendingAppr=null; nextApproval(); }
   if(ignored){ setYou(''); himSet(''); cap.classList.add('off'); capOn=false; return; }   // you weren't talking to him: say and show nothing
   const answerText=untag(buf||all).trim();
@@ -2637,7 +2641,7 @@ const CP=(()=>{
     while(q.length){ const ev=q.shift(); try{ await (VIEWS[ev.name]||VIEWS.other)(ev); }catch(e){ console.log('[nixi] terminal',e); } }
     running=false; if(!busy||answering) hide(); }
   return {
-    tool(ev){ if(info.code_panel===false) return; answering=false; q.push(ev); if(!running) run(); },
+    tool(ev){ if(info.code_panel===false||info.bridge) return; answering=false; q.push(ev); if(!running) run(); },
     result(ev){ RES[ev.id]={text:ev.text||'',is_error:!!ev.is_error}; },
     answer(){ answering=true; if(!running) hide(); },
     done(){ answering=false; if(!running) hide(); },
