@@ -262,8 +262,9 @@ def look():
 THEME_KEYS = ("accent", "background", "darker_background", "lighter_background", "foreground", "bright_foreground", "blue", "cyan")
 
 
-def theme_colors():
-    """The current Omarchy theme's colours (from its colors.toml), or None when there is no theme or anything is off."""
+def theme_colors(omarchy_path=None):
+    """The current Omarchy theme's colours (from its colors.toml), or None when there is no theme or anything is off.
+    `omarchy_path` is the theme hook's own tree: ours is the one we started in, which a rebuild leaves behind (S25)."""
     try:
         import tomllib
         name = subprocess.run(["omarchy", "theme", "current"], capture_output=True, text=True, timeout=5).stdout.strip().lower().replace(" ", "-")
@@ -271,7 +272,10 @@ def theme_colors():
             return None
         f = Path.home() / ".config/omarchy/themes" / name / "colors.toml"
         if not f.is_file():
-            d = subprocess.run(["omarchy", "theme", "dir", name], capture_output=True, text=True, timeout=5).stdout.strip()
+            env = None
+            if omarchy_path and os.path.isdir(os.path.join(omarchy_path, "themes")):
+                env = {**os.environ, "OMARCHY_PATH": omarchy_path}
+            d = subprocess.run(["omarchy", "theme", "dir", name], capture_output=True, text=True, timeout=5, env=env).stdout.strip()
             f = Path(d) / "colors.toml"
         t = tomllib.loads(f.read_text())
         out = {k: str(t[k]).lower() for k in THEME_KEYS}
@@ -1815,6 +1819,7 @@ def say_path(p):
 def speakable(t: str) -> str:
     t = untag(t)
     t = re.sub(r"```.*?```", " I put some code on screen. ", t, flags=re.S)
+    t = re.sub(r"`([^`]*\s[^`]*)`", "the command on screen", t)   # a command is pointed at, never read out (S24)
     t = re.sub(r"`([^`]*)`", r"\1", t)
     t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)
     t = re.sub(r"https?://\S+", "a link", t)
@@ -3486,7 +3491,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ticket": Tickets.new()})
             if p == "/api/theme":                  # the Omarchy theme changed: re-read it and tell the page
                 global THEME
-                THEME = theme_colors()
+                op = json.loads(self._body() or b"{}").get("omarchy_path")
+                THEME = theme_colors(op if isinstance(op, str) else None)
                 BUS.pub(t="theme", theme=THEME)
                 return self._json({"theme": THEME})
             if p == "/api/ask":
@@ -4047,7 +4053,7 @@ def main():
         try:
             rt = json.loads((DATA_DIR / "runtime.json").read_text())
             import urllib.request
-            urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{rt['port']}/api/theme", data=b"{}", headers={"Content-Type": "application/json", "X-Nixi-Token": rt["tool_token"]}), timeout=5)
+            urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{rt['port']}/api/theme", data=json.dumps({"omarchy_path": os.environ.get("OMARCHY_PATH", "")}).encode(), headers={"Content-Type": "application/json", "X-Nixi-Token": rt["tool_token"]}), timeout=5)
         except Exception:  # noqa: BLE001
             pass
         sys.exit(0)
