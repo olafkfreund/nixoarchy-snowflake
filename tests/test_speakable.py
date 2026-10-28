@@ -42,6 +42,9 @@ class SpeakableTest(_ServerEnv):
     def test_single_word_is_still_spoken(self):
         self.assertEqual(self.server.speakable("`btop` is already installed."), "btop is already installed.")
 
+    def test_key_combo_is_still_spoken(self):
+        self.assertEqual(self.server.speakable("Press `Super + Space` to open the launcher."), "Press Super + Space to open the launcher.")
+
     def test_fenced_block_unchanged(self):
         said = self.server.speakable("Like this:\n```\nnixarchy pkg add firefox\n```")
         self.assertIn("I put some code on screen", said)
@@ -57,10 +60,8 @@ class ThemeTreeTest(_ServerEnv):
         keys = self.server.THEME_KEYS
         (tree / "themes" / "test-jade" / "colors.toml").write_text("".join(f'{k} = "#509475"\n' for k in keys))
 
-        def run(cmd, env=None, **kw):
-            out = "Test Jade\n" if cmd[2] == "current" else (
-                f"{env['OMARCHY_PATH']}/themes/{cmd[3]}\n" if env else "/old-tree/themes/test-jade\n")
-            return mock.Mock(stdout=out)
+        def run(cmd, **kw):   # the server's own (old) tree lacks the theme
+            return mock.Mock(stdout="Test Jade\n" if cmd[2] == "current" else "/old-tree/themes/test-jade\n")
 
         with mock.patch.object(self.server.subprocess, "run", side_effect=run):
             self.assertIsNone(self.server.theme_colors())
@@ -68,9 +69,6 @@ class ThemeTreeTest(_ServerEnv):
             self.assertEqual(self.server.theme_colors(str(tree))["accent"], "#509475")
 
 
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class BridgeQuestionTest(_ServerEnv):
@@ -83,3 +81,7 @@ class BridgeQuestionTest(_ServerEnv):
     def test_title_when_no_summary(self):
         for s in (None, "", "  "):
             self.assertEqual(self.server.bridge_question("ls -la", s), "ls -la")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -271,11 +271,10 @@ def theme_colors(omarchy_path=None):
         if not name:
             return None
         f = Path.home() / ".config/omarchy/themes" / name / "colors.toml"
+        if not f.is_file() and omarchy_path and "/" not in name and ".." not in name:
+            f = Path(omarchy_path) / "themes" / name / "colors.toml"    # read directly: the caller's path runs nothing
         if not f.is_file():
-            env = None
-            if omarchy_path and os.path.isdir(os.path.join(omarchy_path, "themes")):
-                env = {**os.environ, "OMARCHY_PATH": omarchy_path}
-            d = subprocess.run(["omarchy", "theme", "dir", name], capture_output=True, text=True, timeout=5, env=env).stdout.strip()
+            d = subprocess.run(["omarchy", "theme", "dir", name], capture_output=True, text=True, timeout=5).stdout.strip()
             f = Path(d) / "colors.toml"
         t = tomllib.loads(f.read_text())
         out = {k: str(t[k]).lower() for k in THEME_KEYS}
@@ -1826,7 +1825,7 @@ def say_path(p):
 def speakable(t: str) -> str:
     t = untag(t)
     t = re.sub(r"```.*?```", " I put some code on screen. ", t, flags=re.S)
-    t = re.sub(r"`([^`]*\s[^`]*)`", "the command on screen", t)   # a command is pointed at, never read out (S24)
+    t = re.sub(r"`(?![\w ]+(?:\s*\+\s*[\w ]+)+`)([^`]*\s[^`]*)`", "the command on screen", t)   # a command is pointed at, never read out (S24); a key combo is still said
     t = re.sub(r"`([^`]*)`", r"\1", t)
     t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)
     t = re.sub(r"https?://\S+", "a link", t)
@@ -3498,7 +3497,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ticket": Tickets.new()})
             if p == "/api/theme":                  # the Omarchy theme changed: re-read it and tell the page
                 global THEME
-                op = json.loads(self._body() or b"{}").get("omarchy_path")
+                b = json.loads(self._body() or b"{}")
+                op = b.get("omarchy_path") if isinstance(b, dict) else None
                 THEME = theme_colors(op if isinstance(op, str) else None)
                 BUS.pub(t="theme", theme=THEME)
                 return self._json({"theme": THEME})
