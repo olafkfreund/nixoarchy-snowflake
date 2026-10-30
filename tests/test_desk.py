@@ -56,16 +56,24 @@ class DeskTest(_ServerEnv):
 
     def test_fullscreen_on_and_off(self):
         D = self.server.Desk
+        self.assertTrue(D.is_full({"fullscreen": 2}) and D.is_full({"fullscreen": 3}))
+        self.assertFalse(D.is_full({"fullscreen": 1}) or D.is_full({"fullscreen": 0}) or D.is_full({"fullscreen": "x"}))
+        self.inst("live", b"", win={"fullscreen": 2})
         D.on_event("fullscreen>>1")
         self.assertTrue(D.fullscreen)
-        D.on_event("fullscreen>>0")
+
+    def test_maximized_is_not_fullscreen(self):
+        D = self.server.Desk                                  # Omarchy maximizes windows all the time: no shades for that
+        self.inst("live", b"", win={"fullscreen": 1})
+        D.on_event("fullscreen>>1")
         self.assertFalse(D.fullscreen)
 
     def test_reads_a_stream_and_keeps_no_titles(self):
         D = self.server.Desk
         self.addCleanup(self.server.CFG.__setitem__, "proactive", self.server.CFG.get("proactive"))
         self.server.CFG["proactive"] = True                   # (Desk reads only for those who opted in)
-        d = self.inst("live", b"activewindow>>kitty,SECRET TITLE\nfullscreen>>1\nworkspacev2>>2,two\nopenwindow>>1,2,3,SECRET\n")
+        d = self.inst("live", b"activewindow>>kitty,SECRET TITLE\nfullscreen>>1\nworkspacev2>>2,two\nopenwindow>>1,2,3,SECRET\n",
+                      win={"fullscreen": 2, "class": "firefox"})
         D.read(d / ".socket2.sock")
         self.assertTrue(D.fullscreen)
         self.assertGreater(D.last_switch, 0)
@@ -138,8 +146,7 @@ class DeskTest(_ServerEnv):
     def test_a_workspace_switch_re_reads_fullscreen(self):
         D = self.server.Desk
         self.inst("live", b"", win={"fullscreen": 0})
-        D.on_event("fullscreen>>1")
-        self.assertTrue(D.fullscreen)
+        D.fullscreen = True                                   # it was fullscreen
         D.on_event("workspace>>1")                            # landed on a window that is not fullscreen
         self.assertFalse(D.fullscreen)
         self.assertGreater(D.last_switch, 0)

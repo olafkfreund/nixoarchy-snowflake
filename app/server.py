@@ -1526,17 +1526,23 @@ class Desk:
                 return d
         return None
 
+    @staticmethod
+    def is_full(w):
+        """Real fullscreen only: Hyprland's state is a bitmask, 1 maximized (Omarchy maximizes all the time), 2 fullscreen."""
+        try:
+            return bool(int(w.get("fullscreen") or 0) & 2)
+        except (TypeError, ValueError):
+            return False
+
     @classmethod
     def on_event(cls, line):
         name, _, data = line.partition(">>")
         now = time.monotonic()
         cls.last_event = now
-        if name == "fullscreen":
-            cls.fullscreen = data.strip() in ("1", "2")
-        elif name in ("workspace", "workspacev2", "activewindow"):    # (the title in `data` is never looked at)
-            if name != "activewindow":
+        if name in ("fullscreen", "workspace", "workspacev2", "activewindow"):    # (the title in `data` is never looked at)
+            if name in ("workspace", "workspacev2"):
                 cls.last_switch = now
-            else:
+            elif name == "activewindow":
                 wc = data.split(",", 1)[0].strip().lower()           # the class only, here and gone: just a boolean survives
                 if not wc or "nixi" in wc:                           # no window / a layer, or the companion itself: not a change of work
                     pass
@@ -1544,9 +1550,9 @@ class Desk:
                     cls.coding_since = cls.coding_since or now
                 else:
                     cls.coding_since = 0.0
-            w = cls.ask("j/activewindow")                            # a switch may land on a fullscreen window, or leave one
+            w = cls.ask("j/activewindow")                            # the event does not say which mode: ask
             if isinstance(w, dict):
-                cls.fullscreen = bool(w.get("fullscreen"))
+                cls.fullscreen = cls.is_full(w)
 
     @classmethod
     def read(cls, sock):
@@ -1556,7 +1562,7 @@ class Desk:
             c.connect(str(sock))
             c.settimeout(5)                                  # (so a switched-off flag is noticed while the desktop is quiet)
             w = cls.ask("j/activewindow")                    # already fullscreen when we connect: no event will say so
-            cls.fullscreen = bool(isinstance(w, dict) and w.get("fullscreen"))
+            cls.fullscreen = isinstance(w, dict) and cls.is_full(w)
             wc = str(w.get("class") or "").lower() if isinstance(w, dict) else ""     # already in a terminal: start the clock
             if wc in cls.CODERS or wc.startswith("jetbrains-"):
                 cls.coding_since = cls.coding_since or time.monotonic()
