@@ -774,7 +774,7 @@ const syncEye=syncLook;
 const SVGNS='http://www.w3.org/2000/svg';
 const sv=(tag,at,par)=>{ const e=document.createElementNS(SVGNS,tag); for(const k in at) e.setAttribute(k,at[k]); if(par) par.appendChild(e); return e; };
 const SKIN_LABELS={none:'none',halo:'halo',crown:'crown',sprout:'sprout',bow:'bow'};
-let SKIN_PARTS={}, SIT_P=null;
+let SKIN_PARTS={}, SIT_P=null, sitSettled=false;
 // situational looks (#133): a tie in meetings, headphones for music. Their own groups, so a skin change never erases one
 // and the skin picker never shows one. Flat paths only; frame() fades and scales them with springs.
 function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) return null; bk.innerHTML=''; fr.innerHTML='';
@@ -1284,7 +1284,8 @@ function frame(ts){
   if(SIT_P){ sitStep(ts);       // looks: spring in/out about their anchors; the tie sways like the other hanging skins
     const a=G.sit.to(sitOn.meeting?1:0,dt), b=G.sitMusic.to(sitOn.music?1:0,dt), w=G.sitW.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)*.6;
     const put=(el,x,ax,ay,rot)=>{ el.setAttribute('opacity',clamp(x,0,1).toFixed(2)); el.setAttribute('transform',`translate(${ax} ${ay})${rot?` rotate(${rot.toFixed(2)})`:''} scale(${(.7+.3*x).toFixed(3)}) translate(${-ax} ${-ay})`); };
-    put(SIT_P.tie,a,0,56,w); put(SIT_P.hb,b,0,-4); put(SIT_P.hf,b,0,-4); }
+    const off=a<.002&&b<.002&&!sitOn.meeting&&!sitOn.music;
+    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,56,w); put(SIT_P.hb,b,0,-4); put(SIT_P.hf,b,0,-4); sitSettled=off; } }   // (nothing to write while both are off)
   // tears
   if(m==='sad' && ts>tearAt){ tearAt=ts+1900+Math.random()*900; tear(Math.random()<.6?-1:1); }
   if(m==='scared') shakeAmp=Math.max(shakeAmp,.5);
@@ -1631,25 +1632,26 @@ function notifyText(ev,n){ const c=NOTE[ev.category]||NOTE.other, who=(ev.source
   return c[0]+' '+head+(ev.summary&&n<3?' · '+ev.summary:''); }
 function notifyShow(row,txt){ karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; setYou('');
   const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); row.span=sp; shownTxt=''; capShow(); cap.classList.add('note'); sendRegion(true); dropSync(); }
+function notifySeen(key){ post('/api/notify/seen',{key}).catch(()=>{}); }
 function notifyIdle(){ return !(busy||playing||rec||transcribing||pendingAppr||follow||hiddenNow||info.hover); }
 function notifyIn(ev){
   if(!/^[A-Za-z0-9:_-]{1,64}$/.test(ev.key||'')) return;
-  post('/api/notify/seen',{key:ev.key}).catch(()=>{});       // (the server gives the popups back if nobody confirms)
-  const now=performance.now();
-  if(notifyRow&&notifyRow.key===ev.key&&notifyRow.span.isConnected){ notifyRow.span.textContent=notifyText(ev,1); return; }   // an update: no new arrival
+  const now=performance.now(); ev.rt=now;                  // (only a row that is SHOWN counts as seen: the server gives the rest back to the shell)
+  if(notifyRow&&notifyRow.key===ev.key&&notifyRow.span.isConnected){ notifyRow.span.textContent=notifyText(ev,1); notifySeen(ev.key); return; }   // an update: no new arrival
   notifyBurst=notifyBurst.cat===ev.category&&now-notifyBurst.t<3000?{cat:ev.category,n:notifyBurst.n+1,t:notifyBurst.t}:{cat:ev.category,n:1,t:now};
-  if(notifyBurst.n>2&&notifyRow&&notifyRow.span.isConnected){ notifyRow.key=ev.key; notifyRow.span.textContent=notifyText(ev,notifyBurst.n); return; }   // 3+ at once: one row with a count
+  if(notifyBurst.n>2&&notifyRow&&notifyRow.span.isConnected){ notifyRow.key=ev.key; notifyRow.span.textContent=notifyText(ev,notifyBurst.n); notifySeen(ev.key); return; }   // 3+ at once: one row with a count
   if(notifyQ.length<8) notifyQ.push(ev);
   notifyDrain(now); }
 function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
-  const ev=notifyQ.shift(); if(!ev) return;
+  const now=performance.now(); while(notifyQ.length&&now-notifyQ[0].rt>4000) notifyQ.shift();   // too old: the server is giving it back at 5 s
+  const ev=notifyQ.shift(); if(!ev) return; notifySeen(ev.key);
   const c=NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null}; notifyRow=row; notifyAt=ts+5000;
   wake(); G.jelly.kick(-.45); popPupils(); poke(c[3],c[4]); burstLines(c[2],ev.category==='meeting'?8:ev.category==='download'?10:ev.category==='other'?1:3);
   if(ev.category==='chat') G.tilt.kick(-8);
   if(ev.category==='meeting') setTimeout(()=>{ if(notifyRow===row) poke('t_serious',2000); },750);
   if(ev.category==='video') setTimeout(()=>{ if(!FID&&mood(performance.now())==='idle') { FID={name:'hum',t0:performance.now(),dur:2000}; FIDGETS.hum.start&&FIDGETS.hum.start(FID); } },1500);
   notifyShow(row,notifyText(ev,1));
-  if(!SIT.meeting){ if(info.notify_sound!==false&&!muted) sfx(c[5]); if(!muted&&(info.notify_speak||[]).includes(ev.category)) sayAside(c[1]); }
+  if(!SIT.meeting){ if(info.notify_sound!==false&&!muted) sfx(c[5]); if(!muted&&(info.notify_speak||[]).includes(ev.category)) enqueue(c[1],{follow:false}); }   // (not say(): that would wipe the row)
   setTimeout(()=>{ if(notifyRow===row) notifyClear(); },5000); }
 function notifyClear(){ const sp=notifyRow&&notifyRow.span; notifyRow=null; cap.classList.remove('note');
   if(sp&&sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } sendRegion(true); }
@@ -1680,7 +1682,7 @@ function workChip(){ if(chipT) return;
   if(chip.dataset.w!==txt){ chip.dataset.w=txt; chip.innerHTML='<i class="spin"></i>'; chip.appendChild(document.createTextNode(txt)); }
   if(chip.className!=='on work') chip.className='on work'; }
 function say(t,follow){ capShow(); setYou(''); if(voiced()){ himSet(''); enqueue(t,{cap:true,fresh:true,follow}); } else { himSet(t); enqueue(t,{follow}); } capQuiet(); }
-function sayAside(t){ say(t,false); }   // said unasked: no follow-up window (#133)
+function sayAside(t){ if(SIT.meeting){ capShow(); himSet(t); capQuiet(); return; } say(t,false); }   // (in a meeting: words on screen only)   // said unasked: no follow-up window (#133)
 function fail(t){ capShow(); himSet(t,true); errorUntil=performance.now()+2200; capQuiet(); }
 const base=p=>String(p||'').split('/').filter(Boolean).pop()||p;
 function toolLabel(name,detail){
@@ -2586,7 +2588,7 @@ addEventListener('keydown',e=>{ wake();
     if(rec) return stopRec(true);
     if(busy){ post('/api/stop'); return; }
     if(playing) return shush();
-    if(notifyRow) return notifyAct('dismiss');
+    if(notifyRow&&notifyRow.span.isConnected) return notifyAct('dismiss');
     return dismiss(); }
   if(typing) return;
   if(e.code==='Space' && !e.repeat && !e.ctrlKey && !(askOn&&input.value) && !setEl.classList.contains('on') && !panelEl.classList.contains('on')){ e.preventDefault(); spaceHeld=true;

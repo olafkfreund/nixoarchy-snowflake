@@ -46,7 +46,7 @@ class InboxTest(_ServerEnv):
         saved = dict(S.CFG)
         self.addCleanup(lambda: (S.CFG.clear(), S.CFG.update(saved)))
         S.CFG.update(proactive=True, notifications_takeover=True, notify_details=False)
-        S.Inbox.path, S.Inbox.wanted, S.Inbox.stalled = None, False, 0.0
+        S.Inbox.path, S.Inbox.wanted = None, False
         S.Inbox.unseen.clear()
         self.servers = []
         self.addCleanup(lambda: [x.shutdown() or x.server_close() for x in self.servers])
@@ -94,6 +94,10 @@ class InboxTest(_ServerEnv):
         self.assertEqual(S.Inbox.rows(out)[0]["summary"], "Ana")
         secret = json.dumps([self.row(summary="Bank", body="Your code is 482910")])
         self.assertEqual(S.Inbox.rows(secret)[0]["body"], "")
+        for txt in ("482910 is your Signal PIN", "Your sign-in code: 482 910", "Use X7K92B to log in", "one-time password 12345678"):
+            self.assertEqual(S.Inbox.rows(json.dumps([self.row(summary=txt, body="")]))[0]["summary"], "", txt)
+        for txt in ("Lunch at 12?", "Ana sent 3 photos", "Build 2026 passed"):
+            self.assertEqual(S.Inbox.rows(json.dumps([self.row(summary=txt, body="")]))[0]["summary"], txt, txt)
 
     def test_want_false_while_asleep(self):
         S = self.server
@@ -102,19 +106,17 @@ class InboxTest(_ServerEnv):
         with mock.patch.object(S.BUS, "subs", [object()]), mock.patch.object(S.Wake, "asleep", True):
             self.assertFalse(S.Inbox.want())
 
-    def test_stall_guard_gives_the_lease_back(self):
+    def test_a_row_unseen_for_5s_is_shown_by_the_shell(self):
         S = self.server
         calls = self.shell(lambda m, a: "[]")
-        with mock.patch.object(S.BUS, "subs", [object()]):
+        S.Inbox.unseen.update({"nold": time.monotonic() - 6, "nnew": time.monotonic()})
+        with mock.patch.object(S.BUS, "subs", []):          # (given back even when no lease is wanted)
             S.Inbox.tick()
-            self.assertTrue(S.Inbox.wanted)
-            old = time.monotonic() - 10
-            S.Inbox.unseen.update({"n1": old, "n2": old, "n3": old})
-            S.Inbox.tick()
-        self.assertTrue(S.Inbox.stalled)
-        self.assertEqual(calls[-1], ("delegate", ["0"]))
-        S.Inbox.seen("n1")
-        self.assertFalse(S.Inbox.stalled)
+        self.assertIn(("showKey", ["nold"]), calls)
+        self.assertNotIn(("showKey", ["nnew"]), calls)
+        self.assertEqual(list(S.Inbox.unseen), ["nnew"])
+        S.Inbox.seen("nnew")
+        self.assertFalse(S.Inbox.unseen)
 
 
 if __name__ == "__main__":

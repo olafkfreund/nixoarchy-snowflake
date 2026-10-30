@@ -1108,7 +1108,7 @@ class Ambient:
         state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state")
         now = now or datetime.datetime.now().astimezone()
         soon = bool(CFG.get("ambient_calendar")) and any(0 < (st - now).total_seconds() <= 60 for st, _, _ in cls.events)
-        meeting = (state / "meeting-mode" / "active").exists() or soon
+        meeting = bool(CFG.get("proactive")) and ((state / "meeting-mode" / "active").exists() or soon)   # (only for those who opted in)
         t = time.monotonic()
         music = cls.music
         if not CFG.get("look_music") or Wake.asleep:
@@ -1147,13 +1147,14 @@ class Inbox:
     socket (renewed every second). Row text is never logged, written to disk or sent to the agent."""
     CATS = ("mail", "chat", "meeting", "video", "download", "other")
     KEY = re.compile(r"[A-Za-z0-9:_-]{1,64}")
-    OTP = re.compile(r"(?=.*\b\d{4,8}\b)(?=.*(?:code|otp|verify|login|passcode|2fa))", re.I | re.S)
+    # a code word and something shaped like a code (digits, spaced digit groups, a 6-10 char mix with 2+ digits) in one text
+    OTP = re.compile(r"(?=.*\b(?:codes?|otp|verif\w*|log[- ]?in|passcode|pin|one[- ]?time|security|sign[- ]?in|mfa|2fa|auth\w*)\b)"
+                     r"(?=.*(?:\b\d{4,10}\b|\b\d{2,4}(?:[ -]\d{2,4}){1,3}\b|\b(?=[A-Za-z0-9]{6,10}\b)(?:[A-Za-z]*\d){2}[A-Za-z0-9]*\b))", re.I | re.S)
     CAP = 64 * 1024
     path = None
     thread = None
     wanted = False                                            # a lease is out
-    stalled = 0.0                                             # until then the page is not picking rows up: popups come back
-    unseen = {}                                               # key -> when it was sent to the page
+    unseen = {}                                               # key -> when it was sent to the page; 5 s unseen and the shell shows it
 
     @classmethod
     def _derived(cls):
@@ -1206,7 +1207,7 @@ class Inbox:
 
     @classmethod
     def want(cls):
-        return bool(CFG.get("proactive") and CFG.get("notifications_takeover") and not Wake.asleep and BUS.subs and time.monotonic() >= cls.stalled)
+        return bool(CFG.get("proactive") and CFG.get("notifications_takeover") and not Wake.asleep and BUS.subs)
 
     @classmethod
     def release(cls):
@@ -1235,9 +1236,10 @@ class Inbox:
     @classmethod
     def tick(cls):
         now = time.monotonic()
-        if sum(1 for t in cls.unseen.values() if now - t > 5) >= 3:
-            cls.stalled = now + 30                            # three rows nobody picked up: give the popups back, try again later
-            cls.unseen.clear()
+        for key, t in list(cls.unseen.items()):               # (handler threads pop from it)
+            if now - t > 5:                                   # the page never drew it: the shell shows it as a popup
+                cls.unseen.pop(key, None)
+                cls.call("showKey", key)
         if cls.want():
             out = cls.call("delegate", "5000")
             cls.wanted = out is not None
@@ -1250,7 +1252,6 @@ class Inbox:
     @classmethod
     def seen(cls, key):
         cls.unseen.pop(key, None)
-        cls.stalled = 0.0
 
     @classmethod
     def loop(cls):
@@ -3712,7 +3713,6 @@ class Handler(BaseHTTPRequestHandler):
                     Wake.hush()
                     if Listen.current:
                         Listen.current.stop(cancel=True)
-                    Inbox.release()                      # the shell shows its own popups again
                 return self._json({"ok": True, "asleep": Wake.asleep})
             if p == "/api/notify/act":             # a click / Esc on a row the shell handed over
                 b = json.loads(self._body() or b"{}")

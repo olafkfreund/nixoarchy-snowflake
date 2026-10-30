@@ -14,7 +14,7 @@ class SituationTest(_ServerEnv):
         S = self.server
         saved = dict(S.CFG)
         self.addCleanup(lambda: (S.CFG.clear(), S.CFG.update(saved)))
-        S.CFG.update(ambient_calendar=False, look_music=False)
+        S.CFG.update(proactive=True, ambient_calendar=False, look_music=False)
         env = mock.patch.dict(os.environ, {"XDG_STATE_HOME": os.path.join(self.tmp, "sit-state")})
         env.start()
         self.addCleanup(env.stop)
@@ -40,6 +40,13 @@ class SituationTest(_ServerEnv):
         A.sense()
         self.assertTrue(A.meeting)
         self.flag(False)
+        A.sense()
+        self.assertFalse(A.meeting)
+
+    def test_no_meeting_unless_opted_in(self):
+        A = self.server.Ambient
+        self.server.CFG["proactive"] = False
+        self.flag(True)
         A.sense()
         self.assertFalse(A.meeting)
 
