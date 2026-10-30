@@ -779,7 +779,7 @@ let SKIN_PARTS={}, SIT_P=null, sitSettled=false;
 // and the skin picker never shows one. Flat paths only; frame() fades and scales them with springs.
 function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) return null; bk.innerHTML=''; fr.innerHTML='';
   const acc=L.skinColor||L.pupL, R=at=>({...at,'stroke-linejoin':'round','stroke-linecap':'round'});
-  const tie=sv('g',{opacity:0},fr), hb=sv('g',{opacity:0},fr), hf=sv('g',{opacity:0},fr);
+  const tie=sv('g',{opacity:0},fr), hb=sv('g',{opacity:0},fr), hf=sv('g',{opacity:0},fr), sh=sv('g',{opacity:0},fr);
   // tie: a red one under the bottom corner, big enough to read at his size
   const red='#d8453a', dk=shade(red,-.35);
   sv('path',R({d:'M-11 58L11 58L7 70L-7 70Z',fill:shade(red,-.12),stroke:dk,'stroke-width':2.5}),tie);
@@ -793,7 +793,13 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
     sv('rect',{x:s*80-13,y:-34,width:26,height:50,rx:12,fill:ink,stroke:rim,'stroke-width':2.5},hf);
     sv('rect',{x:s>0?67-1:-80+1,y:-28,width:13,height:38,rx:6,fill:acc},hf);   // the cushion, against his head
     sv('ellipse',{cx:s*84,cy:-20,rx:3,ry:6,fill:'#ffffff30'},hf); }
-  return {tie,hb,hf}; }
+  // shades (fullscreen): wayfarers over the top two thirds of his eyes (EYE: 47×81 at ±27.5,-4.5), a solid top bar, a glint
+  for(const s of [-1,1]){ const g=sv('g',{transform:`translate(${s*27.5} -12) rotate(${s*-4})`},sh);
+    sv('path',R({d:'M-27 -18L27 -18L24 10Q22 20 10 20L-10 20Q-22 20 -24 10Z',fill:'#121419',stroke:acc,'stroke-width':2.2}),g);
+    sv('path',R({d:'M-16 -11L-6 -1M-10 -13L-4 -7',fill:'none',stroke:'#ffffff70','stroke-width':2.6}),g); }
+  sv('path',R({d:'M-58 -31L58 -31',fill:'none',stroke:'#121419','stroke-width':7}),sh);
+  sv('path',R({d:'M-56 -32.5L56 -32.5',fill:'none',stroke:acc,'stroke-width':1.6}),sh);
+  return {tie,hb,hf,sh}; }
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
 function drawSkin(back,front,L,bodyFill='url(#ballG)'){
   back.innerHTML=''; front.innerHTML='';
@@ -1006,7 +1012,7 @@ const S={L:{},R:{}}; for(const k of EYE_KEYS){ S.L[k]=new Spring(val(MOODS.idle[
 const SP={L:{},R:{}}; for(const k of PUP_KEYS){ SP.L[k]=new Spring(val(PUP.slit[k],0),2.3,.78); SP.R[k]=new Spring(val(PUP.slit[k],1),2.3,.78); }
 const G={ sz:new Spring(1,2,.75), tilt:new Spring(0,.8,.85), dx:new Spring(0,2.4,.55),
   wob:new Spring(0,1.7,.22),
-  gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), sit:new Spring(0,2.4,.55), sitMusic:new Spring(0,2.4,.55), sitW:new Spring(0,1.7,.22), zoom:new Spring(1,1.6,.7),
+  gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), sit:new Spring(0,2.4,.55), sitShade:new Spring(0,2.4,.55), sitLift:new Spring(0,3,.8), sitMusic:new Spring(0,2.4,.55), sitW:new Spring(0,1.7,.22), zoom:new Spring(1,1.6,.7),
   appear:new Spring(.2,1.5,.55), open:new Spring(0,1.8,.55), think:new Spring(0,1.6,.6), anger:new Spring(0,1.8,.55), qm:new Spring(0,1.8,.55),
   rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
 let idlePu=null, idleSwapAt=performance.now()+15000;
@@ -1125,14 +1131,15 @@ function frame(ts){
   if(m!==prevMood){ onMood(m); prevMood=m; }
   // idle routines (not while he's the cursor, or busy with anything)
   const hovering=document.body.classList.contains('hover');
-  if(m!=='idle'||hovering||menuOn) FID=null;
+  if(m!=='idle'||hovering||menuOn||SIT.fullscreen) FID=null;
   else if(!FID && ts>nextFidAt && ts-lastMouse>2500){ const names=Object.keys(FIDGETS).filter(n=>n!==lastFid), n=nightTime()&&lastFid!=='yawn'&&Math.random()<.45?'yawn':names[Math.random()*names.length|0];
     FID={name:n,t0:ts,dur:FIDGETS[n].dur}; lastFid=n; FIDGETS[n].start&&FIDGETS[n].start(FID); }
   let fx={};
   if(FID){ const p=(ts-FID.t0)/FID.dur; if(p>=1){ FID=null; nextFidAt=ts+4500+Math.random()*7000; } else fx=FIDGETS[FID.name].f(p,t,FID)||{}; }
   const fe=fx.eye||{};
-  for(const key of EYE_KEYS){ S.L[key].to(val(T[key],0)+(fe[key]||0),dt); S.R[key].to(val(T[key],1)+(fe[key]||0),dt); }
-  G.sz.to(T.sz,dt); G.tilt.to(T.tilt+(fx.tilt||0)+(isTalk(m)?talk.tiltT:0),dt);
+  const hot=m==='idle'&&SIT.cpu_hot?.1:0;           // a busy machine: a slight squint
+  for(const key of EYE_KEYS){ const b=key==='top'?hot:0; S.L[key].to(val(T[key],0)+(fe[key]||0)+b,dt); S.R[key].to(val(T[key],1)+(fe[key]||0)+b,dt); }
+  G.sz.to(T.sz*(SIT.ram_low&&m==='idle'?1.06+Math.sin(t*1.1)*.015:1),dt); G.tilt.to(T.tilt+(fx.tilt||0)+(isTalk(m)?talk.tiltT:0),dt);
   // idle: now and then a little change of look — a blank dot stare, curious round eyes, a big-eyed "ooh", a head-tilt
   if(m==='idle' && !FID && ts>idleSwapAt){
     if(idlePu){ idlePu=null; idleSwapAt=ts+9000+Math.random()*13000; }
@@ -1283,7 +1290,7 @@ function frame(ts){
   E.qmark.setAttribute('opacity',clamp(qm,0,1).toFixed(2));
   E.qmark.setAttribute('transform',`translate(80,-80) rotate(${(Math.sin(t*2.4)*12).toFixed(1)}) scale(${Math.max(0,qm).toFixed(3)}) translate(-80,80)`);
   const sw=(t%1.8)/1.8;
-  E.sweat.setAttribute('opacity',m==='running'||m==='pleading'?(sw<.75?1:1-(sw-.75)/.25).toFixed(2):'0');
+  E.sweat.setAttribute('opacity',m==='running'||m==='pleading'||(m==='idle'&&SIT.cpu_hot)?(sw<.75?1:1-(sw-.75)/.25).toFixed(2):'0');
   E.sweat.setAttribute('transform',`translate(-70,${(-44+eOut(sw)*18).toFixed(1)}) scale(${(.6+Math.min(sw*3,1)*.4).toFixed(2)})`);
   // skin: sprouts wobble, halos float
   const SP2=SKIN_PARTS||{};
@@ -1293,15 +1300,17 @@ function frame(ts){
   if(SIT_P){ sitStep(ts);       // looks: spring in/out about their anchors; the tie sways like the other hanging skins
     const a=G.sit.to(sitOn.meeting?1:0,dt), b=G.sitMusic.to(sitOn.music?1:0,dt), w=G.sitW.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)*.6;
     const put=(el,x,ax,ay,rot)=>{ el.setAttribute('opacity',clamp(x,0,1).toFixed(2)); el.setAttribute('transform',`translate(${ax} ${ay})${rot?` rotate(${rot.toFixed(2)})`:''} scale(${(.7+.3*x).toFixed(3)}) translate(${-ax} ${-ay})`); };
-    const off=a<.002&&b<.002&&!sitOn.meeting&&!sitOn.music;
-    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,b,0,-4); put(SIT_P.hf,b,0,-4); sitSettled=off; } }   // (nothing to write while both are off)
+    const c=G.sitShade.to(sitOn.fullscreen?1:0,dt), L=G.sitLift.to(isTalk(m)||m==='listening'||['reading','editing','running','searching','looking','thinking'].includes(m)?1:0,dt);
+    const off=a<.002&&b<.002&&c<.002&&!sitOn.meeting&&!sitOn.music&&!sitOn.fullscreen;
+    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,b,0,-4); put(SIT_P.hf,b,0,-4); sitSettled=off;
+      put(SIT_P.sh,c,0,-4); SIT_P.sh.setAttribute('transform',`translate(0 ${(-32*L).toFixed(1)}) scale(${(1-.08*L).toFixed(3)}) `+SIT_P.sh.getAttribute('transform')); } }   // (lifted onto the forehead while he talks, so his eyes stay visible)   // (nothing to write while both are off)
   // tears
   if(m==='sad' && ts>tearAt){ tearAt=ts+1900+Math.random()*900; tear(Math.random()<.6?-1:1); }
   if(m==='scared') shakeAmp=Math.max(shakeAmp,.5);
   E.zz.setAttribute('opacity',m==='sleepy'?(.5+Math.sin(t*1.2)*.5).toFixed(2):'0');
   E.zz.setAttribute('transform',`translate(0,${(-((t*6)%14)).toFixed(1)})`);
   for(let i=parts.length-1;i>=0;i--) if(!parts[i](ts,dt)) parts.splice(i,1);
-  capTick(ts); if(notifyQ.length) notifyDrain(ts);
+  capTick(ts); if(notifyQ.length) notifyDrain(ts); if(nudgeQ.size) nudgeDrain(ts);
   if(NATIVE&&!window.nixiQt){ const a=(frameN++&1)?'rgba(0,0,0,.004)':'rgba(0,0,0,.006)';   // forces WebKit to repaint the whole window every frame —
     paintEl.style.background=a; document.documentElement.style.background=a; }  // both the page and the root, so the widened edge is covered too
   requestAnimationFrame(frame);
@@ -1562,8 +1571,9 @@ function onEvent(ev){
     if(info.hover) comeBack(); wake(); sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(msg); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
     if(!muted) sayAside(ev.name+' needs you'); }
   else if(ev.t==='notify') notifyIn(ev);
-  else if(ev.t==='situation'){ SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; }
-  else if(ev.t==='ambient'){ const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue();
+  else if(ev.t==='nudge') { nudgeQ.set(ev.kind,ev); nudgeDrain(performance.now()); }
+  else if(ev.t==='situation'){ SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; }
+  else if(ev.t==='ambient'){ const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive) poke('confused',1500);
     if(ev.glint){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
     if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')) flash('#4d6fb7'); }   // (never spoken)
     else if(more&&document.body.classList.contains('bar')) flash('#e5a50a'); }
@@ -1626,9 +1636,22 @@ function capTick(ts){ if(!capOn){ if(kara.length) karaTick(ts); if(moreEl.classL
   if(ts-quietSince>(himEl.classList.contains('err')?9000:6500)){ cap.classList.add('off'); capOn=false; } }
 function setYou(t){ youEl.textContent=t; youEl.classList.remove('pop'); youEl.offsetWidth; youEl.classList.add('pop'); }
 // ---- the shell hands a notification to the companion (#133): he reacts, shows one line, and a click opens it
-let SIT={meeting:false,music:false};   // situation signals, as the server sends them
+// ---- unasked nudges (#133b): break, welcome back, memory, load. The newest per kind waits until he is idle.
+const nudgeQ=new Map();
+function nudgeDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
+  const [kind,ev]=nudgeQ.entries().next().value; nudgeQ.delete(kind); notifyAt=ts+5000; wake();
+  if(kind==='break'&&!FID&&mood(ts)==='idle'){ FID={name:'stretch',t0:ts,dur:FIDGETS.stretch.dur}; FIDGETS.stretch.start&&FIDGETS.stretch.start(FID); }
+  else if(kind==='welcome'){ entrance(); poke('happy',1500); }
+  else if(kind==='ram') poke('t_unsure',1800);
+  else if(kind==='cpu') poke('running',1200);
+  const txt=String(ev.text||'').slice(0,200);
+  if(ev.speak&&!muted) sayAside(txt);                      // (the words show as he says them)
+  else { karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; setYou('');
+    const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); shownTxt=''; capShow(); sendRegion(true); dropSync();
+    setTimeout(()=>{ if(sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } },6000); } }
+let SIT={meeting:false,music:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false};   // situation signals, as the server sends them
 // a look goes on after 3 s of signal and off after 8 s without it: timestamps, no timers
-const sitOn={meeting:false,music:false}, sitSeen={meeting:false,music:false}, sitAt={meeting:0,music:0};
+const sitOn={meeting:false,music:false,fullscreen:false}, sitSeen={meeting:false,music:false,fullscreen:false}, sitAt={meeting:0,music:0,fullscreen:0};
 function sitStep(ts){ for(const k in sitOn){ const raw=!!SIT[k]&&!!info['look_'+k]; if(raw!==sitSeen[k]){ sitSeen[k]=raw; sitAt[k]=ts; }
   if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(k==='meeting') G.jelly.kick(.35); }
   else if(!raw&&sitOn[k]&&ts-sitAt[k]>=8000) sitOn[k]=false; } }
@@ -1643,7 +1666,7 @@ function notifyText(ev,n){ const c=NOTE[ev.category]||NOTE.other, raw=(ev.source
 function notifyShow(row,txt){ karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; setYou('');
   const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); row.span=sp; shownTxt=''; capShow(); cap.classList.add('note'); sendRegion(true); dropSync(); }
 function notifySeen(key){ post('/api/notify/seen',{key}).catch(()=>{}); }
-function notifyIdle(){ return !(busy||playing||rec||transcribing||pendingAppr||follow||hiddenNow||info.hover); }
+function notifyIdle(){ return !(SIT.fullscreen||busy||playing||rec||transcribing||pendingAppr||follow||hiddenNow||info.hover); }
 function notifyIn(ev){
   if(!/^[A-Za-z0-9:_-]{1,64}$/.test(ev.key||'')) return;
   const now=performance.now(); ev.rt=now;                  // (only a row that is SHOWN counts as seen: the server gives the rest back to the shell)
