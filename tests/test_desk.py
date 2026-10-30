@@ -42,15 +42,15 @@ class DeskTest(_ServerEnv):
         self.servers = []
         self.addCleanup(lambda: [x.shutdown() or x.server_close() for x in self.servers])
 
-    def inst(self, sig, events=None, monitors=None):
+    def inst(self, sig, events=None, monitors=None, win=None):
         d = Path(self.rt) / "hypr" / sig
         d.mkdir(parents=True)
         if events is not None:
             self.servers.append(serve(d / ".socket2.sock", lambda c: c.sendall(events)))
-        if monitors is not None:
+        if monitors is not None or win is not None:
             def answer(c):
-                assert c.recv(64) == b"j/monitors"
-                c.sendall(json.dumps(monitors).encode())
+                req = c.recv(64)
+                c.sendall(json.dumps({b"j/monitors": monitors, b"j/activewindow": win}[req]).encode())
             self.servers.append(serve(d / ".socket.sock", answer))
         return d
 
@@ -100,8 +100,17 @@ class DeskTest(_ServerEnv):
         D.dir = None
         self.assertTrue(D.locked())
 
-    def test_locked_is_false_without_hyprland(self):
-        self.assertFalse(self.server.Desk.locked())
+    def test_locked_is_unknown_without_hyprland(self):
+        self.assertIsNone(self.server.Desk.locked())          # no answer is not "unlocked"
+
+    def test_a_workspace_switch_re_reads_fullscreen(self):
+        D = self.server.Desk
+        self.inst("live", b"", win={"fullscreen": 0})
+        D.on_event("fullscreen>>1")
+        self.assertTrue(D.fullscreen)
+        D.on_event("workspace>>1")                            # landed on a window that is not fullscreen
+        self.assertFalse(D.fullscreen)
+        self.assertGreater(D.last_switch, 0)
 
 
 if __name__ == "__main__":

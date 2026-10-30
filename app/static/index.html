@@ -574,12 +574,12 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="ambCalSw"><span class="sw"></span><span class="l">Next calendar item (uses gog)<small>Ten minutes before, a calendar mark and the title. Asks Google Calendar every 15 minutes.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="ambWxSw"><span class="sw"></span><span class="l">Weather look (uses omarchy weather)<small>Frost on his tips below 0 °C, a slight thaw above 28 °C. Fetches the weather every 30 minutes.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="proactiveSw"><span class="sw"></span><span class="l">Desktop companion<small>Let him notice what happens on your desktop. Everything below is off until you switch it on.</small></span></label></div>
-      <div class="row"><label class="tg"><input type="checkbox" id="takeoverSw"><span class="sw"></span><span class="l">Show notifications through him<small>He shows your notifications himself instead of the shell popup. Critical alerts and codes keep their popup.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="takeoverSw"><span class="sw"></span><span class="l">Show notifications through him<small>He shows your notifications himself instead of the shell popup. Critical alerts and codes keep their popup. While a window is fullscreen, the shell shows them.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="detailsSw"><span class="sw"></span><span class="l">Show the notification text<small>Otherwise he only shows the kind and the app. The text never goes to the agent or to disk; codes are always hidden.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="nsoundSw"><span class="sw"></span><span class="l">Notification sounds<small>A short sound for each kind of notification.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="lookMeetSw"><span class="sw"></span><span class="l">Tie in meetings<small>He puts on a tie while Meeting Mode is on or a calendar item is a minute away.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="lookMusicSw"><span class="sw"></span><span class="l">Headphones for music<small>He wears headphones while a player is playing.</small></span></label></div>
-      <div class="row"><label class="tg"><input type="checkbox" id="lookFsSw"><span class="sw"></span><span class="l">Shades in fullscreen<small>He puts on shades while a window is fullscreen, and leaves your notifications to the shell until it ends.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="lookFsSw"><span class="sw"></span><span class="l">Shades in fullscreen<small>He puts on shades while a window is fullscreen.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="reactLoadSw"><span class="sw"></span><span class="l">Notice a busy machine<small>A sweat drop when the CPU works hard for a while; a word when memory runs low.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="reactBreakSw"><span class="sw"></span><span class="l">Remind me to move<small>After an hour unlocked he suggests a stretch. A lock of five minutes or more counts as a break. Nothing watches your keyboard.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="reactWelcomeSw"><span class="sw"></span><span class="l">Welcome me back<small>After half an hour away: how many notifications came in, and your next meeting if the calendar is on.</small></span></label></div>
@@ -1575,7 +1575,7 @@ function onEvent(ev){
     if(info.hover) comeBack(); wake(); sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(msg); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
     if(!muted) sayAside(ev.name+' needs you'); }
   else if(ev.t==='notify') notifyIn(ev);
-  else if(ev.t==='nudge') { nudgeQ.set(ev.kind,ev); nudgeDrain(performance.now()); }
+  else if(ev.t==='nudge') { ev.rt=performance.now(); nudgeQ.set(ev.kind,ev); nudgeDrain(performance.now()); }
   else if(ev.t==='situation'){ SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; }
   else if(ev.t==='ambient'){ const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive) poke('confused',1500);
     if(ev.glint){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
@@ -1642,14 +1642,16 @@ function setYou(t){ youEl.textContent=t; youEl.classList.remove('pop'); youEl.of
 // ---- the shell hands a notification to the companion (#133): he reacts, shows one line, and a click opens it
 // ---- unasked nudges (#133b): break, welcome back, memory, load. The newest per kind waits until he is idle.
 const nudgeQ=new Map();
-function nudgeDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
+let lastSpokeAt=-1e9;
+function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts-e.rt>600000) nudgeQ.delete(k);   // stale: it waited too long
+  if(!nudgeQ.size||ts<notifyAt||!notifyIdle()) return;
   const [kind,ev]=nudgeQ.entries().next().value; nudgeQ.delete(kind); notifyAt=ts+5000; wake();
   if(kind==='break'&&!FID&&mood(ts)==='idle'){ FID={name:'stretch',t0:ts,dur:FIDGETS.stretch.dur}; FIDGETS.stretch.start&&FIDGETS.stretch.start(FID); }
   else if(kind==='welcome'){ entrance(); poke('happy',1500); }
   else if(kind==='ram') poke('t_unsure',1800);
   else if(kind==='cpu') poke('running',1200);
   const txt=String(ev.text||'').slice(0,200);
-  if(ev.speak&&!muted) sayAside(txt);                      // (the words show as he says them)
+  if(ev.speak&&!muted&&ts-lastSpokeAt>=600000){ lastSpokeAt=ts; sayAside(txt); }                      // (the words show as he says them)
   else { karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; setYou('');
     const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); shownTxt=''; capShow(); sendRegion(true); dropSync();
     setTimeout(()=>{ if(sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } },6000); } }

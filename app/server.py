@@ -1145,7 +1145,8 @@ class Ambient:
             cls.hot_since = None
             cls.cpu_hot = cls.cpu_hot and load >= .7 * cores
         cls.ram_low = False if frac is None else frac < .10 or (cls.ram_low and frac <= .25)
-        locked = on and Desk.locked()
+        res = Desk.locked() if on else False
+        locked = cls.locked if res is None else res                  # (no answer: no change)
         if locked and not cls.lock_since:
             cls.lock_since = t
         elif not locked and cls.lock_since:
@@ -1267,13 +1268,15 @@ class Nudge:
         if not cls.pending or Ambient.locked:
             return
         at_break = (Ambient.unlocked_at and t - Ambient.unlocked_at <= 10) or (Desk.last_switch and t - Desk.last_switch <= 10) \
-            or t - Desk.last_event >= 20
+            or (Desk.last_event > 0 and t - Desk.last_event >= 20)
         if not at_break or (cls.last_visual is not None and t - cls.last_visual < 300):
             return
         kind = next(iter(cls.pending))
         text, spoken, _ = cls.pending.pop(kind)
         if kind in cls.last_kind and t - cls.last_kind[kind] < cls.COOL[kind]:
-            return                                                  # (dropped: it will be offered again if it still holds)
+            if kind in ("ram", "cpu"):                                 # dropped; re-arm the edge so it is offered again
+                setattr(cls, "was_low" if kind == "ram" else "was_hot", False)   # once the cooldown has passed, if it still holds
+            return
         cls.last_visual = cls.last_kind[kind] = t
         speak = bool(spoken) and not Ambient.meeting and (cls.last_speech is None or t - cls.last_speech >= 600)
         if speak:
@@ -1447,8 +1450,12 @@ class Desk:
         cls.last_event = now
         if name == "fullscreen":
             cls.fullscreen = data.strip() in ("1", "2")
-        elif name in ("workspace", "workspacev2"):
-            cls.last_switch = now
+        elif name in ("workspace", "workspacev2", "activewindow"):    # (the title in `data` is never looked at)
+            if name != "activewindow":
+                cls.last_switch = now
+            w = cls.ask("j/activewindow")                            # a switch may land on a fullscreen window, or leave one
+            if isinstance(w, dict):
+                cls.fullscreen = bool(w.get("fullscreen"))
 
     @classmethod
     def read(cls, sock):
@@ -1456,10 +1463,14 @@ class Desk:
         buf = b""
         with socket.socket(socket.AF_UNIX) as c:
             c.connect(str(sock))
+            c.settimeout(5)                                  # (so a switched-off flag is noticed while the desktop is quiet)
             w = cls.ask("j/activewindow")                    # already fullscreen when we connect: no event will say so
             cls.fullscreen = bool(isinstance(w, dict) and w.get("fullscreen"))
             while CFG.get("proactive"):                       # (switched off: stop reading)
-                chunk = c.recv(4096)
+                try:
+                    chunk = c.recv(4096)
+                except TimeoutError:
+                    continue
                 if not chunk:
                     return
                 buf = (buf + chunk)[-65536:]
@@ -1490,9 +1501,12 @@ class Desk:
 
     @classmethod
     def locked(cls):
-        """True when any monitor is blocked by the lock screen (what omarchy-hyprland-session-locked reads)."""
+        """True when any monitor is blocked by the lock screen (what omarchy-hyprland-session-locked reads); None when
+        Hyprland did not answer, which must not look like an unlock."""
         mons = cls.ask("j/monitors")
-        return isinstance(mons, list) and any(isinstance(m, dict) and "LOCK" in (m.get("solitaryBlockedBy") or []) for m in mons)
+        if not isinstance(mons, list):
+            return None
+        return any(isinstance(m, dict) and "LOCK" in (m.get("solitaryBlockedBy") or []) for m in mons)
 
     @classmethod
     def loop(cls):

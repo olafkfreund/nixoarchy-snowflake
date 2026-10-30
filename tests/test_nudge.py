@@ -21,7 +21,7 @@ class NudgeTest(_ServerEnv):
             setattr(N, k, v)
         for k, v in dict(locked=False, unlocked_at=0.0, last_lock_len=0.0, lock_since=0.0, meeting=False, ram_low=False, cpu_hot=False, events=[]).items():
             setattr(A, k, v)
-        D.last_switch, D.last_event = 0.0, 0.0
+        D.last_switch, D.last_event = 0.0, 1.0           # (quiet since long ago)
         self.q = S.BUS.sub()
         self.addCleanup(S.BUS.unsub, self.q)
         self.hist = Path(tempfile.mkdtemp(dir=self.tmp)) / "history.json"
@@ -49,6 +49,12 @@ class NudgeTest(_ServerEnv):
         self.tick(101)
         self.assertEqual([e["kind"] for e in self.sent()], ["ram"])
 
+    def test_no_events_seen_is_not_a_breakpoint(self):
+        self.server.Desk.last_event = 0.0
+        self.server.Nudge.offer("ram", "tight", True, 100)
+        self.tick(100)
+        self.assertEqual(self.sent(), [])
+
     def test_quiet_for_20s_is_a_breakpoint(self):
         self.server.Nudge.offer("cpu", "hot", False, 100)
         self.server.Desk.last_event = 90
@@ -73,6 +79,18 @@ class NudgeTest(_ServerEnv):
         N.offer("ram", "later", True, 3200)
         self.tick(3200)
         self.assertEqual([e["text"] for e in self.sent()], ["later"])
+
+    def test_a_cooldown_drop_re_arms_the_edge(self):
+        N, A = self.server.Nudge, self.server.Ambient
+        N.last_kind["ram"] = 1000
+        A.ram_low, N.was_low = True, True
+        N.offer("ram", "x", True, 1100)
+        self.tick(1200)
+        self.assertEqual((self.sent(), N.was_low), ([], False))
+        self.tick(1202)                                      # offered again, dropped again: still cooling
+        self.assertEqual(self.sent(), [])
+        self.tick(2900)                                      # cooled down and still low: delivered
+        self.assertEqual([e["kind"] for e in self.sent()], ["ram"])
 
     def test_speech_budget_and_meeting(self):
         N, A = self.server.Nudge, self.server.Ambient
@@ -100,7 +118,6 @@ class NudgeTest(_ServerEnv):
 
     def test_break_counter_resets_after_a_5_minute_lock_only(self):
         N, A = self.server.Nudge, self.server.Ambient
-        self.busy(0)
         self.tick(0)                                         # active_since = 0
         A.unlocked_at, A.last_lock_len = 3000, 60            # a 1-minute lock: no reset
         self.tick(3000)

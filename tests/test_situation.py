@@ -143,6 +143,14 @@ class SituationTest(_ServerEnv):
         self.assertEqual((A.locked, A.lock_since, A.unlocked_at, A.last_lock_len), (False, 0.0, 1400, 400))
         self.assertEqual(q.get_nowait()["locked"], False)
 
+    def test_a_failed_lock_query_is_not_an_unlock(self):
+        A = self.server.Ambient
+        self.lock.return_value = True
+        A.sense(mono=1000)
+        self.lock.return_value = None
+        A.sense(mono=1100)
+        self.assertEqual((A.locked, A.lock_since, A.unlocked_at), (True, 1000, 0.0))
+
     def test_fullscreen_stops_the_lease(self):
         S = self.server
         with mock.patch.object(S.BUS, "subs", [queue.Queue()]), mock.patch.object(S.Wake, "asleep", False):
