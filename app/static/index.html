@@ -1636,7 +1636,8 @@ const NOTE={mail:['✉','New mail','#4d6fb7','reading',2200,'pop'], chat:['💬'
   meeting:['📅','Meeting','#ffb02a','surprised',700,'remind'], video:['▶','Video','#e0569a','t_excited',1400,'ok'],
   download:['⬇','Download','#3ddc84','t_beam',1600,'done'], other:['🔔','Notification','#7fd6ae','curious',1000,'pop']};
 const notifyQ=[]; let notifyRow=null, notifyAt=0, notifyBurst={cat:'',n:0,t:0};
-function notifyText(ev,n){ const c=NOTE[ev.category]||NOTE.other, who=(ev.source||ev.app||'').trim();
+const APP_NAMES={'teams-for-linux':'Teams','thunderbird':'Thunderbird','geary':'Geary','slack':'Slack','discord':'Discord','signal':'Signal','element':'Element','telegramdesktop':'Telegram','firefox':'Firefox','chromium':'Chromium','google-chrome':'Chrome','brave-browser':'Brave'};   // what people call the app
+function notifyText(ev,n){ const c=NOTE[ev.category]||NOTE.other, raw=(ev.source||ev.app||'').trim(), who=APP_NAMES[raw.toLowerCase()]||raw;
   const head=n>2?n+' new'+(who?' in '+who:''):c[1]+(who?(ev.category==='chat'?' in ':' · ')+who:'');
   return c[0]+' '+head+(ev.summary&&n<3?' · '+ev.summary:''); }
 function notifyShow(row,txt){ karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; setYou('');
