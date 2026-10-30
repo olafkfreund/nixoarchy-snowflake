@@ -196,6 +196,7 @@ DEFAULTS = {
     # desktop awareness (#133): all off but the per-category sound and the spoken categories
     "proactive": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"],
     "notify_sound": True, "look_meeting": False, "look_music": False,
+    "look_fullscreen": False, "react_load": False, "react_break": False, "react_welcome": False,
     # projects you can switch to by voice: {"delivery app": "/home/you/code/diq"}
     "projects": {},
     # when a long task finishes while he's hidden: desktop notification / pop back up
@@ -1008,6 +1009,9 @@ class Ambient:
     thread = None
     meeting = music = False                                    # what the look layer wears, and what quiets him (#133)
     music_due = 0.0
+    cpu_hot = ram_low = fullscreen = locked = False
+    hot_since = None                                           # load has been over the core count since then
+    lock_since = unlocked_at = last_lock_len = 0.0             # monotonic; lock_since is 0 while unlocked
 
     @staticmethod
     def run(argv, timeout=3):
@@ -1100,25 +1104,64 @@ class Ambient:
         if glint or alert or json.dumps(cls.data, sort_keys=True) != before:
             BUS.pub(t="ambient", glint=glint, alert=alert, **cls.data)
 
+    @staticmethod
+    def readings(proc="/proc"):
+        """(1-minute load, MemAvailable / MemTotal) from files, None for what can't be read."""
+        try:
+            load = float(Path(proc, "loadavg").read_text().split()[0])
+        except (OSError, ValueError, IndexError):
+            load = None
+        try:
+            mem = {k: int(v.split()[0]) for k, v in (ln.split(":", 1) for ln in Path(proc, "meminfo").read_text().splitlines() if ":" in ln)}
+            frac = mem["MemAvailable"] / mem["MemTotal"]
+        except (OSError, ValueError, KeyError, IndexError, ZeroDivisionError):
+            frac = None
+        return load, frac
+
     @classmethod
-    def sense(cls, now=None):
+    def situation(cls):
+        return {k: getattr(cls, k) for k in ("meeting", "music", "cpu_hot", "ram_low", "fullscreen", "locked")}
+
+    @classmethod
+    def sense(cls, now=None, proc="/proc", mono=None):
         """The fast cues, no forks but a 5 s playerctl: Meeting Mode's flag file, a calendar item a minute away, a player
-        playing. Published only when one changes."""
+        playing, load and RAM from /proc, fullscreen and the lock from Hyprland. Published only when one changes."""
         import datetime
+        before = cls.situation()
         state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state")
         now = now or datetime.datetime.now().astimezone()
         soon = bool(CFG.get("ambient_calendar")) and any(0 < (st - now).total_seconds() <= 60 for st, _, _ in cls.events)
         meeting = bool(CFG.get("proactive")) and ((state / "meeting-mode" / "active").exists() or soon)   # (only for those who opted in)
-        t = time.monotonic()
+        t = time.monotonic() if mono is None else mono
+        on = bool(CFG.get("proactive"))
+        load, frac = cls.readings(proc) if on and CFG.get("react_load") else (None, None)
+        cores = os.cpu_count() or 1
+        if load is None:
+            cls.hot_since, cls.cpu_hot = None, False
+        elif load > cores:
+            cls.hot_since = t if cls.hot_since is None else cls.hot_since
+            cls.cpu_hot = cls.cpu_hot or t - cls.hot_since >= 30          # (30 s over the core count)
+        else:
+            cls.hot_since = None
+            cls.cpu_hot = cls.cpu_hot and load >= .7 * cores
+        cls.ram_low = False if frac is None else frac < .10 or (cls.ram_low and frac <= .25)
+        res = Desk.locked() if on else False
+        locked = cls.locked if res is None else res                  # (no answer: no change)
+        if locked and not cls.lock_since:
+            cls.lock_since = t
+        elif not locked and cls.lock_since:
+            cls.last_lock_len, cls.unlocked_at, cls.lock_since = t - cls.lock_since, t, 0.0
+        cls.locked = locked
+        cls.fullscreen = on and Desk.fullscreen
         music = cls.music
         if not CFG.get("look_music") or Wake.asleep:
             music = False
         elif t >= cls.music_due:
             cls.music_due = t + 5
             music = any(x.strip() == "Playing" for x in (cls.run(["playerctl", "-a", "status"]) or "").splitlines())
-        if (meeting, music) != (cls.meeting, cls.music):
-            cls.meeting, cls.music = meeting, music
-            BUS.pub(t="situation", meeting=meeting, music=music)
+        cls.meeting, cls.music = meeting, music
+        if cls.situation() != before:
+            BUS.pub(t="situation", **cls.situation())
 
     @classmethod
     def loop(cls):
@@ -1131,6 +1174,7 @@ class Ambient:
                     print(f"[nixi] ambient: {e}", file=sys.stderr)
             try:
                 cls.sense()
+                Nudge.tick()
             except Exception as e:  # noqa: BLE001
                 print(f"[nixi] ambient: {e}", file=sys.stderr)
             time.sleep(2)
@@ -1140,6 +1184,104 @@ class Ambient:
         if not cls.thread:
             cls.thread = threading.Thread(target=cls.loop, daemon=True)
             cls.thread.start()
+
+
+class Nudge:
+    """Unasked nudges (#133b): break, welcome back, memory, load. They wait for a breakpoint (an unlock, a workspace switch, or
+    20 s without window events), and a budget keeps them rare: one visual per 5 minutes, one spoken per 10, a cooldown per kind."""
+    QUIPS = ("An hour already! Stand up and stretch?", "Time for a stretch. Your back will thank you.", "That's a good long stretch of work. Water and a walk?")
+    COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "welcome": 0}
+    pending = {}                                              # kind -> (text, spoken, offered at); oldest first
+    last_visual = last_speech = None
+    last_kind = {}
+    active_since = None                                       # the break counter's zero
+    seen_unlock = 0.0
+    was_hot = was_low = False
+    n_quip = 0
+
+    @classmethod
+    def offer(cls, kind, text, spoken, t=None):
+        cls.pending.pop(kind, None)                           # newest wins
+        cls.pending[kind] = (text, spoken, time.monotonic() if t is None else t)
+
+    @staticmethod
+    def missed(path, since, until):
+        """How many history entries closed inside the lock. Only `ts` is read: never a summary or a body."""
+        try:
+            with open(path, "rb") as f:
+                raw = f.read(2 * 1024 * 1024 + 1)
+            if len(raw) > 2 * 1024 * 1024:
+                return 0
+            data = json.loads(raw)
+            items = data.get("entries") if isinstance(data, dict) else data
+            return sum(1 for e in items if isinstance(e, dict) and isinstance(e.get("ts"), (int, float)) and since <= e["ts"] <= until)
+        except (OSError, ValueError, TypeError, AttributeError):
+            return 0
+
+    @classmethod
+    def welcome(cls, wall, hist, now=None):
+        text = "Welcome back!"
+        n = cls.missed(hist, wall - Ambient.last_lock_len, wall)
+        if n:
+            text += f" {n} notification{'s' if n != 1 else ''} while you were away."
+        if CFG.get("ambient_calendar"):
+            import datetime
+            now = now or datetime.datetime.now().astimezone()
+            nxt = min(((st, ti) for st, ti, _ in Ambient.events if st > now), default=None)
+            if nxt:
+                text += f" Next: {nxt[1]} at {nxt[0].astimezone().strftime('%H:%M')}."
+        return text
+
+    @classmethod
+    def watch(cls, t, wall, hist, now=None):
+        """Turn the signals into offers."""
+        A = Ambient
+        cls.active_since = t if cls.active_since is None else cls.active_since
+        if A.unlocked_at and A.unlocked_at != cls.seen_unlock:      # the unlock edge
+            cls.seen_unlock = A.unlocked_at
+            if A.last_lock_len >= 300:                              # a real break: the counter starts again
+                cls.active_since = A.unlocked_at
+            if CFG.get("react_welcome") and A.last_lock_len >= 1800:
+                cls.offer("welcome", cls.welcome(wall, hist, now), True, t)
+        if CFG.get("react_break") and not A.locked and t - cls.active_since >= 3600:
+            cls.offer("break", cls.QUIPS[cls.n_quip % len(cls.QUIPS)], True, t)
+            cls.n_quip += 1
+            cls.active_since = t
+        if CFG.get("react_load"):
+            if A.ram_low and not cls.was_low:
+                cls.offer("ram", "Memory's getting tight. Maybe close something heavy?", True, t)
+            if A.cpu_hot and not cls.was_hot:
+                cls.offer("cpu", "The machine is working hard.", False, t)
+        cls.was_low, cls.was_hot = A.ram_low, A.cpu_hot
+
+    @classmethod
+    def tick(cls, mono=None, wall=None, hist=None, now=None):
+        t = time.monotonic() if mono is None else mono
+        if not CFG.get("proactive"):
+            cls.pending.clear()
+            cls.active_since = None
+            return
+        cls.watch(t, time.time() if wall is None else wall,
+                  hist or Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "omarchy" / "notifications" / "history.json", now)
+        for k in [k for k, v in cls.pending.items() if t - v[2] > 600]:
+            del cls.pending[k]                                      # gone stale while it waited
+        if not cls.pending or Ambient.locked:
+            return
+        at_break = (Ambient.unlocked_at and t - Ambient.unlocked_at <= 10) or (Desk.last_switch and t - Desk.last_switch <= 10) \
+            or (Desk.last_event > 0 and t - Desk.last_event >= 20)
+        if not at_break or (cls.last_visual is not None and t - cls.last_visual < 300):
+            return
+        kind = next(iter(cls.pending))
+        text, spoken, _ = cls.pending.pop(kind)
+        if kind in cls.last_kind and t - cls.last_kind[kind] < cls.COOL[kind]:
+            if kind in ("ram", "cpu"):                                 # dropped; re-arm the edge so it is offered again
+                setattr(cls, "was_low" if kind == "ram" else "was_hot", False)   # once the cooldown has passed, if it still holds
+            return
+        cls.last_visual = cls.last_kind[kind] = t
+        speak = bool(spoken) and not Ambient.meeting and (cls.last_speech is None or t - cls.last_speech >= 600)
+        if speak:
+            cls.last_speech = t
+        BUS.pub(t="nudge", kind=kind, text=text, speak=speak)
 
 
 class Inbox:
@@ -1207,7 +1349,7 @@ class Inbox:
 
     @classmethod
     def want(cls):
-        return bool(CFG.get("proactive") and CFG.get("notifications_takeover") and not Wake.asleep and BUS.subs)
+        return bool(CFG.get("proactive") and CFG.get("notifications_takeover") and not Wake.asleep and BUS.subs and not Desk.fullscreen)
 
     @classmethod
     def release(cls):
@@ -1261,6 +1403,123 @@ class Inbox:
             except Exception as e:  # noqa: BLE001  (never take the server down, never print a row)
                 print(f"[nixi] inbox: {type(e).__name__}", file=sys.stderr)
             time.sleep(1)
+
+    @classmethod
+    def start(cls):
+        if not cls.thread:
+            cls.thread = threading.Thread(target=cls.loop, daemon=True)
+            cls.thread.start()
+
+
+class Desk:
+    """What Hyprland says about the desktop (#133b): fullscreen, the last workspace switch, when anything last happened, and
+    whether the session is locked. Window titles and classes are dropped in the parser. Read only for those who opted in."""
+    fullscreen = False
+    last_switch = last_event = 0.0                            # monotonic
+    dir = None                                                # the live instance dir
+    thread = None
+
+    @classmethod
+    def _alive(cls, sock):
+        try:
+            with socket.socket(socket.AF_UNIX) as c:
+                c.settimeout(1)
+                c.connect(str(sock))
+            return True
+        except OSError:
+            return False
+
+    @classmethod
+    def instance(cls):
+        """The env's instance, else the newest one that accepts a connection (the env goes stale after a Hyprland restart)."""
+        base = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}") / "hypr"
+        sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+        try:
+            others = sorted((d for d in base.iterdir() if d.name != sig), key=lambda d: d.stat().st_mtime, reverse=True)
+        except OSError:
+            others = []
+        for d in ([base / sig] if sig else []) + others:
+            if cls._alive(d / ".socket2.sock"):
+                return d
+        return None
+
+    @classmethod
+    def on_event(cls, line):
+        name, _, data = line.partition(">>")
+        now = time.monotonic()
+        cls.last_event = now
+        if name == "fullscreen":
+            cls.fullscreen = data.strip() in ("1", "2")
+        elif name in ("workspace", "workspacev2", "activewindow"):    # (the title in `data` is never looked at)
+            if name != "activewindow":
+                cls.last_switch = now
+            w = cls.ask("j/activewindow")                            # a switch may land on a fullscreen window, or leave one
+            if isinstance(w, dict):
+                cls.fullscreen = bool(w.get("fullscreen"))
+
+    @classmethod
+    def read(cls, sock):
+        """Feed events from one connection until it closes."""
+        buf = b""
+        with socket.socket(socket.AF_UNIX) as c:
+            c.connect(str(sock))
+            c.settimeout(5)                                  # (so a switched-off flag is noticed while the desktop is quiet)
+            w = cls.ask("j/activewindow")                    # already fullscreen when we connect: no event will say so
+            cls.fullscreen = bool(isinstance(w, dict) and w.get("fullscreen"))
+            while CFG.get("proactive"):                       # (switched off: stop reading)
+                try:
+                    chunk = c.recv(4096)
+                except TimeoutError:
+                    continue
+                if not chunk:
+                    return
+                buf = (buf + chunk)[-65536:]
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    cls.on_event(line.decode(errors="replace"))
+
+    @classmethod
+    def ask(cls, what):
+        """One request on Hyprland's request socket (`j/monitors`, `j/activewindow`): parsed JSON, or None."""
+        d = cls.dir or cls.instance()
+        if not d:
+            return None
+        try:
+            with socket.socket(socket.AF_UNIX) as c:
+                c.settimeout(1)
+                c.connect(str(d / ".socket.sock"))
+                c.sendall(what.encode())
+                buf = b""
+                while len(buf) < 1 << 20:
+                    chunk = c.recv(65536)
+                    if not chunk:
+                        break
+                    buf += chunk
+            return json.loads(buf)
+        except (OSError, ValueError):
+            return None
+
+    @classmethod
+    def locked(cls):
+        """True when any monitor is blocked by the lock screen (what omarchy-hyprland-session-locked reads); None when
+        Hyprland did not answer, which must not look like an unlock."""
+        mons = cls.ask("j/monitors")
+        if not isinstance(mons, list):
+            return None
+        return any(isinstance(m, dict) and "LOCK" in (m.get("solitaryBlockedBy") or []) for m in mons)
+
+    @classmethod
+    def loop(cls):
+        while True:
+            try:
+                if CFG.get("proactive"):
+                    cls.dir = cls.instance()
+                    if cls.dir:
+                        cls.read(cls.dir / ".socket2.sock")
+            except OSError:
+                pass                                          # Hyprland restarted: reconnect
+            cls.fullscreen = False                            # (unknown once we are not listening)
+            time.sleep(5)
 
     @classmethod
     def start(cls):
@@ -2616,7 +2875,8 @@ def clamp01(x):
     return max(0.0, min(1.0, x))
 
 
-NOTIFY_FLAGS = ("proactive", "notifications_takeover", "notify_details", "notify_sound", "look_meeting", "look_music")
+NOTIFY_FLAGS = ("proactive", "notifications_takeover", "notify_details", "notify_sound", "look_meeting", "look_music",
+                "look_fullscreen", "react_load", "react_break", "react_welcome")
 NOTIFY_CATS = ("mail", "chat", "meeting", "video", "download", "other")
 
 
@@ -4062,7 +4322,7 @@ class Handler(BaseHTTPRequestHandler):
         import queue
         try:
             emit(t="hello")
-            emit(t="situation", meeting=Ambient.meeting, music=Ambient.music)
+            emit(t="situation", **Ambient.situation())
             while alive[0]:
                 try:
                     ev = q.get(timeout=15)
@@ -4290,6 +4550,7 @@ def main():
     Wake.ensure()
     Ambient.start()
     Inbox.start()
+    Desk.start()
     if not BRIDGED:
         Updates.start()
     srv = ThreadingHTTPServer(("127.0.0.1", int(CFG["port"])), Handler)
