@@ -1682,7 +1682,8 @@ function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts-e.rt>600000) nudgeQ.de
   else if(kind==='welcome'){ entrance(); poke('happy',1500); }
   else if(kind==='ram') poke('t_unsure',1800);
   else if(kind==='cpu') poke('running',1200);
-  else if(kind==='weather') poke(SIT.weather==='snow'?'excited':'curious',1500);
+  else if(kind==='snow') poke('excited',1500);
+  else if(kind==='rain') poke('curious',1500);
   else if(kind==='night') poke('sleepy',1500);
   else if(kind==='party') poke('happy',1500);
   else if(kind==='coding') poke('wink',900);

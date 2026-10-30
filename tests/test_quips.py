@@ -113,12 +113,28 @@ class QuipNudgeTest(_ServerEnv):
         self.tick(90000)                                     # the next day
         self.assertEqual([k for k, _, _ in self.sent()], ["night"])
 
-    def test_weather_names_the_sky(self):
+    def test_rain_and_snow_are_their_own_kinds(self):
         S = self.server
         with mock.patch.object(S, "quip", side_effect=lambda e, **k: "q-" + e):
             S.Ambient.weather = "snow"
             self.tick(1000)
-        self.assertEqual(self.sent(), [("weather", "q-snow", False)])
+            S.Ambient.weather = "rain"
+            self.tick(1400)                                  # a different kind: its own cooldown
+        self.assertEqual(self.sent(), [("snow", "q-snow", False), ("rain", "q-rain", False)])
+
+    def test_a_cooldown_drop_does_not_lose_tonights_quip(self):
+        A, N = self.server.Ambient, self.server.Nudge
+        A.night = True
+        self.tick(1000)
+        self.assertEqual(len(self.sent()), 1)
+        A.night = False
+        self.tick(2000)
+        A.night = True                                       # tomorrow's edge, a little before 20 hours are up
+        self.tick(1000 + 70000)
+        self.assertEqual(self.sent(), [])
+        self.assertFalse(N.quipped["night"])                 # re-armed
+        self.tick(1000 + 72100)                              # still night: now it comes
+        self.assertEqual([k for k, _, _ in self.sent()], ["night"])
 
     def test_off_means_off(self):
         S = self.server

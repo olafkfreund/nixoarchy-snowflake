@@ -128,7 +128,11 @@ class DeskTest(_ServerEnv):
         self.assertEqual(D.coding_since, 0.0)
         D.on_event("activewindow>>jetbrains-clion,x")      # any JetBrains IDE
         self.assertGreater(D.coding_since, 0)
-        D.on_event("activewindow>>")                       # no window
+        t1 = D.coding_since
+        D.on_event("activewindow>>")                       # no window, a layer
+        D.on_event("activewindow>>nixi-companion,x")       # his own window taking focus
+        self.assertEqual(D.coding_since, t1)
+        D.on_event("activewindow>>firefox,x")
         self.assertEqual(D.coding_since, 0.0)
 
     def test_a_workspace_switch_re_reads_fullscreen(self):

@@ -1259,7 +1259,7 @@ def quip(event, **slots):
 class Nudge:
     """Unasked nudges (#133b): break, welcome back, memory, load. They wait for a breakpoint (an unlock, a workspace switch, or
     20 s without window events), and a budget keeps them rare: one visual per 5 minutes, one spoken per 10, a cooldown per kind."""
-    COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "welcome": 0, "weather": 86400, "night": 86400, "party": 86400, "coding": 7200}
+    COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "welcome": 0, "rain": 72000, "snow": 72000, "night": 72000, "party": 72000, "coding": 7200}
     pending = {}                                              # kind -> (text, spoken, offered at); oldest first
     last_visual = last_speech = None
     last_kind = {}
@@ -1323,10 +1323,10 @@ class Nudge:
                 cls.offer("cpu", quip("cpu"), False, t)
         cls.was_low, cls.was_hot = A.ram_low, A.cpu_hot
         if CFG.get("react_quips"):                                  # little jokes: visual only, once when a look turns on
-            for kind, val in (("weather", A.weather), ("night", A.night), ("party", A.party)):
-                if val and val != cls.quipped.get(kind):
-                    cls.offer(kind, quip(val if kind == "weather" else kind), False, t)
-                cls.quipped[kind] = val
+            for kind, on in (("rain", A.weather == "rain"), ("snow", A.weather == "snow"), ("night", A.night), ("party", A.party)):
+                if on and not cls.quipped.get(kind):
+                    cls.offer(kind, quip(kind), False, t)
+                cls.quipped[kind] = on
             since = Desk.coding_since
             if since and since != cls.coding_offered and t - since >= 7200:       # once per coding session of 2 hours or more
                 cls.coding_offered = since
@@ -1354,6 +1354,8 @@ class Nudge:
         if kind in cls.last_kind and t - cls.last_kind[kind] < cls.COOL[kind]:
             if kind in ("ram", "cpu"):                                 # dropped; re-arm the edge so it is offered again
                 setattr(cls, "was_low" if kind == "ram" else "was_hot", False)   # once the cooldown has passed, if it still holds
+            elif kind in cls.quipped:
+                cls.quipped[kind] = False                              # (so is a look quip: 20 h, so tonight's follows yesterday's)
             return
         cls.last_visual = cls.last_kind[kind] = t
         speak = bool(spoken) and not Ambient.meeting and (cls.last_speech is None or t - cls.last_speech >= 600)
@@ -1536,7 +1538,9 @@ class Desk:
                 cls.last_switch = now
             else:
                 wc = data.split(",", 1)[0].strip().lower()           # the class only, here and gone: just a boolean survives
-                if wc in cls.CODERS or wc.startswith("jetbrains-"):
+                if not wc or "nixi" in wc:                           # no window / a layer, or the companion itself: not a change of work
+                    pass
+                elif wc in cls.CODERS or wc.startswith("jetbrains-"):
                     cls.coding_since = cls.coding_since or now
                 else:
                     cls.coding_since = 0.0
