@@ -146,6 +146,7 @@ body.bar #code .l.out{color:var(--dim)}
   -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 34%);mask-image:linear-gradient(to bottom,transparent 0,#000 34%);
   text-shadow:0 1px 2px #000,0 0 8px #000,0 0 16px #000a}
 #cap.off,body.appr #cap,body.pnl #cap{opacity:0;transform:translateY(6px)}
+#cap.note{pointer-events:auto;cursor:pointer}   /* a notification row is up: click opens it */
 #wk{position:absolute;left:12px;right:12px;top:404px;text-align:center;font:11px var(--mono);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}   /* nixi mode: what the agent is doing */
 #you{font-size:12px;color:var(--dim);text-shadow:0 1px 2px #000,0 0 5px #0009;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 #you.pop{animation:wIn .7s var(--ease) both}
@@ -1273,7 +1274,7 @@ function frame(ts){
   E.zz.setAttribute('opacity',m==='sleepy'?(.5+Math.sin(t*1.2)*.5).toFixed(2):'0');
   E.zz.setAttribute('transform',`translate(0,${(-((t*6)%14)).toFixed(1)})`);
   for(let i=parts.length-1;i>=0;i--) if(!parts[i](ts,dt)) parts.splice(i,1);
-  capTick(ts);
+  capTick(ts); if(notifyQ.length) notifyDrain(ts);
   if(NATIVE&&!window.nixiQt){ const a=(frameN++&1)?'rgba(0,0,0,.004)':'rgba(0,0,0,.006)';   // forces WebKit to repaint the whole window every frame —
     paintEl.style.background=a; document.documentElement.style.background=a; }  // both the page and the root, so the widened edge is covered too
   requestAnimationFrame(frame);
@@ -1413,6 +1414,7 @@ function sfx(name){
     error:()=>{ tone(330,0,.16,'triangle'); tone(247,.13,.24,'triangle'); },
     remind:()=>{ for(let i=0;i<3;i++){ tone(1568,i*.32,.28); tone(2093,i*.32+.04,.25,'sine',null,.4); } },
     purr:()=>{ tone(70,0,.7,'sawtooth',62,.25); },
+    chat:()=>{ tone(587,0,.09); tone(880,.09,.09); },
     pop:()=>tone(520,0,.08,'sine',260)})[name]?.();
 }
 // Sentences are scheduled back-to-back on the audio clock as soon as each one is ready — not started when the last one
@@ -1532,6 +1534,7 @@ function onEvent(ev){
     if(hiddenNow){ post('/api/notify',{title:'Nixi',body:msg}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
     if(info.hover) comeBack(); wake(); sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(msg); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
     if(!muted) sayAside(ev.name+' needs you'); }
+  else if(ev.t==='notify') notifyIn(ev);
   else if(ev.t==='ambient'){ const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue();
     if(ev.glint){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
     if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')) flash('#4d6fb7'); }   // (never spoken)
@@ -1594,6 +1597,41 @@ function capTick(ts){ if(!capOn){ if(kara.length) karaTick(ts); if(moreEl.classL
   if(busy||playing||kara.length||rec||transcribing||ask.classList.contains('on')){ quietSince=ts; return; }
   if(ts-quietSince>(himEl.classList.contains('err')?9000:6500)){ cap.classList.add('off'); capOn=false; } }
 function setYou(t){ youEl.textContent=t; youEl.classList.remove('pop'); youEl.offsetWidth; youEl.classList.add('pop'); }
+// ---- the shell hands a notification to the companion (#133): he reacts, shows one line, and a click opens it
+let SIT={meeting:false,music:false};   // situation signals (the look layer fills them)
+const NOTE={mail:['✉','New mail','#4d6fb7','reading',2200,'pop'], chat:['💬','New message','#7fd6ae','curious',1800,'chat'],
+  meeting:['📅','Meeting','#ffb02a','surprised',700,'remind'], video:['▶','Video','#e0569a','t_excited',1400,'ok'],
+  download:['⬇','Download','#3ddc84','t_beam',1600,'done'], other:['🔔','Notification','#7fd6ae','curious',1000,'pop']};
+const notifyQ=[]; let notifyRow=null, notifyAt=0, notifyBurst={cat:'',n:0,t:0};
+function notifyText(ev,n){ const c=NOTE[ev.category]||NOTE.other, who=(ev.source||ev.app||'').trim();
+  const head=n>2?n+' new'+(who?' in '+who:''):c[1]+(who?(ev.category==='chat'?' in ':' · ')+who:'');
+  return c[0]+' '+head+(ev.summary&&n<3?' · '+ev.summary:''); }
+function notifyShow(row,txt){ karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; setYou('');
+  const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); row.span=sp; shownTxt=''; capShow(); cap.classList.add('note'); sendRegion(true); dropSync(); }
+function notifyIdle(){ return !(busy||playing||rec||transcribing||pendingAppr||follow||hiddenNow||info.hover); }
+function notifyIn(ev){
+  if(!/^[A-Za-z0-9:_-]{1,64}$/.test(ev.key||'')) return;
+  post('/api/notify/seen',{key:ev.key}).catch(()=>{});       // (the server gives the popups back if nobody confirms)
+  const now=performance.now();
+  if(notifyRow&&notifyRow.key===ev.key&&notifyRow.span.isConnected){ notifyRow.span.textContent=notifyText(ev,1); return; }   // an update: no new arrival
+  notifyBurst=notifyBurst.cat===ev.category&&now-notifyBurst.t<3000?{cat:ev.category,n:notifyBurst.n+1,t:notifyBurst.t}:{cat:ev.category,n:1,t:now};
+  if(notifyBurst.n>2&&notifyRow&&notifyRow.span.isConnected){ notifyRow.key=ev.key; notifyRow.span.textContent=notifyText(ev,notifyBurst.n); return; }   // 3+ at once: one row with a count
+  if(notifyQ.length<8) notifyQ.push(ev);
+  notifyDrain(now); }
+function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
+  const ev=notifyQ.shift(); if(!ev) return;
+  const c=NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null}; notifyRow=row; notifyAt=ts+5000;
+  wake(); G.jelly.kick(-.45); popPupils(); poke(c[3],c[4]); burstLines(c[2],ev.category==='meeting'?8:ev.category==='download'?10:ev.category==='other'?1:3);
+  if(ev.category==='chat') G.tilt.kick(-8);
+  if(ev.category==='meeting') setTimeout(()=>{ if(notifyRow===row) poke('t_serious',2000); },750);
+  if(ev.category==='video') setTimeout(()=>{ if(!FID&&mood(performance.now())==='idle') { FID={name:'hum',t0:performance.now(),dur:2000}; FIDGETS.hum.start&&FIDGETS.hum.start(FID); } },1500);
+  notifyShow(row,notifyText(ev,1));
+  if(!SIT.meeting){ if(info.notify_sound!==false&&!muted) sfx(c[5]); if(!muted&&(info.notify_speak||[]).includes(ev.category)) sayAside(c[1]); }
+  setTimeout(()=>{ if(notifyRow===row) notifyClear(); },5000); }
+function notifyClear(){ const sp=notifyRow&&notifyRow.span; notifyRow=null; cap.classList.remove('note');
+  if(sp&&sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } sendRegion(true); }
+function notifyAct(how){ const r=notifyRow; if(!r||!r.span.isConnected) return; post('/api/notify/act',{key:r.key,how}).catch(()=>{}); notifyClear(); }
+cap.addEventListener('click',()=>notifyAct('open'));
 function himSet(t,bad){ karaDrop(); himEl.classList.toggle('err',!!bad); himEl.textContent=''; shownTxt=''; if(t) showHim(t,true); }
 function showHim(s,end){
   const p=untag(plain(s)).trim(); let ln=himEl.querySelector('.ln'), fresh=false;
@@ -2458,6 +2496,7 @@ function sendRegion(force){
   if(menuOn) $$('.mb').forEach(b=>add(b,2));
   if(ask.classList.contains('on')) add(ask,4);
   if(chip.classList.contains('act')&&chip.classList.contains('on')) add(chip,4);
+  if(cap.classList.contains('note')) add(cap,4);
   if(setEl.classList.contains('on')) add(setEl,4);
   if(panelEl.classList.contains('on')) add(panelEl,4);
   if(apEl.classList.contains('on')) add(apEl,4); if(pwEl.classList.contains('on')) add(pwEl,4);
@@ -2524,6 +2563,7 @@ addEventListener('keydown',e=>{ wake();
     if(rec) return stopRec(true);
     if(busy){ post('/api/stop'); return; }
     if(playing) return shush();
+    if(notifyRow) return notifyAct('dismiss');
     return dismiss(); }
   if(typing) return;
   if(e.code==='Space' && !e.repeat && !e.ctrlKey && !(askOn&&input.value) && !setEl.classList.contains('on') && !panelEl.classList.contains('on')){ e.preventDefault(); spaceHeld=true;
