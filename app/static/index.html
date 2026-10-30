@@ -27,7 +27,7 @@ body.hover #stage{transform:scale(.17)}
 #stage{transition:transform .65s cubic-bezier(.34,1.3,.5,1)}
 body.bar #stage,body.unfold #stage{transition:transform .36s cubic-bezier(.3,1.25,.5,1)}   /* into / out of the notch: quick */
 body.snap #stage,body.snap #barPill,body.snap #body>.ball,body.snap #body>ellipse,body.snap #orbBack,body.snap #orbFront,
-body.snap #haloW,body.snap #shadow,body.snap #accBack,body.snap #accFront{transition:none!important}  /* grabbed mid-morph */
+body.snap #haloW,body.snap #shadow,body.snap #accBack,body.snap #sitBack,body.snap #accFront,body.snap #sitFront{transition:none!important}  /* grabbed mid-morph */
 body.hover #orbBack,body.hover #orbFront,body.hover #workW,body.hover #haloW,body.hover #vring,body.hover #raysW,body.hover #fx,body.hover #fxBack,
 body.hover #think,body.hover #anger,body.hover #sweat,body.hover #zz,body.hover #qmark,body.hover #tears,body.hover #cap,body.hover #chip,body.hover #atts{display:none}
 body.hover #shadow{display:none}
@@ -71,10 +71,10 @@ body.bar.e-right #stage{transform:translate(136px,68px) scale(.46)}
    of the notch, its neck stretches thin and snaps, and it wobbles round. The real ball parts are hidden meanwhile. */
 body.nixi .nx{display:none!important}
 body.bar #body>.ball,body.bar #body>ellipse,body.bar #orbBack,body.bar #orbFront,body.bar #workW,body.bar #haloW,body.bar #raysW,
-body.bar #vring,body.bar #shadow,body.bar #accBack,body.bar #accFront,body.bar #liveTag,
+body.bar #vring,body.bar #shadow,body.bar #accBack,body.bar #sitBack,body.bar #accFront,body.bar #sitFront,body.bar #liveTag,
 body.goohide #body>.ball,body.goohide #body>ellipse,body.goohide #orbBack,body.goohide #orbFront,body.goohide #haloW,
-body.goohide #shadow,body.goohide #accBack,body.goohide #accFront{opacity:0;transition:none}
-body.unfold #body>.ball,body.unfold #body>ellipse,body.unfold #shadow,body.unfold #accBack,body.unfold #accFront{transition:opacity .12s linear}
+body.goohide #shadow,body.goohide #accBack,body.goohide #sitBack,body.goohide #accFront,body.goohide #sitFront{opacity:0;transition:none}
+body.unfold #body>.ball,body.unfold #body>ellipse,body.unfold #shadow,body.unfold #accBack,body.unfold #sitBack,body.unfold #accFront,body.unfold #sitFront{transition:opacity .12s linear}
 body.unfold #orbBack,body.unfold #orbFront,body.unfold #haloW{transition:opacity .25s linear .08s}
 /* pulled out of the notch by the mouse: the ball pops in where he is (the notch melts on the wall, not here) */
 #body>.ball{transform-box:fill-box;transform-origin:center}
@@ -84,7 +84,7 @@ body.popout #body>.ball{animation:popOut .34s var(--pop)}
 body.gooing #goo{display:block}
 body.bar.bar-done #orbBack,body.bar.bar-done #orbFront,body.bar.bar-done #workW,body.bar.bar-done #haloW,body.bar.bar-done #raysW,
 body.bar.bar-done #vring,body.bar.bar-done #shadow,body.bar.bar-done #body>.ball,body.bar.bar-done #body>ellipse,
-body.bar.bar-done #accBack,body.bar.bar-done #accFront,body.bar.bar-done #liveTag{display:none}
+body.bar.bar-done #accBack,body.bar.bar-done #sitBack,body.bar.bar-done #accFront,body.bar.bar-done #sitFront,body.bar.bar-done #liveTag{display:none}
 /* talking with him: the whole notch wears his halo, bright and unmistakable.
    .hearing = he's listening to you: a thick ring that swells with your voice (--lv, 0–1, from the mic level)
    .speaking = he's answering: a strong steady pulse */
@@ -146,6 +146,7 @@ body.bar #code .l.out{color:var(--dim)}
   -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 34%);mask-image:linear-gradient(to bottom,transparent 0,#000 34%);
   text-shadow:0 1px 2px #000,0 0 8px #000,0 0 16px #000a}
 #cap.off,body.appr #cap,body.pnl #cap{opacity:0;transform:translateY(6px)}
+#cap.note{pointer-events:auto;cursor:pointer}   /* a notification row is up: click opens it */
 #wk{position:absolute;left:12px;right:12px;top:404px;text-align:center;font:11px var(--mono);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}   /* nixi mode: what the agent is doing */
 #you{font-size:12px;color:var(--dim);text-shadow:0 1px 2px #000,0 0 5px #0009;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 #you.pop{animation:wIn .7s var(--ease) both}
@@ -499,6 +500,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <g id="qmark" opacity="0"><text class="qm" x="70" y="-70">?</text></g>
       <g id="body">
         <g id="accBack"></g>
+        <g id="sitBack"></g>
         <path class="ball" fill="url(#ballG)"/>
         <g class="ball nix"></g>
         <g id="face">
@@ -511,6 +513,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <ellipse cx="34" cy="50" rx="18" ry="6" transform="rotate(-40 34 50)" fill="url(#glossG)" opacity=".45" pointer-events="none"/>
         <path id="rim" class="ball" fill="none" stroke-width="1.6" stroke-linejoin="round" pointer-events="none"/>
         <g id="accFront"></g>
+        <g id="sitFront"></g>
         <g id="frost" display="none" pointer-events="none"></g>
         <g id="cue" display="none" transform="translate(8 -122)" style="cursor:pointer"><circle id="cueD" r="10" stroke="#0008" stroke-width="1"/><text id="cueT" text-anchor="middle" y="4.5" font-size="12" pointer-events="none"></text></g>
         <g id="liveTag" transform="translate(50 58) rotate(-14)" display="none"><rect x="-21" y="-8.5" width="42" height="17" rx="6" fill="#2f8f66" stroke="#7fd6ae" stroke-width="1"/><circle id="liveDot" cx="-12" cy="0" r="2.6" fill="#fff"/><text x="4" y="3.6" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff" font-family="monospace" letter-spacing="1">LIVE</text></g>
@@ -570,6 +573,13 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="ambSysSw"><span class="sw"></span><span class="l">System health<small>A mark on his tip when a user service fails, a glint after each new NixOS generation. Local only.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="ambCalSw"><span class="sw"></span><span class="l">Next calendar item (uses gog)<small>Ten minutes before, a calendar mark and the title. Asks Google Calendar every 15 minutes.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="ambWxSw"><span class="sw"></span><span class="l">Weather look (uses omarchy weather)<small>Frost on his tips below 0 °C, a slight thaw above 28 °C. Fetches the weather every 30 minutes.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="proactiveSw"><span class="sw"></span><span class="l">Desktop companion<small>Let him notice what happens on your desktop. Everything below is off until you switch it on.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="takeoverSw"><span class="sw"></span><span class="l">Show notifications through him<small>He shows your notifications himself instead of the shell popup. Critical alerts and codes keep their popup.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="detailsSw"><span class="sw"></span><span class="l">Show the notification text<small>Otherwise he only shows the kind and the app. The text never goes to the agent or to disk; codes are always hidden.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="nsoundSw"><span class="sw"></span><span class="l">Notification sounds<small>A short sound for each kind of notification.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="lookMeetSw"><span class="sw"></span><span class="l">Tie in meetings<small>He puts on a tie while Meeting Mode is on or a calendar item is a minute away.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="lookMusicSw"><span class="sw"></span><span class="l">Headphones for music<small>He wears headphones while a player is playing.</small></span></label></div>
+      <div class="row"><div class="t">Say out loud</div><div class="h">Notifications he speaks. In a meeting he stays silent.</div><div class="seg" id="nsChips"></div></div>
       <div class="row"><label class="tg"><input type="checkbox" id="asideSw"><span class="sw"></span><span class="l">Step aside for Nixi's card<small>When nixi's card opens he slides out of its way, and comes back when it closes (Hyprland).</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="followSw"><span class="sw"></span><span class="l">Follow my focused screen<small>When you focus another monitor he moves there too (Hyprland). Also: "move to the other screen", or bind <code>nixi-companion monitor next</code>.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="clickSw"><span class="sw"></span><span class="l">Click through around him<small>Clicks on the empty space around him go to the window behind. Turn off if he flickers.</small></span></label></div>
@@ -744,6 +754,7 @@ function applyLook(L){
   EC.sclera=LOOK.whiteL;
   const bk=document.getElementById('accBack'), fr=document.getElementById('accFront');
   if(bk&&fr) SKIN_PARTS=drawSkin(bk,fr,LOOK);
+  SIT_P=drawSit(LOOK);
 }
 function randomLook(L){
   const hb=Math.random()*360, hp=Math.random()*360, hw=Math.random()*360, hp2=(hp+120+Math.random()*120)%360;
@@ -763,7 +774,26 @@ const syncEye=syncLook;
 const SVGNS='http://www.w3.org/2000/svg';
 const sv=(tag,at,par)=>{ const e=document.createElementNS(SVGNS,tag); for(const k in at) e.setAttribute(k,at[k]); if(par) par.appendChild(e); return e; };
 const SKIN_LABELS={none:'none',halo:'halo',crown:'crown',sprout:'sprout',bow:'bow'};
-let SKIN_PARTS={};
+let SKIN_PARTS={}, SIT_P=null, sitSettled=false;
+// situational looks (#133): a tie in meetings, headphones for music. Their own groups, so a skin change never erases one
+// and the skin picker never shows one. Flat paths only; frame() fades and scales them with springs.
+function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) return null; bk.innerHTML=''; fr.innerHTML='';
+  const acc=L.skinColor||L.pupL, R=at=>({...at,'stroke-linejoin':'round','stroke-linecap':'round'});
+  const tie=sv('g',{opacity:0},fr), hb=sv('g',{opacity:0},fr), hf=sv('g',{opacity:0},fr);
+  // tie: a red one under the bottom corner, big enough to read at his size
+  const red='#d8453a', dk=shade(red,-.35);
+  sv('path',R({d:'M-11 58L11 58L7 70L-7 70Z',fill:shade(red,-.12),stroke:dk,'stroke-width':2.5}),tie);
+  sv('path',R({d:'M-7 70L7 70L14 104L0 118L-14 104Z',fill:red,stroke:dk,'stroke-width':2.5}),tie);
+  sv('path',{d:'M-3 76L5 76L8 96',fill:'none',stroke:'#ffffff40','stroke-width':2,'stroke-linecap':'round'},tie);
+  // headphones: a dark band over the top of his head, in front, so it reads; big cups just outside his sides
+  const ink='#26282e', rim=shade(ink,.35);
+  sv('path',R({d:'M-74 -14C-80 -104 80 -104 74 -14',fill:'none',stroke:ink,'stroke-width':11}),hb);
+  sv('path',R({d:'M-70 -24C-74 -96 74 -96 70 -24',fill:'none',stroke:acc,'stroke-width':3}),hb);
+  for(const s of [-1,1]){
+    sv('rect',{x:s*80-13,y:-34,width:26,height:50,rx:12,fill:ink,stroke:rim,'stroke-width':2.5},hf);
+    sv('rect',{x:s>0?67-1:-80+1,y:-28,width:13,height:38,rx:6,fill:acc},hf);   // the cushion, against his head
+    sv('ellipse',{cx:s*84,cy:-20,rx:3,ry:6,fill:'#ffffff30'},hf); }
+  return {tie,hb,hf}; }
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
 function drawSkin(back,front,L,bodyFill='url(#ballG)'){
   back.innerHTML=''; front.innerHTML='';
@@ -976,7 +1006,7 @@ const S={L:{},R:{}}; for(const k of EYE_KEYS){ S.L[k]=new Spring(val(MOODS.idle[
 const SP={L:{},R:{}}; for(const k of PUP_KEYS){ SP.L[k]=new Spring(val(PUP.slit[k],0),2.3,.78); SP.R[k]=new Spring(val(PUP.slit[k],1),2.3,.78); }
 const G={ sz:new Spring(1,2,.75), tilt:new Spring(0,.8,.85), dx:new Spring(0,2.4,.55),
   wob:new Spring(0,1.7,.22),
-  gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), zoom:new Spring(1,1.6,.7),
+  gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), sit:new Spring(0,2.4,.55), sitMusic:new Spring(0,2.4,.55), sitW:new Spring(0,1.7,.22), zoom:new Spring(1,1.6,.7),
   appear:new Spring(.2,1.5,.55), open:new Spring(0,1.8,.55), think:new Spring(0,1.6,.6), anger:new Spring(0,1.8,.55), qm:new Spring(0,1.8,.55),
   rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
 let idlePu=null, idleSwapAt=performance.now()+15000;
@@ -1260,13 +1290,18 @@ function frame(ts){
   if(SP2.wob){ const pv=SP2.pivots.wob, w=G.wob.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)+(LOOK.skin==='sprout'?Math.sin(t*1.3)*3:0);
     SP2.wob.setAttribute('transform',`rotate(${w.toFixed(2)} ${pv[0]} ${pv[1]})`); }
   if(SP2.halo) SP2.halo.setAttribute('transform',`translate(0,${(Math.sin(t*1.6)*2.2).toFixed(2)})`);
+  if(SIT_P){ sitStep(ts);       // looks: spring in/out about their anchors; the tie sways like the other hanging skins
+    const a=G.sit.to(sitOn.meeting?1:0,dt), b=G.sitMusic.to(sitOn.music?1:0,dt), w=G.sitW.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)*.6;
+    const put=(el,x,ax,ay,rot)=>{ el.setAttribute('opacity',clamp(x,0,1).toFixed(2)); el.setAttribute('transform',`translate(${ax} ${ay})${rot?` rotate(${rot.toFixed(2)})`:''} scale(${(.7+.3*x).toFixed(3)}) translate(${-ax} ${-ay})`); };
+    const off=a<.002&&b<.002&&!sitOn.meeting&&!sitOn.music;
+    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,b,0,-4); put(SIT_P.hf,b,0,-4); sitSettled=off; } }   // (nothing to write while both are off)
   // tears
   if(m==='sad' && ts>tearAt){ tearAt=ts+1900+Math.random()*900; tear(Math.random()<.6?-1:1); }
   if(m==='scared') shakeAmp=Math.max(shakeAmp,.5);
   E.zz.setAttribute('opacity',m==='sleepy'?(.5+Math.sin(t*1.2)*.5).toFixed(2):'0');
   E.zz.setAttribute('transform',`translate(0,${(-((t*6)%14)).toFixed(1)})`);
   for(let i=parts.length-1;i>=0;i--) if(!parts[i](ts,dt)) parts.splice(i,1);
-  capTick(ts);
+  capTick(ts); if(notifyQ.length) notifyDrain(ts);
   if(NATIVE&&!window.nixiQt){ const a=(frameN++&1)?'rgba(0,0,0,.004)':'rgba(0,0,0,.006)';   // forces WebKit to repaint the whole window every frame —
     paintEl.style.background=a; document.documentElement.style.background=a; }  // both the page and the root, so the widened edge is covered too
   requestAnimationFrame(frame);
@@ -1286,8 +1321,9 @@ function enqueue(text,o={}){
   if(info.voice_native){ const id=++spkSeq; spkMap.set(id,{cap:o.cap?(o.cap===true?text:o.cap):'',fresh:!!o.fresh});
     playing=true; spkGuard=performance.now();
     const ep=sayEpoch;      // sentences still queued when you cut him off must never be sent (or played) afterwards
-    sayChain=sayChain.then(()=>ep===sayEpoch?post('/api/say',{text,id,epoch:ep}):null).catch(()=>{ const it=spkMap.get(id); spkMap.delete(id); if(it&&it.cap) karaNow(it.cap,it.fresh); quietNative(); });   // one after another: keeps them in order
+    sayChain=sayChain.then(()=>ep===sayEpoch?post('/api/say',{text,id,epoch:ep,follow:o.follow}):null).catch(()=>{ const it=spkMap.get(id); spkMap.delete(id); if(it&&it.cap) karaNow(it.cap,it.fresh); quietNative(); });   // one after another: keeps them in order
     return; }
+  lastFollow=o.follow!==false;   // what the page tells the server when he stops (#133)
   const g=gen; q.push({cap:o.cap?(o.cap===true?text:o.cap):'',fresh:!!o.fresh,
     p:post('/api/tts',{text}).then(async r=>{ if(r.status!==200) return null;
       const rate=+(r.headers.get('X-Nixi-Rate')||1), pause=+(r.headers.get('X-Nixi-Pause')||.08);
@@ -1385,7 +1421,8 @@ function karaPut(k,quiet){ if(!k.reset&&!quiet&&playing){ if(k.face) talkFace(k.
 function karaTick(n){ while(kara.length&&kara[0].at<=n){ const k=kara.shift(); if(!capOn) capShow(); karaPut(k); } }
 function karaFlush(){ while(kara.length) karaPut(kara.shift(),true); }
 function karaDrop(){ kara.length=0; }
-function speaking(on){ if(info.voice_native) return; if(info.wake_word||info.barge_in) post('/api/speaking',{on}).catch(()=>{}); }
+let lastFollow=true;
+function speaking(on){ if(info.voice_native) return; if(info.wake_word||info.barge_in) post('/api/speaking',{on,follow:lastFollow}).catch(()=>{}); }
 /* tiny synth blips — soft and short. sfx('wake'|'menu'|'close'|'ok'|'done'|'error'|'remind'|'purr'|'pop') */
 function sfx(name){
   if(!info.sfx) return; let a; try{ a=ac(); }catch(e){ return; }
@@ -1404,6 +1441,7 @@ function sfx(name){
     error:()=>{ tone(330,0,.16,'triangle'); tone(247,.13,.24,'triangle'); },
     remind:()=>{ for(let i=0;i<3;i++){ tone(1568,i*.32,.28); tone(2093,i*.32+.04,.25,'sine',null,.4); } },
     purr:()=>{ tone(70,0,.7,'sawtooth',62,.25); },
+    chat:()=>{ tone(587,0,.09); tone(880,.09,.09); },
     pop:()=>tone(520,0,.08,'sine',260)})[name]?.();
 }
 // Sentences are scheduled back-to-back on the audio clock as soon as each one is ready — not started when the last one
@@ -1458,7 +1496,7 @@ function onContext(c){ info.context=c; ctxRender();
   if(!c.used){ ctxWarned=0; return; }
   const step=c.pct>=.9?3:c.pct>=.8?2:c.pct>=.6?1:0;      // warn once per step: 60 / 80 / 90 %
   if(step>ctxWarned){ ctxWarned=step; const n=Math.round(c.pct*100);
-    if(info.auto_compact===false){ tick(`my memory is ${n}% full — say “tidy up” or “new chat”`,true); if(step>=2&&!busy) say(`My memory of this chat is ${n} percent full. Say tidy up, or new chat, so it doesn't use up your plan.`); }
+    if(info.auto_compact===false){ tick(`my memory is ${n}% full — say “tidy up” or “new chat”`,true); if(step>=2&&!busy) sayAside(`My memory of this chat is ${n} percent full. Say tidy up, or new chat, so it doesn't use up your plan.`); }
     else tick(`memory ${n}% full — I'll tidy up after this answer`); } }
 async function tidyNow(){ tick('tidying up…'); const r=await post('/api/compact'); const j=await r.json().catch(()=>({}));
   if(j.error) return tick(j.error,true); if(!j.ok) tick("couldn't write the note — try again",true); await refresh(); }
@@ -1522,7 +1560,9 @@ function onEvent(ev){
     const msg=ev.name+' needs you'+(ev.text?': '+ev.text:'');
     if(hiddenNow){ post('/api/notify',{title:'Nixi',body:msg}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
     if(info.hover) comeBack(); wake(); sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(msg); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
-    if(!muted) say(ev.name+' needs you'); }
+    if(!muted) sayAside(ev.name+' needs you'); }
+  else if(ev.t==='notify') notifyIn(ev);
+  else if(ev.t==='situation'){ SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; }
   else if(ev.t==='ambient'){ const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue();
     if(ev.glint){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
     if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')) flash('#4d6fb7'); }   // (never spoken)
@@ -1585,6 +1625,48 @@ function capTick(ts){ if(!capOn){ if(kara.length) karaTick(ts); if(moreEl.classL
   if(busy||playing||kara.length||rec||transcribing||ask.classList.contains('on')){ quietSince=ts; return; }
   if(ts-quietSince>(himEl.classList.contains('err')?9000:6500)){ cap.classList.add('off'); capOn=false; } }
 function setYou(t){ youEl.textContent=t; youEl.classList.remove('pop'); youEl.offsetWidth; youEl.classList.add('pop'); }
+// ---- the shell hands a notification to the companion (#133): he reacts, shows one line, and a click opens it
+let SIT={meeting:false,music:false};   // situation signals, as the server sends them
+// a look goes on after 3 s of signal and off after 8 s without it: timestamps, no timers
+const sitOn={meeting:false,music:false}, sitSeen={meeting:false,music:false}, sitAt={meeting:0,music:0};
+function sitStep(ts){ for(const k in sitOn){ const raw=!!SIT[k]&&!!info['look_'+k]; if(raw!==sitSeen[k]){ sitSeen[k]=raw; sitAt[k]=ts; }
+  if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(k==='meeting') G.jelly.kick(.35); }
+  else if(!raw&&sitOn[k]&&ts-sitAt[k]>=8000) sitOn[k]=false; } }
+const NOTE={mail:['✉','New mail','#4d6fb7','reading',2200,'pop'], chat:['💬','New message','#7fd6ae','curious',1800,'chat'],
+  meeting:['📅','Meeting','#ffb02a','surprised',700,'remind'], video:['▶','Video','#e0569a','t_excited',1400,'ok'],
+  download:['⬇','Download','#3ddc84','t_beam',1600,'done'], other:['🔔','Notification','#7fd6ae','curious',1000,'pop']};
+const notifyQ=[]; let notifyRow=null, notifyAt=0, notifyBurst={cat:'',n:0,t:0};
+const APP_NAMES={'teams-for-linux':'Teams','thunderbird':'Thunderbird','geary':'Geary','slack':'Slack','discord':'Discord','signal':'Signal','element':'Element','telegramdesktop':'Telegram','firefox':'Firefox','chromium':'Chromium','google-chrome':'Chrome','brave-browser':'Brave'};   // what people call the app
+function notifyText(ev,n){ const c=NOTE[ev.category]||NOTE.other, raw=(ev.source||ev.app||'').trim(), who=APP_NAMES[raw.toLowerCase()]||raw;
+  const head=n>2?n+' new'+(who?' in '+who:''):c[1]+(who?(ev.category==='chat'?' in ':' · ')+who:'');
+  return c[0]+' '+head+(ev.summary&&n<3?' · '+ev.summary:''); }
+function notifyShow(row,txt){ karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; setYou('');
+  const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); row.span=sp; shownTxt=''; capShow(); cap.classList.add('note'); sendRegion(true); dropSync(); }
+function notifySeen(key){ post('/api/notify/seen',{key}).catch(()=>{}); }
+function notifyIdle(){ return !(busy||playing||rec||transcribing||pendingAppr||follow||hiddenNow||info.hover); }
+function notifyIn(ev){
+  if(!/^[A-Za-z0-9:_-]{1,64}$/.test(ev.key||'')) return;
+  const now=performance.now(); ev.rt=now;                  // (only a row that is SHOWN counts as seen: the server gives the rest back to the shell)
+  if(notifyRow&&notifyRow.key===ev.key&&notifyRow.span.isConnected){ notifyRow.span.textContent=notifyText(ev,1); notifySeen(ev.key); return; }   // an update: no new arrival
+  notifyBurst=notifyBurst.cat===ev.category&&now-notifyBurst.t<3000?{cat:ev.category,n:notifyBurst.n+1,t:notifyBurst.t}:{cat:ev.category,n:1,t:now};
+  if(notifyBurst.n>2&&notifyRow&&notifyRow.span.isConnected){ notifyRow.key=ev.key; notifyRow.span.textContent=notifyText(ev,notifyBurst.n); notifySeen(ev.key); return; }   // 3+ at once: one row with a count
+  if(notifyQ.length<8) notifyQ.push(ev);
+  notifyDrain(now); }
+function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
+  const now=performance.now(); while(notifyQ.length&&now-notifyQ[0].rt>4000) notifyQ.shift();   // too old: the server is giving it back at 5 s
+  const ev=notifyQ.shift(); if(!ev) return; notifySeen(ev.key);
+  const c=NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null}; notifyRow=row; notifyAt=ts+5000;
+  wake(); G.jelly.kick(-.45); popPupils(); poke(c[3],c[4]); burstLines(c[2],ev.category==='meeting'?8:ev.category==='download'?10:ev.category==='other'?1:3);
+  if(ev.category==='chat') G.tilt.kick(-8);
+  if(ev.category==='meeting') setTimeout(()=>{ if(notifyRow===row) poke('t_serious',2000); },750);
+  if(ev.category==='video') setTimeout(()=>{ if(!FID&&mood(performance.now())==='idle') { FID={name:'hum',t0:performance.now(),dur:2000}; FIDGETS.hum.start&&FIDGETS.hum.start(FID); } },1500);
+  notifyShow(row,notifyText(ev,1));
+  if(!SIT.meeting){ if(info.notify_sound!==false&&!muted) sfx(c[5]); if(!muted&&(info.notify_speak||[]).includes(ev.category)) enqueue(c[1],{follow:false}); }   // (not say(): that would wipe the row)
+  setTimeout(()=>{ if(notifyRow===row) notifyClear(); },5000); }
+function notifyClear(){ const sp=notifyRow&&notifyRow.span; notifyRow=null; cap.classList.remove('note');
+  if(sp&&sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } sendRegion(true); }
+function notifyAct(how){ const r=notifyRow; if(!r||!r.span.isConnected) return; post('/api/notify/act',{key:r.key,how}).catch(()=>{}); notifyClear(); }
+cap.addEventListener('click',()=>notifyAct('open'));
 function himSet(t,bad){ karaDrop(); himEl.classList.toggle('err',!!bad); himEl.textContent=''; shownTxt=''; if(t) showHim(t,true); }
 function showHim(s,end){
   const p=untag(plain(s)).trim(); let ln=himEl.querySelector('.ln'), fresh=false;
@@ -1609,7 +1691,8 @@ function workChip(){ if(chipT) return;
   const s=Math.floor((performance.now()-workT0)/1000), txt=`${workWhat||'thinking'} · ${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
   if(chip.dataset.w!==txt){ chip.dataset.w=txt; chip.innerHTML='<i class="spin"></i>'; chip.appendChild(document.createTextNode(txt)); }
   if(chip.className!=='on work') chip.className='on work'; }
-function say(t){ capShow(); setYou(''); if(voiced()){ himSet(''); enqueue(t,{cap:true,fresh:true}); } else { himSet(t); enqueue(t); } capQuiet(); }
+function say(t,follow){ capShow(); setYou(''); if(voiced()){ himSet(''); enqueue(t,{cap:true,fresh:true,follow}); } else { himSet(t); enqueue(t,{follow}); } capQuiet(); }
+function sayAside(t){ if(SIT.meeting){ capShow(); himSet(t); capQuiet(); return; } say(t,false); }   // (in a meeting: words on screen only)   // said unasked: no follow-up window (#133)
 function fail(t){ capShow(); himSet(t,true); errorUntil=performance.now()+2200; capQuiet(); }
 const base=p=>String(p||'').split('/').filter(Boolean).pop()||p;
 function toolLabel(name,detail){
@@ -2205,7 +2288,7 @@ function renderSettings(){
   $('#modelChips').innerHTML=MODELS.map(([id,l])=>`<button data-m="${id}" class="${cur===id?'on':''}">${l}</button>`).join('');
   $('#voiceChips').innerHTML=(info.voices||[]).map(v=>`<button data-v="${v.id}" class="${info.voice===v.id?'on':''}">${v.label}${v.downloading?'<i>⇣</i>':''}</button>`).join('');
   const sw={rootSw:info.root,speakSw:!muted,wakeSw:info.wake_word,autoSw:info.autostart,listenShowSw:info.listen_on_show,hoverSw:info.hover,
-    followSw:!!info.follow_focus,asideSw:info.step_aside!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
+    followSw:!!info.follow_focus,asideSw:info.step_aside!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,proactiveSw:!!info.proactive,takeoverSw:!!info.notifications_takeover,detailsSw:!!info.notify_details,nsoundSw:info.notify_sound!==false,lookMeetSw:!!info.look_meeting,lookMusicSw:!!info.look_music,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
     updSw:info.update_check!==false,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
   renderUpdate(); renderPtt();
@@ -2213,6 +2296,7 @@ function renderSettings(){
   const ps=restPu();
   $('#pupChips').innerHTML=[['slit','▮ slits'],['circle','● circles'],['dot','• dots']].map(([id,l])=>`<button data-ps="${id}" class="${ps===id?'on':''}">${l}</button>`).join('');
   { const ve=$('#voiceEng'); if(ve) ve.textContent=({kokoro:'(Kokoro voices)',piper:'(piper voices — run ./install.sh for the nicer Kokoro voices)',espeak:'(robot voice only — run ./install.sh)'})[info.voice_engine]||''; }
+  $('#nsChips').innerHTML=['mail','chat','meeting','video','download','other'].map(c=>`<button data-ns="${c}" class="${(info.notify_speak||[]).includes(c)?'on':''}">${c}</button>`).join('');
   $('#sttChips').innerHTML=STT.map(([id,l])=>`<button data-stt="${id}" class="${(info.whisper_model||'auto')===id?'on':''}">${l}</button>`).join('');
   const tr=info.trust==='root'?'trust':(info.trust||'ask');
   $('#trustOpts').innerHTML=TRUST.map(([id,ic,t,d])=>`<button class="opt${tr===id&&!info.root?' on':''}" data-trust="${id}"><span class="ic">${ic}</span><span><b>${t}</b><small>${d}</small></span></button>`).join('');
@@ -2289,6 +2373,7 @@ setEl.addEventListener('click',e=>{
   if(e.target.closest('[data-close]')) return settings(false);
   const g=k=>e.target.closest(`[data-${k}]`);
   const be=g('eff'); if(be) return setSetting({effort:be.dataset.eff}).then(()=>tick('effort → '+be.dataset.eff));
+  const bn=g('ns'); if(bn){ const l=info.notify_speak||[], c=bn.dataset.ns; return setSetting({notify_speak:l.includes(c)?l.filter(x=>x!==c):[...l,c]}); }
   const bm=g('m'), bv=g('v'), bp=g('ps'), bs=g('stt'), bt=g('trust'), bo=g('open'), bk=g('skin'), bsw=g('sw'), bpd=g('pdel');
   const part=e.target.closest('#lookPrev [data-part], #partChips [data-part]');
   if(part&&part.dataset.part) return selectPart(part.dataset.part);
@@ -2334,6 +2419,7 @@ setEl.addEventListener('change',e=>{
   if(id==='ambSysSw') setSetting({ambient_system:on});
   if(id==='ambCalSw') setSetting({ambient_calendar:on});
   if(id==='ambWxSw') setSetting({ambient_weather:on});
+  { const k={proactiveSw:'proactive',takeoverSw:'notifications_takeover',detailsSw:'notify_details',nsoundSw:'notify_sound',lookMeetSw:'look_meeting',lookMusicSw:'look_music'}[id]; if(k) setSetting({[k]:on}); }
   if(id==='clickSw') setSetting({click_through:on}).then(()=>sendRegion(true));
   if(id==='notifySw') setSetting({notify_done:on});
   if(id==='popupSw') setSetting({popup_done:on});
@@ -2445,6 +2531,7 @@ function sendRegion(force){
   if(menuOn) $$('.mb').forEach(b=>add(b,2));
   if(ask.classList.contains('on')) add(ask,4);
   if(chip.classList.contains('act')&&chip.classList.contains('on')) add(chip,4);
+  if(cap.classList.contains('note')) add(cap,4);
   if(setEl.classList.contains('on')) add(setEl,4);
   if(panelEl.classList.contains('on')) add(panelEl,4);
   if(apEl.classList.contains('on')) add(apEl,4); if(pwEl.classList.contains('on')) add(pwEl,4);
@@ -2511,6 +2598,7 @@ addEventListener('keydown',e=>{ wake();
     if(rec) return stopRec(true);
     if(busy){ post('/api/stop'); return; }
     if(playing) return shush();
+    if(notifyRow&&notifyRow.span.isConnected) return notifyAct('dismiss');
     return dismiss(); }
   if(typing) return;
   if(e.code==='Space' && !e.repeat && !e.ctrlKey && !(askOn&&input.value) && !setEl.classList.contains('on') && !panelEl.classList.contains('on')){ e.preventDefault(); spaceHeld=true;

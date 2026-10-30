@@ -11,6 +11,7 @@ Local server (127.0.0.1 only) that:
 import argparse
 import array
 import collections
+import hashlib
 import io
 import json
 import math
@@ -192,6 +193,9 @@ DEFAULTS = {
     "follow_focus": False,                  # move to the screen you focus (Hyprland)
     "step_aside": True,                     # slide out of the way while nixi's card is open
     "ambient_system": True, "ambient_calendar": False, "ambient_weather": False,
+    # desktop awareness (#133): all off but the per-category sound and the spoken categories
+    "proactive": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"],
+    "notify_sound": True, "look_meeting": False, "look_music": False,
     # projects you can switch to by voice: {"delivery app": "/home/you/code/diq"}
     "projects": {},
     # when a long task finishes while he's hidden: desktop notification / pop back up
@@ -1002,6 +1006,8 @@ class Ambient:
     events = []                                                # [(start datetime, title, id)] from the last gog fetch
     alerted = set()                                            # calendar items already announced
     thread = None
+    meeting = music = False                                    # what the look layer wears, and what quiets him (#133)
+    music_due = 0.0
 
     @staticmethod
     def run(argv, timeout=3):
@@ -1095,15 +1101,166 @@ class Ambient:
             BUS.pub(t="ambient", glint=glint, alert=alert, **cls.data)
 
     @classmethod
+    def sense(cls, now=None):
+        """The fast cues, no forks but a 5 s playerctl: Meeting Mode's flag file, a calendar item a minute away, a player
+        playing. Published only when one changes."""
+        import datetime
+        state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state")
+        now = now or datetime.datetime.now().astimezone()
+        soon = bool(CFG.get("ambient_calendar")) and any(0 < (st - now).total_seconds() <= 60 for st, _, _ in cls.events)
+        meeting = bool(CFG.get("proactive")) and ((state / "meeting-mode" / "active").exists() or soon)   # (only for those who opted in)
+        t = time.monotonic()
+        music = cls.music
+        if not CFG.get("look_music") or Wake.asleep:
+            music = False
+        elif t >= cls.music_due:
+            cls.music_due = t + 5
+            music = any(x.strip() == "Playing" for x in (cls.run(["playerctl", "-a", "status"]) or "").splitlines())
+        if (meeting, music) != (cls.meeting, cls.music):
+            cls.meeting, cls.music = meeting, music
+            BUS.pub(t="situation", meeting=meeting, music=music)
+
+    @classmethod
     def loop(cls):
         time.sleep(3)
         while True:
             if not Wake.asleep:
                 try:
-                    cls.step()
+                    cls.step()                                # (each source keeps its own TTL in `due`)
                 except Exception as e:  # noqa: BLE001  (a cue must never take the server down)
                     print(f"[nixi] ambient: {e}", file=sys.stderr)
-            time.sleep(20)
+            try:
+                cls.sense()
+            except Exception as e:  # noqa: BLE001
+                print(f"[nixi] ambient: {e}", file=sys.stderr)
+            time.sleep(2)
+
+    @classmethod
+    def start(cls):
+        if not cls.thread:
+            cls.thread = threading.Thread(target=cls.loop, daemon=True)
+            cls.thread.start()
+
+
+class Inbox:
+    """Notifications the shell hands to the companion (#133), only while this thread holds a lease on the shell's IPC
+    socket (renewed every second). Row text is never logged, written to disk or sent to the agent."""
+    CATS = ("mail", "chat", "meeting", "video", "download", "other")
+    KEY = re.compile(r"[A-Za-z0-9:_-]{1,64}")
+    # a code word and something shaped like a code (digits, spaced digit groups, a 6-10 char mix with 2+ digits) in one text
+    OTP = re.compile(r"(?=.*\b(?:codes?|otp|verif\w*|log[- ]?in|passcode|pin|one[- ]?time|security|sign[- ]?in|mfa|2fa|auth\w*)\b)"
+                     r"(?=.*(?:\b\d{4,10}\b|\b\d{2,4}(?:[ -]\d{2,4}){1,3}\b|\b(?=[A-Za-z0-9]{6,10}\b)(?:[A-Za-z]*\d){2}[A-Za-z0-9]*\b))", re.I | re.S)
+    CAP = 64 * 1024
+    path = None
+    thread = None
+    wanted = False                                            # a lease is out
+    unseen = {}                                               # key -> when it was sent to the page; 5 s unseen and the shell shows it
+
+    @classmethod
+    def _derived(cls):
+        rt = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+        h = hashlib.md5(f"{os.environ.get('OMARCHY_PATH', '')}/shell\n{os.environ.get('WAYLAND_DISPLAY', '')}".encode()).hexdigest()[:16]
+        return rt, f"{rt}/omarchy-shell-{h}.sock"
+
+    @classmethod
+    def _raw(cls, path, method, args, timeout):
+        """The text after OK, or None (SKIP, an oversized or odd reply). OSError: nobody there."""
+        with socket.socket(socket.AF_UNIX) as c:
+            c.settimeout(timeout)
+            c.connect(path)
+            c.sendall(("notifications\x1f" + method + "".join("\x1f" + a for a in args) + "\x1e").encode())
+            buf = b""
+            while not buf.endswith(b"\x1e"):
+                d = c.recv(65536)
+                if not d or len(buf) > cls.CAP:
+                    break
+                buf += d
+        if not buf.endswith(b"\x1e") or len(buf) > cls.CAP or not buf.startswith(b"OK\x1f"):
+            return None
+        return buf[3:-1].decode("utf-8", "replace")
+
+    @classmethod
+    def sock_path(cls):
+        if cls.path:
+            return cls.path
+        rt, derived = cls._derived()
+        for cand in [derived, *sorted(str(x) for x in Path(rt).glob("omarchy-shell-*.sock") if str(x) != derived)]:
+            try:                                              # (stale sockets refuse: skip them)
+                if cls._raw(cand, "ping", (), 1) is not None:
+                    cls.path = cand
+                    return cand
+            except OSError:
+                pass
+        return None
+
+    @classmethod
+    def call(cls, method, *args, timeout=1):
+        path = cls.sock_path()
+        if not path:
+            return None
+        try:
+            r = cls._raw(path, method, args, timeout)
+        except OSError:
+            cls.path = None                                   # re-resolve next time
+            return None
+        return r.strip() if r is not None else None
+
+    @classmethod
+    def want(cls):
+        return bool(CFG.get("proactive") and CFG.get("notifications_takeover") and not Wake.asleep and BUS.subs)
+
+    @classmethod
+    def release(cls):
+        if cls.wanted:
+            cls.wanted = False
+            cls.call("delegate", "0")
+
+    @classmethod
+    def rows(cls, out):
+        """Checked rows from a delegate reply; text only with notify_details, and never a secret."""
+        try:
+            data = json.loads(out or "[]")
+        except ValueError:
+            return []
+        keep = []
+        for x in data if isinstance(data, list) else []:
+            if not isinstance(x, dict) or not isinstance(x.get("key"), str) or not cls.KEY.fullmatch(x["key"]) or x.get("category") not in cls.CATS:
+                continue
+            summary, body = str(x.get("summary") or "")[:120], str(x.get("body") or "")[:120]
+            if not CFG.get("notify_details") or SECRET_LINE.search(summary + "\n" + body) or cls.OTP.search(summary + "\n" + body):
+                summary = body = ""
+            keep.append({"key": x["key"], "app": str(x.get("app") or "")[:60], "source": str(x.get("source") or "")[:80],
+                         "category": x["category"], "summary": summary, "body": body})
+        return keep
+
+    @classmethod
+    def tick(cls):
+        now = time.monotonic()
+        for key, t in list(cls.unseen.items()):               # (handler threads pop from it)
+            if now - t > 5:                                   # the page never drew it: the shell shows it as a popup
+                cls.unseen.pop(key, None)
+                cls.call("showKey", key)
+        if cls.want():
+            out = cls.call("delegate", "5000")
+            cls.wanted = out is not None
+            for row in cls.rows(out):
+                cls.unseen[row["key"]] = now
+                BUS.pub(t="notify", **row)
+        else:
+            cls.release()
+
+    @classmethod
+    def seen(cls, key):
+        cls.unseen.pop(key, None)
+
+    @classmethod
+    def loop(cls):
+        while True:
+            try:
+                cls.tick()
+            except Exception as e:  # noqa: BLE001  (never take the server down, never print a row)
+                print(f"[nixi] inbox: {type(e).__name__}", file=sys.stderr)
+            time.sleep(1)
 
     @classmethod
     def start(cls):
@@ -1556,9 +1713,13 @@ class Wake:
         return not cls.speaking() and cls.follow_from <= time.monotonic() < cls.follow_until and not ST.lock.locked()
 
     @classmethod
-    def talking_until(cls, end):
-        """He's talking until `end`; the follow-up window opens just before that, so a quick answer isn't lost."""
+    def talking_until(cls, end, follow=True):
+        """He's talking until `end`; the follow-up window opens just before that, so a quick answer isn't lost.
+        `follow` false: said unasked, so nobody is expected to answer."""
         cls.speaking_until = end
+        if not follow:
+            cls.follow_from = cls.follow_until = 0.0
+            return
         cls.follow_from = end - 0.15
         cls.follow_until = end + float(CFG.get("follow_up") or 0)
 
@@ -1582,7 +1743,7 @@ class Wake:
 
     @classmethod
     def should_run(cls):
-        if cls.asleep or Listen.lock.locked():
+        if cls.asleep or Ambient.meeting or Listen.lock.locked():      # (in a meeting the wake word is paused)
             return False
         if cls.speaking():                       # while he talks: only to catch "stop" / "hey Nixi" (barge-in)
             return bool(CFG.get("barge_in"))
@@ -2172,11 +2333,11 @@ class Speaker:
                 t.start()
 
     @classmethod
-    def say(cls, text, sid, epoch=None):
+    def say(cls, text, sid, epoch=None, follow=True):
         with cls.cv:
             if epoch is not None and epoch < cls.epoch:      # sent before you cut him off, arrived after
                 return
-            cls.todo.append((cls.gen, sid, text))
+            cls.todo.append((cls.gen, sid, text, follow))
             if all(isinstance(x[1], int) for x in cls.todo):     # sentences can arrive out of order: play them in order
                 cls.todo.sort(key=lambda x: (x[0], x[1]))
             cls.cv.notify_all()
@@ -2211,7 +2372,7 @@ class Speaker:
             with cls.cv:
                 while not cls.todo or len(cls.ready) >= 3:
                     cls.cv.wait()
-                g, sid, text = cls.todo.pop(0)
+                g, sid, text, follow = cls.todo.pop(0)
                 cls.making = True
             try:
                 if g != cls.gen:
@@ -2231,7 +2392,7 @@ class Speaker:
                 words = [[round(a * sr / prate, 3), round(b * sr / prate, 3)] for a, b in times] if times else None
                 with cls.cv:
                     if g == cls.gen:
-                        cls.ready.append((g, sid, text, pcm, prate, words, level, round(40 * sr / prate, 2)))
+                        cls.ready.append((g, sid, text, pcm, prate, words, level, round(40 * sr / prate, 2), follow))
                         cls.cv.notify_all()
             except Exception as e:  # noqa: BLE001
                 print(f"[nixi] speech: {e}", file=sys.stderr)
@@ -2301,7 +2462,7 @@ class Speaker:
                             cls.written, cls.t0 = 0, time.monotonic()
                         continue
                     cls.cv.wait()
-                g, sid, text, pcm, prate, words, level, lstep = cls.ready.pop(0)
+                g, sid, text, pcm, prate, words, level, lstep, follow = cls.ready.pop(0)
                 cls.cv.notify_all()
             if g != cls.gen:
                 continue
@@ -2317,7 +2478,7 @@ class Speaker:
             start = cls.t0 + cls.written / cls.prate
             dur = len(pcm) / 2 / prate
             if g == cls.gen:                                     # (not if he was cut off meanwhile)
-                Wake.talking_until(start + dur + 0.45)
+                Wake.talking_until(start + dur + 0.45, follow)
             cls.stats["sentences"] = cls.stats.get("sentences", 0) + 1
             cls.stats["audio_s"] = round(cls.stats.get("audio_s", 0) + dur, 2)
             BUS.pub(t="spk", id=sid, at=round((start - now + cls.LAT) * 1000), dur=round(dur, 3), words=words,
@@ -2453,6 +2614,10 @@ def synth(text: str):
 
 def clamp01(x):
     return max(0.0, min(1.0, x))
+
+
+NOTIFY_FLAGS = ("proactive", "notifications_takeover", "notify_details", "notify_sound", "look_meeting", "look_music")
+NOTIFY_CATS = ("mail", "chat", "meeting", "video", "download", "other")
 
 
 def save_config(**kw):
@@ -3415,6 +3580,7 @@ def state_info():
         "follow_focus": bool(CFG.get("follow_focus")), "step_aside": CFG.get("step_aside", True) is not False,
         **{k: bool(CFG.get(k, k == "ambient_system")) for k in Ambient.FLAG.values()},
         "projects": quick.projects(),
+        **{k: bool(CFG.get(k, k == "notify_sound")) for k in NOTIFY_FLAGS}, "notify_speak": CFG.get("notify_speak", ["meeting"]),
         "quick_actions": CFG.get("quick_actions") or [], "memory_count": len(mem_load()),
         "mic_device": CFG.get("mic_device") or "", "whisper_model": CFG.get("whisper_model") or "auto",
         "can_shoot": any(shutil.which(t) for t in ("grim", "spectacle", "gnome-screenshot", "maim", "scrot", "import")),
@@ -3527,10 +3693,10 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/say":                       # speak this (played by the server, see Speaker)
                 b = json.loads(self._body() or b"{}")
                 text = speakable(b.get("text", ""))
-                if not text or not tts_engine():
+                if not text or not tts_engine() or (Ambient.meeting and b.get("follow", True) is False):   # (no unasked speech in a meeting)
                     BUS.pub(t="spk_skip", id=b.get("id"))
                 else:
-                    Speaker.say(text, b.get("id"), b.get("epoch"))
+                    Speaker.say(text, b.get("id"), b.get("epoch"), b.get("follow", True) is not False)
                 return self._json({"ok": True})
             if p == "/api/say/stop":
                 Speaker.stop(json.loads(self._body() or b"{}").get("epoch"))
@@ -3548,6 +3714,15 @@ class Handler(BaseHTTPRequestHandler):
                     if Listen.current:
                         Listen.current.stop(cancel=True)
                 return self._json({"ok": True, "asleep": Wake.asleep})
+            if p == "/api/notify/act":             # a click / Esc on a row the shell handed over
+                b = json.loads(self._body() or b"{}")
+                key = str(b.get("key") or "")
+                if not Inbox.KEY.fullmatch(key) or b.get("how") not in ("open", "dismiss"):
+                    return self._json({"error": "bad request"}, 400)
+                return self._json({"ok": Inbox.call("activateKey" if b["how"] == "open" else "dismissKey", key) == "ok"})
+            if p == "/api/notify/seen":            # the page drew it
+                Inbox.seen(str(json.loads(self._body() or b"{}").get("key") or ""))
+                return self._json({"ok": True})
             if p == "/api/follow":
                 Wake.end_follow("finish" if json.loads(self._body() or b"{}").get("act") == "finish" else "cancel")
                 return self._json({"ok": True})
@@ -3622,9 +3797,12 @@ class Handler(BaseHTTPRequestHandler):
                 except (TypeError, ValueError):
                     pass
                 for key in ("wake_word", "notify_done", "popup_done", "code_panel", "hover", "click_through", "autostart", "listen_on_show",
-                            "barge_in", "sfx", "update_check", "auto_compact", "full_text", "lean", "follow_focus", "step_aside", "ambient_system", "ambient_calendar", "ambient_weather"):
+                            "barge_in", "sfx", "update_check", "auto_compact", "full_text", "lean", "follow_focus", "step_aside", "ambient_system", "ambient_calendar", "ambient_weather", *NOTIFY_FLAGS):
                     if key in b:
                         upd[key] = bool(b[key])
+                ns = b.get("notify_speak")
+                if isinstance(ns, list) and len(ns) <= 6 and all(x in NOTIFY_CATS for x in ns):
+                    upd["notify_speak"] = list(dict.fromkeys(ns))
                 if "ptt_hotkey" in b:
                     k = str(b["ptt_hotkey"] or "").strip()
                     if k == "" or re.fullmatch(r"((Ctrl|Alt|Shift|Win)\+){0,4}[A-Za-z0-9`]+", k):
@@ -3728,7 +3906,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": APPROVALS.answer(str(b.get("id")), ans)})
             if p == "/api/speaking":                 # the page tells us while he talks (so "hey Nixi" can't wake himself)
                 b = json.loads(self._body() or b"{}")
-                Wake.talking_until(time.monotonic() + (60 if b.get("on") else 0.8))
+                Wake.talking_until(time.monotonic() + (60 if b.get("on") else 0.8), b.get("follow", True) is not False)
                 return self._json({"ok": True})
             if p == "/api/capture":
                 if BRIDGED:
@@ -3884,6 +4062,7 @@ class Handler(BaseHTTPRequestHandler):
         import queue
         try:
             emit(t="hello")
+            emit(t="situation", meeting=Ambient.meeting, music=Ambient.music)
             while alive[0]:
                 try:
                     ev = q.get(timeout=15)
@@ -4110,6 +4289,7 @@ def main():
     threading.Thread(target=warm_tts, daemon=True).start()
     Wake.ensure()
     Ambient.start()
+    Inbox.start()
     if not BRIDGED:
         Updates.start()
     srv = ThreadingHTTPServer(("127.0.0.1", int(CFG["port"])), Handler)
