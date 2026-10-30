@@ -1,4 +1,5 @@
 import datetime
+import json
 import os
 import queue
 import tempfile
@@ -32,6 +33,9 @@ class SituationTest(_ServerEnv):
         S.Ambient.hot_since, S.Ambient.lock_since = None, 0.0
         S.Desk.fullscreen = False
         self.addCleanup(setattr, S.Desk, "fullscreen", False)
+        S.Ambient.sky, S.Ambient.birthdays = None, set()
+        for k in ("look_weather", "look_night", "look_party", "look_coding", "ambient_weather"):
+            S.CFG[k] = False
 
     def flag(self, on):
         f = Path(os.environ["XDG_STATE_HOME"]) / "meeting-mode" / "active"
@@ -142,6 +146,76 @@ class SituationTest(_ServerEnv):
         A.sense(mono=1400)
         self.assertEqual((A.locked, A.lock_since, A.unlocked_at, A.last_lock_len), (False, 0.0, 1400, 400))
         self.assertEqual(q.get_nowait()["locked"], False)
+
+    def at(self, y, mo, d, h=12, mi=0):
+        return datetime.datetime(y, mo, d, h, mi).astimezone()
+
+    def test_sky_glyphs(self):
+        A = self.server.Ambient
+        self.assertEqual(A.sky_of("\ue318\n"), "rain")
+        self.assertEqual(A.sky_of("\ue3ad"), "rain")
+        self.assertEqual(A.sky_of("\ue327 "), "snow")
+        self.assertIsNone(A.sky_of("\ue30d"))             # sun
+        self.assertIsNone(A.sky_of(""))
+        self.assertIsNone(A.sky_of(None))                  # offline: exit 1
+
+    def test_the_look_keys_gate_weather_night_party(self):
+        S = self.server
+        A = S.Ambient
+        night = self.at(2026, 10, 30, 23, 30)
+        A.sky = "snow"
+        A.sense(night)
+        self.assertEqual((A.weather, A.night, A.party), (None, False, False))     # all off by default
+        S.CFG.update(look_weather=True, look_night=True, look_party=True, ambient_weather=True)
+        A.sense(self.at(2026, 12, 25, 23, 30))
+        self.assertEqual((A.weather, A.night, A.party), ("snow", True, True))
+        S.CFG["ambient_weather"] = False                   # the weather look needs the weather source
+        A.sense(night)
+        self.assertIsNone(A.weather)
+        S.CFG["proactive"] = False
+        A.sense(night)
+        self.assertEqual((A.weather, A.night, A.party), (None, False, False))
+        A.sky = None
+
+    def test_night_window_edges(self):
+        S = self.server
+        S.CFG.update(look_night=True)
+        A = S.Ambient
+        for (h, mi), want in {(22, 59): False, (23, 0): True, (4, 59): True, (5, 0): False}.items():
+            A.sense(self.at(2026, 10, 30, h, mi))
+            self.assertEqual(A.night, want, (h, mi))
+
+    def test_party_dates(self):
+        S = self.server
+        S.CFG.update(look_party=True)
+        A = S.Ambient
+        for (mo, d), want in {(1, 1): True, (12, 24): True, (12, 25): True, (12, 31): True, (12, 26): False, (6, 15): False}.items():
+            A.sense(self.at(2026, mo, d))
+            self.assertEqual(A.party, want, (mo, d))
+
+    def test_a_birthday_in_the_calendar_keeps_no_title(self):
+        S = self.server
+        A = S.Ambient
+        S.CFG.update(look_party=True)
+        conf = S.NIXI_CONF.parent / "calendars.json"
+        conf.parent.mkdir(parents=True, exist_ok=True)
+        conf.write_text(json.dumps([{"enabled": True, "googleCalendarId": "cal"}]))
+        self.addCleanup(conf.unlink)
+        out = json.dumps({"events": [
+            {"id": "a", "summary": "Anna's birthday", "start": {"date": "2026-10-30"}},            # all-day
+            {"id": "b", "summary": "Standup", "start": {"dateTime": "2026-10-30T09:00:00+00:00"}},
+            {"id": "c", "summary": "Pappas BURSDAG", "start": {"dateTime": "2026-10-31T18:00:00+00:00"}}]})
+        with mock.patch.object(S.Ambient, "run", return_value=out):
+            A.fetch("cal")
+        self.addCleanup(setattr, A, "birthdays", set())
+        self.assertEqual(A.birthdays, {"2026-10-30", "2026-10-31"})
+        self.assertNotIn("Anna", repr(vars(A)))
+        self.assertNotIn("Anna", repr(A.events))
+        self.assertEqual([e[1] for e in A.events], ["Standup", "Pappas BURSDAG"])      # (timed items keep their cue, as before)
+        A.sense(self.at(2026, 10, 30))
+        self.assertTrue(A.party)
+        A.sense(self.at(2026, 10, 29))
+        self.assertFalse(A.party)
 
     def test_a_failed_lock_query_is_not_an_unlock(self):
         A = self.server.Ambient

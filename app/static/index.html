@@ -583,6 +583,11 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="reactLoadSw"><span class="sw"></span><span class="l">Notice a busy machine<small>A sweat drop when the CPU works hard for a while; a word when memory runs low.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="reactBreakSw"><span class="sw"></span><span class="l">Remind me to move<small>After an hour unlocked he suggests a stretch. A lock of five minutes or more counts as a break. Nothing watches your keyboard.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="reactWelcomeSw"><span class="sw"></span><span class="l">Welcome me back<small>After half an hour away: how many notifications came in, and your next meeting if the calendar is on.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="lookCodingSw"><span class="sw"></span><span class="l">Glasses while coding<small>After a minute in a terminal or editor. Only the kind of window is checked, never its title.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="lookNightSw"><span class="sw"></span><span class="l">Nightcap at night<small>Between 23:00 and 05:00.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="lookWeatherSw"><span class="sw"></span><span class="l">Dress for the weather<small>An umbrella in the rain, and he loves snow. Needs the weather look on.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="lookPartySw"><span class="sw"></span><span class="l">Party hat on special days<small>New Year, Christmas, and birthdays in your calendar (needs the calendar on).</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="reactQuipsSw"><span class="sw"></span><span class="l">Little jokes<small>Now and then a short line about the weather, the hour or a long session. Never spoken.</small></span></label></div>
       <div class="row"><div class="t">Say out loud</div><div class="h">Notifications he speaks. In a meeting he stays silent.</div><div class="seg" id="nsChips"></div></div>
       <div class="row"><label class="tg"><input type="checkbox" id="asideSw"><span class="sw"></span><span class="l">Step aside for Nixi's card<small>When nixi's card opens he slides out of its way, and comes back when it closes (Hyprland).</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="followSw"><span class="sw"></span><span class="l">Follow my focused screen<small>When you focus another monitor he moves there too (Hyprland). Also: "move to the other screen", or bind <code>nixi-companion monitor next</code>.</small></span></label></div>
@@ -783,7 +788,23 @@ let SKIN_PARTS={}, SIT_P=null, sitSettled=false;
 // and the skin picker never shows one. Flat paths only; frame() fades and scales them with springs.
 function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) return null; bk.innerHTML=''; fr.innerHTML='';
   const acc=L.skinColor||L.pupL, R=at=>({...at,'stroke-linejoin':'round','stroke-linecap':'round'});
-  const tie=sv('g',{opacity:0},fr), hb=sv('g',{opacity:0},fr), hf=sv('g',{opacity:0},fr), sh=sv('g',{opacity:0},fr);
+  const nc=sv('g',{opacity:0},fr), um=sv('g',{opacity:0},fr), ph=sv('g',{opacity:0},fr);   // top zone, drawn first: the headphone band passes in front
+  const tie=sv('g',{opacity:0},fr), hb=sv('g',{opacity:0},fr), hf=sv('g',{opacity:0},fr), gl=sv('g',{opacity:0},fr), sh=sv('g',{opacity:0},fr);
+  const wh=L.whiteL, pc=L.pupL, pd=shade(pc,-.3);
+  // nightcap: a soft cone drooping to one side, a pom-pom, a pale brim
+  sv('path',R({d:'M-34 -84Q-30 -140 6 -158Q40 -168 64 -124Q30 -140 34 -84Z',fill:pc,stroke:pd,'stroke-width':2.5}),nc);
+  sv('rect',R({x:-38,y:-90,width:76,height:10,rx:5,fill:wh,stroke:pd,'stroke-width':2}),nc);
+  sv('circle',{cx:64,cy:-120,r:9,fill:wh,stroke:pd,'stroke-width':2},nc);
+  // party hat: a striped cone with a pom-pom, in party colours (his own blue would vanish against his arms)
+  const pk='#e0569a', pkd=shade(pk,-.3), yl='#f2c94c';
+  const phi=sv('g',{transform:'translate(0 -84) scale(1.2) translate(0 84)'},ph);   // (frame() owns ph's own transform)
+  sv('path',R({d:'M-26 -84L26 -84L2 -160Z',fill:pk,stroke:pkd,'stroke-width':2.5}),phi);
+  for(const [y0,y1] of [[-104,-114],[-128,-138]]){ const hw=y=>26*(y+160)/76; sv('path',{d:`M${-hw(y0)} ${y0}L${hw(y0)} ${y0}L${hw(y1)} ${y1}L${-hw(y1)} ${y1}Z`,fill:wh},phi); }
+  sv('circle',{cx:2,cy:-162,r:7,fill:yl,stroke:shade(yl,-.3),'stroke-width':2},phi);
+  // umbrella: a scalloped canopy over his head, a hooked handle; a few drops fall past it (moved from frame())
+  sv('path',R({d:'M-54 -112Q-52 -158 0 -162Q52 -158 54 -112Q38 -122 27 -112Q13.5 -122 0 -112Q-13.5 -122 -27 -112Q-38 -122 -54 -112Z',fill:'#f2c94c',stroke:shade('#f2c94c',-.35),'stroke-width':2.5}),um);   // rain-coat yellow
+  sv('path',R({d:'M0 -112L0 -90Q0 -82 -9 -83',fill:'none',stroke:wh,'stroke-width':3.5}),um);
+  const drops=[-70,-42,44,72].map(x=>sv('path',R({d:`M${x} -118L${x-2} -110`,fill:'none',stroke:'#9fd3ff','stroke-width':2.6}),um));
   // tie: a red one under the bottom corner, big enough to read at his size
   const red='#d8453a', dk=shade(red,-.35);
   sv('path',R({d:'M-11 58L11 58L7 70L-7 70Z',fill:shade(red,-.12),stroke:dk,'stroke-width':2.5}),tie);
@@ -803,7 +824,11 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
     sv('path',R({d:'M-16 -11L-6 -1M-10 -13L-4 -7',fill:'none',stroke:'#ffffff70','stroke-width':2.6}),g); }
   sv('path',R({d:'M-58 -31L58 -31',fill:'none',stroke:'#121419','stroke-width':7}),sh);
   sv('path',R({d:'M-56 -32.5L56 -32.5',fill:'none',stroke:acc,'stroke-width':1.6}),sh);
-  return {tie,hb,hf,sh}; }
+  // glasses (coding): thin round frames over the upper middle of his eyes, a bridge
+  for(const s of [-1,1]){ sv('circle',{cx:s*27.5,cy:-14,r:22,fill:'none',stroke:acc,'stroke-width':3},gl);
+    sv('path',R({d:`M${s*27.5-12} -26L${s*27.5-4} -32`,fill:'none',stroke:'#ffffff60','stroke-width':2.4}),gl); }
+  sv('path',R({d:'M-5.5 -14Q0 -20 5.5 -14',fill:'none',stroke:acc,'stroke-width':3}),gl);
+  return {tie,hb,hf,sh,gl,nc,ph,um,drops}; }
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
 function drawSkin(back,front,L,bodyFill='url(#ballG)'){
   back.innerHTML=''; front.innerHTML='';
@@ -1016,7 +1041,7 @@ const S={L:{},R:{}}; for(const k of EYE_KEYS){ S.L[k]=new Spring(val(MOODS.idle[
 const SP={L:{},R:{}}; for(const k of PUP_KEYS){ SP.L[k]=new Spring(val(PUP.slit[k],0),2.3,.78); SP.R[k]=new Spring(val(PUP.slit[k],1),2.3,.78); }
 const G={ sz:new Spring(1,2,.75), tilt:new Spring(0,.8,.85), dx:new Spring(0,2.4,.55),
   wob:new Spring(0,1.7,.22),
-  gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), sit:new Spring(0,2.4,.55), sitShade:new Spring(0,2.4,.55), sitLift:new Spring(0,3,.8), sitMusic:new Spring(0,2.4,.55), sitW:new Spring(0,1.7,.22), zoom:new Spring(1,1.6,.7),
+  gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), sit:new Spring(0,2.4,.55), sitShade:new Spring(0,2.4,.55), sitGl:new Spring(0,2.4,.55), sitP:new Spring(0,2.4,.55), sitR:new Spring(0,2.4,.55), sitN:new Spring(0,2.4,.55), sitLift:new Spring(0,3,.8), sitMusic:new Spring(0,2.4,.55), sitW:new Spring(0,1.7,.22), zoom:new Spring(1,1.6,.7),
   appear:new Spring(.2,1.5,.55), open:new Spring(0,1.8,.55), think:new Spring(0,1.6,.6), anger:new Spring(0,1.8,.55), qm:new Spring(0,1.8,.55),
   rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
 let idlePu=null, idleSwapAt=performance.now()+15000;
@@ -1302,12 +1327,16 @@ function frame(ts){
     SP2.wob.setAttribute('transform',`rotate(${w.toFixed(2)} ${pv[0]} ${pv[1]})`); }
   if(SP2.halo) SP2.halo.setAttribute('transform',`translate(0,${(Math.sin(t*1.6)*2.2).toFixed(2)})`);
   if(SIT_P){ sitStep(ts);       // looks: spring in/out about their anchors; the tie sways like the other hanging skins
-    const a=G.sit.to(sitOn.meeting?1:0,dt), b=G.sitMusic.to(sitOn.music?1:0,dt), w=G.sitW.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)*.6;
+    const w=G.sitW.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)*.6, sp=(S_,on)=>S_.to(on?1:0,dt), skinless=LOOK.skin==='none';
+    const tp=skinless&&sitOn.party, tr=skinless&&!tp&&sitOn.rain, tn=skinless&&!tp&&!tr&&sitOn.night;     // top zone: party hat > umbrella > nightcap, and only with no skin
+    const a=sp(G.sit,sitOn.meeting), b=sp(G.sitMusic,sitOn.music), c=sp(G.sitShade,sitOn.fullscreen), g=sp(G.sitGl,sitOn.coding&&!sitOn.fullscreen),   // eyes: shades > glasses
+      pa=sp(G.sitP,tp), um=sp(G.sitR,tr), ni=sp(G.sitN,tn), L=G.sitLift.to(isTalk(m)||m==='listening'||['reading','editing','running','searching','looking','thinking'].includes(m)?1:0,dt);
     const put=(el,x,ax,ay,rot)=>{ el.setAttribute('opacity',clamp(x,0,1).toFixed(2)); el.setAttribute('transform',`translate(${ax} ${ay})${rot?` rotate(${rot.toFixed(2)})`:''} scale(${(.7+.3*x).toFixed(3)}) translate(${-ax} ${-ay})`); };
-    const c=G.sitShade.to(sitOn.fullscreen?1:0,dt), L=G.sitLift.to(isTalk(m)||m==='listening'||['reading','editing','running','searching','looking','thinking'].includes(m)?1:0,dt);
-    const off=a<.002&&b<.002&&c<.002&&!sitOn.meeting&&!sitOn.music&&!sitOn.fullscreen;
+    const lift=(el,x)=>{ put(el,x,0,-4); el.setAttribute('transform',`translate(0 ${(-32*L).toFixed(1)}) scale(${(1-.08*L).toFixed(3)}) `+el.getAttribute('transform')); };   // (lifted onto the forehead while he talks, so his eyes stay visible)
+    const off=!(sitOn.meeting||sitOn.music||sitOn.fullscreen||sitOn.coding||tp||tr||tn)&&Math.max(a,b,c,g,pa,um,ni)<.002;
     if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,b,0,-4); put(SIT_P.hf,b,0,-4); sitSettled=off;
-      put(SIT_P.sh,c,0,-4); SIT_P.sh.setAttribute('transform',`translate(0 ${(-32*L).toFixed(1)}) scale(${(1-.08*L).toFixed(3)}) `+SIT_P.sh.getAttribute('transform')); } }   // (lifted onto the forehead while he talks, so his eyes stay visible)   // (nothing to write while both are off)
+      lift(SIT_P.sh,c); lift(SIT_P.gl,g); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3); put(SIT_P.um,um,0,-84);
+      if(um>.002) SIT_P.drops.forEach((d,i)=>d.setAttribute('transform',`translate(0 ${((t*55+i*23)%58).toFixed(1)})`)); } }   // (nothing to write while all are off)
   // tears
   if(m==='sad' && ts>tearAt){ tearAt=ts+1900+Math.random()*900; tear(Math.random()<.6?-1:1); }
   if(m==='scared') shakeAmp=Math.max(shakeAmp,.5);
@@ -1576,8 +1605,11 @@ function onEvent(ev){
     if(!muted) sayAside(ev.name+' needs you'); }
   else if(ev.t==='notify') notifyIn(ev);
   else if(ev.t==='nudge') { ev.rt=performance.now(); nudgeQ.set(ev.kind,ev); nudgeDrain(performance.now()); }
-  else if(ev.t==='situation'){ SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; }
+  else if(ev.t==='situation'){ SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party;
+    if(ev.weather==='snow'&&SIT.weather!=='snow'&&info.look_weather) poke('excited',1800);      // he loves snow: once, when it starts
+    SIT.weather=ev.weather||null; }
   else if(ev.t==='ambient'){ const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive) poke('confused',1500);
+    if(ev.glint&&info.proactive){ poke('t_beam',1800); burstLines('#77b6e1',8); }      // a new NixOS generation: proud
     if(ev.glint){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
     if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')) flash('#4d6fb7'); }   // (never spoken)
     else if(more&&document.body.classList.contains('bar')) flash('#e5a50a'); }
@@ -1650,23 +1682,29 @@ function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts-e.rt>600000) nudgeQ.de
   else if(kind==='welcome'){ entrance(); poke('happy',1500); }
   else if(kind==='ram') poke('t_unsure',1800);
   else if(kind==='cpu') poke('running',1200);
+  else if(kind==='snow') poke('excited',1500);
+  else if(kind==='rain') poke('curious',1500);
+  else if(kind==='night') poke('sleepy',1500);
+  else if(kind==='party') poke('happy',1500);
+  else if(kind==='coding') poke('wink',900);
   const txt=String(ev.text||'').slice(0,200);
   if(ev.speak&&!muted&&ts-lastSpokeAt>=600000){ lastSpokeAt=ts; sayAside(txt); }                      // (the words show as he says them)
   else { karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; setYou('');
     const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); shownTxt=''; capShow(); sendRegion(true); dropSync();
     setTimeout(()=>{ if(sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } },6000); } }
-let SIT={meeting:false,music:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false};   // situation signals, as the server sends them
+let SIT={meeting:false,music:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false};   // situation signals, as the server sends them
 // a look goes on after 3 s of signal and off after 8 s without it: timestamps, no timers
-const sitOn={meeting:false,music:false,fullscreen:false}, sitSeen={meeting:false,music:false,fullscreen:false}, sitAt={meeting:0,music:0,fullscreen:0};
-function sitStep(ts){ for(const k in sitOn){ const raw=!!SIT[k]&&!!info['look_'+k]; if(raw!==sitSeen[k]){ sitSeen[k]=raw; sitAt[k]=ts; }
-  if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(k==='meeting') G.jelly.kick(.35); }
+const sitOn={meeting:false,music:false,fullscreen:false,coding:false,night:false,party:false,rain:false}, sitSeen={...sitOn}, sitAt={meeting:0,music:0,fullscreen:0,coding:0,night:0,party:0,rain:0};
+function sitStep(ts){ for(const k in sitOn){ const raw=!!(k==='rain'?SIT.weather==='rain':SIT[k])&&!!info['look_'+(k==='rain'?'weather':k)]; if(raw!==sitSeen[k]){ sitSeen[k]=raw; sitAt[k]=ts; }
+  if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(k==='meeting') G.jelly.kick(.35); if(k==='party'&&LOOK.skin==='none') confetti(18); }
   else if(!raw&&sitOn[k]&&ts-sitAt[k]>=8000) sitOn[k]=false; } }
 const NOTE={mail:['✉','New mail','#4d6fb7','reading',2200,'pop'], chat:['💬','New message','#7fd6ae','curious',1800,'chat'],
   meeting:['📅','Meeting','#ffb02a','surprised',700,'remind'], video:['▶','Video','#e0569a','t_excited',1400,'ok'],
-  download:['⬇','Download','#3ddc84','t_beam',1600,'done'], other:['🔔','Notification','#7fd6ae','curious',1000,'pop']};
+  download:['⬇','Download','#3ddc84','t_beam',1600,'done'], job:['✔','A long command finished','#3ddc84','t_beam',1800,'done'], other:['🔔','Notification','#7fd6ae','curious',1000,'pop']};
 const notifyQ=[]; let notifyRow=null, notifyAt=0, notifyBurst={cat:'',n:0,t:0};
 const APP_NAMES={'teams-for-linux':'Teams','thunderbird':'Thunderbird','geary':'Geary','slack':'Slack','discord':'Discord','signal':'Signal','element':'Element','telegramdesktop':'Telegram','firefox':'Firefox','chromium':'Chromium','google-chrome':'Chrome','brave-browser':'Brave'};   // what people call the app
-function notifyText(ev,n){ const c=NOTE[ev.category]||NOTE.other, raw=(ev.source||ev.app||'').trim(), who=APP_NAMES[raw.toLowerCase()]||raw;
+function notifyText(ev,n){ if(ev.app==='nixi-job') return '✔ '+(ev.summary||NOTE.job[1]);   // a long command finished (the shell hook)
+  const c=NOTE[ev.category]||NOTE.other, raw=(ev.source||ev.app||'').trim(), who=APP_NAMES[raw.toLowerCase()]||raw;
   const head=n>2?n+' new'+(who?' in '+who:''):c[1]+(who?(ev.category==='chat'?' in ':' · ')+who:'');
   return c[0]+' '+head+(ev.summary&&n<3?' · '+ev.summary:''); }
 function notifyShow(row,txt){ karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; setYou('');
@@ -1684,8 +1722,8 @@ function notifyIn(ev){
 function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
   const now=performance.now(); while(notifyQ.length&&now-notifyQ[0].rt>4000) notifyQ.shift();   // too old: the server is giving it back at 5 s
   const ev=notifyQ.shift(); if(!ev) return; notifySeen(ev.key);
-  const c=NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null}; notifyRow=row; notifyAt=ts+5000;
-  wake(); G.jelly.kick(-.45); popPupils(); poke(c[3],c[4]); burstLines(c[2],ev.category==='meeting'?8:ev.category==='download'?10:ev.category==='other'?1:3);
+  const c=ev.app==='nixi-job'?NOTE.job:NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null}; notifyRow=row; notifyAt=ts+5000;
+  wake(); G.jelly.kick(-.45); popPupils(); poke(c[3],c[4]); burstLines(c[2],ev.category==='meeting'?8:ev.category==='download'?10:ev.category==='other'&&ev.app!=='nixi-job'?1:3);
   if(ev.category==='chat') G.tilt.kick(-8);
   if(ev.category==='meeting') setTimeout(()=>{ if(notifyRow===row) poke('t_serious',2000); },750);
   if(ev.category==='video') setTimeout(()=>{ if(!FID&&mood(performance.now())==='idle') { FID={name:'hum',t0:performance.now(),dur:2000}; FIDGETS.hum.start&&FIDGETS.hum.start(FID); } },1500);
@@ -2317,7 +2355,7 @@ function renderSettings(){
   $('#modelChips').innerHTML=MODELS.map(([id,l])=>`<button data-m="${id}" class="${cur===id?'on':''}">${l}</button>`).join('');
   $('#voiceChips').innerHTML=(info.voices||[]).map(v=>`<button data-v="${v.id}" class="${info.voice===v.id?'on':''}">${v.label}${v.downloading?'<i>⇣</i>':''}</button>`).join('');
   const sw={rootSw:info.root,speakSw:!muted,wakeSw:info.wake_word,autoSw:info.autostart,listenShowSw:info.listen_on_show,hoverSw:info.hover,
-    followSw:!!info.follow_focus,asideSw:info.step_aside!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,proactiveSw:!!info.proactive,takeoverSw:!!info.notifications_takeover,detailsSw:!!info.notify_details,nsoundSw:info.notify_sound!==false,lookMeetSw:!!info.look_meeting,lookMusicSw:!!info.look_music,lookFsSw:!!info.look_fullscreen,reactLoadSw:!!info.react_load,reactBreakSw:!!info.react_break,reactWelcomeSw:!!info.react_welcome,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
+    followSw:!!info.follow_focus,asideSw:info.step_aside!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,proactiveSw:!!info.proactive,takeoverSw:!!info.notifications_takeover,detailsSw:!!info.notify_details,nsoundSw:info.notify_sound!==false,lookMeetSw:!!info.look_meeting,lookMusicSw:!!info.look_music,lookFsSw:!!info.look_fullscreen,reactLoadSw:!!info.react_load,reactBreakSw:!!info.react_break,reactWelcomeSw:!!info.react_welcome,lookCodingSw:!!info.look_coding,lookNightSw:!!info.look_night,lookWeatherSw:!!info.look_weather,lookPartySw:!!info.look_party,reactQuipsSw:!!info.react_quips,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
     updSw:info.update_check!==false,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
   renderUpdate(); renderPtt();
@@ -2448,7 +2486,7 @@ setEl.addEventListener('change',e=>{
   if(id==='ambSysSw') setSetting({ambient_system:on});
   if(id==='ambCalSw') setSetting({ambient_calendar:on});
   if(id==='ambWxSw') setSetting({ambient_weather:on});
-  { const k={proactiveSw:'proactive',takeoverSw:'notifications_takeover',detailsSw:'notify_details',nsoundSw:'notify_sound',lookMeetSw:'look_meeting',lookMusicSw:'look_music',lookFsSw:'look_fullscreen',reactLoadSw:'react_load',reactBreakSw:'react_break',reactWelcomeSw:'react_welcome'}[id]; if(k) setSetting({[k]:on}); }
+  { const k={proactiveSw:'proactive',takeoverSw:'notifications_takeover',detailsSw:'notify_details',nsoundSw:'notify_sound',lookMeetSw:'look_meeting',lookMusicSw:'look_music',lookFsSw:'look_fullscreen',reactLoadSw:'react_load',reactBreakSw:'react_break',reactWelcomeSw:'react_welcome',lookCodingSw:'look_coding',lookNightSw:'look_night',lookWeatherSw:'look_weather',lookPartySw:'look_party',reactQuipsSw:'react_quips'}[id]; if(k) setSetting({[k]:on}); }
   if(id==='clickSw') setSetting({click_through:on}).then(()=>sendRegion(true));
   if(id==='notifySw') setSetting({notify_done:on});
   if(id==='popupSw') setSetting({popup_done:on});

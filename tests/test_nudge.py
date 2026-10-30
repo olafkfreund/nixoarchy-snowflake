@@ -22,6 +22,9 @@ class NudgeTest(_ServerEnv):
         for k, v in dict(locked=False, unlocked_at=0.0, last_lock_len=0.0, lock_since=0.0, meeting=False, ram_low=False, cpu_hot=False, events=[]).items():
             setattr(A, k, v)
         D.last_switch, D.last_event = 0.0, 1.0           # (quiet since long ago)
+        qp = mock.patch.object(S, "quip", side_effect=lambda e, **k: "Welcome back!" if e == "welcome" else "q-" + e)   # (the wording is test_quips')
+        qp.start()
+        self.addCleanup(qp.stop)
         self.q = S.BUS.sub()
         self.addCleanup(S.BUS.unsub, self.q)
         self.hist = Path(tempfile.mkdtemp(dir=self.tmp)) / "history.json"
@@ -125,7 +128,7 @@ class NudgeTest(_ServerEnv):
         self.tick(3601)
         sent = self.sent()
         self.assertEqual([e["kind"] for e in sent], ["break"])
-        self.assertIn(sent[0]["text"], N.QUIPS)
+        self.assertEqual(sent[0]["text"], "q-break")
         N.active_since, A.unlocked_at, A.last_lock_len = 0, 4000, 300   # 5 minutes: reset
         self.tick(4000)
         self.assertEqual(N.active_since, 4000)
