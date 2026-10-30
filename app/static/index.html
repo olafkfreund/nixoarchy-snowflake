@@ -27,7 +27,7 @@ body.hover #stage{transform:scale(.17)}
 #stage{transition:transform .65s cubic-bezier(.34,1.3,.5,1)}
 body.bar #stage,body.unfold #stage{transition:transform .36s cubic-bezier(.3,1.25,.5,1)}   /* into / out of the notch: quick */
 body.snap #stage,body.snap #barPill,body.snap #body>.ball,body.snap #body>ellipse,body.snap #orbBack,body.snap #orbFront,
-body.snap #haloW,body.snap #shadow,body.snap #accBack,body.snap #accFront{transition:none!important}  /* grabbed mid-morph */
+body.snap #haloW,body.snap #shadow,body.snap #accBack,body.snap #sitBack,body.snap #accFront,body.snap #sitFront{transition:none!important}  /* grabbed mid-morph */
 body.hover #orbBack,body.hover #orbFront,body.hover #workW,body.hover #haloW,body.hover #vring,body.hover #raysW,body.hover #fx,body.hover #fxBack,
 body.hover #think,body.hover #anger,body.hover #sweat,body.hover #zz,body.hover #qmark,body.hover #tears,body.hover #cap,body.hover #chip,body.hover #atts{display:none}
 body.hover #shadow{display:none}
@@ -71,10 +71,10 @@ body.bar.e-right #stage{transform:translate(136px,68px) scale(.46)}
    of the notch, its neck stretches thin and snaps, and it wobbles round. The real ball parts are hidden meanwhile. */
 body.nixi .nx{display:none!important}
 body.bar #body>.ball,body.bar #body>ellipse,body.bar #orbBack,body.bar #orbFront,body.bar #workW,body.bar #haloW,body.bar #raysW,
-body.bar #vring,body.bar #shadow,body.bar #accBack,body.bar #accFront,body.bar #liveTag,
+body.bar #vring,body.bar #shadow,body.bar #accBack,body.bar #sitBack,body.bar #accFront,body.bar #sitFront,body.bar #liveTag,
 body.goohide #body>.ball,body.goohide #body>ellipse,body.goohide #orbBack,body.goohide #orbFront,body.goohide #haloW,
-body.goohide #shadow,body.goohide #accBack,body.goohide #accFront{opacity:0;transition:none}
-body.unfold #body>.ball,body.unfold #body>ellipse,body.unfold #shadow,body.unfold #accBack,body.unfold #accFront{transition:opacity .12s linear}
+body.goohide #shadow,body.goohide #accBack,body.goohide #sitBack,body.goohide #accFront,body.goohide #sitFront{opacity:0;transition:none}
+body.unfold #body>.ball,body.unfold #body>ellipse,body.unfold #shadow,body.unfold #accBack,body.unfold #sitBack,body.unfold #accFront,body.unfold #sitFront{transition:opacity .12s linear}
 body.unfold #orbBack,body.unfold #orbFront,body.unfold #haloW{transition:opacity .25s linear .08s}
 /* pulled out of the notch by the mouse: the ball pops in where he is (the notch melts on the wall, not here) */
 #body>.ball{transform-box:fill-box;transform-origin:center}
@@ -84,7 +84,7 @@ body.popout #body>.ball{animation:popOut .34s var(--pop)}
 body.gooing #goo{display:block}
 body.bar.bar-done #orbBack,body.bar.bar-done #orbFront,body.bar.bar-done #workW,body.bar.bar-done #haloW,body.bar.bar-done #raysW,
 body.bar.bar-done #vring,body.bar.bar-done #shadow,body.bar.bar-done #body>.ball,body.bar.bar-done #body>ellipse,
-body.bar.bar-done #accBack,body.bar.bar-done #accFront,body.bar.bar-done #liveTag{display:none}
+body.bar.bar-done #accBack,body.bar.bar-done #sitBack,body.bar.bar-done #accFront,body.bar.bar-done #sitFront,body.bar.bar-done #liveTag{display:none}
 /* talking with him: the whole notch wears his halo, bright and unmistakable.
    .hearing = he's listening to you: a thick ring that swells with your voice (--lv, 0–1, from the mic level)
    .speaking = he's answering: a strong steady pulse */
@@ -500,6 +500,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <g id="qmark" opacity="0"><text class="qm" x="70" y="-70">?</text></g>
       <g id="body">
         <g id="accBack"></g>
+        <g id="sitBack"></g>
         <path class="ball" fill="url(#ballG)"/>
         <g class="ball nix"></g>
         <g id="face">
@@ -512,6 +513,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <ellipse cx="34" cy="50" rx="18" ry="6" transform="rotate(-40 34 50)" fill="url(#glossG)" opacity=".45" pointer-events="none"/>
         <path id="rim" class="ball" fill="none" stroke-width="1.6" stroke-linejoin="round" pointer-events="none"/>
         <g id="accFront"></g>
+        <g id="sitFront"></g>
         <g id="frost" display="none" pointer-events="none"></g>
         <g id="cue" display="none" transform="translate(8 -122)" style="cursor:pointer"><circle id="cueD" r="10" stroke="#0008" stroke-width="1"/><text id="cueT" text-anchor="middle" y="4.5" font-size="12" pointer-events="none"></text></g>
         <g id="liveTag" transform="translate(50 58) rotate(-14)" display="none"><rect x="-21" y="-8.5" width="42" height="17" rx="6" fill="#2f8f66" stroke="#7fd6ae" stroke-width="1"/><circle id="liveDot" cx="-12" cy="0" r="2.6" fill="#fff"/><text x="4" y="3.6" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff" font-family="monospace" letter-spacing="1">LIVE</text></g>
@@ -752,6 +754,7 @@ function applyLook(L){
   EC.sclera=LOOK.whiteL;
   const bk=document.getElementById('accBack'), fr=document.getElementById('accFront');
   if(bk&&fr) SKIN_PARTS=drawSkin(bk,fr,LOOK);
+  SIT_P=drawSit(LOOK);
 }
 function randomLook(L){
   const hb=Math.random()*360, hp=Math.random()*360, hw=Math.random()*360, hp2=(hp+120+Math.random()*120)%360;
@@ -771,7 +774,17 @@ const syncEye=syncLook;
 const SVGNS='http://www.w3.org/2000/svg';
 const sv=(tag,at,par)=>{ const e=document.createElementNS(SVGNS,tag); for(const k in at) e.setAttribute(k,at[k]); if(par) par.appendChild(e); return e; };
 const SKIN_LABELS={none:'none',halo:'halo',crown:'crown',sprout:'sprout',bow:'bow'};
-let SKIN_PARTS={};
+let SKIN_PARTS={}, SIT_P=null;
+// situational looks (#133): a tie in meetings, headphones for music. Their own groups, so a skin change never erases one
+// and the skin picker never shows one. Flat paths only; frame() fades and scales them with springs.
+function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) return null; bk.innerHTML=''; fr.innerHTML='';
+  const acc=L.skinColor||L.pupL, R=at=>({...at,'stroke-linejoin':'round','stroke-linecap':'round'});
+  const tie=sv('g',{opacity:0},fr), hb=sv('g',{opacity:0},bk), hf=sv('g',{opacity:0},fr), edge=shade(L.pupL,-.2);
+  sv('polygon',R({points:'-7,54 7,54 5,62 -5,62',fill:L.pupL,stroke:edge,'stroke-width':2}),tie);
+  sv('polygon',R({points:'-5,62 5,62 9,88 0,97 -9,88',fill:L.pupL,stroke:edge,'stroke-width':2}),tie);
+  sv('path',R({d:'M-64 -4A66 66 0 0 1 64 -4',fill:'none',stroke:acc,'stroke-width':7}),hb);
+  for(const x of [-69,55]) sv('rect',{x,y:-22,width:14,height:36,rx:7,fill:acc,stroke:shade(acc,-.2),'stroke-width':2},hf);
+  return {tie,hb,hf}; }
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
 function drawSkin(back,front,L,bodyFill='url(#ballG)'){
   back.innerHTML=''; front.innerHTML='';
@@ -984,7 +997,7 @@ const S={L:{},R:{}}; for(const k of EYE_KEYS){ S.L[k]=new Spring(val(MOODS.idle[
 const SP={L:{},R:{}}; for(const k of PUP_KEYS){ SP.L[k]=new Spring(val(PUP.slit[k],0),2.3,.78); SP.R[k]=new Spring(val(PUP.slit[k],1),2.3,.78); }
 const G={ sz:new Spring(1,2,.75), tilt:new Spring(0,.8,.85), dx:new Spring(0,2.4,.55),
   wob:new Spring(0,1.7,.22),
-  gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), zoom:new Spring(1,1.6,.7),
+  gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), sit:new Spring(0,2.4,.55), sitMusic:new Spring(0,2.4,.55), sitW:new Spring(0,1.7,.22), zoom:new Spring(1,1.6,.7),
   appear:new Spring(.2,1.5,.55), open:new Spring(0,1.8,.55), think:new Spring(0,1.6,.6), anger:new Spring(0,1.8,.55), qm:new Spring(0,1.8,.55),
   rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
 let idlePu=null, idleSwapAt=performance.now()+15000;
@@ -1268,6 +1281,10 @@ function frame(ts){
   if(SP2.wob){ const pv=SP2.pivots.wob, w=G.wob.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)+(LOOK.skin==='sprout'?Math.sin(t*1.3)*3:0);
     SP2.wob.setAttribute('transform',`rotate(${w.toFixed(2)} ${pv[0]} ${pv[1]})`); }
   if(SP2.halo) SP2.halo.setAttribute('transform',`translate(0,${(Math.sin(t*1.6)*2.2).toFixed(2)})`);
+  if(SIT_P){ sitStep(ts);       // looks: spring in/out about their anchors; the tie sways like the other hanging skins
+    const a=G.sit.to(sitOn.meeting?1:0,dt), b=G.sitMusic.to(sitOn.music?1:0,dt), w=G.sitW.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)*.6;
+    const put=(el,x,ax,ay,rot)=>{ el.setAttribute('opacity',clamp(x,0,1).toFixed(2)); el.setAttribute('transform',`translate(${ax} ${ay})${rot?` rotate(${rot.toFixed(2)})`:''} scale(${(.7+.3*x).toFixed(3)}) translate(${-ax} ${-ay})`); };
+    put(SIT_P.tie,a,0,56,w); put(SIT_P.hb,b,0,-4); put(SIT_P.hf,b,0,-4); }
   // tears
   if(m==='sad' && ts>tearAt){ tearAt=ts+1900+Math.random()*900; tear(Math.random()<.6?-1:1); }
   if(m==='scared') shakeAmp=Math.max(shakeAmp,.5);
@@ -1535,6 +1552,7 @@ function onEvent(ev){
     if(info.hover) comeBack(); wake(); sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(msg); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
     if(!muted) sayAside(ev.name+' needs you'); }
   else if(ev.t==='notify') notifyIn(ev);
+  else if(ev.t==='situation'){ SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; }
   else if(ev.t==='ambient'){ const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue();
     if(ev.glint){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
     if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')) flash('#4d6fb7'); }   // (never spoken)
@@ -1598,7 +1616,12 @@ function capTick(ts){ if(!capOn){ if(kara.length) karaTick(ts); if(moreEl.classL
   if(ts-quietSince>(himEl.classList.contains('err')?9000:6500)){ cap.classList.add('off'); capOn=false; } }
 function setYou(t){ youEl.textContent=t; youEl.classList.remove('pop'); youEl.offsetWidth; youEl.classList.add('pop'); }
 // ---- the shell hands a notification to the companion (#133): he reacts, shows one line, and a click opens it
-let SIT={meeting:false,music:false};   // situation signals (the look layer fills them)
+let SIT={meeting:false,music:false};   // situation signals, as the server sends them
+// a look goes on after 3 s of signal and off after 8 s without it: timestamps, no timers
+const sitOn={meeting:false,music:false}, sitSeen={meeting:false,music:false}, sitAt={meeting:0,music:0};
+function sitStep(ts){ for(const k in sitOn){ const raw=!!SIT[k]&&!!info['look_'+k]; if(raw!==sitSeen[k]){ sitSeen[k]=raw; sitAt[k]=ts; }
+  if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(k==='meeting') G.jelly.kick(.35); }
+  else if(!raw&&sitOn[k]&&ts-sitAt[k]>=8000) sitOn[k]=false; } }
 const NOTE={mail:['✉','New mail','#4d6fb7','reading',2200,'pop'], chat:['💬','New message','#7fd6ae','curious',1800,'chat'],
   meeting:['📅','Meeting','#ffb02a','surprised',700,'remind'], video:['▶','Video','#e0569a','t_excited',1400,'ok'],
   download:['⬇','Download','#3ddc84','t_beam',1600,'done'], other:['🔔','Notification','#7fd6ae','curious',1000,'pop']};

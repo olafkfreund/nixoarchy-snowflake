@@ -1006,6 +1006,8 @@ class Ambient:
     events = []                                                # [(start datetime, title, id)] from the last gog fetch
     alerted = set()                                            # calendar items already announced
     thread = None
+    meeting = music = False                                    # what the look layer wears, and what quiets him (#133)
+    music_due = 0.0
 
     @staticmethod
     def run(argv, timeout=3):
@@ -1099,15 +1101,39 @@ class Ambient:
             BUS.pub(t="ambient", glint=glint, alert=alert, **cls.data)
 
     @classmethod
+    def sense(cls, now=None):
+        """The fast cues, no forks but a 5 s playerctl: Meeting Mode's flag file, a calendar item a minute away, a player
+        playing. Published only when one changes."""
+        import datetime
+        state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state")
+        now = now or datetime.datetime.now().astimezone()
+        soon = bool(CFG.get("ambient_calendar")) and any(0 < (st - now).total_seconds() <= 60 for st, _, _ in cls.events)
+        meeting = (state / "meeting-mode" / "active").exists() or soon
+        t = time.monotonic()
+        music = cls.music
+        if not CFG.get("look_music") or Wake.asleep:
+            music = False
+        elif t >= cls.music_due:
+            cls.music_due = t + 5
+            music = any(x.strip() == "Playing" for x in (cls.run(["playerctl", "-a", "status"]) or "").splitlines())
+        if (meeting, music) != (cls.meeting, cls.music):
+            cls.meeting, cls.music = meeting, music
+            BUS.pub(t="situation", meeting=meeting, music=music)
+
+    @classmethod
     def loop(cls):
         time.sleep(3)
         while True:
             if not Wake.asleep:
                 try:
-                    cls.step()
+                    cls.step()                                # (each source keeps its own TTL in `due`)
                 except Exception as e:  # noqa: BLE001  (a cue must never take the server down)
                     print(f"[nixi] ambient: {e}", file=sys.stderr)
-            time.sleep(20)
+            try:
+                cls.sense()
+            except Exception as e:  # noqa: BLE001
+                print(f"[nixi] ambient: {e}", file=sys.stderr)
+            time.sleep(2)
 
     @classmethod
     def start(cls):
@@ -1716,7 +1742,7 @@ class Wake:
 
     @classmethod
     def should_run(cls):
-        if cls.asleep or Listen.lock.locked():
+        if cls.asleep or Ambient.meeting or Listen.lock.locked():      # (in a meeting the wake word is paused)
             return False
         if cls.speaking():                       # while he talks: only to catch "stop" / "hey Nixi" (barge-in)
             return bool(CFG.get("barge_in"))
@@ -3666,7 +3692,7 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/say":                       # speak this (played by the server, see Speaker)
                 b = json.loads(self._body() or b"{}")
                 text = speakable(b.get("text", ""))
-                if not text or not tts_engine():
+                if not text or not tts_engine() or (Ambient.meeting and b.get("follow", True) is False):   # (no unasked speech in a meeting)
                     BUS.pub(t="spk_skip", id=b.get("id"))
                 else:
                     Speaker.say(text, b.get("id"), b.get("epoch"), b.get("follow", True) is not False)
@@ -4036,6 +4062,7 @@ class Handler(BaseHTTPRequestHandler):
         import queue
         try:
             emit(t="hello")
+            emit(t="situation", meeting=Ambient.meeting, music=Ambient.music)
             while alive[0]:
                 try:
                     ev = q.get(timeout=15)
