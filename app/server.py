@@ -1269,6 +1269,112 @@ class Inbox:
             cls.thread.start()
 
 
+class Desk:
+    """What Hyprland says about the desktop (#133b): fullscreen, the last workspace switch, when anything last happened, and
+    whether the session is locked. Window titles and classes are dropped in the parser. Read only for those who opted in."""
+    fullscreen = False
+    last_switch = last_event = 0.0                            # monotonic
+    dir = None                                                # the live instance dir
+    thread = None
+
+    @classmethod
+    def _alive(cls, sock):
+        try:
+            with socket.socket(socket.AF_UNIX) as c:
+                c.settimeout(1)
+                c.connect(str(sock))
+            return True
+        except OSError:
+            return False
+
+    @classmethod
+    def instance(cls):
+        """The env's instance, else the newest one that accepts a connection (the env goes stale after a Hyprland restart)."""
+        base = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}") / "hypr"
+        sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+        try:
+            others = sorted((d for d in base.iterdir() if d.name != sig), key=lambda d: d.stat().st_mtime, reverse=True)
+        except OSError:
+            others = []
+        for d in ([base / sig] if sig else []) + others:
+            if cls._alive(d / ".socket2.sock"):
+                return d
+        return None
+
+    @classmethod
+    def on_event(cls, line):
+        name, _, data = line.partition(">>")
+        now = time.monotonic()
+        cls.last_event = now
+        if name == "fullscreen":
+            cls.fullscreen = data.strip() in ("1", "2")
+        elif name in ("workspace", "workspacev2"):
+            cls.last_switch = now
+
+    @classmethod
+    def read(cls, sock):
+        """Feed events from one connection until it closes."""
+        buf = b""
+        with socket.socket(socket.AF_UNIX) as c:
+            c.connect(str(sock))
+            w = cls.ask("j/activewindow")                    # already fullscreen when we connect: no event will say so
+            cls.fullscreen = bool(isinstance(w, dict) and w.get("fullscreen"))
+            while CFG.get("proactive"):                       # (switched off: stop reading)
+                chunk = c.recv(4096)
+                if not chunk:
+                    return
+                buf = (buf + chunk)[-65536:]
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    cls.on_event(line.decode(errors="replace"))
+
+    @classmethod
+    def ask(cls, what):
+        """One request on Hyprland's request socket (`j/monitors`, `j/activewindow`): parsed JSON, or None."""
+        d = cls.dir or cls.instance()
+        if not d:
+            return None
+        try:
+            with socket.socket(socket.AF_UNIX) as c:
+                c.settimeout(1)
+                c.connect(str(d / ".socket.sock"))
+                c.sendall(what.encode())
+                buf = b""
+                while len(buf) < 1 << 20:
+                    chunk = c.recv(65536)
+                    if not chunk:
+                        break
+                    buf += chunk
+            return json.loads(buf)
+        except (OSError, ValueError):
+            return None
+
+    @classmethod
+    def locked(cls):
+        """True when any monitor is blocked by the lock screen (what omarchy-hyprland-session-locked reads)."""
+        mons = cls.ask("j/monitors")
+        return isinstance(mons, list) and any(isinstance(m, dict) and "LOCK" in (m.get("solitaryBlockedBy") or []) for m in mons)
+
+    @classmethod
+    def loop(cls):
+        while True:
+            try:
+                if CFG.get("proactive"):
+                    cls.dir = cls.instance()
+                    if cls.dir:
+                        cls.read(cls.dir / ".socket2.sock")
+            except OSError:
+                pass                                          # Hyprland restarted: reconnect
+            cls.fullscreen = False                            # (unknown once we are not listening)
+            time.sleep(5)
+
+    @classmethod
+    def start(cls):
+        if not cls.thread:
+            cls.thread = threading.Thread(target=cls.loop, daemon=True)
+            cls.thread.start()
+
+
 def _wire_quick():
     quick.notify, quick.publish, quick.cfg, quick.save_config = notify, BUS.pub, CFG, save_config
 
@@ -4290,6 +4396,7 @@ def main():
     Wake.ensure()
     Ambient.start()
     Inbox.start()
+    Desk.start()
     if not BRIDGED:
         Updates.start()
     srv = ThreadingHTTPServer(("127.0.0.1", int(CFG["port"])), Handler)
