@@ -579,6 +579,10 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="nsoundSw"><span class="sw"></span><span class="l">Notification sounds<small>A short sound for each kind of notification.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="lookMeetSw"><span class="sw"></span><span class="l">Tie in meetings<small>He puts on a tie while Meeting Mode is on or a calendar item is a minute away.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="lookMusicSw"><span class="sw"></span><span class="l">Headphones for music<small>He wears headphones while a player is playing.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="lookFsSw"><span class="sw"></span><span class="l">Shades in fullscreen<small>He puts on shades while a window is fullscreen, and leaves your notifications to the shell until it ends.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="reactLoadSw"><span class="sw"></span><span class="l">Notice a busy machine<small>A sweat drop when the CPU works hard for a while; a word when memory runs low.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="reactBreakSw"><span class="sw"></span><span class="l">Remind me to move<small>After an hour unlocked he suggests a stretch. A lock of five minutes or more counts as a break. Nothing watches your keyboard.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="reactWelcomeSw"><span class="sw"></span><span class="l">Welcome me back<small>After half an hour away: how many notifications came in, and your next meeting if the calendar is on.</small></span></label></div>
       <div class="row"><div class="t">Say out loud</div><div class="h">Notifications he speaks. In a meeting he stays silent.</div><div class="seg" id="nsChips"></div></div>
       <div class="row"><label class="tg"><input type="checkbox" id="asideSw"><span class="sw"></span><span class="l">Step aside for Nixi's card<small>When nixi's card opens he slides out of its way, and comes back when it closes (Hyprland).</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="followSw"><span class="sw"></span><span class="l">Follow my focused screen<small>When you focus another monitor he moves there too (Hyprland). Also: "move to the other screen", or bind <code>nixi-companion monitor next</code>.</small></span></label></div>
@@ -2311,7 +2315,7 @@ function renderSettings(){
   $('#modelChips').innerHTML=MODELS.map(([id,l])=>`<button data-m="${id}" class="${cur===id?'on':''}">${l}</button>`).join('');
   $('#voiceChips').innerHTML=(info.voices||[]).map(v=>`<button data-v="${v.id}" class="${info.voice===v.id?'on':''}">${v.label}${v.downloading?'<i>⇣</i>':''}</button>`).join('');
   const sw={rootSw:info.root,speakSw:!muted,wakeSw:info.wake_word,autoSw:info.autostart,listenShowSw:info.listen_on_show,hoverSw:info.hover,
-    followSw:!!info.follow_focus,asideSw:info.step_aside!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,proactiveSw:!!info.proactive,takeoverSw:!!info.notifications_takeover,detailsSw:!!info.notify_details,nsoundSw:info.notify_sound!==false,lookMeetSw:!!info.look_meeting,lookMusicSw:!!info.look_music,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
+    followSw:!!info.follow_focus,asideSw:info.step_aside!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,proactiveSw:!!info.proactive,takeoverSw:!!info.notifications_takeover,detailsSw:!!info.notify_details,nsoundSw:info.notify_sound!==false,lookMeetSw:!!info.look_meeting,lookMusicSw:!!info.look_music,lookFsSw:!!info.look_fullscreen,reactLoadSw:!!info.react_load,reactBreakSw:!!info.react_break,reactWelcomeSw:!!info.react_welcome,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
     updSw:info.update_check!==false,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
   renderUpdate(); renderPtt();
@@ -2442,7 +2446,7 @@ setEl.addEventListener('change',e=>{
   if(id==='ambSysSw') setSetting({ambient_system:on});
   if(id==='ambCalSw') setSetting({ambient_calendar:on});
   if(id==='ambWxSw') setSetting({ambient_weather:on});
-  { const k={proactiveSw:'proactive',takeoverSw:'notifications_takeover',detailsSw:'notify_details',nsoundSw:'notify_sound',lookMeetSw:'look_meeting',lookMusicSw:'look_music'}[id]; if(k) setSetting({[k]:on}); }
+  { const k={proactiveSw:'proactive',takeoverSw:'notifications_takeover',detailsSw:'notify_details',nsoundSw:'notify_sound',lookMeetSw:'look_meeting',lookMusicSw:'look_music',lookFsSw:'look_fullscreen',reactLoadSw:'react_load',reactBreakSw:'react_break',reactWelcomeSw:'react_welcome'}[id]; if(k) setSetting({[k]:on}); }
   if(id==='clickSw') setSetting({click_through:on}).then(()=>sendRegion(true));
   if(id==='notifySw') setSetting({notify_done:on});
   if(id==='popupSw') setSetting({popup_done:on});
