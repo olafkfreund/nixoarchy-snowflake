@@ -197,6 +197,7 @@ DEFAULTS = {
     "proactive": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"],
     "notify_sound": True, "look_meeting": False, "look_music": False,
     "look_fullscreen": False, "react_load": False, "react_break": False, "react_welcome": False,
+    "look_coding": False, "look_night": False, "look_weather": False, "look_party": False, "react_quips": False,
     # projects you can switch to by voice: {"delivery app": "/home/you/code/diq"}
     "projects": {},
     # when a long task finishes while he's hidden: desktop notification / pop back up
@@ -1010,6 +1011,12 @@ class Ambient:
     meeting = music = False                                    # what the look layer wears, and what quiets him (#133)
     music_due = 0.0
     cpu_hot = ram_low = fullscreen = locked = False
+    coding = night = party = False
+    weather = None                                             # "rain" | "snow" | None, as worn
+    sky = None                                                 # the same, as fetched (omarchy weather icon)
+    birthdays = set()                                          # ISO dates of calendar items that mention a birthday; never a title
+    RAIN = {0xE318, 0xE333, 0xE308, 0xE3AD, 0xE31D}
+    SNOW = {0xE327, 0xE30A, 0xE31A}
     hot_since = None                                           # load has been over the core count since then
     lock_since = unlocked_at = last_lock_len = 0.0             # monotonic; lock_since is 0 while unlocked
 
@@ -1049,19 +1056,29 @@ class Ambient:
             if out:
                 try:
                     import datetime
-                    ev = []
+                    ev, bd = [], set()
                     for e in json.loads(out).get("events") or []:
-                        st = (e.get("start") or {}).get("dateTime")          # (all-day items have only "date": no cue)
+                        start = e.get("start") or {}
+                        st = start.get("dateTime")                           # (all-day items have only "date": no cue)
                         if st:
                             ev.append((datetime.datetime.fromisoformat(st), str(e.get("summary") or "(busy)")[:60], str(e.get("id"))))
-                    cls.events = ev
+                        day = str(st or start.get("date") or "")[:10]        # a birthday today: only that fact is kept
+                        if day and re.search(r"birthday|bursdag", str(e.get("summary") or ""), re.I):
+                            bd.add(day)
+                    cls.events, cls.birthdays = ev, bd
                 except (ValueError, AttributeError, TypeError):
                     pass
             return False
         out = cls.run(["omarchy", "weather", "status"], timeout=10)
         m = re.search(r"(-?\d+(?:\.\d+)?)\s*°\s*C", out or "")
         cls.data["weather"] = None if not m else "cold" if float(m.group(1)) < 0 else "hot" if float(m.group(1)) > 28 else None
+        cls.sky = cls.sky_of(cls.run(["omarchy", "weather", "icon"], timeout=10))     # (exits 1 offline: none)
         return False
+
+    @classmethod
+    def sky_of(cls, icon):
+        g = (icon or "").strip()[:1]
+        return "rain" if g and ord(g) in cls.RAIN else "snow" if g and ord(g) in cls.SNOW else None
 
     @classmethod
     def generation(cls):
@@ -1120,7 +1137,7 @@ class Ambient:
 
     @classmethod
     def situation(cls):
-        return {k: getattr(cls, k) for k in ("meeting", "music", "cpu_hot", "ram_low", "fullscreen", "locked")}
+        return {k: getattr(cls, k) for k in ("meeting", "music", "cpu_hot", "ram_low", "fullscreen", "locked", "coding", "weather", "night", "party")}
 
     @classmethod
     def sense(cls, now=None, proc="/proc", mono=None):
@@ -1153,6 +1170,11 @@ class Ambient:
             cls.last_lock_len, cls.unlocked_at, cls.lock_since = t - cls.lock_since, t, 0.0
         cls.locked = locked
         cls.fullscreen = on and Desk.fullscreen
+        cls.coding = bool(on and CFG.get("look_coding") and Desk.coding_since and t - Desk.coding_since >= 60)
+        cls.weather = cls.sky if on and CFG.get("look_weather") and CFG.get("ambient_weather") else None
+        cls.night = bool(on and CFG.get("look_night") and (now.hour >= 23 or now.hour < 5))
+        cls.party = bool(on and CFG.get("look_party") and ((now.month, now.day) in ((1, 1), (12, 24), (12, 25), (12, 31))
+                                                           or now.date().isoformat() in cls.birthdays))
         music = cls.music
         if not CFG.get("look_music") or Wake.asleep:
             music = False
@@ -1416,6 +1438,9 @@ class Desk:
     whether the session is locked. Window titles and classes are dropped in the parser. Read only for those who opted in."""
     fullscreen = False
     last_switch = last_event = 0.0                            # monotonic
+    coding_since = 0.0                                        # a coder window has had focus since then (0: none); the class is never kept
+    CODERS = {"kitty", "foot", "alacritty", "ghostty", "com.mitchellh.ghostty", "org.wezfurlong.wezterm", "code", "code-oss",
+              "codium", "vscodium", "dev.zed.zed", "zed", "neovide", "emacs", "jetbrains-idea", "jetbrains-pycharm", "jetbrains-goland"}
     dir = None                                                # the live instance dir
     thread = None
 
@@ -1453,6 +1478,12 @@ class Desk:
         elif name in ("workspace", "workspacev2", "activewindow"):    # (the title in `data` is never looked at)
             if name != "activewindow":
                 cls.last_switch = now
+            else:
+                wc = data.split(",", 1)[0].strip().lower()           # the class only, here and gone: just a boolean survives
+                if wc in cls.CODERS or wc.startswith("jetbrains-"):
+                    cls.coding_since = cls.coding_since or now
+                else:
+                    cls.coding_since = 0.0
             w = cls.ask("j/activewindow")                            # a switch may land on a fullscreen window, or leave one
             if isinstance(w, dict):
                 cls.fullscreen = bool(w.get("fullscreen"))
@@ -1518,7 +1549,7 @@ class Desk:
                         cls.read(cls.dir / ".socket2.sock")
             except OSError:
                 pass                                          # Hyprland restarted: reconnect
-            cls.fullscreen = False                            # (unknown once we are not listening)
+            cls.fullscreen, cls.coding_since = False, 0.0     # (unknown once we are not listening)
             time.sleep(5)
 
     @classmethod
@@ -2876,7 +2907,8 @@ def clamp01(x):
 
 
 NOTIFY_FLAGS = ("proactive", "notifications_takeover", "notify_details", "notify_sound", "look_meeting", "look_music",
-                "look_fullscreen", "react_load", "react_break", "react_welcome")
+                "look_fullscreen", "react_load", "react_break", "react_welcome",
+                "look_coding", "look_night", "look_weather", "look_party", "react_quips")
 NOTIFY_CATS = ("mail", "chat", "meeting", "video", "download", "other")
 
 

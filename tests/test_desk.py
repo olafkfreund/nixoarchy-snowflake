@@ -103,6 +103,34 @@ class DeskTest(_ServerEnv):
     def test_locked_is_unknown_without_hyprland(self):
         self.assertIsNone(self.server.Desk.locked())          # no answer is not "unlocked"
 
+    def test_coding_is_a_boolean_after_60s_and_the_class_is_never_kept(self):
+        S = self.server
+        D, A = S.Desk, S.Ambient
+        saved = dict(S.CFG)
+        self.addCleanup(lambda: (S.CFG.clear(), S.CFG.update(saved)))
+        S.CFG.update(proactive=True, look_coding=True)
+        D.coding_since = 0.0
+        D.on_event("activewindow>>kitty,SECRET TITLE")
+        self.assertGreater(D.coding_since, 0)
+        t0 = D.coding_since
+        with mock.patch.object(S.Desk, "locked", return_value=False):
+            A.sense(mono=t0 + 30)
+            self.assertFalse(A.coding)
+            A.sense(mono=t0 + 61)
+            self.assertTrue(A.coding)
+            S.CFG["look_coding"] = False
+            A.sense(mono=t0 + 61)
+            self.assertFalse(A.coding)
+        for k, v in vars(D).items():
+            self.assertNotIn("SECRET", repr(v), k)
+            self.assertNotIn("kitty", repr(v).lower() if k != "CODERS" else "", k)
+        D.on_event("activewindow>>firefox,Some page")
+        self.assertEqual(D.coding_since, 0.0)
+        D.on_event("activewindow>>jetbrains-clion,x")      # any JetBrains IDE
+        self.assertGreater(D.coding_since, 0)
+        D.on_event("activewindow>>")                       # no window
+        self.assertEqual(D.coding_since, 0.0)
+
     def test_a_workspace_switch_re_reads_fullscreen(self):
         D = self.server.Desk
         self.inst("live", b"", win={"fullscreen": 0})
