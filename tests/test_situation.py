@@ -1,5 +1,7 @@
 import datetime
 import os
+import queue
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -21,8 +23,15 @@ class SituationTest(_ServerEnv):
         ev = mock.patch.object(S.Ambient, "events", [])
         ev.start()
         self.addCleanup(ev.stop)
+        lk = mock.patch.object(S.Desk, "locked", return_value=False)
+        self.lock = lk.start()
+        self.addCleanup(lk.stop)
         S.Ambient.meeting = S.Ambient.music = False
         self.addCleanup(lambda: setattr(S.Ambient, "meeting", False))
+        self.addCleanup(lambda: S.Ambient.__dict__ and [setattr(S.Ambient, k, False) for k in ("cpu_hot", "ram_low", "fullscreen", "locked")])
+        S.Ambient.hot_since, S.Ambient.lock_since = None, 0.0
+        S.Desk.fullscreen = False
+        self.addCleanup(setattr, S.Desk, "fullscreen", False)
 
     def flag(self, on):
         f = Path(os.environ["XDG_STATE_HOME"]) / "meeting-mode" / "active"
@@ -72,6 +81,80 @@ class SituationTest(_ServerEnv):
             self.assertTrue(S.Wake.should_run())
             S.Ambient.meeting = True
             self.assertFalse(S.Wake.should_run())
+
+    def proc(self, load, avail, total=1000):
+        d = Path(tempfile.mkdtemp(dir=self.tmp))
+        (d / "loadavg").write_text(f"{load} 1.0 1.0 1/100 123\n")
+        (d / "meminfo").write_text(f"MemTotal:       {total} kB\nMemFree: 1 kB\nMemAvailable:   {avail} kB\n")
+        return str(d)
+
+    def test_cpu_needs_30s_and_clears_at_70_percent(self):
+        S = self.server
+        S.CFG["react_load"] = True
+        cores = os.cpu_count() or 1
+        A = S.Ambient
+        hot, mid, cool = self.proc(cores + 1, 900), self.proc(cores * .8, 900), self.proc(cores * .5, 900)
+        A.sense(proc=hot, mono=100)
+        A.sense(proc=hot, mono=125)
+        self.assertFalse(A.cpu_hot)
+        A.sense(proc=hot, mono=131)
+        self.assertTrue(A.cpu_hot)
+        A.sense(proc=mid, mono=140)                       # between 0.7 and 1.0 x cores: stays hot
+        self.assertTrue(A.cpu_hot)
+        A.sense(proc=cool, mono=150)
+        self.assertFalse(A.cpu_hot)
+        A.sense(proc=hot, mono=160)                       # a dip restarts the 30 s
+        A.sense(proc=hot, mono=185)
+        self.assertFalse(A.cpu_hot)
+
+    def test_ram_hysteresis(self):
+        S = self.server
+        S.CFG["react_load"] = True
+        A = S.Ambient
+        A.sense(proc=self.proc(1, 90))
+        self.assertTrue(A.ram_low)
+        A.sense(proc=self.proc(1, 200))                   # 20%: still low (re-arms above 25%)
+        self.assertTrue(A.ram_low)
+        A.sense(proc=self.proc(1, 300))
+        self.assertFalse(A.ram_low)
+
+    def test_load_and_ram_need_both_switches(self):
+        A = self.server.Ambient
+        cores = os.cpu_count() or 1
+        for cfg in ({"react_load": False}, {"react_load": True, "proactive": False}):
+            self.server.CFG.update(cfg)
+            A.sense(proc=self.proc(cores + 5, 10), mono=1)
+            A.sense(proc=self.proc(cores + 5, 10), mono=100)
+            self.assertFalse(A.cpu_hot or A.ram_low, cfg)
+
+    def test_lock_edges_and_publishing(self):
+        S = self.server
+        A = S.Ambient
+        q = S.BUS.sub()
+        self.addCleanup(S.BUS.unsub, q)
+        self.lock.return_value = True
+        A.sense(mono=1000)
+        self.assertEqual((A.locked, A.lock_since), (True, 1000))
+        self.assertEqual(q.get_nowait()["locked"], True)
+        A.sense(mono=1100)                                # no change, nothing published
+        self.assertTrue(q.empty())
+        self.lock.return_value = False
+        A.sense(mono=1400)
+        self.assertEqual((A.locked, A.lock_since, A.unlocked_at, A.last_lock_len), (False, 0.0, 1400, 400))
+        self.assertEqual(q.get_nowait()["locked"], False)
+
+    def test_fullscreen_stops_the_lease(self):
+        S = self.server
+        with mock.patch.object(S.BUS, "subs", [queue.Queue()]), mock.patch.object(S.Wake, "asleep", False):
+            S.CFG.update(notifications_takeover=True)
+            self.assertTrue(S.Inbox.want())
+            S.Desk.fullscreen = True
+            self.assertFalse(S.Inbox.want())
+            S.Ambient.sense()
+            self.assertTrue(S.Ambient.fullscreen)
+            S.CFG["proactive"] = False
+            S.Ambient.sense()
+            self.assertFalse(S.Ambient.fullscreen)
 
 
 if __name__ == "__main__":

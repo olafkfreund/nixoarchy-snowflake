@@ -196,6 +196,7 @@ DEFAULTS = {
     # desktop awareness (#133): all off but the per-category sound and the spoken categories
     "proactive": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"],
     "notify_sound": True, "look_meeting": False, "look_music": False,
+    "look_fullscreen": False, "react_load": False, "react_break": False, "react_welcome": False,
     # projects you can switch to by voice: {"delivery app": "/home/you/code/diq"}
     "projects": {},
     # when a long task finishes while he's hidden: desktop notification / pop back up
@@ -1008,6 +1009,9 @@ class Ambient:
     thread = None
     meeting = music = False                                    # what the look layer wears, and what quiets him (#133)
     music_due = 0.0
+    cpu_hot = ram_low = fullscreen = locked = False
+    hot_since = None                                           # load has been over the core count since then
+    lock_since = unlocked_at = last_lock_len = 0.0             # monotonic; lock_since is 0 while unlocked
 
     @staticmethod
     def run(argv, timeout=3):
@@ -1100,25 +1104,63 @@ class Ambient:
         if glint or alert or json.dumps(cls.data, sort_keys=True) != before:
             BUS.pub(t="ambient", glint=glint, alert=alert, **cls.data)
 
+    @staticmethod
+    def readings(proc="/proc"):
+        """(1-minute load, MemAvailable / MemTotal) from files, None for what can't be read."""
+        try:
+            load = float(Path(proc, "loadavg").read_text().split()[0])
+        except (OSError, ValueError, IndexError):
+            load = None
+        try:
+            mem = {k: int(v.split()[0]) for k, v in (ln.split(":", 1) for ln in Path(proc, "meminfo").read_text().splitlines() if ":" in ln)}
+            frac = mem["MemAvailable"] / mem["MemTotal"]
+        except (OSError, ValueError, KeyError, IndexError, ZeroDivisionError):
+            frac = None
+        return load, frac
+
     @classmethod
-    def sense(cls, now=None):
+    def situation(cls):
+        return {k: getattr(cls, k) for k in ("meeting", "music", "cpu_hot", "ram_low", "fullscreen", "locked")}
+
+    @classmethod
+    def sense(cls, now=None, proc="/proc", mono=None):
         """The fast cues, no forks but a 5 s playerctl: Meeting Mode's flag file, a calendar item a minute away, a player
-        playing. Published only when one changes."""
+        playing, load and RAM from /proc, fullscreen and the lock from Hyprland. Published only when one changes."""
         import datetime
+        before = cls.situation()
         state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state")
         now = now or datetime.datetime.now().astimezone()
         soon = bool(CFG.get("ambient_calendar")) and any(0 < (st - now).total_seconds() <= 60 for st, _, _ in cls.events)
         meeting = bool(CFG.get("proactive")) and ((state / "meeting-mode" / "active").exists() or soon)   # (only for those who opted in)
-        t = time.monotonic()
+        t = time.monotonic() if mono is None else mono
+        on = bool(CFG.get("proactive"))
+        load, frac = cls.readings(proc) if on and CFG.get("react_load") else (None, None)
+        cores = os.cpu_count() or 1
+        if load is None:
+            cls.hot_since, cls.cpu_hot = None, False
+        elif load > cores:
+            cls.hot_since = t if cls.hot_since is None else cls.hot_since
+            cls.cpu_hot = cls.cpu_hot or t - cls.hot_since >= 30          # (30 s over the core count)
+        else:
+            cls.hot_since = None
+            cls.cpu_hot = cls.cpu_hot and load >= .7 * cores
+        cls.ram_low = False if frac is None else frac < .10 or (cls.ram_low and frac <= .25)
+        locked = on and Desk.locked()
+        if locked and not cls.lock_since:
+            cls.lock_since = t
+        elif not locked and cls.lock_since:
+            cls.last_lock_len, cls.unlocked_at, cls.lock_since = t - cls.lock_since, t, 0.0
+        cls.locked = locked
+        cls.fullscreen = on and Desk.fullscreen
         music = cls.music
         if not CFG.get("look_music") or Wake.asleep:
             music = False
         elif t >= cls.music_due:
             cls.music_due = t + 5
             music = any(x.strip() == "Playing" for x in (cls.run(["playerctl", "-a", "status"]) or "").splitlines())
-        if (meeting, music) != (cls.meeting, cls.music):
-            cls.meeting, cls.music = meeting, music
-            BUS.pub(t="situation", meeting=meeting, music=music)
+        cls.meeting, cls.music = meeting, music
+        if cls.situation() != before:
+            BUS.pub(t="situation", **cls.situation())
 
     @classmethod
     def loop(cls):
@@ -1207,7 +1249,7 @@ class Inbox:
 
     @classmethod
     def want(cls):
-        return bool(CFG.get("proactive") and CFG.get("notifications_takeover") and not Wake.asleep and BUS.subs)
+        return bool(CFG.get("proactive") and CFG.get("notifications_takeover") and not Wake.asleep and BUS.subs and not Desk.fullscreen)
 
     @classmethod
     def release(cls):
@@ -2722,7 +2764,8 @@ def clamp01(x):
     return max(0.0, min(1.0, x))
 
 
-NOTIFY_FLAGS = ("proactive", "notifications_takeover", "notify_details", "notify_sound", "look_meeting", "look_music")
+NOTIFY_FLAGS = ("proactive", "notifications_takeover", "notify_details", "notify_sound", "look_meeting", "look_music",
+                "look_fullscreen", "react_load", "react_break", "react_welcome")
 NOTIFY_CATS = ("mail", "chat", "meeting", "video", "download", "other")
 
 
@@ -4168,7 +4211,7 @@ class Handler(BaseHTTPRequestHandler):
         import queue
         try:
             emit(t="hello")
-            emit(t="situation", meeting=Ambient.meeting, music=Ambient.music)
+            emit(t="situation", **Ambient.situation())
             while alive[0]:
                 try:
                     ev = q.get(timeout=15)
