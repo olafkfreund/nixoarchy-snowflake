@@ -1557,6 +1557,9 @@ class Desk:
             c.settimeout(5)                                  # (so a switched-off flag is noticed while the desktop is quiet)
             w = cls.ask("j/activewindow")                    # already fullscreen when we connect: no event will say so
             cls.fullscreen = bool(isinstance(w, dict) and w.get("fullscreen"))
+            wc = str(w.get("class") or "").lower() if isinstance(w, dict) else ""     # already in a terminal: start the clock
+            if wc in cls.CODERS or wc.startswith("jetbrains-"):
+                cls.coding_since = cls.coding_since or time.monotonic()
             while CFG.get("proactive"):                       # (switched off: stop reading)
                 try:
                     chunk = c.recv(4096)
