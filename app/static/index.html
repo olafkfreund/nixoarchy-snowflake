@@ -570,6 +570,13 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="ambSysSw"><span class="sw"></span><span class="l">System health<small>A mark on his tip when a user service fails, a glint after each new NixOS generation. Local only.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="ambCalSw"><span class="sw"></span><span class="l">Next calendar item (uses gog)<small>Ten minutes before, a calendar mark and the title. Asks Google Calendar every 15 minutes.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="ambWxSw"><span class="sw"></span><span class="l">Weather look (uses omarchy weather)<small>Frost on his tips below 0 °C, a slight thaw above 28 °C. Fetches the weather every 30 minutes.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="proactiveSw"><span class="sw"></span><span class="l">Desktop companion<small>Let him notice what happens on your desktop. Everything below is off until you switch it on.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="takeoverSw"><span class="sw"></span><span class="l">Show notifications through him<small>He shows your notifications himself instead of the shell popup. Critical alerts and codes keep their popup.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="detailsSw"><span class="sw"></span><span class="l">Show the notification text<small>Otherwise he only shows the kind and the app. The text never goes to the agent or to disk; codes are always hidden.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="nsoundSw"><span class="sw"></span><span class="l">Notification sounds<small>A short sound for each kind of notification.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="lookMeetSw"><span class="sw"></span><span class="l">Tie in meetings<small>He puts on a tie while Meeting Mode is on or a calendar item is a minute away.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="lookMusicSw"><span class="sw"></span><span class="l">Headphones for music<small>He wears headphones while a player is playing.</small></span></label></div>
+      <div class="row"><div class="t">Say out loud</div><div class="h">Notifications he speaks. In a meeting he stays silent.</div><div class="seg" id="nsChips"></div></div>
       <div class="row"><label class="tg"><input type="checkbox" id="asideSw"><span class="sw"></span><span class="l">Step aside for Nixi's card<small>When nixi's card opens he slides out of its way, and comes back when it closes (Hyprland).</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="followSw"><span class="sw"></span><span class="l">Follow my focused screen<small>When you focus another monitor he moves there too (Hyprland). Also: "move to the other screen", or bind <code>nixi-companion monitor next</code>.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="clickSw"><span class="sw"></span><span class="l">Click through around him<small>Clicks on the empty space around him go to the window behind. Turn off if he flickers.</small></span></label></div>
@@ -2208,7 +2215,7 @@ function renderSettings(){
   $('#modelChips').innerHTML=MODELS.map(([id,l])=>`<button data-m="${id}" class="${cur===id?'on':''}">${l}</button>`).join('');
   $('#voiceChips').innerHTML=(info.voices||[]).map(v=>`<button data-v="${v.id}" class="${info.voice===v.id?'on':''}">${v.label}${v.downloading?'<i>⇣</i>':''}</button>`).join('');
   const sw={rootSw:info.root,speakSw:!muted,wakeSw:info.wake_word,autoSw:info.autostart,listenShowSw:info.listen_on_show,hoverSw:info.hover,
-    followSw:!!info.follow_focus,asideSw:info.step_aside!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
+    followSw:!!info.follow_focus,asideSw:info.step_aside!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,proactiveSw:!!info.proactive,takeoverSw:!!info.notifications_takeover,detailsSw:!!info.notify_details,nsoundSw:info.notify_sound!==false,lookMeetSw:!!info.look_meeting,lookMusicSw:!!info.look_music,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
     updSw:info.update_check!==false,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
   renderUpdate(); renderPtt();
@@ -2216,6 +2223,7 @@ function renderSettings(){
   const ps=restPu();
   $('#pupChips').innerHTML=[['slit','▮ slits'],['circle','● circles'],['dot','• dots']].map(([id,l])=>`<button data-ps="${id}" class="${ps===id?'on':''}">${l}</button>`).join('');
   { const ve=$('#voiceEng'); if(ve) ve.textContent=({kokoro:'(Kokoro voices)',piper:'(piper voices — run ./install.sh for the nicer Kokoro voices)',espeak:'(robot voice only — run ./install.sh)'})[info.voice_engine]||''; }
+  $('#nsChips').innerHTML=['mail','chat','meeting','video','download','other'].map(c=>`<button data-ns="${c}" class="${(info.notify_speak||[]).includes(c)?'on':''}">${c}</button>`).join('');
   $('#sttChips').innerHTML=STT.map(([id,l])=>`<button data-stt="${id}" class="${(info.whisper_model||'auto')===id?'on':''}">${l}</button>`).join('');
   const tr=info.trust==='root'?'trust':(info.trust||'ask');
   $('#trustOpts').innerHTML=TRUST.map(([id,ic,t,d])=>`<button class="opt${tr===id&&!info.root?' on':''}" data-trust="${id}"><span class="ic">${ic}</span><span><b>${t}</b><small>${d}</small></span></button>`).join('');
@@ -2292,6 +2300,7 @@ setEl.addEventListener('click',e=>{
   if(e.target.closest('[data-close]')) return settings(false);
   const g=k=>e.target.closest(`[data-${k}]`);
   const be=g('eff'); if(be) return setSetting({effort:be.dataset.eff}).then(()=>tick('effort → '+be.dataset.eff));
+  const bn=g('ns'); if(bn){ const l=info.notify_speak||[], c=bn.dataset.ns; return setSetting({notify_speak:l.includes(c)?l.filter(x=>x!==c):[...l,c]}); }
   const bm=g('m'), bv=g('v'), bp=g('ps'), bs=g('stt'), bt=g('trust'), bo=g('open'), bk=g('skin'), bsw=g('sw'), bpd=g('pdel');
   const part=e.target.closest('#lookPrev [data-part], #partChips [data-part]');
   if(part&&part.dataset.part) return selectPart(part.dataset.part);
@@ -2337,6 +2346,7 @@ setEl.addEventListener('change',e=>{
   if(id==='ambSysSw') setSetting({ambient_system:on});
   if(id==='ambCalSw') setSetting({ambient_calendar:on});
   if(id==='ambWxSw') setSetting({ambient_weather:on});
+  { const k={proactiveSw:'proactive',takeoverSw:'notifications_takeover',detailsSw:'notify_details',nsoundSw:'notify_sound',lookMeetSw:'look_meeting',lookMusicSw:'look_music'}[id]; if(k) setSetting({[k]:on}); }
   if(id==='clickSw') setSetting({click_through:on}).then(()=>sendRegion(true));
   if(id==='notifySw') setSetting({notify_done:on});
   if(id==='popupSw') setSetting({popup_done:on});

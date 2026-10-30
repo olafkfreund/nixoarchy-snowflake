@@ -192,6 +192,9 @@ DEFAULTS = {
     "follow_focus": False,                  # move to the screen you focus (Hyprland)
     "step_aside": True,                     # slide out of the way while nixi's card is open
     "ambient_system": True, "ambient_calendar": False, "ambient_weather": False,
+    # desktop awareness (#133): all off but the per-category sound and the spoken categories
+    "proactive": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"],
+    "notify_sound": True, "look_meeting": False, "look_music": False,
     # projects you can switch to by voice: {"delivery app": "/home/you/code/diq"}
     "projects": {},
     # when a long task finishes while he's hidden: desktop notification / pop back up
@@ -2459,6 +2462,10 @@ def clamp01(x):
     return max(0.0, min(1.0, x))
 
 
+NOTIFY_FLAGS = ("proactive", "notifications_takeover", "notify_details", "notify_sound", "look_meeting", "look_music")
+NOTIFY_CATS = ("mail", "chat", "meeting", "video", "download", "other")
+
+
 def save_config(**kw):
     """Persist a few settings into config.json without clobbering the user's other edits."""
     try:
@@ -3419,6 +3426,7 @@ def state_info():
         "follow_focus": bool(CFG.get("follow_focus")), "step_aside": CFG.get("step_aside", True) is not False,
         **{k: bool(CFG.get(k, k == "ambient_system")) for k in Ambient.FLAG.values()},
         "projects": quick.projects(),
+        **{k: bool(CFG.get(k, k == "notify_sound")) for k in NOTIFY_FLAGS}, "notify_speak": CFG.get("notify_speak", ["meeting"]),
         "quick_actions": CFG.get("quick_actions") or [], "memory_count": len(mem_load()),
         "mic_device": CFG.get("mic_device") or "", "whisper_model": CFG.get("whisper_model") or "auto",
         "can_shoot": any(shutil.which(t) for t in ("grim", "spectacle", "gnome-screenshot", "maim", "scrot", "import")),
@@ -3626,9 +3634,12 @@ class Handler(BaseHTTPRequestHandler):
                 except (TypeError, ValueError):
                     pass
                 for key in ("wake_word", "notify_done", "popup_done", "code_panel", "hover", "click_through", "autostart", "listen_on_show",
-                            "barge_in", "sfx", "update_check", "auto_compact", "full_text", "lean", "follow_focus", "step_aside", "ambient_system", "ambient_calendar", "ambient_weather"):
+                            "barge_in", "sfx", "update_check", "auto_compact", "full_text", "lean", "follow_focus", "step_aside", "ambient_system", "ambient_calendar", "ambient_weather", *NOTIFY_FLAGS):
                     if key in b:
                         upd[key] = bool(b[key])
+                ns = b.get("notify_speak")
+                if isinstance(ns, list) and len(ns) <= 6 and all(x in NOTIFY_CATS for x in ns):
+                    upd["notify_speak"] = list(dict.fromkeys(ns))
                 if "ptt_hotkey" in b:
                     k = str(b["ptt_hotkey"] or "").strip()
                     if k == "" or re.fullmatch(r"((Ctrl|Alt|Shift|Win)\+){0,4}[A-Za-z0-9`]+", k):
