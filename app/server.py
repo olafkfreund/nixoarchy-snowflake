@@ -1556,9 +1556,13 @@ class Wake:
         return not cls.speaking() and cls.follow_from <= time.monotonic() < cls.follow_until and not ST.lock.locked()
 
     @classmethod
-    def talking_until(cls, end):
-        """He's talking until `end`; the follow-up window opens just before that, so a quick answer isn't lost."""
+    def talking_until(cls, end, follow=True):
+        """He's talking until `end`; the follow-up window opens just before that, so a quick answer isn't lost.
+        `follow` false: said unasked, so nobody is expected to answer."""
         cls.speaking_until = end
+        if not follow:
+            cls.follow_from = cls.follow_until = 0.0
+            return
         cls.follow_from = end - 0.15
         cls.follow_until = end + float(CFG.get("follow_up") or 0)
 
@@ -2172,11 +2176,11 @@ class Speaker:
                 t.start()
 
     @classmethod
-    def say(cls, text, sid, epoch=None):
+    def say(cls, text, sid, epoch=None, follow=True):
         with cls.cv:
             if epoch is not None and epoch < cls.epoch:      # sent before you cut him off, arrived after
                 return
-            cls.todo.append((cls.gen, sid, text))
+            cls.todo.append((cls.gen, sid, text, follow))
             if all(isinstance(x[1], int) for x in cls.todo):     # sentences can arrive out of order: play them in order
                 cls.todo.sort(key=lambda x: (x[0], x[1]))
             cls.cv.notify_all()
@@ -2211,7 +2215,7 @@ class Speaker:
             with cls.cv:
                 while not cls.todo or len(cls.ready) >= 3:
                     cls.cv.wait()
-                g, sid, text = cls.todo.pop(0)
+                g, sid, text, follow = cls.todo.pop(0)
                 cls.making = True
             try:
                 if g != cls.gen:
@@ -2231,7 +2235,7 @@ class Speaker:
                 words = [[round(a * sr / prate, 3), round(b * sr / prate, 3)] for a, b in times] if times else None
                 with cls.cv:
                     if g == cls.gen:
-                        cls.ready.append((g, sid, text, pcm, prate, words, level, round(40 * sr / prate, 2)))
+                        cls.ready.append((g, sid, text, pcm, prate, words, level, round(40 * sr / prate, 2), follow))
                         cls.cv.notify_all()
             except Exception as e:  # noqa: BLE001
                 print(f"[nixi] speech: {e}", file=sys.stderr)
@@ -2301,7 +2305,7 @@ class Speaker:
                             cls.written, cls.t0 = 0, time.monotonic()
                         continue
                     cls.cv.wait()
-                g, sid, text, pcm, prate, words, level, lstep = cls.ready.pop(0)
+                g, sid, text, pcm, prate, words, level, lstep, follow = cls.ready.pop(0)
                 cls.cv.notify_all()
             if g != cls.gen:
                 continue
@@ -2317,7 +2321,7 @@ class Speaker:
             start = cls.t0 + cls.written / cls.prate
             dur = len(pcm) / 2 / prate
             if g == cls.gen:                                     # (not if he was cut off meanwhile)
-                Wake.talking_until(start + dur + 0.45)
+                Wake.talking_until(start + dur + 0.45, follow)
             cls.stats["sentences"] = cls.stats.get("sentences", 0) + 1
             cls.stats["audio_s"] = round(cls.stats.get("audio_s", 0) + dur, 2)
             BUS.pub(t="spk", id=sid, at=round((start - now + cls.LAT) * 1000), dur=round(dur, 3), words=words,
@@ -3530,7 +3534,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not text or not tts_engine():
                     BUS.pub(t="spk_skip", id=b.get("id"))
                 else:
-                    Speaker.say(text, b.get("id"), b.get("epoch"))
+                    Speaker.say(text, b.get("id"), b.get("epoch"), b.get("follow", True) is not False)
                 return self._json({"ok": True})
             if p == "/api/say/stop":
                 Speaker.stop(json.loads(self._body() or b"{}").get("epoch"))
