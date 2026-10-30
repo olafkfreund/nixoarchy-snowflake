@@ -824,10 +824,10 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
     sv('path',R({d:'M-16 -11L-6 -1M-10 -13L-4 -7',fill:'none',stroke:'#ffffff70','stroke-width':2.6}),g); }
   sv('path',R({d:'M-58 -31L58 -31',fill:'none',stroke:'#121419','stroke-width':7}),sh);
   sv('path',R({d:'M-56 -32.5L56 -32.5',fill:'none',stroke:acc,'stroke-width':1.6}),sh);
-  // glasses (coding): thin round frames over the upper middle of his eyes, a bridge
-  for(const s of [-1,1]){ sv('circle',{cx:s*27.5,cy:-14,r:22,fill:'none',stroke:acc,'stroke-width':3},gl);
-    sv('path',R({d:`M${s*27.5-12} -26L${s*27.5-4} -32`,fill:'none',stroke:'#ffffff60','stroke-width':2.4}),gl); }
-  sv('path',R({d:'M-5.5 -14Q0 -20 5.5 -14',fill:'none',stroke:acc,'stroke-width':3}),gl);
+  // glasses (coding): thin round frames centred on his eyes, a bridge; clear, so they stay on while he talks
+  for(const s of [-1,1]){ sv('circle',{cx:s*27.5,cy:-4.5,r:22,fill:'none',stroke:acc,'stroke-width':3},gl);
+    sv('path',R({d:`M${s*27.5-12} -16.5L${s*27.5-4} -22.5`,fill:'none',stroke:'#ffffff60','stroke-width':2.4}),gl); }
+  sv('path',R({d:'M-5.5 -4.5Q0 -10.5 5.5 -4.5',fill:'none',stroke:acc,'stroke-width':3}),gl);
   return {tie,hb,hf,sh,gl,nc,ph,um,drops}; }
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
 function drawSkin(back,front,L,bodyFill='url(#ballG)'){
@@ -1335,7 +1335,7 @@ function frame(ts){
     const lift=(el,x)=>{ put(el,x,0,-4); el.setAttribute('transform',`translate(0 ${(-32*L).toFixed(1)}) scale(${(1-.08*L).toFixed(3)}) `+el.getAttribute('transform')); };   // (lifted onto the forehead while he talks, so his eyes stay visible)
     const off=!(sitOn.meeting||sitOn.music||sitOn.fullscreen||sitOn.coding||tp||tr||tn)&&Math.max(a,b,c,g,pa,um,ni)<.002;
     if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,b,0,-4); put(SIT_P.hf,b,0,-4); sitSettled=off;
-      lift(SIT_P.sh,c); lift(SIT_P.gl,g); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3); put(SIT_P.um,um,0,-84);
+      lift(SIT_P.sh,c); put(SIT_P.gl,g,0,-4); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3); put(SIT_P.um,um,0,-84);
       if(um>.002) SIT_P.drops.forEach((d,i)=>d.setAttribute('transform',`translate(0 ${((t*55+i*23)%58).toFixed(1)})`)); } }   // (nothing to write while all are off)
   // tears
   if(m==='sad' && ts>tearAt){ tearAt=ts+1900+Math.random()*900; tear(Math.random()<.6?-1:1); }
