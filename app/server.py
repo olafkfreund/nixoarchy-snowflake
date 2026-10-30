@@ -1173,6 +1173,7 @@ class Ambient:
                     print(f"[nixi] ambient: {e}", file=sys.stderr)
             try:
                 cls.sense()
+                Nudge.tick()
             except Exception as e:  # noqa: BLE001
                 print(f"[nixi] ambient: {e}", file=sys.stderr)
             time.sleep(2)
@@ -1182,6 +1183,102 @@ class Ambient:
         if not cls.thread:
             cls.thread = threading.Thread(target=cls.loop, daemon=True)
             cls.thread.start()
+
+
+class Nudge:
+    """Unasked nudges (#133b): break, welcome back, memory, load. They wait for a breakpoint (an unlock, a workspace switch, or
+    20 s without window events), and a budget keeps them rare: one visual per 5 minutes, one spoken per 10, a cooldown per kind."""
+    QUIPS = ("An hour already! Stand up and stretch?", "Time for a stretch. Your back will thank you.", "That's a good long stretch of work. Water and a walk?")
+    COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "welcome": 0}
+    pending = {}                                              # kind -> (text, spoken, offered at); oldest first
+    last_visual = last_speech = None
+    last_kind = {}
+    active_since = None                                       # the break counter's zero
+    seen_unlock = 0.0
+    was_hot = was_low = False
+    n_quip = 0
+
+    @classmethod
+    def offer(cls, kind, text, spoken, t=None):
+        cls.pending.pop(kind, None)                           # newest wins
+        cls.pending[kind] = (text, spoken, time.monotonic() if t is None else t)
+
+    @staticmethod
+    def missed(path, since, until):
+        """How many history entries closed inside the lock. Only `ts` is read: never a summary or a body."""
+        try:
+            with open(path, "rb") as f:
+                raw = f.read(2 * 1024 * 1024 + 1)
+            if len(raw) > 2 * 1024 * 1024:
+                return 0
+            data = json.loads(raw)
+            items = data.get("entries") if isinstance(data, dict) else data
+            return sum(1 for e in items if isinstance(e, dict) and isinstance(e.get("ts"), (int, float)) and since <= e["ts"] <= until)
+        except (OSError, ValueError, TypeError, AttributeError):
+            return 0
+
+    @classmethod
+    def welcome(cls, wall, hist, now=None):
+        text = "Welcome back!"
+        n = cls.missed(hist, wall - Ambient.last_lock_len, wall)
+        if n:
+            text += f" {n} notification{'s' if n != 1 else ''} while you were away."
+        if CFG.get("ambient_calendar"):
+            import datetime
+            now = now or datetime.datetime.now().astimezone()
+            nxt = min(((st, ti) for st, ti, _ in Ambient.events if st > now), default=None)
+            if nxt:
+                text += f" Next: {nxt[1]} at {nxt[0].astimezone().strftime('%H:%M')}."
+        return text
+
+    @classmethod
+    def watch(cls, t, wall, hist, now=None):
+        """Turn the signals into offers."""
+        A = Ambient
+        cls.active_since = t if cls.active_since is None else cls.active_since
+        if A.unlocked_at and A.unlocked_at != cls.seen_unlock:      # the unlock edge
+            cls.seen_unlock = A.unlocked_at
+            if A.last_lock_len >= 300:                              # a real break: the counter starts again
+                cls.active_since = A.unlocked_at
+            if CFG.get("react_welcome") and A.last_lock_len >= 1800:
+                cls.offer("welcome", cls.welcome(wall, hist, now), True, t)
+        if CFG.get("react_break") and not A.locked and t - cls.active_since >= 3600:
+            cls.offer("break", cls.QUIPS[cls.n_quip % len(cls.QUIPS)], True, t)
+            cls.n_quip += 1
+            cls.active_since = t
+        if CFG.get("react_load"):
+            if A.ram_low and not cls.was_low:
+                cls.offer("ram", "Memory's getting tight. Maybe close something heavy?", True, t)
+            if A.cpu_hot and not cls.was_hot:
+                cls.offer("cpu", "The machine is working hard.", False, t)
+        cls.was_low, cls.was_hot = A.ram_low, A.cpu_hot
+
+    @classmethod
+    def tick(cls, mono=None, wall=None, hist=None, now=None):
+        t = time.monotonic() if mono is None else mono
+        if not CFG.get("proactive"):
+            cls.pending.clear()
+            cls.active_since = None
+            return
+        cls.watch(t, time.time() if wall is None else wall,
+                  hist or Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "omarchy" / "notifications" / "history.json", now)
+        for k in [k for k, v in cls.pending.items() if t - v[2] > 600]:
+            del cls.pending[k]                                      # gone stale while it waited
+        if not cls.pending or Ambient.locked:
+            return
+        at_break = (Ambient.unlocked_at and t - Ambient.unlocked_at <= 10) or (Desk.last_switch and t - Desk.last_switch <= 10) \
+            or t - Desk.last_event >= 20
+        if not at_break or (cls.last_visual is not None and t - cls.last_visual < 300):
+            return
+        kind = next(iter(cls.pending))
+        text, spoken, _ = cls.pending.pop(kind)
+        if kind in cls.last_kind and t - cls.last_kind[kind] < cls.COOL[kind]:
+            return                                                  # (dropped: it will be offered again if it still holds)
+        cls.last_visual = cls.last_kind[kind] = t
+        speak = bool(spoken) and not Ambient.meeting and (cls.last_speech is None or t - cls.last_speech >= 600)
+        if speak:
+            cls.last_speech = t
+        BUS.pub(t="nudge", kind=kind, text=text, speak=speak)
 
 
 class Inbox:
