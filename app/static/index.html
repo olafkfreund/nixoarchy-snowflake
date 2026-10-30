@@ -779,11 +779,20 @@ let SKIN_PARTS={}, SIT_P=null, sitSettled=false;
 // and the skin picker never shows one. Flat paths only; frame() fades and scales them with springs.
 function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) return null; bk.innerHTML=''; fr.innerHTML='';
   const acc=L.skinColor||L.pupL, R=at=>({...at,'stroke-linejoin':'round','stroke-linecap':'round'});
-  const tie=sv('g',{opacity:0},fr), hb=sv('g',{opacity:0},bk), hf=sv('g',{opacity:0},fr), edge=shade(L.pupL,-.2);
-  sv('polygon',R({points:'-7,54 7,54 5,62 -5,62',fill:L.pupL,stroke:edge,'stroke-width':2}),tie);
-  sv('polygon',R({points:'-5,62 5,62 9,88 0,97 -9,88',fill:L.pupL,stroke:edge,'stroke-width':2}),tie);
-  sv('path',R({d:'M-64 -4A66 66 0 0 1 64 -4',fill:'none',stroke:acc,'stroke-width':7}),hb);
-  for(const x of [-69,55]) sv('rect',{x,y:-22,width:14,height:36,rx:7,fill:acc,stroke:shade(acc,-.2),'stroke-width':2},hf);
+  const tie=sv('g',{opacity:0},fr), hb=sv('g',{opacity:0},fr), hf=sv('g',{opacity:0},fr);
+  // tie: a red one under the bottom corner, big enough to read at his size
+  const red='#d8453a', dk=shade(red,-.35);
+  sv('path',R({d:'M-11 58L11 58L7 70L-7 70Z',fill:shade(red,-.12),stroke:dk,'stroke-width':2.5}),tie);
+  sv('path',R({d:'M-7 70L7 70L14 104L0 118L-14 104Z',fill:red,stroke:dk,'stroke-width':2.5}),tie);
+  sv('path',{d:'M-3 76L5 76L8 96',fill:'none',stroke:'#ffffff40','stroke-width':2,'stroke-linecap':'round'},tie);
+  // headphones: a dark band over the top of his head, in front, so it reads; big cups just outside his sides
+  const ink='#26282e', rim=shade(ink,.35);
+  sv('path',R({d:'M-74 -14C-80 -104 80 -104 74 -14',fill:'none',stroke:ink,'stroke-width':11}),hb);
+  sv('path',R({d:'M-70 -24C-74 -96 74 -96 70 -24',fill:'none',stroke:acc,'stroke-width':3}),hb);
+  for(const s of [-1,1]){
+    sv('rect',{x:s*80-13,y:-34,width:26,height:50,rx:12,fill:ink,stroke:rim,'stroke-width':2.5},hf);
+    sv('rect',{x:s>0?67-1:-80+1,y:-28,width:13,height:38,rx:6,fill:acc},hf);   // the cushion, against his head
+    sv('ellipse',{cx:s*84,cy:-20,rx:3,ry:6,fill:'#ffffff30'},hf); }
   return {tie,hb,hf}; }
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
 function drawSkin(back,front,L,bodyFill='url(#ballG)'){
@@ -1285,7 +1294,7 @@ function frame(ts){
     const a=G.sit.to(sitOn.meeting?1:0,dt), b=G.sitMusic.to(sitOn.music?1:0,dt), w=G.sitW.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)*.6;
     const put=(el,x,ax,ay,rot)=>{ el.setAttribute('opacity',clamp(x,0,1).toFixed(2)); el.setAttribute('transform',`translate(${ax} ${ay})${rot?` rotate(${rot.toFixed(2)})`:''} scale(${(.7+.3*x).toFixed(3)}) translate(${-ax} ${-ay})`); };
     const off=a<.002&&b<.002&&!sitOn.meeting&&!sitOn.music;
-    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,56,w); put(SIT_P.hb,b,0,-4); put(SIT_P.hf,b,0,-4); sitSettled=off; } }   // (nothing to write while both are off)
+    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,b,0,-4); put(SIT_P.hf,b,0,-4); sitSettled=off; } }   // (nothing to write while both are off)
   // tears
   if(m==='sad' && ts>tearAt){ tearAt=ts+1900+Math.random()*900; tear(Math.random()<.6?-1:1); }
   if(m==='scared') shakeAmp=Math.max(shakeAmp,.5);
