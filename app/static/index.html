@@ -1286,8 +1286,9 @@ function enqueue(text,o={}){
   if(info.voice_native){ const id=++spkSeq; spkMap.set(id,{cap:o.cap?(o.cap===true?text:o.cap):'',fresh:!!o.fresh});
     playing=true; spkGuard=performance.now();
     const ep=sayEpoch;      // sentences still queued when you cut him off must never be sent (or played) afterwards
-    sayChain=sayChain.then(()=>ep===sayEpoch?post('/api/say',{text,id,epoch:ep}):null).catch(()=>{ const it=spkMap.get(id); spkMap.delete(id); if(it&&it.cap) karaNow(it.cap,it.fresh); quietNative(); });   // one after another: keeps them in order
+    sayChain=sayChain.then(()=>ep===sayEpoch?post('/api/say',{text,id,epoch:ep,follow:o.follow}):null).catch(()=>{ const it=spkMap.get(id); spkMap.delete(id); if(it&&it.cap) karaNow(it.cap,it.fresh); quietNative(); });   // one after another: keeps them in order
     return; }
+  lastFollow=o.follow!==false;   // what the page tells the server when he stops (#133)
   const g=gen; q.push({cap:o.cap?(o.cap===true?text:o.cap):'',fresh:!!o.fresh,
     p:post('/api/tts',{text}).then(async r=>{ if(r.status!==200) return null;
       const rate=+(r.headers.get('X-Nixi-Rate')||1), pause=+(r.headers.get('X-Nixi-Pause')||.08);
@@ -1385,7 +1386,8 @@ function karaPut(k,quiet){ if(!k.reset&&!quiet&&playing){ if(k.face) talkFace(k.
 function karaTick(n){ while(kara.length&&kara[0].at<=n){ const k=kara.shift(); if(!capOn) capShow(); karaPut(k); } }
 function karaFlush(){ while(kara.length) karaPut(kara.shift(),true); }
 function karaDrop(){ kara.length=0; }
-function speaking(on){ if(info.voice_native) return; if(info.wake_word||info.barge_in) post('/api/speaking',{on}).catch(()=>{}); }
+let lastFollow=true;
+function speaking(on){ if(info.voice_native) return; if(info.wake_word||info.barge_in) post('/api/speaking',{on,follow:lastFollow}).catch(()=>{}); }
 /* tiny synth blips — soft and short. sfx('wake'|'menu'|'close'|'ok'|'done'|'error'|'remind'|'purr'|'pop') */
 function sfx(name){
   if(!info.sfx) return; let a; try{ a=ac(); }catch(e){ return; }
@@ -1458,7 +1460,7 @@ function onContext(c){ info.context=c; ctxRender();
   if(!c.used){ ctxWarned=0; return; }
   const step=c.pct>=.9?3:c.pct>=.8?2:c.pct>=.6?1:0;      // warn once per step: 60 / 80 / 90 %
   if(step>ctxWarned){ ctxWarned=step; const n=Math.round(c.pct*100);
-    if(info.auto_compact===false){ tick(`my memory is ${n}% full — say “tidy up” or “new chat”`,true); if(step>=2&&!busy) say(`My memory of this chat is ${n} percent full. Say tidy up, or new chat, so it doesn't use up your plan.`); }
+    if(info.auto_compact===false){ tick(`my memory is ${n}% full — say “tidy up” or “new chat”`,true); if(step>=2&&!busy) sayAside(`My memory of this chat is ${n} percent full. Say tidy up, or new chat, so it doesn't use up your plan.`); }
     else tick(`memory ${n}% full — I'll tidy up after this answer`); } }
 async function tidyNow(){ tick('tidying up…'); const r=await post('/api/compact'); const j=await r.json().catch(()=>({}));
   if(j.error) return tick(j.error,true); if(!j.ok) tick("couldn't write the note — try again",true); await refresh(); }
@@ -1522,7 +1524,7 @@ function onEvent(ev){
     const msg=ev.name+' needs you'+(ev.text?': '+ev.text:'');
     if(hiddenNow){ post('/api/notify',{title:'Nixi',body:msg}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
     if(info.hover) comeBack(); wake(); sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(msg); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
-    if(!muted) say(ev.name+' needs you'); }
+    if(!muted) sayAside(ev.name+' needs you'); }
   else if(ev.t==='ambient'){ const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue();
     if(ev.glint){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
     if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')) flash('#4d6fb7'); }   // (never spoken)
@@ -1609,7 +1611,8 @@ function workChip(){ if(chipT) return;
   const s=Math.floor((performance.now()-workT0)/1000), txt=`${workWhat||'thinking'} · ${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
   if(chip.dataset.w!==txt){ chip.dataset.w=txt; chip.innerHTML='<i class="spin"></i>'; chip.appendChild(document.createTextNode(txt)); }
   if(chip.className!=='on work') chip.className='on work'; }
-function say(t){ capShow(); setYou(''); if(voiced()){ himSet(''); enqueue(t,{cap:true,fresh:true}); } else { himSet(t); enqueue(t); } capQuiet(); }
+function say(t,follow){ capShow(); setYou(''); if(voiced()){ himSet(''); enqueue(t,{cap:true,fresh:true,follow}); } else { himSet(t); enqueue(t,{follow}); } capQuiet(); }
+function sayAside(t){ say(t,false); }   // said unasked: no follow-up window (#133)
 function fail(t){ capShow(); himSet(t,true); errorUntil=performance.now()+2200; capQuiet(); }
 const base=p=>String(p||'').split('/').filter(Boolean).pop()||p;
 function toolLabel(name,detail){

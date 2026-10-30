@@ -3732,7 +3732,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": APPROVALS.answer(str(b.get("id")), ans)})
             if p == "/api/speaking":                 # the page tells us while he talks (so "hey Nixi" can't wake himself)
                 b = json.loads(self._body() or b"{}")
-                Wake.talking_until(time.monotonic() + (60 if b.get("on") else 0.8))
+                Wake.talking_until(time.monotonic() + (60 if b.get("on") else 0.8), b.get("follow", True) is not False)
                 return self._json({"ok": True})
             if p == "/api/capture":
                 if BRIDGED:
