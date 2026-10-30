@@ -1497,7 +1497,7 @@ class Desk:
     fullscreen = False
     last_switch = last_event = 0.0                            # monotonic
     coding_since = 0.0                                        # a coder window has had focus since then (0: none); the class is never kept
-    CODERS = {"kitty", "foot", "alacritty", "ghostty", "com.mitchellh.ghostty", "org.wezfurlong.wezterm", "code", "code-oss",
+    CODERS = {"kitty", "org.omarchy.herdr", "foot", "alacritty", "ghostty", "com.mitchellh.ghostty", "org.wezfurlong.wezterm", "code", "code-oss",
               "codium", "vscodium", "dev.zed.zed", "zed", "neovide", "emacs", "jetbrains-idea", "jetbrains-pycharm", "jetbrains-goland"}
     dir = None                                                # the live instance dir
     thread = None
