@@ -1,0 +1,42 @@
+{
+  "break": [
+    "An hour already! Stand up and stretch?",
+    "Time for a stretch. Your back will thank you.",
+    "That's a good long stretch of work. Water and a walk?",
+    "Eyes up for a moment? Look at something far away."
+  ],
+  "welcome": ["Welcome back!", "Good to see you again!", "There you are!"],
+  "ram": [
+    "Memory's getting tight. Maybe close something heavy?",
+    "I'm running low on room. Could something big close?",
+    "Lots of memory in use. A tab clean-up might help."
+  ],
+  "cpu": [
+    "The machine is working hard.",
+    "Things are running hot in here.",
+    "The processor is busy. I'll wait."
+  ],
+  "rain": [
+    "Rain outside. Cosy in here!",
+    "It's raining. Good thing we're indoors.",
+    "Pitter-patter on the window, I bet."
+  ],
+  "snow": [
+    "Snow! My favourite thing in the whole world.",
+    "It's snowing! I feel right at home.",
+    "Snow outside. That's my kind of weather.",
+    "Snowflakes everywhere. Hello, cousins!"
+  ],
+  "night": [
+    "Getting late. Don't forget to rest.",
+    "It's the small hours. Sleep is a good idea too.",
+    "Late night. I'll keep the light low."
+  ],
+  "party": ["Something to celebrate today!", "Party time!", "A special day. Hooray!"],
+  "coding": [
+    "{n} hours of code. Water?",
+    "{n} hours in. Stretch your hands?",
+    "A long coding stretch: {n} hours. Rest your eyes a moment?"
+  ],
+  "done": ["All done!", "Finished!", "That's done."]
+}

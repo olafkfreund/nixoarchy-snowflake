@@ -16,6 +16,7 @@ import io
 import json
 import math
 import os
+import random
 import re
 import select
 import shlex
@@ -1208,18 +1209,65 @@ class Ambient:
             cls.thread.start()
 
 
+# Short friendly lines, in app/quips.json (editable without code); these are what is used when that file is broken or missing.
+QUIP_FALLBACK = {
+    "break": ("An hour already! Stand up and stretch?", "Time for a stretch. Your back will thank you.", "That's a good long stretch of work. Water and a walk?"),
+    "welcome": ("Welcome back!",), "ram": ("Memory's getting tight. Maybe close something heavy?",), "cpu": ("The machine is working hard.",),
+    "rain": ("Rain outside. Cosy in here!",), "snow": ("Snow! My favourite thing in the whole world.",),
+    "night": ("Getting late. Don't forget to rest.",), "party": ("Something to celebrate today!",),
+    "coding": ("{n} hours of code. Water?",), "done": ("All done!",)}
+
+
+class Quips:
+    """A shuffled bag per event: no line repeats until the list is used up. The file is re-read when it changes."""
+    path = APP_DIR / "quips.json"
+    data = None
+    mtime = None
+    bags = {}
+
+    @classmethod
+    def lines(cls, event):
+        try:
+            m = cls.path.stat().st_mtime
+        except OSError:
+            m = None
+        if cls.data is None or m != cls.mtime:
+            cls.mtime, cls.bags = m, {}
+            try:
+                d = json.loads(cls.path.read_text(encoding="utf-8"))
+                cls.data = {k: [x for x in v if isinstance(x, str) and x.strip()] for k, v in d.items() if isinstance(v, list)}
+            except (OSError, ValueError, AttributeError):
+                cls.data = {}                                   # broken or missing: the built-in lines
+        return cls.data.get(event) or list(QUIP_FALLBACK.get(event, ()))
+
+
+def quip(event, **slots):
+    bag = Quips.bags.get(event)
+    if not bag:
+        bag = Quips.lines(event)[:]
+        random.shuffle(bag)
+        Quips.bags[event] = bag
+    if not bag:
+        return ""
+    line = bag.pop()
+    try:
+        return line.format(**slots)
+    except (KeyError, IndexError, ValueError):                  # a slot the caller did not fill: leave the line as written
+        return line
+
+
 class Nudge:
     """Unasked nudges (#133b): break, welcome back, memory, load. They wait for a breakpoint (an unlock, a workspace switch, or
     20 s without window events), and a budget keeps them rare: one visual per 5 minutes, one spoken per 10, a cooldown per kind."""
-    QUIPS = ("An hour already! Stand up and stretch?", "Time for a stretch. Your back will thank you.", "That's a good long stretch of work. Water and a walk?")
-    COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "welcome": 0}
+    COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "welcome": 0, "weather": 86400, "night": 86400, "party": 86400, "coding": 7200}
     pending = {}                                              # kind -> (text, spoken, offered at); oldest first
     last_visual = last_speech = None
     last_kind = {}
     active_since = None                                       # the break counter's zero
     seen_unlock = 0.0
     was_hot = was_low = False
-    n_quip = 0
+    quipped = {}                                              # last value each look quip fired for
+    coding_offered = 0.0                                      # the coding_since a coding quip was offered for
 
     @classmethod
     def offer(cls, kind, text, spoken, t=None):
@@ -1242,7 +1290,7 @@ class Nudge:
 
     @classmethod
     def welcome(cls, wall, hist, now=None):
-        text = "Welcome back!"
+        text = quip("welcome")
         n = cls.missed(hist, wall - Ambient.last_lock_len, wall)
         if n:
             text += f" {n} notification{'s' if n != 1 else ''} while you were away."
@@ -1266,15 +1314,23 @@ class Nudge:
             if CFG.get("react_welcome") and A.last_lock_len >= 1800:
                 cls.offer("welcome", cls.welcome(wall, hist, now), True, t)
         if CFG.get("react_break") and not A.locked and t - cls.active_since >= 3600:
-            cls.offer("break", cls.QUIPS[cls.n_quip % len(cls.QUIPS)], True, t)
-            cls.n_quip += 1
+            cls.offer("break", quip("break"), True, t)
             cls.active_since = t
         if CFG.get("react_load"):
             if A.ram_low and not cls.was_low:
-                cls.offer("ram", "Memory's getting tight. Maybe close something heavy?", True, t)
+                cls.offer("ram", quip("ram"), True, t)
             if A.cpu_hot and not cls.was_hot:
-                cls.offer("cpu", "The machine is working hard.", False, t)
+                cls.offer("cpu", quip("cpu"), False, t)
         cls.was_low, cls.was_hot = A.ram_low, A.cpu_hot
+        if CFG.get("react_quips"):                                  # little jokes: visual only, once when a look turns on
+            for kind, val in (("weather", A.weather), ("night", A.night), ("party", A.party)):
+                if val and val != cls.quipped.get(kind):
+                    cls.offer(kind, quip(val if kind == "weather" else kind), False, t)
+                cls.quipped[kind] = val
+            since = Desk.coding_since
+            if since and since != cls.coding_offered and t - since >= 7200:       # once per coding session of 2 hours or more
+                cls.coding_offered = since
+                cls.offer("coding", quip("coding", n=int((t - since) // 3600)), False, t)
 
     @classmethod
     def tick(cls, mono=None, wall=None, hist=None, now=None):
