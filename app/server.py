@@ -11,6 +11,7 @@ Local server (127.0.0.1 only) that:
 import argparse
 import array
 import collections
+import hashlib
 import io
 import json
 import math
@@ -1107,6 +1108,132 @@ class Ambient:
                 except Exception as e:  # noqa: BLE001  (a cue must never take the server down)
                     print(f"[nixi] ambient: {e}", file=sys.stderr)
             time.sleep(20)
+
+    @classmethod
+    def start(cls):
+        if not cls.thread:
+            cls.thread = threading.Thread(target=cls.loop, daemon=True)
+            cls.thread.start()
+
+
+class Inbox:
+    """Notifications the shell hands to the companion (#133), only while this thread holds a lease on the shell's IPC
+    socket (renewed every second). Row text is never logged, written to disk or sent to the agent."""
+    CATS = ("mail", "chat", "meeting", "video", "download", "other")
+    KEY = re.compile(r"[A-Za-z0-9:_-]{1,64}")
+    OTP = re.compile(r"(?=.*\b\d{4,8}\b)(?=.*(?:code|otp|verify|login|passcode|2fa))", re.I | re.S)
+    CAP = 64 * 1024
+    path = None
+    thread = None
+    wanted = False                                            # a lease is out
+    stalled = 0.0                                             # until then the page is not picking rows up: popups come back
+    unseen = {}                                               # key -> when it was sent to the page
+
+    @classmethod
+    def _derived(cls):
+        rt = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+        h = hashlib.md5(f"{os.environ.get('OMARCHY_PATH', '')}/shell\n{os.environ.get('WAYLAND_DISPLAY', '')}".encode()).hexdigest()[:16]
+        return rt, f"{rt}/omarchy-shell-{h}.sock"
+
+    @classmethod
+    def _raw(cls, path, method, args, timeout):
+        """The text after OK, or None (SKIP, an oversized or odd reply). OSError: nobody there."""
+        with socket.socket(socket.AF_UNIX) as c:
+            c.settimeout(timeout)
+            c.connect(path)
+            c.sendall(("notifications\x1f" + method + "".join("\x1f" + a for a in args) + "\x1e").encode())
+            buf = b""
+            while not buf.endswith(b"\x1e"):
+                d = c.recv(65536)
+                if not d or len(buf) > cls.CAP:
+                    break
+                buf += d
+        if not buf.endswith(b"\x1e") or len(buf) > cls.CAP or not buf.startswith(b"OK\x1f"):
+            return None
+        return buf[3:-1].decode("utf-8", "replace")
+
+    @classmethod
+    def sock_path(cls):
+        if cls.path:
+            return cls.path
+        rt, derived = cls._derived()
+        for cand in [derived, *sorted(str(x) for x in Path(rt).glob("omarchy-shell-*.sock") if str(x) != derived)]:
+            try:                                              # (stale sockets refuse: skip them)
+                if cls._raw(cand, "ping", (), 1) is not None:
+                    cls.path = cand
+                    return cand
+            except OSError:
+                pass
+        return None
+
+    @classmethod
+    def call(cls, method, *args, timeout=1):
+        path = cls.sock_path()
+        if not path:
+            return None
+        try:
+            r = cls._raw(path, method, args, timeout)
+        except OSError:
+            cls.path = None                                   # re-resolve next time
+            return None
+        return r.strip() if r is not None else None
+
+    @classmethod
+    def want(cls):
+        return bool(CFG.get("proactive") and CFG.get("notifications_takeover") and not Wake.asleep and BUS.subs and time.monotonic() >= cls.stalled)
+
+    @classmethod
+    def release(cls):
+        if cls.wanted:
+            cls.wanted = False
+            cls.call("delegate", "0")
+
+    @classmethod
+    def rows(cls, out):
+        """Checked rows from a delegate reply; text only with notify_details, and never a secret."""
+        try:
+            data = json.loads(out or "[]")
+        except ValueError:
+            return []
+        keep = []
+        for x in data if isinstance(data, list) else []:
+            if not isinstance(x, dict) or not isinstance(x.get("key"), str) or not cls.KEY.fullmatch(x["key"]) or x.get("category") not in cls.CATS:
+                continue
+            summary, body = str(x.get("summary") or "")[:120], str(x.get("body") or "")[:120]
+            if not CFG.get("notify_details") or SECRET_LINE.search(summary + "\n" + body) or cls.OTP.search(summary + "\n" + body):
+                summary = body = ""
+            keep.append({"key": x["key"], "app": str(x.get("app") or "")[:60], "source": str(x.get("source") or "")[:80],
+                         "category": x["category"], "summary": summary, "body": body})
+        return keep
+
+    @classmethod
+    def tick(cls):
+        now = time.monotonic()
+        if sum(1 for t in cls.unseen.values() if now - t > 5) >= 3:
+            cls.stalled = now + 30                            # three rows nobody picked up: give the popups back, try again later
+            cls.unseen.clear()
+        if cls.want():
+            out = cls.call("delegate", "5000")
+            cls.wanted = out is not None
+            for row in cls.rows(out):
+                cls.unseen[row["key"]] = now
+                BUS.pub(t="notify", **row)
+        else:
+            cls.release()
+
+    @classmethod
+    def seen(cls, key):
+        cls.unseen.pop(key, None)
+        cls.stalled = 0.0
+
+    @classmethod
+    def loop(cls):
+        while True:
+            try:
+                cls.tick()
+            except Exception as e:  # noqa: BLE001  (never take the server down, never print a row)
+                print(f"[nixi] inbox: {type(e).__name__}", file=sys.stderr)
+            time.sleep(1)
 
     @classmethod
     def start(cls):
@@ -3559,7 +3686,17 @@ class Handler(BaseHTTPRequestHandler):
                     Wake.hush()
                     if Listen.current:
                         Listen.current.stop(cancel=True)
+                    Inbox.release()                      # the shell shows its own popups again
                 return self._json({"ok": True, "asleep": Wake.asleep})
+            if p == "/api/notify/act":             # a click / Esc on a row the shell handed over
+                b = json.loads(self._body() or b"{}")
+                key = str(b.get("key") or "")
+                if not Inbox.KEY.fullmatch(key) or b.get("how") not in ("open", "dismiss"):
+                    return self._json({"error": "bad request"}, 400)
+                return self._json({"ok": Inbox.call("activateKey" if b["how"] == "open" else "dismissKey", key) == "ok"})
+            if p == "/api/notify/seen":            # the page drew it
+                Inbox.seen(str(json.loads(self._body() or b"{}").get("key") or ""))
+                return self._json({"ok": True})
             if p == "/api/follow":
                 Wake.end_follow("finish" if json.loads(self._body() or b"{}").get("act") == "finish" else "cancel")
                 return self._json({"ok": True})
@@ -4125,6 +4262,7 @@ def main():
     threading.Thread(target=warm_tts, daemon=True).start()
     Wake.ensure()
     Ambient.start()
+    Inbox.start()
     if not BRIDGED:
         Updates.start()
     srv = ThreadingHTTPServer(("127.0.0.1", int(CFG["port"])), Handler)
