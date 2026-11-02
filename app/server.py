@@ -1227,6 +1227,7 @@ class Ambient:
         cls.meeting, cls.music = meeting, music
         if cls.situation() != before:
             BUS.pub(t="situation", **cls.situation())
+        Beat.sync()
 
     @classmethod
     def loop(cls):
@@ -2086,6 +2087,66 @@ FOLLOW_NOTE = ("(Voice note from Nixi: the mic picked this up a few seconds afte
                "If it is clearly not meant for you, e.g. the user thinking out loud, talking to themselves or to someone "
                "else, reply with exactly [ignore] and nothing else, and use no tools. Otherwise just answer it normally.)\n\n")
 IGNORE = "[ignore]"
+
+class Beat:
+    """The real output level for "Pulse to the beat" (#138): a recorder on the monitor of the default sink, 2 kHz mono, boiled
+    down to one 0-1 kick number about 20 times a second. Runs only while wanted; the samples are never kept, written or logged."""
+    thread = None
+
+    @staticmethod
+    def want():
+        return bool(CFG.get("look_beat") and Ambient.music and not Ambient.meeting and not Wake.asleep and BUS.subs)
+
+    @staticmethod
+    def level(avg, rms):
+        """(new slow average, kick 0-1) for one block: how far this block's loudness is above what the music has been."""
+        avg = rms if avg is None else avg + (rms - avg) * .05
+        return avg, round(min(1, max(0, (rms / max(avg, 1e-4) - 1) / .8)), 2)
+
+    @staticmethod
+    def cmd():
+        if shutil.which("parecord"):
+            return ["parecord", "-d", "@DEFAULT_MONITOR@", "--raw", "--format=s16le", "--rate=2000", "--channels=1", "--latency-msec=50"]
+        if shutil.which("pw-record"):
+            return ["pw-record", "--target", "@DEFAULT_MONITOR@", "--rate", "2000", "--channels", "1", "--format", "s16", "-"]
+        return None
+
+    @classmethod
+    def run(cls):
+        c = cls.cmd()
+        if not c:
+            return
+        try:
+            p = subprocess.Popen(c, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)   # (stderr unread: it must not fill)
+        except OSError:
+            return
+        avg, buf = None, b""
+        try:
+            while cls.want():                                 # (re-checked every block: the 2 s Ambient tick is too slow to stop it)
+                if not select.select([p.stdout], [], [], .5)[0]:
+                    continue
+                got = os.read(p.stdout.fileno(), 4096)
+                if not got:
+                    break
+                buf += got
+                while len(buf) >= 200:
+                    a = array.array("h")
+                    a.frombytes(buf[:200])
+                    buf = buf[200:]
+                    avg, v = cls.level(avg, math.sqrt(sum(x * x for x in a) / len(a)))
+                    BUS.pub(t="beat", v=v)
+        except OSError:
+            pass
+        finally:
+            kill(p)
+            p.stdout.close()
+
+    @classmethod
+    def sync(cls):
+        if cls.want() and not (cls.thread and cls.thread.is_alive()):
+            cls.thread = threading.Thread(target=cls.run, daemon=True)
+            cls.thread.start()
+
 
 # what the speech model "hears" in background noise — never treat these as a follow-up request
 NOISE_WORDS = {"you", "thank you", "thanks", "bye", "thanks for watching", "thank you for watching", "uh", "um", "hmm"}
