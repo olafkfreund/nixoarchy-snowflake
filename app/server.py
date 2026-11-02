@@ -1501,8 +1501,12 @@ class Inbox:
             summary, body = str(x.get("summary") or "")[:120], str(x.get("body") or "")[:120]
             if not CFG.get("notify_details") or SECRET_LINE.search(summary + "\n" + body) or cls.OTP.search(summary + "\n" + body):
                 summary = body = ""
-            keep.append({"key": x["key"], "app": str(x.get("app") or "")[:60], "source": str(x.get("source") or "")[:80],
-                         "category": x["category"], "summary": summary, "body": body})
+            row = {"key": x["key"], "app": str(x.get("app") or "")[:60], "source": str(x.get("source") or "")[:80],
+                   "category": x["category"], "summary": summary, "body": body}
+            icon = Icons.lookup(row["app"], row["source"])
+            if icon:
+                row["icon"] = Icons.register(icon)
+            keep.append(row)
         return keep
 
     @classmethod
@@ -4246,6 +4250,17 @@ class Handler(BaseHTTPRequestHandler):
             if secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
                 return self._json(state_info())
             return self._json({"version": VERSION})
+        if p.startswith("/api/icon/"):             # app icons: only ids the server handed out, re-checked on every read (#142)
+            f = Icons.served.get(p[10:]) if re.fullmatch(r"[0-9a-f]{16}", p[10:]) else None
+            if not f or not Icons._ok(f):
+                return self._json({"error": "not found"}, 404)
+            data = Path(f).read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/svg+xml" if f.endswith(".svg") else "image/png")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "max-age=86400")
+            self.end_headers()
+            return self.wfile.write(data)
         if p == "/":
             p = "/index.html"
         f = (STATIC / p.lstrip("/")).resolve()
