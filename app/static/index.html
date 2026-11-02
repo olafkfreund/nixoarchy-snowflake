@@ -145,7 +145,7 @@ body.bar #code .l.out{color:var(--dim)}
 
 /* floating caption: only there while something's happening */
 /* mail (#138): a bigger envelope pops out beside him, opens, shows the letter, and goes back in */
-#mailPop{position:absolute;top:96px;left:300px;width:168px;height:112px;perspective:700px;z-index:6;opacity:0;pointer-events:none;cursor:pointer;
+#mailPop{position:absolute;top:96px;left:292px;width:168px;height:112px;perspective:700px;z-index:6;opacity:0;pointer-events:none;cursor:pointer;
   transform:translateX(-90px) scale(.3);transform-origin:left center;transition:transform .36s cubic-bezier(.34,1.56,.64,1),opacity .2s}
 #mailPop.l{left:-128px;transform:translateX(90px) scale(.3);transform-origin:right center}
 #mailPop.on{opacity:1;transform:none;pointer-events:auto}
@@ -536,8 +536,8 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <g id="accFront"></g>
         <g id="sitFront"></g>
         <g id="frost" display="none" pointer-events="none"></g>
-        <g id="cue" display="none" transform="translate(8 -122)" style="cursor:pointer"><circle id="cueD" r="10" stroke="#0008" stroke-width="1"/><text id="cueT" text-anchor="middle" y="4.5" font-size="12" pointer-events="none"></text></g>
-        <g id="agentMark" opacity="0" transform="translate(8 -108)" pointer-events="none">   <!-- who is calling: original marks, not logos -->
+        <g id="cue" display="none" transform="translate(8 -110)" style="cursor:pointer"><circle id="cueD" r="10" stroke="#0008" stroke-width="1"/><text id="cueT" text-anchor="middle" y="4.5" font-size="12" pointer-events="none"></text></g>
+        <g id="agentMark" opacity="0" transform="translate(8 -94)" pointer-events="none">   <!-- who is calling: original marks, not logos -->
           <circle id="amRing" r="12" fill="none" stroke="#ff8a2a" stroke-width="2"/>
           <g id="amC" fill="#d97757"><rect x="-2" y="-16" width="4" height="11" rx="2"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(45)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(90)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(135)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(180)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(225)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(270)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(315)"/></g>
           <g id="amX"><rect x="-13" y="-11" width="26" height="22" rx="6" fill="#1d2026" style="stroke:var(--acc)" stroke-width="1.5"/><path d="M-7-4L-2 0L-7 4" fill="none" style="stroke:var(--acc)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect id="amU" x="1" y="3" width="7" height="2" rx="1" style="fill:var(--acc)"/></g>
@@ -825,19 +825,21 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   const hb=sv('g',{opacity:0},bk), bd=sv('g',{},hb), tie=sv('g',{opacity:0},fr), hf=sv('g',{opacity:0},fr), gl=sv('g',{opacity:0},fr), sh=sv('g',{opacity:0},fr);
   const wh=L.whiteL, pc=L.pupL, pd=shade(pc,-.3);
   // nightcap: a soft cone drooping to one side, a pom-pom, a pale brim
-  sv('path',R({d:'M-34 -84Q-30 -140 6 -158Q40 -168 64 -124Q30 -140 34 -84Z',fill:pc,stroke:pd,'stroke-width':2.5}),nc);
-  sv('rect',R({x:-38,y:-90,width:76,height:10,rx:5,fill:wh,stroke:pd,'stroke-width':2}),nc);
-  sv('circle',{cx:64,cy:-120,r:9,fill:wh,stroke:pd,'stroke-width':2},nc);
+  const nci=sv('g',{transform:'translate(0 -62) scale(.6) translate(0 84)'},nc);   // (sized so even his biggest bounce keeps it in the window)
+  sv('path',R({d:'M-34 -84Q-30 -140 6 -158Q40 -168 64 -124Q30 -140 34 -84Z',fill:pc,stroke:pd,'stroke-width':2.5}),nci);
+  sv('rect',R({x:-38,y:-90,width:76,height:10,rx:5,fill:wh,stroke:pd,'stroke-width':2}),nci);
+  sv('circle',{cx:64,cy:-120,r:9,fill:wh,stroke:pd,'stroke-width':2},nci);
   // party hat: a striped cone with a pom-pom, in party colours (his own blue would vanish against his arms)
   const pk='#e0569a', pkd=shade(pk,-.3), yl='#f2c94c';
-  const phi=sv('g',{transform:'translate(0 -84) scale(1.2) translate(0 84)'},ph);   // (frame() owns ph's own transform)
+  const phi=sv('g',{transform:'translate(0 -62) scale(.7) translate(0 84)'},ph);   // (frame() owns ph's own transform)
   sv('path',R({d:'M-26 -84L26 -84L2 -160Z',fill:pk,stroke:pkd,'stroke-width':2.5}),phi);
   for(const [y0,y1] of [[-104,-114],[-128,-138]]){ const hw=y=>26*(y+160)/76; sv('path',{d:`M${-hw(y0)} ${y0}L${hw(y0)} ${y0}L${hw(y1)} ${y1}L${-hw(y1)} ${y1}Z`,fill:wh},phi); }
   sv('circle',{cx:2,cy:-162,r:7,fill:yl,stroke:shade(yl,-.3),'stroke-width':2},phi);
   // umbrella: a scalloped canopy over his head, a hooked handle; a few drops fall past it (moved from frame())
-  sv('path',R({d:'M-54 -112Q-52 -158 0 -162Q52 -158 54 -112Q38 -122 27 -112Q13.5 -122 0 -112Q-13.5 -122 -27 -112Q-38 -122 -54 -112Z',fill:'#f2c94c',stroke:shade('#f2c94c',-.35),'stroke-width':2.5}),um);   // rain-coat yellow
-  sv('path',R({d:'M0 -112L0 -90Q0 -82 -9 -83',fill:'none',stroke:wh,'stroke-width':3.5}),um);
-  const drops=[-70,-42,44,72].map(x=>sv('path',R({d:`M${x} -118L${x-2} -110`,fill:'none',stroke:'#9fd3ff','stroke-width':2.6}),um));
+  const umi=sv('g',{transform:'translate(0 -118) scale(.75) translate(0 162)'},um);   // (canopy well inside the window, handle on his head)
+  sv('path',R({d:'M-54 -112Q-52 -158 0 -162Q52 -158 54 -112Q38 -122 27 -112Q13.5 -122 0 -112Q-13.5 -122 -27 -112Q-38 -122 -54 -112Z',fill:'#f2c94c',stroke:shade('#f2c94c',-.35),'stroke-width':2.5}),umi);   // rain-coat yellow
+  sv('path',R({d:'M0 -112L0 -90Q0 -82 -9 -83',fill:'none',stroke:wh,'stroke-width':3.5}),umi);
+  const drops=[-70,-42,44,72].map(x=>sv('path',R({d:`M${x} -118L${x-2} -110`,fill:'none',stroke:'#9fd3ff','stroke-width':2.6}),umi));
   // tie: a red one under the bottom corner, big enough to read at his size
   const red='#d8453a', dk=shade(red,-.35);
   sv('path',R({d:'M-11 58L11 58L7 70L-7 70Z',fill:shade(red,-.12),stroke:dk,'stroke-width':2.5}),tie);
@@ -845,8 +847,8 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   sv('path',{d:'M-3 76L5 76L8 96',fill:'none',stroke:'#ffffff40','stroke-width':2,'stroke-linecap':'round'},tie);
   // headphones: a band behind his head (bd bobs inside hb, which frame() fades), a cup each side (frame() places them: they follow his gaze)
   const ink='#26282e', rim=shade(ink,.35), cup={};
-  sv('path',R({d:'M-84 -20C-100 -168 100 -168 84 -20',fill:'none',stroke:ink,'stroke-width':10}),bd);
-  sv('path',R({d:'M-84 -20C-100 -168 100 -168 84 -20',fill:'none',stroke:acc,'stroke-width':3}),bd);
+  sv('path',R({d:'M-84 -20C-100 -152 100 -152 84 -20',fill:'none',stroke:ink,'stroke-width':10}),bd);
+  sv('path',R({d:'M-84 -20C-100 -152 100 -152 84 -20',fill:'none',stroke:acc,'stroke-width':3}),bd);
   for(const s of [-1,1]){ const g=cup[s]=sv('g',{},hf);
     sv('ellipse',{rx:17,ry:28,fill:ink,stroke:acc,'stroke-width':3},g);                                // the shell
     sv('ellipse',{cx:-s*8,rx:7,ry:21,fill:acc},g);                                                       // the cushion, against his head
@@ -878,7 +880,7 @@ function drawSkin(back,front,L,bodyFill='url(#ballG)'){
   const R=(at)=>({...at,'stroke-linejoin':'round','stroke-linecap':'round'});
   switch(L.skin){
     case 'halo': { const g=sv('g',{},front);
-        sv('ellipse',{cx:0,cy:-134,rx:36,ry:6,fill:'none',stroke:soft,'stroke-width':4},g); parts.halo=g; break; }
+        sv('ellipse',{cx:0,cy:-120,rx:36,ry:6,fill:'none',stroke:soft,'stroke-width':4},g); parts.halo=g; break; }
     case 'crown': { const g=sv('g',{transform:'translate(0 -58) scale(.85) translate(0 68)'},front);
         sv('path',R({d:'M-22 -68L-26 -94L-11 -80L0 -98L11 -80L26 -94L22 -68Z',fill:soft,stroke:soft,'stroke-width':6}),g); break; }
     case 'sprout': { const g=sv('g',{},front);   // in front: the lambdas would hide it
@@ -1408,12 +1410,12 @@ function frame(ts){
         if(k>.6&&ts-nodAt>=200){ nodAt=ts; G.jelly.kick(.015*k); } } } }   // (nothing to write while all are off)
   if(AM||G.agent.x>.002){                 // the agent mark (nothing to write while it is gone)
     const v=G.agent.to(AM&&ts<AM.until&&!document.body.classList.contains('bar')?1:0,dt), ask=AM&&AM.kind==='ask', mk=AMX.mk, r=(t*.7)%1;
-    mk.setAttribute('opacity',clamp(v,0,1).toFixed(2)); mk.setAttribute('transform',`translate(8 -108) scale(${(1.35*(.6+.4*v)*(ask?1+.12*Math.max(0,Math.sin(t*8.8)):1)).toFixed(3)})`);
+    mk.setAttribute('opacity',clamp(v,0,1).toFixed(2)); mk.setAttribute('transform',`translate(8 -94) scale(${(1.35*(.6+.4*v)*(ask?1+.12*Math.max(0,Math.sin(t*8.8)):1)).toFixed(3)})`);
     if(AM&&v>.002){ const f=AM.from;       // only the moving part of this agent, and the one indicator of this kind
       if(f==='claude') AMX.C.setAttribute('transform',`rotate(${(t*6%360).toFixed(1)})`);
       else if(f==='codex') AMX.U.setAttribute('opacity',t%1<.5?1:0);
       else { AMX.D.setAttribute('cx',(11*Math.cos(t*3.93)).toFixed(2)); AMX.D.setAttribute('cy',(11*Math.sin(t*3.93)).toFixed(2)); }
-      if(ask){ AMX.ring.setAttribute('r',(12+14*r).toFixed(1)); AMX.ring.setAttribute('opacity',(1-r).toFixed(2)); }
+      if(ask){ AMX.ring.setAttribute('r',(12+9*r).toFixed(1)); AMX.ring.setAttribute('opacity',(1-r).toFixed(2)); }
       else AMX.chk.setAttribute('stroke-dashoffset',(30*(1-Math.min(1,Math.max(0,(ts-AM.t0-150)/300)))).toFixed(1)); }
     if(AM&&ts>=AM.until&&v<.002){ AM=null; G.agent.x=0; G.agent.v=0; mk.setAttribute('opacity','0'); mk.setAttribute('pointer-events','none'); renderCue(); } }
   // tears
