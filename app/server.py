@@ -38,6 +38,7 @@ APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 import quick  # noqa: E402
 import recall  # noqa: E402
+import stages  # noqa: E402
 STATIC = APP_DIR / "static"
 try:                                            # written by the release build (and kept in git for git installs)
     VERSION = (APP_DIR / "VERSION").read_text(encoding="utf-8").strip() or "0.0.0"
@@ -192,6 +193,7 @@ DEFAULTS = {
     "look": {},
     # lambda-tip cues: failed user units + new generation (local); next calendar item (gog) and weather look (network): off
     "follow_focus": False,                  # move to the screen you focus (Hyprland)
+    "answer_stages": True,                  # a board/notebook beside him for commands and facts (#144); off = captions only
     "step_aside": True,                     # slide out of the way while nixi's card is open
     "idle_mode": "shrink",                  # when idle: off (stay) | shrink (peek at the edge) | doze
     "ambient_system": True, "ambient_calendar": False, "ambient_weather": False,
@@ -322,6 +324,8 @@ class State:
         self.auto_pick = ""
         self.last_worked = False                   # did the last answer use tools? then a short "yes" is still work
         self.last_you = ""                         # the last request, for "continue in nixi" (nixi mode keeps no history)
+        self.stage_run_tok = None                  # …and the item it belongs to, so a denial can say which one
+        self.stage_run = None                      # the one command a stage's Run may ask for (#144): any other permission is denied
 
     def save(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -2597,10 +2601,11 @@ def say_path(p):
     return f"your {last} folder" if home and len(parts) == 1 else f"the {last} folder"
 
 
-def speakable(t: str) -> str:
+def speakable(t: str, board: bool = False) -> str:
+    """`board`: a commands stage is on screen, so a command is pointed at; otherwise there is nowhere to read it, so it is said."""
     t = untag(t)
     t = re.sub(r"```.*?```", " I put some code on screen. ", t, flags=re.S)
-    t = re.sub(r"`(?![\w ]+(?:\s*\+\s*[\w ]+)+`)([^`]*\s[^`]*)`", "the command on screen", t)   # a command is pointed at, never read out (S24); a key combo is still said
+    t = re.sub(r"`(?![\w ]+(?:\s*\+\s*[\w ]+)+`)([^`]*\s[^`]*)`", "the command on the board", t) if board else t   # (S24) a key combo is still said
     t = re.sub(r"`([^`]*)`", r"\1", t)
     t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)
     t = re.sub(r"https?://\S+", "a link", t)
@@ -3802,6 +3807,15 @@ def run_bridge(prompt, emit):
 
     def approve(o):                                      # (a worker: the card waits for you, the reader goes on)
         opts = [x for x in o.get("options") or [] if isinstance(x, dict)]
+        if ST.stage_run is not None and o.get("command") != ST.stage_run:    # byte-exact; no `command` field = not it (fail closed)
+            emit(t="stage_status", state="other", token=ST.stage_run_tok)
+            rej = next((x.get("id") for x in opts if x.get("kind") == "reject_once"), None) \
+                or next((x.get("id") for x in opts if str(x.get("kind")).startswith("reject")), None)
+            if rej and BRIDGE.proc is p:
+                BRIDGE.send({"type": "permission", "id": o.get("id"), "optionId": rej})
+            elif not rej:                                # nothing to deny with, and an allow is never the fallback: end the turn
+                stop_proc()
+            return
         pick = APPROVALS.ask_bridge(str(o.get("title") or "Use a tool"), opts, str(o.get("detail") or ""),
                                     confirm=o.get("confirm"), summary=o.get("summary"))      # "click": a send, voice cannot answer it (#95)
         if BRIDGE.proc is p:                             # (ids restart per bridge: never answer a newer one's request)
@@ -3810,6 +3824,12 @@ def run_bridge(prompt, emit):
     # nixi's agent writes for a screen; this is read aloud, so ask for speech (the grounding stays the bridge's own)
     note = ("(Spoken reply via Nixi's voice: 1-4 short spoken sentences, no tables, lists or code blocks; you may start with "
             "one mood tag, one of " + ", ".join(f"[{t}]" for t in FACE_TAGS) + ".)\n\n")
+    if CFG.get("answer_stages", True) and ST.stage_run is None:
+        note = note[:-3] + (" When the answer is commands to run, or 2-5 facts, do not speak them: say what they are in a sentence, then "
+                            "end the reply with ONE last line, <<stage>> followed by JSON on that line: "
+                            '{"v":1,"kind":"commands","title":"optional plaque, 1-4 words","items":[{"label":"what it does","cmd":"the command"}]} or '
+                            '{"v":1,"kind":"facts","title":"...","points":["..."],"source":"optional"}; '
+                            "at most 5 items, labels and points under 120 characters, commands under 500, no line breaks inside.)\n\n")
     BRIDGE.send({"type": "prompt", "text": note + prompt})
     mid = None
     for line in p.stdout:
@@ -3824,7 +3844,7 @@ def run_bridge(prompt, emit):
             mid = o.get("messageId")
             emit(t="delta", text=str(o.get("text") or ""))
         elif ty == "tool":
-            emit(t="tool", name=str(o.get("title") or "tool"), detail="", id="", input=None)
+            emit(t="tool", name=str(o.get("title") or "tool"), detail="", id="", input=None, status=str(o.get("status") or ""))
         elif ty == "permission":
             threading.Thread(target=approve, args=(o,), daemon=True).start()
         elif ty in ("notice", "status"):
@@ -3850,6 +3870,63 @@ def run_bridge(prompt, emit):
         emit(t="error", text="The nixi bridge exited.")
     BRIDGE.close()
     return "done"
+
+
+STAGES = stages.Store()                                  # the stage on screen and the one before it (#144)
+
+
+def stages_on():
+    return CFG.get("answer_stages", True) is not False
+
+
+def stages_off():
+    """Answer stages was turned off: forget what we held and tell the page to put it away."""
+    STAGES.clear()
+    BUS.pub(t="stage_close")
+
+
+def board_up():
+    cur = STAGES.current()
+    return bool(cur and cur["kind"] == "commands" and STAGES.visible())
+
+
+def stage_event(page):
+    """What the page gets for a stage: the stage, how far to trust Run, and whether ← has somewhere to go."""
+    return {"trust": stage_trust(), "has_prev": STAGES.has_prev(), **page}
+
+
+def stage_trust():
+    """What the page may say about Run: nixi's trust, or "yolo" (no request reaches us then, so nothing to check)."""
+    c = nixi_conf()
+    return "yolo" if c.get("permissionMode") == "yolo" else c.get("trust") if c.get("trust") in ("guide", "mechanic") else "unknown"
+
+
+def stage_act(token, act):
+    """A button on the stage (never Run: that is a turn, see ask). Only what the store holds is ever used, never page text."""
+    if not stages_on() and act not in ("close", "shown", "hidden"):
+        return {"ok": False, "error": "off"}
+    if act in ("shown", "hidden"):                     # the page says whether it really drew the stage
+        STAGES.set_visible(act == "shown")
+        return {"ok": True}
+    if act == "close":
+        STAGES.close()
+        BUS.pub(t="stage_close")
+        return {"ok": True}
+    if act in ("back", "show"):
+        page = STAGES.current() if act == "show" else STAGES.back()
+        if page:
+            BUS.pub(t="stage", **stage_event(page))
+        return {"ok": bool(page)}
+    got = STAGES.get(token) if act in ("copy", "open", "play") else None
+    if act == "copy" and got:
+        try:
+            r = subprocess.run(["wl-copy"], input=got[1].get("cmd", got[1].get("text", "")).encode(), timeout=5, check=False)
+            return {"ok": r.returncode == 0}
+        except (OSError, subprocess.SubprocessError):
+            return {"ok": False, "error": "couldn't copy"}
+    if act in ("open", "play") and got:
+        return {"ok": False, "error": "not yet"}
+    return {"ok": False, "error": "gone" if act in ("copy", "open", "play") else "unknown"}
 
 
 def bridge_trust(level):
@@ -4193,7 +4270,7 @@ def state_info():
         "click_through": bool(CFG.get("click_through")),
         "autostart": bool(CFG.get("autostart")), "listen_on_show": bool(CFG.get("listen_on_show")),
         "barge_in": bool(CFG.get("barge_in")), "sfx": bool(CFG.get("sfx")), "look": look(), "skins": SKINS, "ambient": Ambient.snapshot(),
-        "follow_focus": bool(CFG.get("follow_focus")), "step_aside": CFG.get("step_aside", True) is not False,
+        "follow_focus": bool(CFG.get("follow_focus")), "step_aside": CFG.get("step_aside", True) is not False, "answer_stages": CFG.get("answer_stages", True) is not False,
         **{k: bool(CFG.get(k, k == "ambient_system")) for k in Ambient.FLAG.values()},
         "projects": quick.projects(),
         **{k: bool(CFG.get(k, k == "notify_sound")) for k in NOTIFY_FLAGS}, "notify_speak": CFG.get("notify_speak", ["meeting"]),
@@ -4217,7 +4294,8 @@ def state_info():
 
 # ---------------------------------------------------------------- http
 CTYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css",
-          ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json"}
+          ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json",
+          ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8"}   # fonts for the answer stages (#144)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -4306,8 +4384,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"theme": THEME})
             if p == "/api/ask":
                 return self.ask()
+            if p == "/api/stage/act":
+                b = json.loads(self._body() or b"{}")
+                return self._json(stage_act(str(b.get("token") or ""), str(b.get("act") or "")))
             if p == "/api/tts":
-                text = speakable(json.loads(self._body() or b"{}").get("text", ""))
+                text = speakable(json.loads(self._body() or b"{}").get("text", ""), board_up())
                 if not text or not tts_engine():
                     self.send_response(204)
                     self.end_headers()
@@ -4328,7 +4409,7 @@ class Handler(BaseHTTPRequestHandler):
                 return None
             if p == "/api/say":                       # speak this (played by the server, see Speaker)
                 b = json.loads(self._body() or b"{}")
-                text = speakable(b.get("text", ""))
+                text = speakable(b.get("text", ""), board_up())
                 if not text or not tts_engine() or (Ambient.meeting and b.get("follow", True) is False):   # (no unasked speech in a meeting)
                     BUS.pub(t="spk_skip", id=b.get("id"))
                 else:
@@ -4435,9 +4516,11 @@ class Handler(BaseHTTPRequestHandler):
                 except (TypeError, ValueError):
                     pass
                 for key in ("wake_word", "notify_done", "popup_done", "code_panel", "hover", "click_through", "autostart", "listen_on_show",
-                            "barge_in", "sfx", "update_check", "auto_compact", "full_text", "lean", "follow_focus", "step_aside", "ambient_system", "ambient_calendar", "ambient_weather", *NOTIFY_FLAGS):
+                            "barge_in", "sfx", "update_check", "auto_compact", "full_text", "lean", "follow_focus", "step_aside", "answer_stages", "ambient_system", "ambient_calendar", "ambient_weather", *NOTIFY_FLAGS):
                     if key in b:
                         upd[key] = bool(b[key])
+                if "answer_stages" in b and not b["answer_stages"]:
+                    stages_off()
                 ns = b.get("notify_speak")
                 if isinstance(ns, list) and len(ns) <= 6 and all(x in NOTIFY_CATS for x in ns):
                     upd["notify_speak"] = list(dict.fromkeys(ns))
@@ -4478,6 +4561,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.events()
             if p == "/api/quick":
                 said = json.loads(self._body() or b"{}").get("text", "")
+                fp = stages.fast_path(said, None) if BRIDGED and stages_on() else None      # "go back" is a stage's before it is the music's
+                if fp and ((fp[0] == "close" and STAGES.current()) or (fp[0] in ("back", "show") and (STAGES.current() or STAGES.has_prev()))):
+                    return self._json({"handled": False})
                 mem = recall.answer(said)                # answered from his quick memory: no Claude call, no usage
                 if mem:
                     return self._json({"handled": True, "say": mem, "mood": "happy", "state": state_info()})
@@ -4503,7 +4589,8 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/nixi-ask":
                 if not BRIDGED:
                     return self._json({"error": "only in nixi mode"}, 403)
-                return self._json({"say": open_in_nixi(json.loads(self._body() or b"{}").get("text"))})
+                say = open_in_nixi(json.loads(self._body() or b"{}").get("text"))
+                return self._json({"say": say, "ok": say == "Over to Nixi."})
             if p == "/api/projects":
                 if BRIDGED:
                     return self._json({"error": "off in nixi mode"}, 403)
@@ -4713,12 +4800,45 @@ class Handler(BaseHTTPRequestHandler):
             BUS.unsub(q)
         return None
 
+    def _said(self, msg):
+        """A whole reply without an agent turn."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        for ev in ({"t": "delta", "text": msg}, {"t": "result", "text": ""}, {"t": "done"}):
+            self.wfile.write(b"data: " + json.dumps(ev).encode() + b"\n\n")
+        self.wfile.flush()
+        return None
+
     def ask(self):
         body = json.loads(self._body() or b"{}")
         said = (body.get("prompt") or "").strip()
+        run_cmd = tok = None                                   # a stage's Run: the command comes from the store, never from the page
+        if BRIDGED and stages_on() and not body.get("attach") and not (body.get("stage") and body.get("act") == "run"):
+            cur = STAGES.current()
+            vis = cur if STAGES.visible() else None            # only what is really on screen can be run or copied by voice
+            fp = stages.fast_path(said, vis)                   # ("run the first one", "copy that", "close"...): no agent turn
+            if fp and fp[0] == "run" and vis and fp[1] < len(vis.get("items") or []):
+                body["stage"], body["act"] = vis["items"][fp[1]]["token"], "run"
+            elif fp and fp[0] == "ask" and vis:
+                return self._said("Which one? Say the first, second or third.")
+            elif fp and fp[0] in ("copy", "open", "play") and vis:
+                tk = (vis.get("items") or [vis])[fp[1]].get("token")
+                r = stage_act(tk, fp[0])
+                return self._said({"copy": "Copied."}.get(fp[0], "I can't do that yet.") if r["ok"] or r.get("error") == "not yet" else "I couldn't do that.")
+            elif fp and fp[0] in ("close", "back", "show") and (cur or fp[0] != "close"):
+                if stage_act("", fp[0])["ok"]:
+                    return self._said("Done.")
+        if body.get("stage") and body.get("act") == "run":
+            got = STAGES.get(str(body["stage"])) if BRIDGED and stages_on() else None
+            if not got or got[0] != "command":
+                return self._json({"error": "that command is gone"}, 410)
+            tok, run_cmd = str(body["stage"]), got[1]["cmd"]
+            body["attach"] = []                                # a Run is that command and nothing the page attached
+            said = "Run exactly this one command and nothing else: " + run_cmd
         extra = attach_prompt(body.get("attach"))
         prompt = (extra + "\n\n" + said).strip() if extra else said
-        follow = bool(body.get("follow")) and not extra
+        follow = bool(body.get("follow")) and not extra and run_cmd is None
         if follow:
             prompt = FOLLOW_NOTE + said
         if not prompt:
@@ -4730,13 +4850,7 @@ class Handler(BaseHTTPRequestHandler):
                 msg = bridge_trust(said[1:])
             finally:
                 ST.lock.release()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.end_headers()
-            for ev in ({"t": "delta", "text": msg}, {"t": "result", "text": ""}, {"t": "done"}):
-                self.wfile.write(b"data: " + json.dumps(ev).encode() + b"\n\n")
-            self.wfile.flush()
-            return None
+            return self._said(msg)
         ST.auto_pick = pick_auto(said, extra, follow)
         if not ST.lock.acquire(timeout=180 if ST.compacting else 0):    # (tidying its notes: wait, don't refuse)
             return self._json({"error": "still working on the last one"}, 409)
@@ -4778,14 +4892,56 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 real_emit(**kw)
 
+            run_state = {"seen": False, "other": False, "ok": False, "failed": ""}
+
+            def run_emit(**kw):                                  # a stage Run: waiting → running → done / failed on the item
+                t = kw.get("t")
+                if t == "stage_status" and kw.get("state") == "other":
+                    run_state["other"] = True
+                if t in ("result", "error", "stopped") and not run_state["other"]:
+                    err = t != "result" or kw.get("is_error") or not run_state["ok"] or bool(run_state["failed"])     # (done only once its tool completed)
+                    miss = "Nixi didn't run it" if not run_state["seen"] else "Couldn't confirm it finished"
+                    line = ((run_state["failed"] or str(kw.get("text") or "").strip() or ("stopped" if t == "stopped" else miss)).splitlines() or [""])[0][:200]
+                    emit(t="stage_status", token=tok, state="failed" if err else "done", **({"error": line} if err else {}))
+                if t == "tool":
+                    if kw.get("status") == "failed":
+                        run_state["failed"] = (str(kw.get("name") or "the command") + " failed")
+                    elif kw.get("status") == "completed":
+                        run_state["ok"] = True
+                emit(**kw)
+                if t == "tool" and not run_state["seen"] and not run_state["other"]:
+                    run_state["seen"] = True
+                    emit(t="stage_status", token=tok, state="running")
+
+            wlock = threading.Lock()                           # (approve() emits from its own thread: one write at a time)
+
             def send_ev(kw):
                 try:
-                    self.wfile.write(b"data: " + json.dumps(kw).encode() + b"\n\n")
-                    self.wfile.flush()
+                    with wlock:
+                        self.wfile.write(b"data: " + json.dumps(kw).encode() + b"\n\n")
+                        self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError):
                     alive[0] = False
 
-            def real_emit(**kw):
+            cutter, cut_done = (stages.Cutter() if BRIDGED and CFG.get("answer_stages", True) else None), [False]
+
+            def real_emit(**kw):     # the stage block is cut here, after the follow gate: the page, history and voice never see it
+                t = kw.get("t")
+                if cutter and t == "delta":
+                    kw["text"] = cutter.feed(kw.get("text", ""))
+                    if not kw["text"]:
+                        return
+                elif cutter and t in ("result", "error", "stopped") and not cut_done[0]:
+                    cut_done[0] = True
+                    tail, blk = cutter.close()
+                    if tail:
+                        out(t="delta", text=tail)
+                    st = stages.validate(blk) if t == "result" and blk and run_cmd is None and stages_on() else None    # (a Run never replaces the board)
+                    if st:
+                        out(t="stage", **stage_event(STAGES.put(st)))
+                out(**kw)
+
+            def out(**kw):
                 t = kw.get("t")
                 if t == "delta":
                     rec["him"] += kw.get("text", "")
@@ -4805,16 +4961,20 @@ class Handler(BaseHTTPRequestHandler):
                 if not alive[0]:
                     return
                 try:
-                    self.wfile.write(b"data: " + json.dumps(kw).encode() + b"\n\n")
-                    self.wfile.flush()
+                    with wlock:
+                        self.wfile.write(b"data: " + json.dumps(kw).encode() + b"\n\n")
+                        self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError):
                     alive[0] = False
                     stop_proc()
 
             ST.stopped = False
             partial = bool(CFG["partial_messages"])
+            ST.stage_run, ST.stage_run_tok = run_cmd, tok
+            if run_cmd is not None:
+                emit(t="stage_status", token=tok, state="waiting")
             for _ in range(3):
-                r = run_bridge(prompt, emit) if BRIDGED else run_claude(prompt, emit, partial)
+                r = run_bridge(prompt, run_emit if run_cmd is not None else emit) if BRIDGED else run_claude(prompt, emit, partial)
                 if r == "retry_nopartial":
                     partial = False
                     continue
@@ -4828,7 +4988,7 @@ class Handler(BaseHTTPRequestHandler):
             if gate["ignored"]:
                 return
             rec["session"] = ST.session
-            if isinstance(body.get("you"), str):       # what the user said, not `prompt`: a session summary's prompt carries its output
+            if isinstance(body.get("you"), str) and run_cmd is None:       # what the user said, not `prompt`: a session summary's prompt carries its output
                 ST.last_you = body["you"]
             rec["him"] = untag(rec["him"]).strip()[-6000:]
             try:
@@ -4840,6 +5000,7 @@ class Handler(BaseHTTPRequestHandler):
                 print(f"[nixi] history/quick memory: {e}", file=sys.stderr)
             emit(t="done")
         finally:
+            ST.stage_run = ST.stage_run_tok = None
             ST.lock.release()
         if CFG.get("auto_compact", True) and ST.ctx_used >= ctx_scale() * float(CFG.get("compact_at") or 0.7):
             threading.Thread(target=auto_compact, daemon=True).start()
