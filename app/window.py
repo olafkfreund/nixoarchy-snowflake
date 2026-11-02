@@ -383,6 +383,7 @@ class NixiWindow:
         except TypeError:
             pass
         self.url = url
+        v.connect("load-changed", lambda _v, ev: self._send_corner() if ev == WebKit2.LoadEvent.FINISHED else None)
         v.load_uri(self._authed_url())
         w.add(v)
         w.connect("delete-event", lambda *a: (self.hide(), True)[1])
@@ -473,6 +474,7 @@ class NixiWindow:
             json.dump(p, open(POS_FILE, "w"))
         except OSError:
             pass
+        self._send_corner()
         return False
 
     def _save_pos(self):
@@ -489,6 +491,18 @@ class NixiWindow:
             json.dump(p, open(POS_FILE, "w"))
         except OSError:
             pass
+        self._send_corner()
+
+    def _send_corner(self):
+        """Tell the page which corner of his screen he sits in (tl/tr/bl/br), from the middle of his own 340px strip."""
+        cx, cy = self.mx + self.wide_shift + W / 2, self.my + H / 2
+        if self.layer:                                   # layer mode: mx/my are margins from this monitor's top-left
+            g = self._geom()[1]
+        else:                                            # X11: mx/my are global screen coordinates
+            g = self._mon_at(cx, cy)[1]
+            cx, cy = cx - g.x, cy - g.y
+        c = ("t" if cy < g.height / 2 else "b") + ("l" if cx < g.width / 2 else "r")
+        self._js(f"window.nixiCorner&&nixiCorner('{c}')")
 
     def _place(self, x, y, clamp=False, mon=None):
         if mon is not None and mon != self.mon_i:
@@ -624,6 +638,7 @@ class NixiWindow:
         else:
             self._xmove(g.x + x - self.wide_shift, g.y + y)
         self._rewide()
+        self._send_corner()
         GLib.timeout_add(100, lambda: (self._save_pos() if self.layer else self._save_xpos(), False)[1])
         return True
 
@@ -697,6 +712,7 @@ class NixiWindow:
         if self.aside:
             self.aside["parked"] = self._spot()
             self._remap()
+        self._send_corner()
 
     def _remap(self):
         """Re-map at the GTK level only (no page callbacks: nixiHidden would put him to sleep) → stacks above the card."""
@@ -716,7 +732,7 @@ class NixiWindow:
                 if name:
                     self.go_monitor(name)
             else:
-                self._glide_to(h[1] - self.wide_shift, h[2] - self.top_shift)
+                self._glide_to(h[1] - self.wide_shift, h[2] - self.top_shift, self._send_corner)
                 GLib.timeout_add(int(GLIDE * 1000) + 300, lambda: (self.aside or self._save_pos(), False)[1])   # (not if aside again)
         return False
 
@@ -752,6 +768,13 @@ class NixiWindow:
             self.view.evaluate_javascript(code, -1, None, None, None, None, None)
         except (AttributeError, TypeError):
             self.view.run_javascript(code, None, None, None)
+
+    def _doze_show(self):
+        """Wake from a doze: reappear where he was, without stealing focus or announcing himself."""
+        if self.hover:
+            return
+        self.win.show_all()
+        self._apply_region()
 
     def show(self):
         if self.hover:
@@ -1237,6 +1260,7 @@ class NixiWindow:
          "kbd:grab": lambda: self.keyboard(True), "kbd:release": lambda: self.keyboard(False),
          "code:on": lambda: self.set_wide(True, "code"), "code:off": lambda: self.set_wide(False, "code"),
          "peek:hide": self.win.hide, "peek:show": self.show,
+         "doze:hide": self.win.hide, "doze:show": self._doze_show,
          "follow:on": lambda: setattr(self, "follow_focus", True), "follow:off": lambda: setattr(self, "follow_focus", False),
          "aside:set-on": lambda: setattr(self, "step_aside", True), "aside:set-off": lambda: setattr(self, "step_aside", False),
          }.get(msg, (lambda: self.go_monitor(msg[8:])) if msg.startswith("monitor:") else

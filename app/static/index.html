@@ -24,6 +24,9 @@ button{font:inherit;color:inherit}
 #stage{position:absolute;left:0;right:0;top:0;height:330px;display:grid;place-items:center;pointer-events:none;z-index:0;isolation:isolate;
   transform-origin:170px 165px;transition:transform .7s var(--ease)}
 body.hover #stage{transform:scale(.17)}
+body.peek #stage{transform:translate(var(--px,102px),var(--py,99px)) scale(.4)}   /* idle: small, in the nearest corner of his window (#140) */
+body.peek #orbBack,body.peek #orbFront,body.peek #raysW,body.peek #haloW{opacity:.25}
+body.peek #cap,body.peek #chip{display:none}
 #stage{transition:transform .65s cubic-bezier(.34,1.3,.5,1)}
 body.bar #stage,body.unfold #stage{transition:transform .36s cubic-bezier(.3,1.25,.5,1)}   /* into / out of the notch: quick */
 body.snap #stage,body.snap #barPill,body.snap #body>.ball,body.snap #body>ellipse,body.snap #orbBack,body.snap #orbFront,
@@ -594,6 +597,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       </div>
       <div class="row"><div class="t">Skin</div><div class="h">Something to wear. The sprout sways.</div><div class="skins" id="skinGrid"></div></div>
       <div class="row"><div class="t">Resting pupils</div><div class="h">His everyday look — they still change with his mood.</div><div class="seg" id="pupChips"></div></div>
+      <div class="row"><div class="t">When idle</div><div class="h">Pops back up when something happens.</div><div class="seg" id="idleChips"></div></div>
       <div class="row"><label class="tg"><input type="checkbox" id="codeSw"><span class="sw"></span><span class="l">Terminal<small>While he works he holds a little terminal showing the code he writes and the commands he runs.</small></span></label>
 </div>
       <div class="row"><label class="tg"><input type="checkbox" id="hoverSw"><span class="sw"></span><span class="l">Hover mode<small>He becomes your mouse cursor. Call him to bring him back.</small></span></label></div>
@@ -1421,8 +1425,10 @@ function frame(ts){
   capTick(ts); if(notifyQ.length) notifyDrain(ts); if(nudgeQ.size) nudgeDrain(ts);
   if(NATIVE&&!window.nixiQt){ const a=(frameN++&1)?'rgba(0,0,0,.004)':'rgba(0,0,0,.006)';   // forces WebKit to repaint the whole window every frame —
     paintEl.style.background=a; document.documentElement.style.background=a; }  // both the page and the root, so the widened edge is covered too
+  if(dozing){ framePaused=true; return; }       // hidden and idle: stop painting until restore() starts it again
   requestAnimationFrame(frame);
 }
+let dozing=false, framePaused=false;
 requestAnimationFrame(frame);
 
 /* ================= voice out (sentence-streamed) ================= */
@@ -1665,6 +1671,7 @@ function onEvent(ev){
   if(ev.t==='wake'){ if(rec||transcribing) return;
     if(ev.follow&&hiddenNow) return;          // you sent him away: talking afterwards isn't for him (only "hey Nixi" is)
     if(hiddenNow) native('show');
+    restore(15000,true);
     if(info.hover){ comeBack().then(()=>onEvent(ev)); return; }
     if(ev.follow){ if(busy) return; wake(); send(ev.text,{follow:true}); return; }   // talked right after he answered: no "hey Nixi" needed
     poke('surprised',500); wake(); sfx('wake');
@@ -1672,35 +1679,36 @@ function onEvent(ev){
   }
   else if(ev.t==='barge'){ if(!playing) return; shush(); sfx('pop'); poke('surprised',600);
     if(ev.listen){ if(ev.text&&ev.text.split(/\s+/).length>=2) send(ev.text); else startRec('auto'); } else tick('okay, okay — shh'); }
-  else if(ev.t==='remind'){ if(hiddenNow) native('show'); if(info.hover) comeBack(); sfx('remind'); poke('excited',1800); say(ev.text); tick('⏰ '+ev.text); }
+  else if(ev.t==='remind'){ if(hiddenNow) native('show'); restore(12000,false); if(info.hover) comeBack(); sfx('remind'); poke('excited',1800); say(ev.text); tick('⏰ '+ev.text); }
   else if(ev.t==='spk'){ const it=spkMap.get(ev.id); if(!it) return; spkMap.delete(ev.id); spkGuard=performance.now()+ev.at+ev.dur*1000;
     const t0=performance.now()+ev.at;
     if(ev.level) spkLv.push({t0,level:ev.level,step:ev.step||40}); if(spkLv.length>12) spkLv.shift();
     if(it.cap) capSpeak(it.cap,ev.dur,it.fresh,t0,ev.words,1); }
   else if(ev.t==='spk_skip'){ const it=spkMap.get(ev.id); spkMap.delete(ev.id); if(it&&it.cap) karaNow(it.cap,it.fresh); quietNative(); }
   else if(ev.t==='spk_done'){ quietNative(); }
-  else if(ev.t==='approve') queueApproval(ev);
+  else if(ev.t==='approve'){ restore(20000,true); queueApproval(ev); }
   else if(ev.t==='attention'){                            // an agent (claude/codex/agy…) is waiting for you: `nixi-companion attention`
     const ask=ev.kind!=='done', r=(ev.text||'').replace(new RegExp('^'+ev.name+'\\s+','i'),''), pj=ev.project?' · '+ev.project:'';
     const head=ask?(/^(needs|is waiting|wants)\b/i.test(r)?ev.name+' '+r:ev.name+' needs you'+(r?': '+r:'')):'✓ '+ev.name+' finished'+(r?': '+r:'');   // ("Claude needs your permission…", not "Claude needs you: Claude needs…")
     if(hiddenNow){ if(ask) post('/api/notify',{title:'Nixi',body:head+pj}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
+    if(ask||!(SIT.fullscreen||SIT.meeting)) restore(ask?20000:11000,false);
     if(info.hover) comeBack(); wake(); agentMark(ev.from,ask?'ask':'done');
     if(!ask&&((attnPend&&performance.now()-attnPend.at<60000)||(AM&&AM.kind==='ask'&&performance.now()<AM.until))){ sfx('done'); poke('t_beam',1400); return; }   // (a finish never takes over a question)
     if(!ask){ sfx('done'); poke('t_beam',1400); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; sendRegion(); return; }   // (no flash, no talking)
     sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
     if(!muted) sayAside(head+(ev.project?', in '+ev.project:'')); }
   else if(ev.t==='notify') notifyIn(ev);
-  else if(ev.t==='nudge') { ev.rt=performance.now(); nudgeQ.set(ev.kind,ev); nudgeDrain(performance.now()); }
+  else if(ev.t==='nudge') { if(!(SIT.fullscreen||SIT.meeting)) restore(11000,false); ev.rt=performance.now(); nudgeQ.set(ev.kind,ev); nudgeDrain(performance.now()); }
   else if(ev.t==='situation'){ SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party;
     if(ev.weather==='snow'&&SIT.weather!=='snow'&&info.look_weather) poke('excited',1800);      // he loves snow: once, when it starts
     SIT.weather=ev.weather||null; }
-  else if(ev.t==='ambient'){ const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive) poke('confused',1500);
+  else if(ev.t==='ambient'){ if(ev.alert) restore(12000,false); const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive) poke('confused',1500);
     if(ev.glint&&info.proactive){ poke('t_beam',1800); burstLines('#77b6e1',8); }      // a new NixOS generation: proud
     if(ev.glint){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
     if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')) flash('#4d6fb7'); }   // (never spoken)
     else if(more&&document.body.classList.contains('bar')) flash('#e5a50a'); }
   else if(ev.t==='approve_done') approvalGone(ev.id);
-  else if(ev.t==='askpass') askPass(ev);
+  else if(ev.t==='askpass'){ restore(20000,true); askPass(ev); }
   else if(ev.t==='askpass_done') pwGone(ev.id);
 }
 
@@ -1810,7 +1818,7 @@ function notifyIn(ev){
   notifyDrain(now); }
 function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
   const now=performance.now(); while(notifyQ.length&&now-notifyQ[0].rt>4000) notifyQ.shift();   // too old: the server is giving it back at 5 s
-  const ev=notifyQ.shift(); if(!ev) return; notifySeen(ev.key);
+  const ev=notifyQ.shift(); if(!ev) return; notifySeen(ev.key); restore(11000,false);   // (before the mail pop-out is measured)
   const c=ev.app==='nixi-job'?NOTE.job:NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null}; notifyRow=row; notifyAt=ts+5000;
   wake(); G.jelly.kick(-.45); popPupils(); poke(c[3],c[4]); burstLines(c[2],ev.category==='meeting'?8:ev.category==='download'?10:ev.category==='other'&&ev.app!=='nixi-job'?1:3);
   if(ev.category==='chat') G.tilt.kick(-8);
@@ -2000,7 +2008,7 @@ const MEM_SHOW=/^(?:hey\s+nixi[,\s]+)?what (?:do|did) you (?:remember|know about
 const PROJ_ADD=/^(?:hey\s+nixi[,\s]+)?(?:remember|note)\s+(?:that\s+)?((?:my|the)\s+.+?)\s+(?:project\s+|folder\s+|repo\s+)?(?:is|lives)\s+(?:in|at)\s+(~?\/?[\w.\/-]+)\s*\.?$/i;
 const NICE=/\b(thank(s| you)|good job|well done|nice( one| work)?|love you|you'?re (the best|awesome|cute|great)|good boy|cutie)\b/i;
 async function send(text,opts={}){
-  text=(text||'').trim(); if(!text&&!atts.length) return; wake();
+  text=(text||'').trim(); if(!text&&!atts.length) return; wake(); lastUser=performance.now();
   if(text.startsWith('/') && !(info.bridge && /^\/(mechanic|guide)$/.test(text))) return slash(text);   // nixi's trust: to the server
   // memory: handled right here, instantly
   let mm; const question=/\?\s*$/.test(text)||/^(?:hey\s+nixi[,\s]+)?(?:do|did|can|could) you\b|^remember (what|when|how|where|why|which|who|if|the time)\b/i.test(text);
@@ -2049,7 +2057,7 @@ async function send(text,opts={}){
     if(!res.ok){ const j=await res.json().catch(()=>({})); throw new Error(j.error||res.statusText); }
     await readSSE(res,handle);
   }catch(e){ failed=true; himSet(e.message,true); }
-  busy=false; $('#wk').textContent=''; toolMood=null; wake(); capQuiet(); document.body.classList.remove('busy'); workChip(); CP.done();
+  busy=false; idleHoldUntil=performance.now()+15000; $('#wk').textContent=''; toolMood=null; wake(); capQuiet(); document.body.classList.remove('busy'); workChip(); CP.done();
   while(apprQ.length) apprQ.pop(); if(pendingAppr){ pendingAppr=null; nextApproval(); }
   if(ignored){ setYou(''); himSet(''); cap.classList.add('off'); capOn=false; return; }   // you weren't talking to him: say and show nothing
   const answerText=untag(buf||all).trim();
@@ -2473,6 +2481,7 @@ function renderSettings(){
   for(const [k,on] of [['lookBeatSw',info.look_music],['speakSubjSw',info.notify_details]]){ const e=$('#'+k); e.disabled=!on; e.closest('.row').style.opacity=on?'':'.5'; }   // (each needs its parent switch)
   const ps=restPu();
   $('#pupChips').innerHTML=[['slit','▮ slits'],['circle','● circles'],['dot','• dots']].map(([id,l])=>`<button data-ps="${id}" class="${ps===id?'on':''}">${l}</button>`).join('');
+  { const im=info.idle_mode||'shrink'; $('#idleChips').innerHTML=[['off','Stay'],['shrink','Shrink'],['doze','Shrink, then hide']].map(([id,l])=>`<button data-idle="${id}" class="${im===id?'on':''}">${l}</button>`).join(''); }
   { const ve=$('#voiceEng'); if(ve) ve.textContent=({kokoro:'(Kokoro voices)',piper:'(piper voices — run ./install.sh for the nicer Kokoro voices)',espeak:'(robot voice only — run ./install.sh)'})[info.voice_engine]||''; }
   $('#nsChips').innerHTML=['mail','chat','meeting','video','download','other'].map(c=>`<button data-ns="${c}" class="${(info.notify_speak||[]).includes(c)?'on':''}">${c==='video'?'Feeds':c}</button>`).join('');
   $('#sttChips').innerHTML=STT.map(([id,l])=>`<button data-stt="${id}" class="${(info.whisper_model||'auto')===id?'on':''}">${l}</button>`).join('');
@@ -2552,7 +2561,7 @@ setEl.addEventListener('click',e=>{
   const g=k=>e.target.closest(`[data-${k}]`);
   const be=g('eff'); if(be) return setSetting({effort:be.dataset.eff}).then(()=>tick('effort → '+be.dataset.eff));
   const bn=g('ns'); if(bn){ const l=info.notify_speak||[], c=bn.dataset.ns; return setSetting({notify_speak:l.includes(c)?l.filter(x=>x!==c):[...l,c]}); }
-  const bm=g('m'), bv=g('v'), bp=g('ps'), bs=g('stt'), bt=g('trust'), bo=g('open'), bk=g('skin'), bsw=g('sw'), bpd=g('pdel');
+  const bm=g('m'), bv=g('v'), bp=g('ps'), bi=g('idle'), bs=g('stt'), bt=g('trust'), bo=g('open'), bk=g('skin'), bsw=g('sw'), bpd=g('pdel');
   const part=e.target.closest('#lookPrev [data-part], #partChips [data-part]');
   if(part&&part.dataset.part) return selectPart(part.dataset.part);
   if(bsw){ const v=bsw.dataset.sw; if(v===''){ const L=curLook(); L.skinColor=''; setLook({skinColor:''}).then(()=>selectPart('skin')); } else setPart(v); return; }
@@ -2562,6 +2571,7 @@ setEl.addEventListener('click',e=>{
     if(vv&&!vv.ready) tick('downloading that voice… using another one till it lands');
     if(muted) toggleMute(); shush(); say(['hi! this is my new voice.','how do i sound?','ooh, i like this one.'][Math.random()*3|0]); });
   if(bp) setSetting({pupil_style:bp.dataset.ps}).then(()=>{ idlePu=null; idleSwapAt=performance.now()+12000; popPupils(); });
+  if(bi) setSetting({idle_mode:bi.dataset.idle});
   if(bs) setSetting({whisper_model:bs.dataset.stt}).then(()=>tick('speech recognition: '+bs.textContent+' (loading…)'));
   if(bt){ const tr=bt.dataset.trust; setSetting({trust:tr}).then(()=>{ poke(tr==='trust'?'excited':tr==='readonly'?'curious':'wink',1000);
     tick({ask:"I'll ask before running anything",trust:"okay — I'll just do it",readonly:"looking only, no touching"}[tr]); }); }
@@ -2664,10 +2674,11 @@ function toggleMute(){ muted=!muted; try{localStorage.setItem('nixi.muted',muted
 // hidden (Esc, hide, closing him) = fully off: he stops talking and the server closes the mic — no "hey Nixi" until
 // he's shown again (Start menu, your hotkey, or `nixi-companion`)
 window.nixiHidden=()=>{ hiddenNow=true; endListening(); menu(false); hideAsk(); shush(); post('/api/sleep',{on:true}).catch(()=>{}); };
-window.nixiShown=()=>{ hiddenNow=false; post('/api/sleep',{on:false}).catch(()=>{}); entrance(); wake(); refresh().then(()=>{ syncEye(true); if(pendingAppr||busy) return;
+window.nixiShown=()=>{ hiddenNow=false; dozing=false; restore(15000);   // (the host showed him: leave doze without another native message)
+  post('/api/sleep',{on:false}).catch(()=>{}); entrance(); wake(); refresh().then(()=>{ syncEye(true); if(pendingAppr||busy) return;
   if(info.listen_on_show&&!info.hover) setTimeout(()=>startRec('auto'),450); else setTimeout(()=>poke('wink',900),350); }); };
 async function comeBack(){ if(!info.hover) return; await toggleHover(false); await sleep(700); }
-window.nixiCmd=async c=>{ hiddenNow=false;
+window.nixiCmd=async c=>{ hiddenNow=false; restore(15000,true);
   if(c==='home'){ return comeBack(); }
   if(c==='listen'){ await comeBack(); if(rec) stopRec(false); else startRec('auto'); }
   else if(c==='look'){ await comeBack(); shoot('window').then(j=>{ if(j) startRec('auto'); }); }
@@ -2696,8 +2707,8 @@ function sendRegion(force){
   calmCheck();
   if(!NATIVE) return;
   if(document.body.classList.contains('hover')){ const s2='[]'; if(force||lastRegion!==s2){ lastRegion=s2; native('region:'+s2); } return; }
-  const inBar=document.body.classList.contains('bar');
-  if(!info.click_through&&!inBar){ if(lastRegion!=='off'){ lastRegion='off'; native('region:null'); } return; }
+  const inBar=document.body.classList.contains('bar'), inPeek=document.body.classList.contains('peek');
+  if(!info.click_through&&!inBar&&!inPeek){ if(lastRegion!=='off'){ lastRegion='off'; native('region:null'); } return; }
   const rs=[], add=(el,pad=0)=>{ if(!el) return; const r=el.getBoundingClientRect(); if(!(r.width&&r.height)) return; const g=16, x0=Math.floor((r.left-pad)/g)*g, y0=Math.floor((r.top-pad)/g)*g, x1=Math.ceil((r.right+pad)/g)*g, y1=Math.ceil((r.bottom+pad)/g)*g;
     rs.push([x0,y0,x1-x0,y1-y0]); };   // coarse grid: the region only changes when something opens/closes, not as he sways
   if(inBar){   // the notch: only a tight box round his eyes takes clicks; the rest of it (and what drops out of it) lets clicks through
@@ -2719,12 +2730,45 @@ function sendRegion(force){
   const s=JSON.stringify(rs); if(!force&&s===lastRegion) return; lastRegion=s; native('region:'+s);
 }
 setInterval(()=>sendRegion(false),400);
+$('#stage').addEventListener('transitionend',e=>{ if(e.target===e.currentTarget) sendRegion(true); });   // (the peek's size changes over .65 s: re-measure when it lands)
 // panels slide in — re-measure once they've landed so their clickable area matches what you see
 addEventListener('transitionend',e=>{ if(e.target.matches&&e.target.matches('#menu,.pn,#appr,#ask,#pwbox')) sendRegion(true); });
 
 // the ball: click = talk (hands-free), drag = move the window, right-click = menu
 let downAt=null, dragged=false, clicks=[];
 E.body.addEventListener('mousedown',e=>{ if(e.button!==0) return; downAt=[e.clientX,e.clientY]; dragged=false; });
+// ---- idle (#140): after a while he shrinks into the corner nearest him (peek), then optionally hides without sleeping (doze)
+let idleSt='full', idleHoldUntil=0, lastUser=performance.now(), IDLE_K=1, eatClick=false, peekT=null, corner='br';
+const IDLE_SHRINK=45000, IDLE_DOZE=300000;
+window.nixiIdleScale=k=>{ IDLE_K=k; };      // test hook: multiplies the timers
+window.nixiCorner=c=>{ corner=c; const x=c[1]==='l'?-102:102, y=c[0]==='t'?-99:99; document.body.style.setProperty('--px',x+'px'); document.body.style.setProperty('--py',y+'px'); };
+// idleActive: your own action, or something that needs you: he stays (or comes back) up. idleShowing: a passive indicator: he just doesn't shrink further.
+function idleActive(){ const on=el=>el.classList.contains('on'), B=document.body.classList;
+  return busy||!!rec||transcribing||follow||menuOn||!!pendingAppr||on(pwEl)||on(apEl)||on(ask)||on(setEl)||on(panelEl)
+    ||B.contains('hover')||B.contains('bar')||!!downAt||hiddenNow; }
+function idleShowing(){ const now=performance.now();
+  return playing||capOn||!!notifyRow||chip.classList.contains('act')||!!AM||(!!attnPend&&now-attnPend.at<60000)
+    ||$('#mailPop').classList.contains('on')||(!!propOn&&now<propOn.until); }
+function setIdle(st){ if(st===idleSt) return;
+  const was=idleSt; idleSt=st; document.body.classList.toggle('peek',st!=='full');
+  if(st==='doze') dozing=native('doze:hide');          // (no host, no pause)
+  else if(was==='doze'){ dozing=false; if(framePaused){ framePaused=false; requestAnimationFrame(frame); } }
+  sendRegion(true); setTimeout(()=>sendRegion(true),700); }   // (transitionend may not fire)
+function restore(hold,focus){ const now=performance.now(); idleHoldUntil=Math.max(idleHoldUntil,now+(hold||0)); lastUser=now;
+  if(dozing){ native(focus?'show':'doze:show'); entrance(); }     // (not when the host already showed him: dozing is cleared first)
+  setIdle('full'); }
+function idleCheck(){ const mode=info.idle_mode||'shrink', now=performance.now();
+  if(framePaused&&AM&&now>=AM.until){ AM=null; G.agent.x=0; G.agent.v=0; AMX.mk.setAttribute('opacity','0'); AMX.mk.setAttribute('pointer-events','none'); renderCue(); }   // (frame() isn't running to expire it)
+  if(mode==='off'||idleActive()){ if(idleSt==='doze'&&!hiddenNow) restore(0); else setIdle('full'); return; }
+  if(idleShowing()) return;
+  const t=now-Math.max(lastUser,idleHoldUntil);
+  setIdle(mode==='doze'&&t>=IDLE_DOZE*IDLE_K?'doze':t>=IDLE_SHRINK*IDLE_K?'peek':idleSt==='doze'?'doze':idleSt); }   // (only forward; back only through restore)
+setInterval(idleCheck,500);
+E.body.addEventListener('pointerdown',e=>{ if(e.button!==0||!document.body.classList.contains('peek')) return;
+  eatClick=true; setTimeout(()=>{ eatClick=false; },600); restore(15000); e.stopPropagation(); e.preventDefault(); },true);
+E.body.addEventListener('click',e=>{ if(eatClick){ eatClick=false; e.stopImmediatePropagation(); } },true);   // (the click that woke him opens no menu)
+E.body.addEventListener('mouseenter',()=>{ if(document.body.classList.contains('peek')) peekT=setTimeout(()=>restore(15000),300); });
+E.body.addEventListener('mouseleave',()=>{ clearTimeout(peekT); });
 let mode={layer:false,cursor:true}, dragNative=false;
 window.nixiMode=m=>{ mode=m;
   // he couldn't be an overlay: say why, right on screen, instead of silently being a window
@@ -2737,7 +2781,7 @@ E.body.addEventListener('mousemove',ev=>{ if(ev.buttons) return; const d=Math.si
 function dodge(){ G.dx.kick((Math.random()<.5?-1:1)*1100); G.jelly.kick(-.6); sfx('pop'); }
 // time of day: sleepier late at night
 function nightTime(){ const h=new Date().getHours(); return h>=23||h<5; }
-addEventListener('mousemove',ev=>{ wake(); lastMouse=performance.now();
+addEventListener('mousemove',ev=>{ wake(); lastMouse=lastUser=performance.now();
   if(downAt && (ev.buttons&1) && !dragged && Math.hypot(ev.clientX-downAt[0],ev.clientY-downAt[1])>5){ dragged=true; snapMorph(); dragNative=native('drag'); if(dragNative&&!(mode.layer&&!mode.cursor)) downAt=null; }
   // overlay without a global cursor (e.g. sway): tell the window how far you've dragged from where you grabbed him
   if(dragged && downAt && mode.layer && !mode.cursor && (ev.buttons&1)) native(`dragby:${(ev.clientX-downAt[0]).toFixed(0)},${(ev.clientY-downAt[1]).toFixed(0)}`);
@@ -2765,7 +2809,7 @@ addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('mouseup',()=>{ if(dragNative){ dragNative=false; native('dragend'); } downAt=null; });
 addEventListener('mousedown',e=>{ if(!e.target.closest('#body,#barPill,#menu,#ask,.pn,#appr,#atts,#pwbox')){ menu(false); closePanels(); if(!input.value) hideAsk(); } });
 
-addEventListener('keydown',e=>{ wake();
+addEventListener('keydown',e=>{ wake(); lastUser=performance.now();
   const askOn=ask.classList.contains('on'), k=e.key.toLowerCase(), typing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&document.activeElement!==input;
   if(pendingAppr && !askOn && !typing){ if((e.key==='Enter'||k==='y')&&pendingAppr.confirm==='click'){ e.preventDefault(); return; } if(e.key==='Enter'||k==='y'){ e.preventDefault(); return answer('yes'); } if(e.key==='Escape'||k==='n'){ e.preventDefault(); return answer('no'); } }
   if(e.key==='Escape'){ e.preventDefault();
