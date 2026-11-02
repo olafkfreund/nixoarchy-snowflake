@@ -38,6 +38,7 @@ APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 import quick  # noqa: E402
 import recall  # noqa: E402
+import stages  # noqa: E402
 STATIC = APP_DIR / "static"
 try:                                            # written by the release build (and kept in git for git installs)
     VERSION = (APP_DIR / "VERSION").read_text(encoding="utf-8").strip() or "0.0.0"
@@ -3810,6 +3811,12 @@ def run_bridge(prompt, emit):
     # nixi's agent writes for a screen; this is read aloud, so ask for speech (the grounding stays the bridge's own)
     note = ("(Spoken reply via Nixi's voice: 1-4 short spoken sentences, no tables, lists or code blocks; you may start with "
             "one mood tag, one of " + ", ".join(f"[{t}]" for t in FACE_TAGS) + ".)\n\n")
+    if CFG.get("answer_stages", True):
+        note = note[:-3] + (" When the answer is commands to run, or 2-5 facts, do not speak them: say what they are in a sentence, then "
+                            "end the reply with ONE last line, <<stage>> followed by JSON on that line: "
+                            '{"v":1,"kind":"commands","items":[{"label":"what it does","cmd":"the command"}]} or '
+                            '{"v":1,"kind":"facts","title":"...","points":["..."],"source":"optional"}; '
+                            "at most 5 items, labels and points under 120 characters, commands under 500, no line breaks inside.)\n\n")
     BRIDGE.send({"type": "prompt", "text": note + prompt})
     mid = None
     for line in p.stdout:
@@ -3850,6 +3857,9 @@ def run_bridge(prompt, emit):
         emit(t="error", text="The nixi bridge exited.")
     BRIDGE.close()
     return "done"
+
+
+STAGES = stages.Store()                                  # the stage on screen and the one before it (#144)
 
 
 def bridge_trust(level):
@@ -4785,7 +4795,25 @@ class Handler(BaseHTTPRequestHandler):
                 except (BrokenPipeError, ConnectionResetError):
                     alive[0] = False
 
-            def real_emit(**kw):
+            cutter, cut_done = (stages.Cutter() if BRIDGED and CFG.get("answer_stages", True) else None), [False]
+
+            def real_emit(**kw):     # the stage block is cut here, after the follow gate: the page, history and voice never see it
+                t = kw.get("t")
+                if cutter and t == "delta":
+                    kw["text"] = cutter.feed(kw.get("text", ""))
+                    if not kw["text"]:
+                        return
+                elif cutter and t in ("result", "error", "stopped") and not cut_done[0]:
+                    cut_done[0] = True
+                    tail, blk = cutter.close()
+                    if tail:
+                        out(t="delta", text=tail)
+                    st = stages.validate(blk) if t == "result" and blk else None
+                    if st:
+                        out(t="stage", **STAGES.put(st))
+                out(**kw)
+
+            def out(**kw):
                 t = kw.get("t")
                 if t == "delta":
                     rec["him"] += kw.get("text", "")
