@@ -24,6 +24,9 @@ button{font:inherit;color:inherit}
 #stage{position:absolute;left:0;right:0;top:0;height:330px;display:grid;place-items:center;pointer-events:none;z-index:0;isolation:isolate;
   transform-origin:170px 165px;transition:transform .7s var(--ease)}
 body.hover #stage{transform:scale(.17)}
+body.peek #stage{transform:translate(var(--px,102px),var(--py,99px)) scale(.4)}   /* idle: small, in the nearest corner of his window (#140) */
+body.peek #orbBack,body.peek #orbFront,body.peek #raysW,body.peek #haloW{opacity:.25}
+body.peek #cap,body.peek #chip{display:none}
 #stage{transition:transform .65s cubic-bezier(.34,1.3,.5,1)}
 body.bar #stage,body.unfold #stage{transition:transform .36s cubic-bezier(.3,1.25,.5,1)}   /* into / out of the notch: quick */
 body.snap #stage,body.snap #barPill,body.snap #body>.ball,body.snap #body>ellipse,body.snap #orbBack,body.snap #orbFront,
@@ -1421,8 +1424,10 @@ function frame(ts){
   capTick(ts); if(notifyQ.length) notifyDrain(ts); if(nudgeQ.size) nudgeDrain(ts);
   if(NATIVE&&!window.nixiQt){ const a=(frameN++&1)?'rgba(0,0,0,.004)':'rgba(0,0,0,.006)';   // forces WebKit to repaint the whole window every frame —
     paintEl.style.background=a; document.documentElement.style.background=a; }  // both the page and the root, so the widened edge is covered too
+  if(dozing){ framePaused=true; return; }       // hidden and idle: stop painting until restore() starts it again
   requestAnimationFrame(frame);
 }
+let dozing=false, framePaused=false;
 requestAnimationFrame(frame);
 
 /* ================= voice out (sentence-streamed) ================= */
@@ -2696,8 +2701,8 @@ function sendRegion(force){
   calmCheck();
   if(!NATIVE) return;
   if(document.body.classList.contains('hover')){ const s2='[]'; if(force||lastRegion!==s2){ lastRegion=s2; native('region:'+s2); } return; }
-  const inBar=document.body.classList.contains('bar');
-  if(!info.click_through&&!inBar){ if(lastRegion!=='off'){ lastRegion='off'; native('region:null'); } return; }
+  const inBar=document.body.classList.contains('bar'), inPeek=document.body.classList.contains('peek');
+  if(!info.click_through&&!inBar&&!inPeek){ if(lastRegion!=='off'){ lastRegion='off'; native('region:null'); } return; }
   const rs=[], add=(el,pad=0)=>{ if(!el) return; const r=el.getBoundingClientRect(); if(!(r.width&&r.height)) return; const g=16, x0=Math.floor((r.left-pad)/g)*g, y0=Math.floor((r.top-pad)/g)*g, x1=Math.ceil((r.right+pad)/g)*g, y1=Math.ceil((r.bottom+pad)/g)*g;
     rs.push([x0,y0,x1-x0,y1-y0]); };   // coarse grid: the region only changes when something opens/closes, not as he sways
   if(inBar){   // the notch: only a tight box round his eyes takes clicks; the rest of it (and what drops out of it) lets clicks through
@@ -2719,12 +2724,40 @@ function sendRegion(force){
   const s=JSON.stringify(rs); if(!force&&s===lastRegion) return; lastRegion=s; native('region:'+s);
 }
 setInterval(()=>sendRegion(false),400);
+$('#stage').addEventListener('transitionend',()=>sendRegion(true));   // (the peek's size changes over .65 s: re-measure when it lands)
 // panels slide in — re-measure once they've landed so their clickable area matches what you see
 addEventListener('transitionend',e=>{ if(e.target.matches&&e.target.matches('#menu,.pn,#appr,#ask,#pwbox')) sendRegion(true); });
 
 // the ball: click = talk (hands-free), drag = move the window, right-click = menu
 let downAt=null, dragged=false, clicks=[];
 E.body.addEventListener('mousedown',e=>{ if(e.button!==0) return; downAt=[e.clientX,e.clientY]; dragged=false; });
+// ---- idle (#140): after a while he shrinks into the corner nearest him (peek), then optionally hides without sleeping (doze)
+let idleSt='full', idleHoldUntil=0, IDLE_K=1, eatClick=false, peekT=null, corner='br';
+const IDLE_SHRINK=45000, IDLE_DOZE=300000;
+window.nixiIdleScale=k=>{ IDLE_K=k; };      // test hook: multiplies the timers
+window.nixiCorner=c=>{ corner=c; const x=c[1]==='l'?-102:102, y=c[0]==='t'?-99:99; document.body.style.setProperty('--px',x+'px'); document.body.style.setProperty('--py',y+'px'); };
+function idleBusy(){ const now=performance.now(), on=el=>el.classList.contains('on'), B=document.body.classList;
+  return busy||playing||!!rec||transcribing||follow||menuOn||!!pendingAppr||on(pwEl)||on(apEl)||on(ask)||on(setEl)||on(panelEl)||capOn||!!notifyRow
+    ||chip.classList.contains('act')||!!AM||(!!attnPend&&now-attnPend.at<60000)||on($('#mailPop'))||(!!propOn&&now<propOn.until)
+    ||B.contains('hover')||B.contains('bar')||dragged||!!downAt||hiddenNow; }
+function setIdle(st){ if(st===idleSt) return;
+  const was=idleSt; idleSt=st; document.body.classList.toggle('peek',st!=='full');
+  if(st==='doze'){ dozing=true; native('doze:hide'); } else if(was==='doze') dozing=false;
+  sendRegion(true); }
+function restore(hold,focus){ const now=performance.now(); idleHoldUntil=Math.max(idleHoldUntil,now+(hold||0));
+  if(dozing){ native(focus?'show':'doze:show'); entrance(); }
+  setIdle('full');
+  if(framePaused){ framePaused=false; requestAnimationFrame(frame); } }
+function idleCheck(){ const mode=info.idle_mode||'shrink';
+  if(mode==='off'||idleBusy()){ if(idleSt!=='full'){ if(hiddenNow) setIdle('full'); else restore(0); } return; }
+  const t=performance.now()-Math.max(lastActive,lastMouse,idleHoldUntil);
+  setIdle(mode==='doze'&&t>=IDLE_DOZE*IDLE_K?'doze':t>=IDLE_SHRINK*IDLE_K?'peek':idleSt==='doze'?'doze':idleSt); }   // (only forward; back only through restore)
+setInterval(idleCheck,500);
+E.body.addEventListener('pointerdown',e=>{ if(!document.body.classList.contains('peek')) return;
+  eatClick=true; setTimeout(()=>{ eatClick=false; },600); restore(12000); e.stopPropagation(); e.preventDefault(); },true);
+E.body.addEventListener('click',e=>{ if(eatClick){ eatClick=false; e.stopImmediatePropagation(); } },true);   // (the click that woke him opens no menu)
+E.body.addEventListener('mouseenter',()=>{ if(document.body.classList.contains('peek')) peekT=setTimeout(()=>restore(12000),300); });
+E.body.addEventListener('mouseleave',()=>{ clearTimeout(peekT); });
 let mode={layer:false,cursor:true}, dragNative=false;
 window.nixiMode=m=>{ mode=m;
   // he couldn't be an overlay: say why, right on screen, instead of silently being a window
