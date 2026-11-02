@@ -115,6 +115,31 @@ class StoreTest(unittest.TestCase):
         self.assertIsNone(self.s.current())
         self.assertEqual(self.s.back(), a)
 
+    def test_visible_only_after_the_page_says_so(self):
+        self.s.put(S.validate(CMDS))
+        self.assertFalse(self.s.visible())
+        self.s.set_visible(True)
+        self.assertTrue(self.s.visible())
+        self.s.put(S.validate(FACTS))                    # a new stage is not shown until the page draws it
+        self.assertFalse(self.s.visible())
+        self.s.set_visible(True)
+        self.s.back()
+        self.assertFalse(self.s.visible())
+        self.s.set_visible(True)
+        self.s.close()
+        self.assertFalse(self.s.visible())
+        self.s.set_visible(True)                         # nothing current: stays false
+        self.assertFalse(self.s.visible())
+
+    def test_has_prev(self):
+        self.assertFalse(self.s.has_prev())
+        self.s.put(S.validate(CMDS))
+        self.assertFalse(self.s.has_prev())
+        self.s.put(S.validate(FACTS))
+        self.assertTrue(self.s.has_prev())
+        self.t[0] = 700
+        self.assertFalse(self.s.has_prev())
+
     def test_back_expired_or_empty(self):
         self.assertIsNone(self.s.back())
         self.s.put(S.validate(CMDS))

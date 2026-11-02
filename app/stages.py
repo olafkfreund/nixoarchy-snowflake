@@ -110,6 +110,7 @@ class Store:
     def __init__(self, ttl=600, now=time.monotonic):
         self.ttl, self.now, self.lock = ttl, now, threading.Lock()
         self.cur = self.prev = None  # (page_stage, {token: (kind, item)}, born)
+        self.vis = False             # the page really drew the current stage (it may decline: fullscreen, dictation...)
 
     def _live(self, e):
         return e if e and self.now() - e[2] < self.ttl else None
@@ -128,7 +129,7 @@ class Store:
             toks[t] = ("facts", {"text": "\n".join([stage["title"], *stage["points"]])})
             page["token"] = t
         with self.lock:
-            self.prev, self.cur = self.cur, (page, toks, self.now())
+            self.prev, self.cur, self.vis = self.cur, (page, toks, self.now()), False
         return page
 
     def get(self, token):
@@ -148,12 +149,24 @@ class Store:
             e = self._live(self.prev)
             if not e:
                 return None
-            self.cur, self.prev = e, self.cur
+            self.cur, self.prev, self.vis = e, self.cur, False
             return e[0]
+
+    def has_prev(self):
+        with self.lock:
+            return bool(self._live(self.prev))
+
+    def visible(self):
+        with self.lock:
+            return bool(self.vis and self._live(self.cur))
+
+    def set_visible(self, v):
+        with self.lock:
+            self.vis = bool(v and self._live(self.cur))
 
     def close(self):
         with self.lock:
-            self.prev, self.cur = self.cur, None
+            self.prev, self.cur, self.vis = self.cur, None, False
 
 
 def maps_url(dest, mode=None):

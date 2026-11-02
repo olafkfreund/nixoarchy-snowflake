@@ -50,6 +50,8 @@ class SpeakableTest(_ServerEnv):
         s.STAGES.put({"v": 1, "kind": "facts", "title": "t", "points": ["p"]})
         self.assertFalse(s.board_up())
         s.STAGES.put({"v": 1, "kind": "commands", "items": [{"label": "a", "cmd": "ls -l"}]})
+        self.assertFalse(s.board_up())               # put, but the page has not drawn it (fullscreen, dictation...)
+        s.STAGES.set_visible(True)
         self.assertTrue(s.board_up())
         s.STAGES.close()
 

@@ -38,6 +38,7 @@ class StageActionsTest(unittest.TestCase):
         self.page = self.s.STAGES.put(self.stages.validate(
             {"v": 1, "kind": "commands", "items": [{"label": "Install", "cmd": CMD}, {"label": "Try", "cmd": "nix run nixpkgs#firefox"}]}))
         self.tok = self.page["items"][0]["token"]
+        self.s.STAGES.set_visible(True)                       # the page drew it
 
     def tearDown(self):
         self.s.ST.stage_run = self.s.ST.stage_run_tok = None
@@ -117,14 +118,16 @@ class StageActionsTest(unittest.TestCase):
         self.assertIsNone(self.s.STAGES.current())
 
     # ---- /api/ask: Run and the fast path
-    def ask(self, body, bridged=True):
+    def ask(self, body, bridged=True, tool=True, deltas=("done.",)):
         s = self.s
         prompts = []
 
         def fake_bridge(prompt, emit, *_):
             prompts.append((prompt, s.ST.stage_run))
-            emit(t="tool", name="Bash", detail="", id="", input=None)
-            emit(t="delta", text="done.")
+            if tool:
+                emit(t="tool", name="Bash", detail="", id="", input=None)
+            for d in deltas:
+                emit(t="delta", text=d)
             emit(t="result", text="", is_error=False)
             return "done"
 
@@ -174,6 +177,91 @@ class StageActionsTest(unittest.TestCase):
         evs, prompts, _ = self.ask({"prompt": "close"})
         self.assertEqual(prompts, [])
         self.assertIsNone(self.s.STAGES.current())
+
+    # ---- review fixes
+    def test_acts_shown_and_hidden_drive_visibility(self):
+        self.s.STAGES.put(self.stages.validate({"v": 1, "kind": "facts", "title": "t", "points": ["p"]}))
+        self.assertFalse(self.s.STAGES.visible())
+        self.s.stage_act("", "shown")
+        self.assertTrue(self.s.STAGES.visible())
+        self.s.stage_act("", "hidden")
+        self.assertFalse(self.s.STAGES.visible())
+
+    def test_fast_path_needs_a_stage_that_is_on_screen(self):
+        self.s.STAGES.set_visible(False)
+        with mock.patch.object(self.s.subprocess, "run") as run:
+            evs, prompts, _ = self.ask({"prompt": "run the first one"})
+            self.assertEqual((len(prompts), prompts[0][1]), (1, None))     # an ordinary agent turn
+            evs, prompts, _ = self.ask({"prompt": "copy the first one"})
+            self.assertFalse(run.called)
+            self.assertEqual(len(prompts), 1)
+
+    def test_stage_event_carries_has_prev_and_trust(self):
+        ev = self.s.stage_event(self.page)
+        self.assertTrue(ev["has_prev"] in (True, False) and "trust" in ev and ev["kind"] == "commands")
+        self.s.STAGES.put(self.stages.validate({"v": 1, "kind": "facts", "title": "t", "points": ["p"]}))
+        self.assertTrue(self.s.stage_event({"kind": "facts"})["has_prev"])
+
+    def test_done_needs_a_tool_event(self):
+        evs, _, _ = self.ask({"stage": self.tok, "act": "run"}, tool=False)
+        st = [e for e in evs if e["t"] == "stage_status"]
+        self.assertEqual([e["state"] for e in st], ["waiting", "failed"])
+        self.assertEqual(st[1]["error"], "Nixi didn't run it")
+
+    def test_no_running_after_other_and_no_done(self):
+        s = self.s
+
+        def fake(prompt, emit, *_):
+            emit(t="stage_status", state="other", token=self.tok)
+            emit(t="tool", name="Bash", detail="", id="", input=None)
+            emit(t="result", text="", is_error=False)
+            return "done"
+
+        h = s.Handler.__new__(s.Handler)
+        h.wfile = io.BytesIO()
+        h.send_response, h.send_header, h.end_headers = mock.Mock(), mock.Mock(), mock.Mock()
+        h._body = lambda: json.dumps({"stage": self.tok, "act": "run"}).encode()
+        with mock.patch.object(s, "run_bridge", fake), mock.patch.object(s, "BRIDGED", True), mock.patch.object(s, "hist_add"), \
+                mock.patch.object(s, "pick_auto", return_value=None), mock.patch.object(s.recall, "add"), mock.patch.dict(s.CFG, {"auto_compact": False}):
+            h.ask()
+        states = [json.loads(x[6:]).get("state") for x in h.wfile.getvalue().decode().split("\n\n") if x.startswith("data: ") and '"stage_status"' in x]
+        self.assertEqual(states, ["waiting", "other"])
+
+    def test_no_reject_option_stops_the_turn(self):
+        global OPTS
+        saved, OPTS = OPTS, [{"id": "a1", "kind": "allow_once"}]
+        try:
+            with mock.patch.object(self.s, "stop_proc") as stop:
+                self.permission({"command": "other"}, CMD)
+        finally:
+            OPTS = saved
+        self.assertTrue(stop.called)
+
+    def test_run_ignores_attachments(self):
+        with mock.patch.object(self.s, "attach_prompt", return_value="") as ap:
+            self.ask({"stage": self.tok, "act": "run", "attach": [{"kind": "window", "label": "x"}]})
+        ap.assert_called_once_with([])
+
+    def test_run_asks_for_no_stage_block_and_drops_one(self):
+        block = '\n<<stage>>{"v":1,"kind":"facts","title":"t","points":["p"]}'
+        before = self.s.STAGES.current()
+        evs, _, _ = self.ask({"stage": self.tok, "act": "run"}, deltas=("ok." + block,))
+        self.assertNotIn("stage", [e["t"] for e in evs])
+        self.assertNotIn("<<stage", json.dumps(evs))
+        self.assertEqual(self.s.STAGES.current(), before)
+        sent = []
+        p = mock.Mock(stdout=iter([json.dumps({"type": "done"}) + "\n"]))
+        for run, want in ((CMD, False), (None, True)):
+            self.s.ST.stage_run = run
+            with mock.patch.object(self.s.BRIDGE, "start", return_value=p), mock.patch.object(self.s.BRIDGE, "send", lambda m: sent.append(m)):
+                p.stdout = iter([json.dumps({"type": "done"}) + "\n"])
+                self.s.run_bridge("x", lambda **kw: None)
+            self.assertEqual("<<stage>>" in sent[-1]["text"], want)
+
+    def test_run_does_not_change_last_you(self):
+        self.s.ST.last_you = "how do I install firefox?"
+        self.ask({"stage": self.tok, "act": "run", "prompt": "Install it", "you": "Install it"})
+        self.assertEqual(self.s.ST.last_you, "how do I install firefox?")
 
     def test_stage_trust(self):
         for conf, want in (({"permissionMode": "yolo", "trust": "guide"}, "yolo"), ({"trust": "mechanic"}, "mechanic"), ({}, "unknown")):

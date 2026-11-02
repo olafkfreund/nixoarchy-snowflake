@@ -1771,7 +1771,7 @@ function onEvent(ev){
     if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')) flash('#4d6fb7'); }   // (never spoken)
     else if(more&&document.body.classList.contains('bar')) flash('#e5a50a'); }
   else if(ev.t==='approve_done') approvalGone(ev.id);
-  else if(ev.t==='stage') stageShow(ev);
+  else if(ev.t==='stage'){ if(stageShow(ev)===false) himSet(((himEl.textContent||'').trim()+'\n'+stageText(ev)).trim()); }
   else if(ev.t==='stage_status') stageStatus(ev);
   else if(ev.t==='stage_close') stageClosedByServer();
   else if(ev.t==='askpass'){ restore(20000,true); askPass(ev); }
@@ -1940,23 +1940,25 @@ function stageBuild(ev){
       tx.appendChild(hx('div','lb',it.label)); tx.appendChild(hx('code',null,it.cmd)); tx.appendChild(hx('div','st'));
       ab.appendChild(stageBtn('Run',()=>stageRun(it),guide)); ab.appendChild(stageBtn('Copy',b=>stageAct('copy',it.token,b)));
       row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
-    fn.textContent=guide?"Guide doesn't run commands — switch to Mechanic":tr==='yolo'?'runs without asking (YOLO)':tr==='mechanic'?"Mechanic · you'll see the exact command before it runs":'';
+    fn.textContent=guide?"Guide doesn't run commands — switch to Mechanic":tr==='yolo'?'runs without asking (YOLO)':tr==='mechanic'?"Mechanic · asks before it runs, unless you chose Always":'';
   } else {
     (ev.points||[]).forEach((pt,i)=>{ const row=hx('div','it'), tx=hx('div','tx'); row.appendChild(hx('div','n',String(i+1))); tx.appendChild(hx('div','pt1',pt)); row.appendChild(tx); bd.appendChild(row); });
     if(ev.source) bd.appendChild(hx('div','src','Source: '+ev.source));
     acts.appendChild(stageBtn('Copy',b=>stageAct('copy',ev.token,b)));
-    acts.appendChild(stageBtn('Open in Nixi',()=>{ post('/api/nixi-ask',{}).then(r=>r.json()).then(j=>{ fn.textContent='Opened ✓'; setTimeout(()=>stageClose(),1500); if(j.error) fn.textContent=j.error; }).catch(()=>{}); }));
+    acts.appendChild(stageBtn('Open in Nixi',()=>{ post('/api/nixi-ask',{}).then(r=>r.json()).then(j=>{ if(j.ok){ fn.textContent='Opened ✓'; setTimeout(()=>stageClose(),1500); } else fn.textContent=j.say||j.error||"Couldn't open it"; }).catch(()=>{}); }));
   }
-  $('#stgBack').hidden=false;
+  $('#stgBack').hidden=!ev.has_prev;
 }
+function stageText(ev){ const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
+  return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
-  if(hiddenNow||document.body.classList.contains('bar')||info.hover||SIT.fullscreen||SIT.locked||rec||pendingAppr) return;
+  if(hiddenNow||document.body.classList.contains('bar')||info.hover||SIT.fullscreen||SIT.locked||rec||pendingAppr){ post('/api/stage/act',{act:'hidden'}).catch(()=>{}); return false; }
   stgTm.forEach(clearTimeout); stgTm=[]; clearTimeout(stgOffT);
   stg=ev; stageBuild(ev); stgState='open'; stgRunTok=null; stgUse=stgQuiet=performance.now();
   stgTab.classList.remove('on'); stgEl.setAttribute('aria-hidden','false');
   stgSize(800); stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt');
   const at=(ms,f)=>stgTm.push(setTimeout(f,ms));
-  at(90,()=>{ if(!stgOpen()) return; stagePlace(); void stgEl.offsetWidth; stgEl.classList.add('on'); if(!REDUCED.matches) stgEl.classList.add('go'); sendRegion(true);
+  at(90,()=>{ if(!stgOpen()) return; stagePlace(); void stgEl.offsetWidth; stgEl.classList.add('on'); if(!REDUCED.matches) stgEl.classList.add('go'); sendRegion(true); post('/api/stage/act',{act:'shown'}).catch(()=>{});
     if(ev.kind==='commands'&&!REDUCED.matches){ chalkEl.classList.add('on'); at(250,()=>{ chalkEl.classList.add('pt'); const r=stgEl.querySelector('.it'); if(r) r.classList.add('pt'); }); } });
   at(500,()=>sendRegion(true));
   clearInterval(stgTimer); stgTimer=setInterval(stageTick,1000);
@@ -1964,20 +1966,20 @@ function stageShow(ev){
 function stageHide(toTab){
   stgTm.forEach(clearTimeout); stgTm=[]; clearInterval(stgTimer); stgTimer=null;
   stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); stgEl.setAttribute('aria-hidden','true');
-  if(toTab){ stgState='tab'; stgTab.textContent=$('#stgT').textContent; stagePlace(); stgSize(300); void stgTab.offsetWidth; stgTab.classList.add('on'); }
+  if(toTab){ post('/api/stage/act',{act:'hidden'}).catch(()=>{}); stgState='tab'; stgTab.textContent=$('#stgT').textContent; stagePlace(); stgSize(300); void stgTab.offsetWidth; stgTab.classList.add('on'); }
   else { stgState='closed'; stgTab.classList.remove('on'); stgOffT=setTimeout(()=>{ if(stgState==='closed') stgSize(0); sendRegion(true); },200); }
   sendRegion(true); setTimeout(()=>sendRegion(true),260);
 }
 function stageClose(){ if(stgState==='closed') return; stageHide(false); post('/api/stage/act',{act:'close'}).catch(()=>{}); }
 function stageRestore(){ if(stgState!=='tab'||!stg) return; stgState='open'; stgUse=stgQuiet=performance.now(); stgTab.classList.remove('on'); stgEl.setAttribute('aria-hidden','false'); stgSize(800);
-  stgTm.push(setTimeout(()=>{ if(!stgOpen()) return; stagePlace(); void stgEl.offsetWidth; stgEl.classList.add('on'); sendRegion(true); },90)); clearInterval(stgTimer); stgTimer=setInterval(stageTick,1000); }
+  stgTm.push(setTimeout(()=>{ if(!stgOpen()) return; stagePlace(); void stgEl.offsetWidth; stgEl.classList.add('on'); sendRegion(true); post('/api/stage/act',{act:'shown'}).catch(()=>{}); },90)); clearInterval(stgTimer); stgTimer=setInterval(stageTick,1000); }
 function stageTick(){ const now=performance.now(), hov=stgEl.matches(':hover');
   if(hov) stgUse=now;
   if(playing||busy||hov||pendingAppr) stgQuiet=now;
   if(stg&&stg.kind==='facts'&&now-stgQuiet>20000) return stageClose();
   if(stg&&stg.kind==='commands'&&now-stgUse>30000&&!busy) stageHide(true); }
 function stageAct(act,token,btn){ post('/api/stage/act',{token,act}).then(r=>r.json()).then(j=>{ if(btn&&act==='copy'){ const t=btn.textContent; btn.textContent=j.ok?'Copied ✓':"Couldn't copy"; setTimeout(()=>{ btn.textContent=t; },1400); } }).catch(()=>{}); }
-function stageRun(it){ stgRunTok=it.token; stageStatus({token:it.token,state:'waiting'}); send(it.label,{stage:it.token,claude:true}); }
+function stageRun(it){ stgRunTok=it.token; send(it.label,{stage:it.token,claude:true}); }
 function stageStatus(ev){ if(!stgOpen()&&stgState!=='tab') return;
   const rows=[...stgEl.querySelectorAll('.it')], tok=ev.token||(ev.state==='other'?stgRunTok:null);
   const row=rows.find(r=>r.dataset.token===tok)||(ev.state==='other'?rows.find(r=>/^(waiting|running)/.test(r.querySelector('.st').textContent)):null); if(!row) return;
@@ -2178,7 +2180,7 @@ async function send(text,opts={}){
   if(!opts.stage && !atts.some(a=>a.kind.startsWith('clip')) && CLIP_RE.test(text)) await shoot('clipboard');
   if(NICE.test(text)) poke(/cute|love/i.test(text)?'shy':'love',1800);
   shush(); capShow(); setYou(text||'(look at this)'); himSet('');
-  const attach=atts; atts=[]; renderAtts();
+  const attach=opts.stage?[]:atts; if(!opts.stage){ atts=[]; renderAtts(); }
   busy=true; toolMood=null; workWhat='thinking'; workT0=performance.now(); document.body.classList.add('busy');
   const kv=voiced(); let fresh=true;        // kv: the caption follows his voice instead of racing ahead of it
   const ep0=sayEpoch;
@@ -2196,7 +2198,7 @@ async function send(text,opts={}){
     case 'result': $('#wk').textContent=''; if(ev.is_error) failed=true; if(!all.trim()&&ev.text){ buf=ev.text; if(!kv||ev.is_error) showHim(ev.text,true); } break;
     case 'error': failed=true; himSet(ev.text.split('\n').slice(-3).join(' '),true); break;
     case 'stopped': stopped=true; tick('stopped'); poke('scared',900); break;
-    case 'stage': stageShow(ev); break;
+    case 'stage': if(stageShow(ev)===false){ const c=stageText(ev); buf+=(buf.trim()?'\n\n':'')+c; all+=(all.trim()?'\n\n':'')+c; if(!kv) showHim(buf); flush(false); } break;
     case 'stage_status': stageStatus(ev); break;
     case 'ignored': ignored=true; break; } };   // a follow-up that wasn't meant for him
   try{

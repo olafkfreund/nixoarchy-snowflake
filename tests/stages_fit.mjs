@@ -68,6 +68,21 @@ for (const [pn, ox] of Object.entries(POS)) for (const [fn, fx] of Object.entrie
   const m = "Nixi tried to run something else — stopped.";
   check(r[0] === m && r[1] === m && r[2] === m, "'other' shows on the running item", JSON.stringify(r)); }
 
+// ← only when there is an earlier stage to go back to
+{ await show(FIX["commands (mechanic)"], w => 0);
+  const a = await ev("return document.getElementById('stgBack').hidden");
+  await show({ ...FIX["commands (mechanic)"], has_prev: true }, w => 0);
+  const b = await ev("return document.getElementById('stgBack').hidden");
+  check(a === true && b === false, "back button only with has_prev", JSON.stringify([a, b])); }
+
+// a stage the page can't show now (fullscreen) is not lost: it becomes caption text
+{ await ev("stageClose(); await new Promise(r=>setTimeout(r,320)); SIT.fullscreen=true; himSet(''); return 1");
+  for (const [k, want] of [["commands (mechanic)", ["1. Install it: nix profile install nixpkgs#firefox", "2. Or just try it: nix run nixpkgs#firefox"]], ["facts", ["Tides", "Two highs a day", "Source: NOAA"]]]) {
+    await ev(`himSet(''); onEvent(${JSON.stringify(FIX[k])}); await new Promise(r=>setTimeout(r,500)); return 1`);
+    const r = await ev("return [stgState, document.getElementById('stg').classList.contains('on'), document.getElementById('him').textContent.replace(/\\s+/g,' ')]");
+    check(r[0] === "closed" && !r[1] && want.every(w => r[2].includes(w)), `declined stage becomes a caption: ${k}`, JSON.stringify(r)); }
+  await ev("SIT.fullscreen=false; himSet(''); return 1"); }
+
 // motion: the flourish runs normally, and not at all under reduced motion
 { await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "no-preference" }] });
   await show(FIX["commands (mechanic)"], w => 0);
