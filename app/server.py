@@ -323,6 +323,7 @@ class State:
         self.auto_pick = ""
         self.last_worked = False                   # did the last answer use tools? then a short "yes" is still work
         self.last_you = ""                         # the last request, for "continue in nixi" (nixi mode keeps no history)
+        self.stage_run = None                      # the one command a stage's Run may ask for (#144): any other permission is denied
 
     def save(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -3803,6 +3804,13 @@ def run_bridge(prompt, emit):
 
     def approve(o):                                      # (a worker: the card waits for you, the reader goes on)
         opts = [x for x in o.get("options") or [] if isinstance(x, dict)]
+        if ST.stage_run is not None and o.get("command") != ST.stage_run:    # byte-exact; no `command` field = not it (fail closed)
+            emit(t="stage_status", state="other")
+            rej = next((x.get("id") for x in opts if x.get("kind") == "reject_once"), None) \
+                or next((x.get("id") for x in opts if str(x.get("kind")).startswith("reject")), None)
+            if rej and BRIDGE.proc is p:                 # (no reject option: send nothing; an allow is never the fallback)
+                BRIDGE.send({"type": "permission", "id": o.get("id"), "optionId": rej})
+            return
         pick = APPROVALS.ask_bridge(str(o.get("title") or "Use a tool"), opts, str(o.get("detail") or ""),
                                     confirm=o.get("confirm"), summary=o.get("summary"))      # "click": a send, voice cannot answer it (#95)
         if BRIDGE.proc is p:                             # (ids restart per bridge: never answer a newer one's request)
@@ -3860,6 +3868,35 @@ def run_bridge(prompt, emit):
 
 
 STAGES = stages.Store()                                  # the stage on screen and the one before it (#144)
+
+
+def stage_trust():
+    """What the page may say about Run: nixi's trust, or "yolo" (no request reaches us then, so nothing to check)."""
+    c = nixi_conf()
+    return "yolo" if c.get("permissionMode") == "yolo" else c.get("trust") if c.get("trust") in ("guide", "mechanic") else "unknown"
+
+
+def stage_act(token, act):
+    """A button on the stage (never Run: that is a turn, see ask). Only what the store holds is ever used, never page text."""
+    if act == "close":
+        STAGES.close()
+        BUS.pub(t="stage_close")
+        return {"ok": True}
+    if act in ("back", "show"):
+        page = STAGES.current() if act == "show" else STAGES.back()
+        if page:
+            BUS.pub(t="stage", trust=stage_trust(), **page)
+        return {"ok": bool(page)}
+    got = STAGES.get(token) if act in ("copy", "open", "play") else None
+    if act == "copy" and got:
+        try:
+            r = subprocess.run(["wl-copy"], input=got[1].get("cmd", got[1].get("text", "")).encode(), timeout=5, check=False)
+            return {"ok": r.returncode == 0}
+        except (OSError, subprocess.SubprocessError):
+            return {"ok": False, "error": "couldn't copy"}
+    if act in ("open", "play") and got:
+        return {"ok": False, "error": "not yet"}
+    return {"ok": False, "error": "gone" if act in ("copy", "open", "play") else "unknown"}
 
 
 def bridge_trust(level):
@@ -4316,6 +4353,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"theme": THEME})
             if p == "/api/ask":
                 return self.ask()
+            if p == "/api/stage/act":
+                b = json.loads(self._body() or b"{}")
+                return self._json(stage_act(str(b.get("token") or ""), str(b.get("act") or "")))
             if p == "/api/tts":
                 text = speakable(json.loads(self._body() or b"{}").get("text", ""))
                 if not text or not tts_engine():
@@ -4723,12 +4763,43 @@ class Handler(BaseHTTPRequestHandler):
             BUS.unsub(q)
         return None
 
+    def _said(self, msg):
+        """A whole reply without an agent turn."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        for ev in ({"t": "delta", "text": msg}, {"t": "result", "text": ""}, {"t": "done"}):
+            self.wfile.write(b"data: " + json.dumps(ev).encode() + b"\n\n")
+        self.wfile.flush()
+        return None
+
     def ask(self):
         body = json.loads(self._body() or b"{}")
         said = (body.get("prompt") or "").strip()
+        run_cmd = tok = None                                   # a stage's Run: the command comes from the store, never from the page
+        if BRIDGED and not body.get("attach") and not (body.get("stage") and body.get("act") == "run"):
+            fp = stages.fast_path(said, STAGES.current())      # ("run the first one", "copy that", "close"...): no agent turn
+            cur = STAGES.current()
+            if fp and fp[0] == "run" and cur and fp[1] < len(cur.get("items") or []):
+                body["stage"], body["act"] = cur["items"][fp[1]]["token"], "run"
+            elif fp and fp[0] == "ask" and cur:
+                return self._said("Which one? Say the first, second or third.")
+            elif fp and fp[0] in ("copy", "open", "play") and cur:
+                tk = (cur.get("items") or [cur])[fp[1]].get("token")
+                r = stage_act(tk, fp[0])
+                return self._said({"copy": "Copied."}.get(fp[0], "I can't do that yet.") if r["ok"] or r.get("error") == "not yet" else "I couldn't do that.")
+            elif fp and fp[0] in ("close", "back", "show") and (cur or fp[0] != "close"):
+                if stage_act("", fp[0])["ok"]:
+                    return self._said("Done.")
+        if body.get("stage") and body.get("act") == "run":
+            got = STAGES.get(str(body["stage"])) if BRIDGED else None
+            if not got or got[0] != "command":
+                return self._json({"error": "that command is gone"}, 410)
+            tok, run_cmd = str(body["stage"]), got[1]["cmd"]
+            said = "Run exactly this one command and nothing else: " + run_cmd
         extra = attach_prompt(body.get("attach"))
         prompt = (extra + "\n\n" + said).strip() if extra else said
-        follow = bool(body.get("follow")) and not extra
+        follow = bool(body.get("follow")) and not extra and run_cmd is None
         if follow:
             prompt = FOLLOW_NOTE + said
         if not prompt:
@@ -4740,13 +4811,7 @@ class Handler(BaseHTTPRequestHandler):
                 msg = bridge_trust(said[1:])
             finally:
                 ST.lock.release()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.end_headers()
-            for ev in ({"t": "delta", "text": msg}, {"t": "result", "text": ""}, {"t": "done"}):
-                self.wfile.write(b"data: " + json.dumps(ev).encode() + b"\n\n")
-            self.wfile.flush()
-            return None
+            return self._said(msg)
         ST.auto_pick = pick_auto(said, extra, follow)
         if not ST.lock.acquire(timeout=180 if ST.compacting else 0):    # (tidying its notes: wait, don't refuse)
             return self._json({"error": "still working on the last one"}, 409)
@@ -4788,6 +4853,21 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 real_emit(**kw)
 
+            run_state = {"seen": False, "other": False}
+
+            def run_emit(**kw):                                  # a stage Run: waiting → running → done / failed on the item
+                t = kw.get("t")
+                if t == "stage_status" and kw.get("state") == "other":
+                    run_state["other"] = True
+                if t in ("result", "error", "stopped") and not run_state["other"]:
+                    err = t != "result" or kw.get("is_error")
+                    line = ((str(kw.get("text") or "").strip() or ("stopped" if t == "stopped" else "")).splitlines() or [""])[0][:200]
+                    emit(t="stage_status", token=tok, state="failed" if err else "done", **({"error": line} if err else {}))
+                emit(**kw)
+                if t == "tool" and not run_state["seen"]:
+                    run_state["seen"] = True
+                    emit(t="stage_status", token=tok, state="running")
+
             def send_ev(kw):
                 try:
                     self.wfile.write(b"data: " + json.dumps(kw).encode() + b"\n\n")
@@ -4810,7 +4890,7 @@ class Handler(BaseHTTPRequestHandler):
                         out(t="delta", text=tail)
                     st = stages.validate(blk) if t == "result" and blk else None
                     if st:
-                        out(t="stage", **STAGES.put(st))
+                        out(t="stage", trust=stage_trust(), **STAGES.put(st))
                 out(**kw)
 
             def out(**kw):
@@ -4841,8 +4921,11 @@ class Handler(BaseHTTPRequestHandler):
 
             ST.stopped = False
             partial = bool(CFG["partial_messages"])
+            ST.stage_run = run_cmd
+            if run_cmd is not None:
+                emit(t="stage_status", token=tok, state="waiting")
             for _ in range(3):
-                r = run_bridge(prompt, emit) if BRIDGED else run_claude(prompt, emit, partial)
+                r = run_bridge(prompt, run_emit if run_cmd is not None else emit) if BRIDGED else run_claude(prompt, emit, partial)
                 if r == "retry_nopartial":
                     partial = False
                     continue
@@ -4868,6 +4951,7 @@ class Handler(BaseHTTPRequestHandler):
                 print(f"[nixi] history/quick memory: {e}", file=sys.stderr)
             emit(t="done")
         finally:
+            ST.stage_run = None
             ST.lock.release()
         if CFG.get("auto_compact", True) and ST.ctx_used >= ctx_scale() * float(CFG.get("compact_at") or 0.7):
             threading.Thread(target=auto_compact, daemon=True).start()
