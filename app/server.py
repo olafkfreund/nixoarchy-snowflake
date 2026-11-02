@@ -4271,7 +4271,8 @@ def state_info():
 
 # ---------------------------------------------------------------- http
 CTYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css",
-          ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json"}
+          ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json",
+          ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8"}   # fonts for the answer stages (#144)
 
 
 class Handler(BaseHTTPRequestHandler):
