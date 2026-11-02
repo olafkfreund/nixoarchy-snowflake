@@ -833,11 +833,10 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
     sv('path',R({d:'M-16 -11L-6 -1M-10 -13L-4 -7',fill:'none',stroke:'#ffffff70','stroke-width':2.6}),g); }
   sv('path',R({d:'M-58 -31L58 -31',fill:'none',stroke:'#121419','stroke-width':7}),sh);
   sv('path',R({d:'M-56 -32.5L56 -32.5',fill:'none',stroke:acc,'stroke-width':1.6}),sh);
-  // glasses (coding): thin round frames centred on his eyes, a bridge; clear, so they stay on while he talks
-  for(const s of [-1,1]){ sv('circle',{cx:s*27.5,cy:-4.5,r:22,fill:'none',stroke:acc,'stroke-width':3},gl);
-    sv('path',R({d:`M${s*27.5-12} -16.5L${s*27.5-4} -22.5`,fill:'none',stroke:'#ffffff60','stroke-width':2.4}),gl); }
-  sv('path',R({d:'M-5.5 -4.5Q0 -10.5 5.5 -4.5',fill:'none',stroke:acc,'stroke-width':3}),gl);
-  return {tie,hb,hf,sh,gl,nc,ph,um,drops}; }
+  // glasses (coding): clear lenses that follow his eyes; frame() draws their outlines (like the eyes) while they are on
+  const lens=()=>sv('path',R({d:'',fill:'#ffffff0d',stroke:acc,'stroke-width':2.6}),gl), line=w=>sv('path',R({d:'',fill:'none',stroke:w||acc,'stroke-width':w?2.4:2.6}),gl);
+  const lensL=lens(), lensR=lens(), brg=line(), glintL=line('#ffffff60'), glintR=line('#ffffff60');
+  return {tie,hb,hf,sh,gl,nc,ph,um,drops,lensL,lensR,brg,glintL,glintR}; }
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
 function drawSkin(back,front,L,bodyFill='url(#ballG)'){
   back.innerHTML=''; front.innerHTML='';
@@ -1245,6 +1244,7 @@ function frame(ts){
   const yaw=lx*.03, pitch=ly*.03, cY=Math.cos(yaw), sY=Math.sin(yaw), cP=Math.cos(pitch), sP=Math.sin(pitch);
   const P=(x,y)=>sph(x,y,cY,sY,cP,sP);
   const voice=1+(isTalk(m)?lvl*.05:0)+(m==='listening'?micLvl*.05:0);      // eyes swell a touch with the voice
+  const gOn=SIT_P&&G.sitGl.x>.002, inner=[];          // glasses: only drawn while they are on (nothing written otherwise)
   for(const [side,c,pc,p,cp,hl] of [[-1,S.L,SP.L,E.pL,E.cpL,E.hlL],[1,S.R,SP.R,E.pR,E.cpR,E.hlR]]){
     const top=c.top.x+(1-c.top.x)*Math.max(blink*.97,1-openC), z=G.sz.x*openPop*c.es.x*voice;
     const cx=side*Math.max(EYE.cx,EYE_HALFW*z+2.6), cy=EYE.cy;      // bigger eyes move apart: always a gap, never merged
@@ -1260,7 +1260,13 @@ function frame(ts){
     if(k>1){ ux/=k; uy/=k; } qx=ux*rc-uy*rs; qy=ux*rs+uy*rc;
     const hr=clamp(pc.hr.x,0,1), st=clamp(pc.st.x,0,1-hr), spin=st*t*1.1;          // star pupils slowly spin
     hl.setAttribute('d',toD(pupilPts(pw,ph,-side*pc.r.x+spin,hr,st).map(([x,y])=>P(cx+qx+x,cy+qy+y))));
+    if(gOn){ const hw=EYE.rx*z+6, hh=EYE.ry*.62*z, r=Math.min(10,hh,hw), gy=cy-6*z+(isTalk(m)?-1.5*lvl:0), gx=side*Math.max(Math.abs(cx),hw+6), pts=[];   // (pushed out so the two lenses never overlap)   // a rounded lens round the eye, tilted like it
+      const Q=(x,y)=>P(gx+x*rc-y*rs,gy+x*rs+y*rc);
+      for(const [kx,ky,a0] of [[1,-1,-90],[1,1,0],[-1,1,90],[-1,-1,180]]) for(let j=0;j<=5;j++){ const a=(a0+j*18)*Math.PI/180; pts.push(Q(kx*(hw-r)+Math.cos(a)*r,ky*(hh-r)+Math.sin(a)*r)); }
+      SIT_P[side<0?'lensL':'lensR'].setAttribute('d',toD(pts)); inner.push(Q(-side*hw,-hh+r));
+      const g0=Q(-hw*.55,-hh*.3), g1=Q(-hw*.25,-hh*.7); SIT_P[side<0?'glintL':'glintR'].setAttribute('d',`M${g0[0].toFixed(2)} ${g0[1].toFixed(2)}L${g1[0].toFixed(2)} ${g1[1].toFixed(2)}`); }
   }
+  if(gOn&&inner.length===2){ const [a,b]=inner; SIT_P.brg.setAttribute('d',`M${a[0].toFixed(2)} ${a[1].toFixed(2)}Q${((a[0]+b[0])/2).toFixed(2)} ${((a[1]+b[1])/2-7).toFixed(2)} ${b[0].toFixed(2)} ${b[1].toFixed(2)}`); }
 
   // ---- aura: halo, voice ring, orbiting sparks
   const spd=G.spd.to(A.spd,dt)+(m==='listening'?micLvl*2.2:0)+(isTalk(m)?lvl*1.4:0);
