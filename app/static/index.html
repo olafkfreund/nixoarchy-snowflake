@@ -1731,7 +1731,7 @@ function sitStep(ts){ for(const k in sitOn){ const raw=!!(k==='rain'?SIT.weather
   if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(k==='meeting') G.jelly.kick(.35); if(k==='party'&&LOOK.skin==='none') confetti(18); }
   else if(!raw&&sitOn[k]&&ts-sitAt[k]>=8000) sitOn[k]=false; } }
 const NOTE={mail:['✉','New mail','#4d6fb7','reading',2200,'pop'], chat:['💬','New message','#7fd6ae','curious',1800,'chat'],
-  meeting:['📅','Meeting','#ffb02a','surprised',700,'remind'], video:['▶','Video','#e0569a','t_excited',1400,'ok'],
+  meeting:['📅','Meeting','#ffb02a','surprised',700,'remind'], video:['▶','New post','#e0569a','t_excited',1400,'ok'],
   download:['⬇','Download','#3ddc84','t_beam',1600,'done'], job:['✔','A long command finished','#3ddc84','t_beam',1800,'done'], other:['🔔','Notification','#7fd6ae','curious',1000,'pop']};
 const notifyQ=[]; let notifyRow=null, notifyAt=0, notifyBurst={cat:'',n:0,t:0};
 const APP_NAMES={'teams-for-linux':'Teams','thunderbird':'Thunderbird','geary':'Geary','slack':'Slack','discord':'Discord','signal':'Signal','element':'Element','telegramdesktop':'Telegram','firefox':'Firefox','chromium':'Chromium','google-chrome':'Chrome','brave-browser':'Brave'};   // what people call the app
@@ -2396,7 +2396,7 @@ function renderSettings(){
   const ps=restPu();
   $('#pupChips').innerHTML=[['slit','▮ slits'],['circle','● circles'],['dot','• dots']].map(([id,l])=>`<button data-ps="${id}" class="${ps===id?'on':''}">${l}</button>`).join('');
   { const ve=$('#voiceEng'); if(ve) ve.textContent=({kokoro:'(Kokoro voices)',piper:'(piper voices — run ./install.sh for the nicer Kokoro voices)',espeak:'(robot voice only — run ./install.sh)'})[info.voice_engine]||''; }
-  $('#nsChips').innerHTML=['mail','chat','meeting','video','download','other'].map(c=>`<button data-ns="${c}" class="${(info.notify_speak||[]).includes(c)?'on':''}">${c}</button>`).join('');
+  $('#nsChips').innerHTML=['mail','chat','meeting','video','download','other'].map(c=>`<button data-ns="${c}" class="${(info.notify_speak||[]).includes(c)?'on':''}">${c==='video'?'Feeds':c}</button>`).join('');
   $('#sttChips').innerHTML=STT.map(([id,l])=>`<button data-stt="${id}" class="${(info.whisper_model||'auto')===id?'on':''}">${l}</button>`).join('');
   const tr=info.trust==='root'?'trust':(info.trust||'ask');
   $('#trustOpts').innerHTML=TRUST.map(([id,ic,t,d])=>`<button class="opt${tr===id&&!info.root?' on':''}" data-trust="${id}"><span class="ic">${ic}</span><span><b>${t}</b><small>${d}</small></span></button>`).join('');
