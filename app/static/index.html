@@ -516,7 +516,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <g id="sitFront"></g>
         <g id="frost" display="none" pointer-events="none"></g>
         <g id="cue" display="none" transform="translate(8 -122)" style="cursor:pointer"><circle id="cueD" r="10" stroke="#0008" stroke-width="1"/><text id="cueT" text-anchor="middle" y="4.5" font-size="12" pointer-events="none"></text></g>
-        <g id="agentMark" opacity="0" transform="translate(8 -122)" pointer-events="none">   <!-- who is calling: original marks, not logos -->
+        <g id="agentMark" opacity="0" transform="translate(8 -108)" pointer-events="none">   <!-- who is calling: original marks, not logos -->
           <circle id="amRing" r="12" fill="none" stroke="#ff8a2a" stroke-width="2"/>
           <g id="amC" fill="#d97757"><rect x="-2" y="-16" width="4" height="11" rx="2"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(45)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(90)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(135)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(180)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(225)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(270)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(315)"/></g>
           <g id="amX"><rect x="-13" y="-11" width="26" height="22" rx="6" fill="#1d2026" style="stroke:var(--acc)" stroke-width="1.5"/><path d="M-7-4L-2 0L-7 4" fill="none" style="stroke:var(--acc)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect id="amU" x="1" y="3" width="7" height="2" rx="1" style="fill:var(--acc)"/></g>
@@ -1347,7 +1347,7 @@ function frame(ts){
       if(um>.002) SIT_P.drops.forEach((d,i)=>d.setAttribute('transform',`translate(0 ${((t*55+i*23)%58).toFixed(1)})`)); } }   // (nothing to write while all are off)
   if(AM||G.agent.x>.002){                 // the agent mark (nothing to write while it is gone)
     const v=G.agent.to(AM&&ts<AM.until?1:0,dt), ask=AM&&AM.kind==='ask', mk=$('#agentMark'), r=(t*.7)%1;
-    mk.setAttribute('opacity',clamp(v,0,1).toFixed(2)); mk.setAttribute('transform',`translate(8 -122) scale(${((.6+.4*v)*(ask?1+.12*Math.max(0,Math.sin(t*8.8)):1)).toFixed(3)})`);
+    mk.setAttribute('opacity',clamp(v,0,1).toFixed(2)); mk.setAttribute('transform',`translate(8 -108) scale(${(1.35*(.6+.4*v)*(ask?1+.12*Math.max(0,Math.sin(t*8.8)):1)).toFixed(3)})`);
     if(AM){ $('#amC').setAttribute('transform',`rotate(${(t*6%360).toFixed(1)})`); $('#amU').setAttribute('opacity',t%1<.5?1:0);
       $('#amD').setAttribute('cx',(11*Math.cos(t*3.93)).toFixed(2)); $('#amD').setAttribute('cy',(11*Math.sin(t*3.93)).toFixed(2));
       $('#amRing').setAttribute('r',(12+14*r).toFixed(1)); $('#amRing').setAttribute('opacity',(1-r).toFixed(2));
@@ -1621,12 +1621,13 @@ function onEvent(ev){
   else if(ev.t==='spk_done'){ quietNative(); }
   else if(ev.t==='approve') queueApproval(ev);
   else if(ev.t==='attention'){                            // an agent (claude/codex/agy…) is waiting for you: `nixi-companion attention`
-    const ask=ev.kind!=='done', lbl=ev.name+(ev.project?' · '+ev.project:''), why=ev.text?': '+ev.text:'';
-    if(hiddenNow){ if(ask) post('/api/notify',{title:'Nixi',body:lbl+' needs you'+why}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
+    const ask=ev.kind!=='done', r=(ev.text||'').replace(new RegExp('^'+ev.name+'\\s+','i'),''), pj=ev.project?' · '+ev.project:'';
+    const head=ask?(/^(needs|is waiting|wants)\b/i.test(r)?ev.name+' '+r:ev.name+' needs you'+(r?': '+r:'')):'✓ '+ev.name+' finished'+(r?': '+r:'');   // ("Claude needs your permission…", not "Claude needs you: Claude needs…")
+    if(hiddenNow){ if(ask) post('/api/notify',{title:'Nixi',body:head+pj}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
     if(info.hover) comeBack(); wake(); agentMark(ev.from,ask?'ask':'done');
-    if(!ask){ sfx('done'); poke('t_beam',1400); tick('✓ '+lbl.replace(ev.name,ev.name+' finished')+why); chip.classList.add('act'); chip.dataset.from=ev.from; sendRegion(); return; }   // (no flash, no talking)
-    sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(lbl+' needs you'+why); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
-    if(!muted) sayAside(ev.name+' needs you'+(ev.project?' in '+ev.project:'')+(ev.text?': '+ev.text.slice(0,60):'')); }
+    if(!ask){ sfx('done'); poke('t_beam',1400); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; sendRegion(); return; }   // (no flash, no talking)
+    sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
+    if(!muted) sayAside(head.slice(0,90)+(ev.project?', in '+ev.project:'')); }
   else if(ev.t==='notify') notifyIn(ev);
   else if(ev.t==='nudge') { ev.rt=performance.now(); nudgeQ.set(ev.kind,ev); nudgeDrain(performance.now()); }
   else if(ev.t==='situation'){ SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party;
