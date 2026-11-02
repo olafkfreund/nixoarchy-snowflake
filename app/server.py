@@ -1412,7 +1412,7 @@ class Inbox:
     socket (renewed every second). Row text is never logged, written to disk or sent to the agent."""
     CATS = ("mail", "chat", "meeting", "video", "download", "other")
     KEY = re.compile(r"[A-Za-z0-9:_-]{1,64}")
-    FEED = re.compile(r"(?i)youtube\.com|youtu\.be|twitch\.tv|reddit\.com|bsky\.app|mastodon|\bx\.com|twitter\.com|freetube|grayjay|tuba|tokodon")   # feeds: posts, not mail
+    FEED = re.compile(r"(?i)youtube\.com|youtu\.be|twitch\.tv|reddit\.com|bsky\.app|mastodon|\bx\.com|twitter\.com|freetube|grayjay|\btuba\b|\btokodon\b")   # feeds: posts, not mail
     # a code word and something shaped like a code (digits, spaced digit groups, a 6-10 char mix with 2+ digits) in one text
     OTP = re.compile(r"(?=.*\b(?:codes?|otp|verif\w*|log[- ]?in|passcode|pin|one[- ]?time|security|sign[- ]?in|mfa|2fa|auth\w*)\b)"
                      r"(?=.*(?:\b\d{4,10}\b|\b\d{2,4}(?:[ -]\d{2,4}){1,3}\b|\b(?=[A-Za-z0-9]{6,10}\b)(?:[A-Za-z]*\d){2}[A-Za-z0-9]*\b))", re.I | re.S)
@@ -2095,7 +2095,8 @@ class Beat:
 
     @staticmethod
     def want():
-        return bool(CFG.get("look_beat") and Ambient.music and not Ambient.meeting and not Wake.asleep and BUS.subs)
+        return bool(CFG.get("proactive") and CFG.get("look_beat") and Ambient.music and not Ambient.meeting and not Ambient.locked
+                    and not Wake.asleep and BUS.subs)          # (the desktop companion master switch, and never while locked)
 
     @staticmethod
     def level(avg, rms):
@@ -2108,7 +2109,7 @@ class Beat:
         if shutil.which("parecord"):
             return ["parecord", "-d", "@DEFAULT_MONITOR@", "--raw", "--format=s16le", "--rate=2000", "--channels=1", "--latency-msec=50"]
         if shutil.which("pw-record"):
-            return ["pw-record", "--target", "@DEFAULT_MONITOR@", "--rate", "2000", "--channels", "1", "--format", "s16", "-"]
+            return ["pw-record", "-P", "{ stream.capture.sink=true }", "--rate", "2000", "--channels", "1", "--format", "s16", "--raw", "-"]   # (what the default output plays)
         return None
 
     @classmethod
@@ -2120,7 +2121,7 @@ class Beat:
             p = subprocess.Popen(c, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)   # (stderr unread: it must not fill)
         except OSError:
             return
-        avg, buf = None, b""
+        avg, buf, last = None, b"", None
         try:
             while cls.want():                                 # (re-checked every block: the 2 s Ambient tick is too slow to stop it)
                 if not select.select([p.stdout], [], [], .5)[0]:
@@ -2134,7 +2135,9 @@ class Beat:
                     a.frombytes(buf[:200])
                     buf = buf[200:]
                     avg, v = cls.level(avg, math.sqrt(sum(x * x for x in a) / len(a)))
-                    BUS.pub(t="beat", v=v)
+                    if v != last:                         # (only changes: a quiet passage sends one 0, not twenty a second)
+                        BUS.pub(t="beat", v=v)
+                    last = v
         except OSError:
             pass
         finally:

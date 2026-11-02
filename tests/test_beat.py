@@ -11,9 +11,9 @@ class BeatTest(_ServerEnv):
 
     def gates(self, **over):
         S = self.server
-        g = dict(look_beat=True, music=True, meeting=False, asleep=False, subs=[object()])
+        g = dict(proactive=True, look_beat=True, music=True, meeting=False, locked=False, asleep=False, subs=[object()])
         g.update(over)
-        return (mock.patch.dict(S.CFG, {"look_beat": g["look_beat"]}), mock.patch.object(S.Ambient, "music", g["music"]),
+        return (mock.patch.dict(S.CFG, {"look_beat": g["look_beat"], "proactive": g["proactive"]}), mock.patch.object(S.Ambient, "locked", g["locked"]), mock.patch.object(S.Ambient, "music", g["music"]),
                 mock.patch.object(S.Ambient, "meeting", g["meeting"]), mock.patch.object(S.Wake, "asleep", g["asleep"]),
                 mock.patch.object(S.BUS, "subs", g["subs"]))
 
@@ -26,7 +26,7 @@ class BeatTest(_ServerEnv):
 
     def test_want_needs_every_gate(self):
         self.assertTrue(self.want())
-        for k, v in dict(look_beat=False, music=False, meeting=True, asleep=True, subs=[]).items():
+        for k, v in dict(proactive=False, look_beat=False, music=False, meeting=True, locked=True, asleep=True, subs=[]).items():
             mock.patch.stopall()
             self.assertFalse(self.want(**{k: v}), k)
 
