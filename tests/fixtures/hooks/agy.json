@@ -1,0 +1,14 @@
+{
+  "artifactDirectoryPath": "/home/user/.gemini/antigravity-cli/brain/x",
+  "conversationId": "69561eea-43b1-4119-95ca-a538ce1fcaf6",
+  "error": "",
+  "executionNum": 0,
+  "fullyIdle": true,
+  "lastUserInput": "run the tests",
+  "modelName": "gemini-4-argon-medium",
+  "terminationReason": "NO_TOOL_CALL",
+  "transcriptPath": "/home/user/.gemini/antigravity-cli/brain/x/t.jsonl",
+  "workspacePaths": [
+    "/home/user/src/snowflake"
+  ]
+}
