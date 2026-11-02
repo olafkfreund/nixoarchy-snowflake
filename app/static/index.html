@@ -837,7 +837,21 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   // glasses (coding): clear lenses that follow his eyes; frame() draws their outlines (like the eyes) while they are on
   const lens=()=>sv('path',R({d:'',fill:'#ffffff0d',stroke:acc,'stroke-width':2.6}),gl), line=w=>sv('path',R({d:'',fill:'none',stroke:w||acc,'stroke-width':w?2.4:2.6}),gl);
   const lensL=lens(), lensR=lens(), brg=line(), glintL=line('#ffffff60'), glintR=line('#ffffff60');
-  return {tie,hb,bd,hf,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,um,drops,lensL,lensR,brg,glintL,glintR}; }
+  // notification props, absolute coordinates, white / bright on his blue arms; frame() places them with put() and animates them while they show
+  const pk2='#0b0e14', mail=sv('g',{opacity:0},fr), mfly=sv('g',{},mail), mlet=sv('g',{},mfly), chat=sv('g',{opacity:0},fr), feed=sv('g',{opacity:0},fr);
+  sv('rect',R({x:53,y:2,width:34,height:24,rx:3,fill:'#fff',stroke:pk2,'stroke-width':2}),mfly);
+  sv('rect',R({x:60,y:5,width:20,height:16,rx:1.5,fill:'#fff',stroke:pk2,'stroke-width':1.6}),mlet); sv('path',R({d:'M64 10H76M64 14H73',stroke:'#4d6fb7','stroke-width':2.2}),mlet);
+  sv('path',R({d:'M53 26L70 13L87 26Z',fill:'#e8efff',stroke:pk2,'stroke-width':2}),mfly);
+  const mflap=sv('path',R({d:'M53 2L70 16L87 2Z',fill:'#f2c94c',stroke:pk2,'stroke-width':2}),mfly);
+  sv('path',R({d:'M-88 -73H-60Q-56 -73 -56 -69V-55Q-56 -51 -60 -51H-72L-80 -43L-79 -51H-88Q-92 -51 -92 -55V-69Q-92 -73 -88 -73Z',fill:'#fff',stroke:'#2f8f66','stroke-width':3}),chat);
+  const dots=[-82,-74,-66].map(x=>sv('circle',{cx:x,cy:-62,r:2.9,fill:'#2f8f66'},chat));
+  const badge=sv('g',{display:'none'},chat); sv('circle',{cx:-58,cy:-74,r:8.5,fill:'#e5484d',stroke:'#fff','stroke-width':1.6},badge);
+  const bt=sv('text',{x:-58,y:-70.8,'text-anchor':'middle','font-size':9.5,'font-weight':700,fill:'#fff','font-family':'system-ui,sans-serif'},badge);
+  const tvA=sv('g',{},feed); sv('path',R({d:'M74 -64L66 -77M74 -64L82 -77',fill:'none',stroke:'#fff','stroke-width':2.6}),tvA);
+  sv('rect',R({x:57,y:-64,width:34,height:24,rx:5,fill:'#e0569a',stroke:'#fff','stroke-width':2.4}),feed);
+  const scr=sv('rect',{x:61,y:-60,width:22,height:16,rx:3,fill:'#1d2026'},feed); sv('path',R({d:'M68 -57L68 -47L77 -52Z',fill:'#fff'}),feed);
+  sv('circle',{cx:87,cy:-56,r:1.6,fill:'#fff'},feed); sv('circle',{cx:87,cy:-50,r:1.6,fill:'#fff'},feed);
+  return {mail:{g:mail,fly:mfly,flap:mflap,let:mlet},chat:{g:chat,dots,badge,bt,n:0},feed:{g:feed,scr,ant:tvA},tie,hb,bd,hf,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,um,drops,lensL,lensR,brg,glintL,glintR}; }
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
 function drawSkin(back,front,L,bodyFill='url(#ballG)'){
   back.innerHTML=''; front.innerHTML='';
@@ -1039,6 +1053,7 @@ const NS='http://www.w3.org/2000/svg';
 const E={}; ['cam','body','eL','eR','pL','pR','cpL','cpR','hlL','hlR','zz','qmark','shadow','rays','raysW','fx','fxBack','think','anger','sweat',
   'halo','haloW','vring','workW','orbBack','orbFront','tears'].forEach(k=>E[k]=document.getElementById(k));
 const MB={g:$('#micBars'),r:[...document.querySelectorAll('#micBars rect')],h:[2,2,2,2,2],on:false};   // the mic bars (B6)
+let propOn=null;     // the notification prop on show: {cat: mail|chat|video, t0, until}
 let beat=0, beatAt=-1e9, nodAt=0;     // the kick of the music (0-1), when it last came, the last head nod
 let AM=null;     // the agent mark on show: {from, kind: ask|done, t0, until}
 const AMX={mk:$('#agentMark'),C:$('#amC'),U:$('#amU'),D:$('#amD'),ring:$('#amRing'),chk:$('#amChk')};
@@ -1057,7 +1072,7 @@ const G={ sz:new Spring(1,2,.75), tilt:new Spring(0,.8,.85), dx:new Spring(0,2.4
   wob:new Spring(0,1.7,.22),
   gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), sit:new Spring(0,2.4,.55), sitShade:new Spring(0,2.4,.55), sitGl:new Spring(0,2.4,.55), sitP:new Spring(0,2.4,.55), sitR:new Spring(0,2.4,.55), sitN:new Spring(0,2.4,.55), sitLift:new Spring(0,3,.8), sitMusic:new Spring(0,2.4,.55), sitW:new Spring(0,1.7,.22), zoom:new Spring(1,1.6,.7),
   appear:new Spring(.2,1.5,.55), open:new Spring(0,1.8,.55), think:new Spring(0,1.6,.6), anger:new Spring(0,1.8,.55), qm:new Spring(0,1.8,.55),
-  agent:new Spring(0,2.6,.5), mic:new Spring(0,2.6,.7), rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
+  agent:new Spring(0,2.6,.5), sitMail:new Spring(0,2.6,.5), sitChat:new Spring(0,2.6,.5), sitFeed:new Spring(0,2.6,.5), mic:new Spring(0,2.6,.7), rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
 let idlePu=null, idleSwapAt=performance.now()+15000;
 const restPu=()=>PUP_STYLES.includes(info.pupil_style)?info.pupil_style:'slit';
 function popPupils(){ for(const e of [SP.L,SP.R]){ e.w.kick(10); e.h.kick(10); } }
@@ -1355,13 +1370,21 @@ function frame(ts){
     const w=G.sitW.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)*.6, sp=(S_,on)=>S_.to(on?1:0,dt), skinless=LOOK.skin==='none';
     const tp=skinless&&sitOn.party, tr=skinless&&!tp&&sitOn.rain, tn=skinless&&!tp&&!tr&&sitOn.night;     // top zone: party hat > umbrella > nightcap, and only with no skin
     const a=sp(G.sit,sitOn.meeting), b=sp(G.sitMusic,sitOn.music), c=sp(G.sitShade,sitOn.fullscreen), g=sp(G.sitGl,sitOn.coding&&!sitOn.fullscreen),   // eyes: shades > glasses
-      pa=sp(G.sitP,tp), um=sp(G.sitR,tr), ni=sp(G.sitN,tn), L=G.sitLift.to(isTalk(m)||m==='listening'||['reading','editing','running','searching','looking','thinking'].includes(m)?1:0,dt);
+      pa=sp(G.sitP,tp), um=sp(G.sitR,tr), ni=sp(G.sitN,tn), pm=sp(G.sitMail,propOn&&propOn.cat==='mail'&&ts<propOn.until), pch=sp(G.sitChat,propOn&&propOn.cat==='chat'&&ts<propOn.until), pf=sp(G.sitFeed,propOn&&propOn.cat==='video'&&ts<propOn.until), L=G.sitLift.to(isTalk(m)||m==='listening'||['reading','editing','running','searching','looking','thinking'].includes(m)?1:0,dt);
     const put=(el,x,ax,ay,rot)=>{ el.setAttribute('opacity',clamp(x,0,1).toFixed(2)); el.setAttribute('transform',`translate(${ax} ${ay})${rot?` rotate(${rot.toFixed(2)})`:''} scale(${(.7+.3*x).toFixed(3)}) translate(${-ax} ${-ay})`); };
     const lift=(el,x)=>{ put(el,x,0,-4); el.setAttribute('transform',`translate(0 ${(-32*L).toFixed(1)}) scale(${(1-.08*L).toFixed(3)}) `+el.getAttribute('transform')); };   // (lifted onto the forehead while he talks, so his eyes stay visible)
-    const off=!(sitOn.meeting||sitOn.music||sitOn.fullscreen||sitOn.coding||tp||tr||tn)&&Math.max(a,b,c,g,pa,um,ni)<.002;
+    const off=!(sitOn.meeting||sitOn.music||sitOn.fullscreen||sitOn.coding||tp||tr||tn)&&Math.max(a,b,c,g,pa,um,ni,pm,pch,pf)<.002;
     if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,b,0,-4,G.sitW.x*.25); put(SIT_P.hf,b,0,-4,G.sitW.x*.25); sitSettled=off;
       lift(SIT_P.sh,c); put(SIT_P.gl,g,0,-4); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3); put(SIT_P.um,um,0,-84);
       if(um>.002) SIT_P.drops.forEach((d,i)=>d.setAttribute('transform',`translate(0 ${((t*55+i*23)%58).toFixed(1)})`));
+      const el=propOn?ts-propOn.t0:0, prop=(Q,x,ax,ay,f)=>{ if(x>.002){ put(Q.g,x,ax,ay); Q.on=true; f(Q); } else if(Q.on){ Q.g.setAttribute('opacity','0'); Q.on=false; } };   // (a prop writes only while it shows)
+      prop(SIT_P.mail,pm,70,14,Q=>{ Q.fly.setAttribute('transform',`translate(${(50*(1-pm)).toFixed(1)} ${(-34*(1-pm)).toFixed(1)}) rotate(${(18*(1-pm)).toFixed(1)} 70 14)`);
+        Q.flap.setAttribute('transform',`translate(0 2) scale(1 ${(1-2*clamp((el-250)/200,0,1)).toFixed(2)}) translate(0 -2)`);
+        Q.let.setAttribute('transform',`translate(0 ${(-14*clamp((el-350)/300,0,1)).toFixed(1)})`); });
+      prop(SIT_P.chat,pch,-74,-60,Q=>{ Q.dots.forEach((d,i)=>d.setAttribute('transform',`translate(0 ${(Math.sin(t*9-i*1.1)*3).toFixed(2)})`));
+        const n=notifyBurst.cat==='chat'?notifyBurst.n:1; if(n!==Q.n){ Q.n=n; Q.badge.setAttribute('display',n>1?'':'none'); Q.bt.textContent='×'+n; } });
+      prop(SIT_P.feed,pf,74,-52,Q=>{ Q.scr.setAttribute('fill',el>=120&&el<200?'#fff':'#1d2026');
+        Q.ant.setAttribute('transform',`rotate(${(clamp(w*.8,-14,14)+Math.sin(t*5)*3).toFixed(1)} 74 -64)`); });
       if(G.sitMusic.x>.002){ beat=Math.max(0,beat-dt*8);        // headphones: the cups follow his gaze and swell with the beat (or a slow sway)
         const k=info.look_beat&&beatAt>ts-500?beat:.25*(.5+.5*Math.sin(t*2.2)), X=Math.max(88,EYE_HALFW*G.sz.x+EYE.cx+22);
         for(const [s,cu] of [[-1,SIT_P.cL],[1,SIT_P.cR]]) cu.setAttribute('transform',`translate(${(s*X-s*lx*.6).toFixed(2)} -8) rotate(${(s*8+(s<0?-12*L:0)).toFixed(2)}) scale(${(1+.07*k).toFixed(3)})`);
@@ -1754,10 +1777,12 @@ const NOTE={mail:['✉','New mail','#4d6fb7','reading',2200,'pop'], chat:['💬'
   download:['⬇','Download','#3ddc84','t_beam',1600,'done'], job:['✔','A long command finished','#3ddc84','t_beam',1800,'done'], other:['🔔','Notification','#7fd6ae','curious',1000,'pop']};
 const notifyQ=[]; let notifyRow=null, notifyAt=0, notifyBurst={cat:'',n:0,t:0};
 const APP_NAMES={'teams-for-linux':'Teams','thunderbird':'Thunderbird','geary':'Geary','slack':'Slack','discord':'Discord','signal':'Signal','element':'Element','telegramdesktop':'Telegram','firefox':'Firefox','chromium':'Chromium','google-chrome':'Chrome','brave-browser':'Brave'};   // what people call the app
+const notifyWho=ev=>{ const raw=(ev.source||ev.app||'').trim(); return APP_NAMES[raw.toLowerCase()]||raw; };
 function notifyText(ev,n){ if(ev.app==='nixi-job') return '✔ '+(ev.summary||NOTE.job[1]);   // a long command finished (the shell hook)
-  const c=NOTE[ev.category]||NOTE.other, raw=(ev.source||ev.app||'').trim(), who=APP_NAMES[raw.toLowerCase()]||raw;
+  const c=NOTE[ev.category]||NOTE.other, who=notifyWho(ev);
   const head=n>2?n+' new'+(who?' in '+who:''):c[1]+(who?(ev.category==='chat'?' in ':' · ')+who:'');
-  return c[0]+' '+head+(ev.summary&&n<3?' · '+ev.summary:''); }
+  const t=c[0]+' '+head+(ev.summary&&n<3?' · '+ev.summary:'');
+  return ev.category==='chat'&&ev.body&&n<3?(t+' · '+ev.body.split(/\s+/).slice(0,6).join(' ')).slice(0,90):t; }   // (a chat shows the first words too)
 function notifyShow(row,txt){ karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; setYou('');
   const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); row.span=sp; shownTxt=''; capShow(); cap.classList.add('note'); sendRegion(true); dropSync(); }
 function notifySeen(key){ post('/api/notify/seen',{key}).catch(()=>{}); }
@@ -1767,7 +1792,7 @@ function notifyIn(ev){
   const now=performance.now(); ev.rt=now;                  // (only a row that is SHOWN counts as seen: the server gives the rest back to the shell)
   if(notifyRow&&notifyRow.key===ev.key&&notifyRow.span.isConnected){ notifyRow.span.textContent=notifyText(ev,1); notifySeen(ev.key); return; }   // an update: no new arrival
   notifyBurst=notifyBurst.cat===ev.category&&now-notifyBurst.t<3000?{cat:ev.category,n:notifyBurst.n+1,t:notifyBurst.t}:{cat:ev.category,n:1,t:now};
-  if(notifyBurst.n>2&&notifyRow&&notifyRow.span.isConnected){ notifyRow.key=ev.key; notifyRow.span.textContent=notifyText(ev,notifyBurst.n); notifySeen(ev.key); return; }   // 3+ at once: one row with a count
+  if(notifyBurst.n>2&&notifyRow&&notifyRow.span.isConnected){ if(ev.category==='chat'){ G.sitChat.kick(.45); if(propOn&&propOn.cat==='chat') propOn.until=now+2800; } notifyRow.key=ev.key; notifyRow.span.textContent=notifyText(ev,notifyBurst.n); notifySeen(ev.key); return; }   // 3+ at once: one row with a count
   if(notifyQ.length<8) notifyQ.push(ev);
   notifyDrain(now); }
 function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
@@ -1776,10 +1801,15 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
   const c=ev.app==='nixi-job'?NOTE.job:NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null}; notifyRow=row; notifyAt=ts+5000;
   wake(); G.jelly.kick(-.45); popPupils(); poke(c[3],c[4]); burstLines(c[2],ev.category==='meeting'?8:ev.category==='download'?10:ev.category==='other'&&ev.app!=='nixi-job'?1:3);
   if(ev.category==='chat') G.tilt.kick(-8);
+  { const pt={mail:3200,chat:2800,video:2400}[ev.category];                      // the prop for this kind; a new one replaces the old
+    if(pt){ if(ev.category==='chat'&&propOn&&propOn.cat==='chat'&&now<propOn.until) G.sitChat.kick(.45); propOn={cat:ev.category,t0:now,until:now+pt}; if(ev.category==='video') G.jelly.kick(-.4); } }
+  if(ev.category==='mail') poke('reading',2600);
   if(ev.category==='meeting') setTimeout(()=>{ if(notifyRow===row) poke('t_serious',2000); },750);
   if(ev.category==='video') setTimeout(()=>{ if(!FID&&mood(performance.now())==='idle') { FID={name:'hum',t0:performance.now(),dur:2000}; FIDGETS.hum.start&&FIDGETS.hum.start(FID); } },1500);
   notifyShow(row,notifyText(ev,1));
-  if(!SIT.meeting){ if(info.notify_sound!==false&&!muted) sfx(c[5]); if(!muted&&(info.notify_speak||[]).includes(ev.category)) enqueue(c[1],{follow:false}); }   // (not say(): that would wipe the row)
+  if(!SIT.meeting){ if(info.notify_sound!==false&&!muted) sfx(c[5]); if(!muted&&(info.notify_speak||[]).includes(ev.category)&&!(ev.category==='mail'&&SIT.locked)){
+    const who=notifyWho(ev); enqueue(ev.category==='mail'?(info.notify_details&&info.notify_speak_subject&&ev.summary?ev.summary:'New mail'+(who?' from '+who:'')):c[1],{follow:false});
+    if(ev.category==='mail'){ talk.away=[5,1]; talk.awayUntil=now+1500; } } }   // (not say(): that would wipe the row)
   setTimeout(()=>{ if(notifyRow===row) notifyClear(); },5000); }
 function notifyClear(){ const sp=notifyRow&&notifyRow.span; notifyRow=null; cap.classList.remove('note');
   if(sp&&sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } sendRegion(true); }
