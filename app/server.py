@@ -1414,6 +1414,8 @@ class Inbox:
     CATS = ("mail", "chat", "meeting", "video", "download", "other")
     KEY = re.compile(r"[A-Za-z0-9:_-]{1,64}")
     FEED = re.compile(r"(?i)youtube\.com|youtu\.be|twitch\.tv|reddit\.com|bsky\.app|mastodon|\bx\.com|twitter\.com|freetube|grayjay|\btuba\b|\btokodon\b")   # feeds: posts, not mail
+    MAIL = re.compile(r"(?i)\bomamail\b|outlook")                                  # Outlook through the Omamail plug-in or a web app
+    CHAT = re.compile(r"(?i)web\.whatsapp\.com|\bwhatsapp\b|messenger\.com")         # chats the shell files under "other"
     # a code word and something shaped like a code (digits, spaced digit groups, a 6-10 char mix with 2+ digits) in one text
     OTP = re.compile(r"(?=.*\b(?:codes?|otp|verif\w*|log[- ]?in|passcode|pin|one[- ]?time|security|sign[- ]?in|mfa|2fa|auth\w*)\b)"
                      r"(?=.*(?:\b\d{4,10}\b|\b\d{2,4}(?:[ -]\d{2,4}){1,3}\b|\b(?=[A-Za-z0-9]{6,10}\b)(?:[A-Za-z]*\d){2}[A-Za-z0-9]*\b))", re.I | re.S)
@@ -1491,8 +1493,9 @@ class Inbox:
             return []
         keep = []
         for x in data if isinstance(data, list) else []:
-            if isinstance(x, dict) and x.get("category") == "other" and cls.FEED.search(str(x.get("source") or "") + " " + str(x.get("app") or "")):
-                x["category"] = "video"
+            if isinstance(x, dict) and x.get("category") == "other":     # the shell's own sorting misses these: put them right
+                who = str(x.get("source") or "") + " " + str(x.get("app") or "")
+                x["category"] = "mail" if cls.MAIL.search(who) else "chat" if cls.CHAT.search(who) else "video" if cls.FEED.search(who) else "other"
             if not isinstance(x, dict) or not isinstance(x.get("key"), str) or not cls.KEY.fullmatch(x["key"]) or x.get("category") not in cls.CATS:
                 continue
             summary, body = str(x.get("summary") or "")[:120], str(x.get("body") or "")[:120]
