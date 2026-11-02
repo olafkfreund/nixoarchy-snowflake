@@ -167,6 +167,9 @@ body.bar #mailPop,body.hover #mailPop,body.calm #mailPop{display:none}
   -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 34%);mask-image:linear-gradient(to bottom,transparent 0,#000 34%);
   text-shadow:0 1px 2px #000,0 0 8px #000,0 0 16px #000a}
 #cap.off,body.appr #cap,body.pnl #cap{opacity:0;transform:translateY(6px)}
+.nicon{width:22px;height:22px;border-radius:50%;box-shadow:0 0 0 1px #ffffff55;vertical-align:middle;margin-right:6px;animation:nipop .2s var(--ease)}
+@keyframes nipop{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
+#mailPop .lt b img{width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:5px}
 #cap.note{pointer-events:auto;cursor:pointer}   /* a notification row is up: click opens it */
 #wk{position:absolute;left:12px;right:12px;top:404px;text-align:center;font:11px var(--mono);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}   /* nixi mode: what the agent is doing */
 #you{font-size:12px;color:var(--dim);text-shadow:0 1px 2px #000,0 0 5px #0009;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
@@ -872,7 +875,8 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   sv('rect',R({x:57,y:-64,width:34,height:24,rx:5,fill:'#e0569a',stroke:'#fff','stroke-width':2.4}),feed);
   const scr=sv('rect',{x:61,y:-60,width:22,height:16,rx:3,fill:'#1d2026'},feed); sv('path',R({d:'M68 -57L68 -47L77 -52Z',fill:'#fff'}),feed);
   sv('circle',{cx:87,cy:-56,r:1.6,fill:'#fff'},feed); sv('circle',{cx:87,cy:-50,r:1.6,fill:'#fff'},feed);
-  return {chat:{g:chat,dots,badge,bt,n:0},feed:{g:feed,scr,ant:tvA},tie,hb,bd,hf,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,um,drops,lensL,lensR,brg,glintL,glintR}; }
+  const ic=(x,y,g)=>sv('image',{x,y,width:14,height:14,display:'none'},g);   // the sending app's icon, set when the prop starts
+  return {chat:{g:chat,dots,badge,bt,n:0,img:ic(-99,-80,chat)},feed:{g:feed,scr,ant:tvA,img:ic(48,-70,feed)},tie,hb,bd,hf,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,um,drops,lensL,lensR,brg,glintL,glintR}; }
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
 function drawSkin(back,front,L,bodyFill='url(#ballG)'){
   back.innerHTML=''; front.innerHTML='';
@@ -1805,17 +1809,21 @@ function notifyText(ev,n){ if(ev.app==='nixi-job') return '✔ '+(ev.summary||NO
   const head=n>2?n+' new'+(who?' in '+who:''):c[1]+(who?(ev.category==='chat'?' in ':' · ')+who:'');
   const t=c[0]+' '+head+(ev.summary&&n<3?' · '+ev.summary:'');
   return ev.category==='chat'&&ev.body&&n<3?(t+' · '+ev.body.split(/\s+/).slice(0,6).join(' ')).slice(0,90):t; }   // (a chat shows the first words too)
-function notifyShow(row,txt){ karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; setYou('');
-  const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); row.span=sp; shownTxt=''; capShow(); cap.classList.add('note'); sendRegion(true); dropSync(); }
+const iconUrl=ev=>/^[0-9a-f]{16}$/.test(ev.icon||'')?'/api/icon/'+ev.icon:'';   // (only a validated id ever goes in the URL)
+function noteIcon(row,ev){ const u=iconUrl(ev); if(row.img&&row.img.isConnected&&row.img.getAttribute('src')===u) return; if(row.img){ row.img.remove(); row.img=null; }   // (a text update wipes it: put it back)
+  if(!u||!row.span||!row.span.isConnected) return; const im=document.createElement('img'); im.className='nicon'; im.alt=''; im.src=u; im.onerror=()=>im.remove(); row.span.prepend(im); row.img=im; }   // (inside the line, so it sits before the words)
+function propIcon(P,ev){ const u=iconUrl(ev); if(!P||!P.img) return; P.img.onerror=()=>P.img.setAttribute('display','none'); if(u) P.img.setAttribute('href',u); P.img.setAttribute('display',u?'':'none'); }
+function notifyShow(row,txt,ev){ karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; setYou('');
+  const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); row.span=sp; noteIcon(row,ev); shownTxt=''; capShow(); cap.classList.add('note'); sendRegion(true); dropSync(); }
 function notifySeen(key){ post('/api/notify/seen',{key}).catch(()=>{}); }
 function notifyIdle(){ return !(SIT.fullscreen||busy||playing||rec||transcribing||pendingAppr||follow||hiddenNow||info.hover); }
 function notifyIn(ev){
   if(!/^[A-Za-z0-9:_-]{1,64}$/.test(ev.key||'')) return;
   const now=performance.now(); ev.rt=now;                  // (only a row that is SHOWN counts as seen: the server gives the rest back to the shell)
-  if(notifyRow&&notifyRow.key===ev.key&&notifyRow.span.isConnected){ notifyRow.span.textContent=notifyText(ev,1); notifySeen(ev.key); return; }   // an update: no new arrival
+  if(notifyRow&&notifyRow.key===ev.key&&notifyRow.span.isConnected){ notifyRow.span.textContent=notifyText(ev,1); noteIcon(notifyRow,ev); notifySeen(ev.key); return; }   // an update: no new arrival
   notifyBurst=notifyBurst.cat===ev.category&&now-notifyBurst.t<3000?{cat:ev.category,n:notifyBurst.n+1,t:notifyBurst.t}:{cat:ev.category,n:1,t:now};
-  if(ev.category==='chat'&&propOn&&propOn.cat==='chat'&&now<propOn.until){ propOn.n=(propOn.n||1)+1; propOn.until=now+2800; G.sitChat.kick(.45); }   // (one bubble, ×N)
-  if(notifyBurst.n>2&&notifyRow&&notifyRow.span.isConnected){ notifyRow.key=ev.key; notifyRow.span.textContent=notifyText(ev,notifyBurst.n); notifySeen(ev.key); return; }   // 3+ at once: one row with a count
+  if(ev.category==='chat'&&propOn&&propOn.cat==='chat'&&now<propOn.until){ propOn.n=(propOn.n||1)+1; propOn.until=now+2800; G.sitChat.kick(.45); if(SIT_P) propIcon(SIT_P.chat,ev); }   // (one bubble, ×N)
+  if(notifyBurst.n>2&&notifyRow&&notifyRow.span.isConnected){ notifyRow.key=ev.key; notifyRow.span.textContent=notifyText(ev,notifyBurst.n); noteIcon(notifyRow,ev); notifySeen(ev.key); return; }   // 3+ at once: one row with a count
   if(notifyQ.length<8) notifyQ.push(ev);
   notifyDrain(now); }
 function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
@@ -1828,11 +1836,12 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
     if(pt){ const same=propOn&&propOn.cat===ev.category&&now<propOn.until;
       if(same&&ev.category==='chat') propOn.until=Math.max(propOn.until,now+pt);
       else { if(same&&ev.category==='video'){ G.sitFeed.x=0; G.sitFeed.v=0; } propOn={cat:ev.category,t0:now,until:now+pt,n:1}; }
-      if(ev.category==='video') G.jelly.kick(-.4); } }
+      if(ev.category==='video') G.jelly.kick(-.4); }
+    if(pt&&SIT_P) propIcon(SIT_P[ev.category==='chat'?'chat':'feed'],ev); }
   if(ev.category==='mail'){ poke('reading',2600); mailPop(ev); }
   if(ev.category==='meeting') setTimeout(()=>{ if(notifyRow===row) poke('t_serious',2000); },750);
   if(ev.category==='video') setTimeout(()=>{ if(!FID&&mood(performance.now())==='idle') { FID={name:'hum',t0:performance.now(),dur:2000}; FIDGETS.hum.start&&FIDGETS.hum.start(FID); } },1500);
-  notifyShow(row,notifyText(ev,1));
+  notifyShow(row,notifyText(ev,1),ev);
   if(!SIT.meeting){ if(info.notify_sound!==false&&!muted) sfx(c[5]); if(!muted&&(info.notify_speak||[]).includes(ev.category)&&!(ev.category==='mail'&&SIT.locked)){
     const who=notifyWho(ev); enqueue(ev.category==='mail'?(info.notify_details&&info.notify_speak_subject&&ev.summary?ev.summary:'New mail'+(who?' from '+who:'')):c[1],{follow:false});
     if(ev.category==='mail'){ talk.away=[5,1]; talk.awayUntil=now+1500; } } }   // (not say(): that would wipe the row)
@@ -1841,7 +1850,8 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
 let mailT=[], popWant=[0,0];
 function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.classList.contains('bar')||info.hover) return;
   mailT.forEach(clearTimeout); mailT=[]; el.classList.remove('on','open','up');
-  el.dataset.key=ev.key; el.querySelector('b').textContent=notifyWho(ev)||'Mail'; el.querySelector('span').textContent=ev.summary||'New mail';
+  el.dataset.key=ev.key; const b=el.querySelector('b'), u=iconUrl(ev); b.textContent=notifyWho(ev)||'Mail';
+  if(u){ const im=document.createElement('img'); im.alt=''; im.src=u; im.onerror=()=>im.remove(); b.prepend(im); } el.querySelector('span').textContent=ev.summary||'New mail';
   popWant=[260,0]; sizeWindow();
   const at=(ms,f)=>mailT.push(setTimeout(f,ms));
   at(60,()=>{ const right=innerWidth/fitK-layoutX-340, left=layoutX/fitK; el.classList.toggle('l',left>right); void el.offsetWidth; el.classList.add('on'); sendRegion(true); });

@@ -1501,8 +1501,12 @@ class Inbox:
             summary, body = str(x.get("summary") or "")[:120], str(x.get("body") or "")[:120]
             if not CFG.get("notify_details") or SECRET_LINE.search(summary + "\n" + body) or cls.OTP.search(summary + "\n" + body):
                 summary = body = ""
-            keep.append({"key": x["key"], "app": str(x.get("app") or "")[:60], "source": str(x.get("source") or "")[:80],
-                         "category": x["category"], "summary": summary, "body": body})
+            row = {"key": x["key"], "app": str(x.get("app") or "")[:60], "source": str(x.get("source") or "")[:80],
+                   "category": x["category"], "summary": summary, "body": body}
+            icon = Icons.lookup(row["app"], row["source"])
+            if icon:
+                row["icon"] = Icons.register(icon)
+            keep.append(row)
         return keep
 
     @classmethod
@@ -1539,6 +1543,144 @@ class Inbox:
         if not cls.thread:
             cls.thread = threading.Thread(target=cls.loop, daemon=True)
             cls.thread.start()
+
+
+class Icons:
+    """The sending app's icon (#142): found in the installed .desktop files and icon themes, never fetched. Paths are
+    never logged; the page only ever sees `served` ids."""
+    BROWSERS = {"google chrome", "chromium", "brave", "brave browser", "microsoft edge", "vivaldi", "opera", "helium",
+                "firefox", "zen", "librewolf"}                         # copied from the shell's Markup.js
+    HOST = re.compile(r"[a-z0-9-]+(\.[a-z0-9-]+)+")
+    HOSTS = tuple((re.compile(p), n) for p, n in (
+        (r"mail\.google\.com$", "gmail"), (r"outlook\.", "outlook"), (r"web\.whatsapp\.com$", "whatsapp"),
+        (r"teams\.microsoft\.com$", "teams"), (r"(.*\.)?youtube\.com$", "youtube"), (r"(.*\.)?reddit\.com$", "reddit"),
+        (r"(.*\.)?messenger\.com$", "messenger"), (r"discord\.com$", "discord"), (r"app\.slack\.com$", "slack")))
+    THEMES = ("hicolor", "Papirus", "Adwaita")
+    SIZES = ("128x128", "256x256", "96x96", "64x64", "48x48", "512x512", "scalable")
+    MAX = 512 * 1024
+    TTL = 600
+    served = {}                                                # id -> path
+    names = {}                                                 # lower-case id / WM class / Name -> Icon= value
+    slugs = {}                                                 # Quick Web Apps host slug -> Icon= value
+    built = 0.0
+    cache = {}                                                 # (app, source) -> (when, path|None)
+    lock = threading.Lock()
+
+    @staticmethod
+    def _data():
+        d = [os.environ.get("XDG_DATA_HOME") or os.path.join(os.environ.get("HOME", ""), ".local/share")]
+        return d + [x for x in (os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":") if x]
+
+    @classmethod
+    def _ok(cls, p):
+        try:
+            return p.endswith((".png", ".svg")) and os.path.isfile(p) and os.path.getsize(p) <= cls.MAX
+        except OSError:
+            return False
+
+    @classmethod
+    def _build(cls):
+        names, slugs = {}, {}
+        for base in cls._data():
+            d = os.path.join(base, "applications")
+            try:
+                files = sorted(os.listdir(d))
+            except OSError:
+                continue
+            for f in files:
+                if not f.endswith(".desktop"):
+                    continue
+                kv, inside = {}, False
+                try:
+                    with open(os.path.join(d, f), encoding="utf-8", errors="replace") as fh:
+                        for ln in fh:
+                            ln = ln.strip()
+                            if ln.startswith("["):
+                                inside = ln == "[Desktop Entry]"
+                            elif inside and "=" in ln:
+                                k, v = ln.split("=", 1)
+                                kv.setdefault(k, v.strip())
+                except OSError:
+                    continue
+                icon = kv.get("Icon")
+                if not icon:
+                    continue
+                fid = f[:-8].lower()
+                keys = [fid, kv.get("StartupWMClass", "").lower(), kv.get("Name", "").lower()]
+                keys += [k for k in (re.split(" [-—] ", keys[2])[0],) if k]
+                for k in keys:
+                    if k:
+                        names.setdefault(k, icon)
+                m = re.match(r"io\.github\..+\.quickwebapps\.(.+)-[^-]+$", fid)
+                if m:
+                    slugs.setdefault(m.group(1), icon)
+        cls.names, cls.slugs, cls.built = names, slugs, time.time()
+
+    @classmethod
+    def _resolve(cls, icon):
+        if os.path.isabs(icon):
+            return icon if cls._ok(icon) else None
+        if "/" in icon:
+            return None
+        bases = [os.path.join(b, "icons") for b in cls._data()] + ["/run/current-system/sw/share/icons"]
+        for b in bases:
+            for t in cls.THEMES:
+                for s in cls.SIZES:
+                    for ext in (".png", ".svg"):
+                        p = os.path.join(b, t, s, "apps", icon + ext)
+                        if cls._ok(p):
+                            return p
+        for b in cls._data():
+            for ext in (".png", ".svg"):
+                p = os.path.join(b, "pixmaps", icon + ext)
+                if cls._ok(p):
+                    return p
+        return None
+
+    @classmethod
+    def path_for_name(cls, name):
+        icon = cls.names.get((name or "").lower())
+        return cls._resolve(icon) if icon else None
+
+    @classmethod
+    def _find(cls, app, source):
+        a, s = (app or "").strip().lower(), (source or "").strip().lower()
+        if a in cls.BROWSERS and cls.HOST.fullmatch(s):
+            icon = cls.slugs.get(s.replace(".", "-"))
+            p = cls._resolve(icon) if icon else None
+            if p:
+                return p
+            n = next((n for r, n in cls.HOSTS if r.match(s)), None)
+            return cls.path_for_name(n or s.split(".")[-2])
+        for n in (a, s):
+            p = cls.path_for_name(n) if n else None
+            if p:
+                return p
+
+    @classmethod
+    def register(cls, path):
+        i = hashlib.sha1(path.encode()).hexdigest()[:16]
+        cls.served[i] = path
+        return i
+
+    @classmethod
+    def lookup(cls, app, source):
+        """The icon file for this app/source, or None. Index built on first use, rebuilt (at most every 10 min) on a miss."""
+        key, now = (app, source), time.time()
+        with cls.lock:
+            hit = cls.cache.get(key)
+            if hit and now - hit[0] < cls.TTL:
+                return hit[1]
+            if not cls.built:
+                cls._build()
+            p = cls._find(app, source)
+            if not p and now - cls.built > cls.TTL:
+                cls._build()
+                p = cls._find(app, source)
+            if len(cls.cache) > 512:
+                cls.cache.clear()
+            cls.cache[key] = (now, p)
+            return p
 
 
 class Desk:
@@ -4108,6 +4250,25 @@ class Handler(BaseHTTPRequestHandler):
             if secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
                 return self._json(state_info())
             return self._json({"version": VERSION})
+        if p.startswith("/api/icon/"):             # app icons: only ids the server handed out, re-checked on every read (#142)
+            f = Icons.served.get(p[10:]) if re.fullmatch(r"[0-9a-f]{16}", p[10:]) else None
+            data = None
+            if f and Icons._ok(f):
+                try:                                               # (it may vanish or grow between the check and the read)
+                    with open(f, "rb") as fh:
+                        data = fh.read(Icons.MAX + 1)
+                except OSError:
+                    data = None
+            if not data or len(data) > Icons.MAX:
+                return self._json({"error": "not found"}, 404)
+            self.send_response(200)
+            self.send_header("Content-Type", "image/svg+xml" if f.endswith(".svg") else "image/png")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'")   # (an SVG opened on its own can't run script)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "max-age=86400")
+            self.end_headers()
+            return self.wfile.write(data)
         if p == "/":
             p = "/index.html"
         f = (STATIC / p.lstrip("/")).resolve()
