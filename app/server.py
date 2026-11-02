@@ -193,6 +193,7 @@ DEFAULTS = {
     # lambda-tip cues: failed user units + new generation (local); next calendar item (gog) and weather look (network): off
     "follow_focus": False,                  # move to the screen you focus (Hyprland)
     "step_aside": True,                     # slide out of the way while nixi's card is open
+    "idle_mode": "shrink",                  # when idle: off (stay) | shrink (peek at the edge) | doze
     "ambient_system": True, "ambient_calendar": False, "ambient_weather": False,
     # desktop awareness (#133): all off but the per-category sound and the spoken categories
     "proactive": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"],
@@ -4056,6 +4057,7 @@ def state_info():
         "can_shoot": any(shutil.which(t) for t in ("grim", "spectacle", "gnome-screenshot", "maim", "scrot", "import")),
         "eye_color": CFG.get("eye_color") or "#3e5993", "eye_white": CFG.get("eye_white") or "#ffffff",
         "pupil_style": CFG.get("pupil_style") or "slit",
+        "idle_mode": CFG.get("idle_mode") if CFG.get("idle_mode") in ("off", "shrink", "doze") else "shrink",
         "voice": CFG.get("voice") or "girl", "voice_pitch": voice_preset().get("pitch", 1.0),
         "voices": [{"id": k, "label": v["label"],
                     "ready": bool(v.get("espeak")) or (bool(v.get("kokoro")) and tts_engine() == "kokoro")
@@ -4253,6 +4255,8 @@ class Handler(BaseHTTPRequestHandler):
                     upd["look"] = look()
                 if b.get("pupil_style") in ("slit", "circle", "dot"):
                     upd["pupil_style"] = b["pupil_style"]
+                if b.get("idle_mode") in ("off", "shrink", "doze"):
+                    upd["idle_mode"] = b["idle_mode"]
                 if b.get("trust") in ("ask", "trust", "readonly"):
                     upd["trust"] = b["trust"]
                     upd["root_mode"] = False
