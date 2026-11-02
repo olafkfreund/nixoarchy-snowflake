@@ -141,6 +141,24 @@ body.bar #code .l.out{color:var(--dim)}
 .ang{fill:none;stroke:#ff2a2a;stroke-width:4;stroke-linecap:round}
 
 /* floating caption: only there while something's happening */
+/* mail (#138): a bigger envelope pops out beside him, opens, shows the letter, and goes back in */
+#mailPop{position:absolute;top:96px;left:300px;width:168px;height:112px;perspective:700px;z-index:6;opacity:0;pointer-events:none;cursor:pointer;
+  transform:translateX(-90px) scale(.3);transform-origin:left center;transition:transform .36s cubic-bezier(.34,1.56,.64,1),opacity .2s}
+#mailPop.l{left:-128px;transform:translateX(90px) scale(.3);transform-origin:right center}
+#mailPop.on{opacity:1;transform:none;pointer-events:auto}
+#mailPop .env{position:absolute;inset:0}
+#mailPop .bk,#mailPop .fr,#mailPop .fl{position:absolute;left:0;right:0;border-radius:9px}
+#mailPop .bk{top:0;bottom:0;z-index:0;background:#e6ebf5;box-shadow:0 8px 22px #0008,0 0 0 2px var(--acc)}
+#mailPop .lt{position:absolute;left:11px;right:11px;top:10px;height:92px;border-radius:6px;background:#fffaf0;color:#1d2026;padding:9px 10px;
+  font-size:12px;line-height:1.3;box-shadow:0 1px 4px #0003;transition:transform .42s cubic-bezier(.3,1.25,.5,1);z-index:1;overflow:hidden}
+#mailPop .lt b{display:block;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--acc);margin-bottom:4px}
+#mailPop .lt span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;font-weight:600}
+#mailPop .fr{top:0;bottom:0;background:#fdfdfd;clip-path:polygon(0 30%,50% 66%,100% 30%,100% 100%,0 100%);z-index:2;box-shadow:inset 0 -2px 0 #0001}
+#mailPop .fl{top:0;height:66%;background:linear-gradient(180deg,#f7d56a,#f2c94c);clip-path:polygon(0 0,100% 0,50% 100%);transform-origin:top;
+  transition:transform .38s ease-in-out,z-index 0s .19s;z-index:3}
+#mailPop.open .fl{transform:rotateX(180deg);z-index:0}
+#mailPop.up .lt{transform:translateY(-58%)}
+body.bar #mailPop,body.hover #mailPop,body.calm #mailPop{display:none}
 #cap{position:absolute;left:12px;right:12px;top:296px;height:100px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;
   gap:3px;text-align:center;pointer-events:none;transition:opacity 1.1s var(--ease),transform 1.1s var(--ease),top .7s var(--ease);
   -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 34%);mask-image:linear-gradient(to bottom,transparent 0,#000 34%);
@@ -537,6 +555,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 
 <div id="code"><div class="tb"><b></b><span></span></div><div class="lines"></div><i class="rootb" title="Root mode: Claude can run anything, incl. sudo">ROOT</i></div>
 <div id="chip"></div>
+<div id="mailPop" aria-hidden="true"><div class="env"><div class="bk"></div><div class="lt"><b></b><span></span></div><div class="fr"></div><div class="fl"></div></div></div>
 <div id="cap" class="off"><div id="you"></div><div id="him"></div></div>
 <div id="wk"></div>
 <div id="atts"></div>
@@ -838,11 +857,7 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   const lens=()=>sv('path',R({d:'',fill:'#ffffff0d',stroke:acc,'stroke-width':2.6}),gl), line=w=>sv('path',R({d:'',fill:'none',stroke:w||acc,'stroke-width':w?2.4:2.6}),gl);
   const lensL=lens(), lensR=lens(), brg=line(), glintL=line('#ffffff60'), glintR=line('#ffffff60');
   // notification props, absolute coordinates, white / bright on his blue arms; frame() places them with put() and animates them while they show
-  const pk2='#0b0e14', mail=sv('g',{opacity:0},fr), mfly=sv('g',{},mail), mlet=sv('g',{},mfly), chat=sv('g',{opacity:0},fr), feed=sv('g',{opacity:0},fr);
-  sv('rect',R({x:53,y:2,width:34,height:24,rx:3,fill:'#fff',stroke:pk2,'stroke-width':2}),mfly);
-  sv('rect',R({x:60,y:5,width:20,height:16,rx:1.5,fill:'#fff',stroke:pk2,'stroke-width':1.6}),mlet); sv('path',R({d:'M64 10H76M64 14H73',stroke:'#4d6fb7','stroke-width':2.2}),mlet);
-  sv('path',R({d:'M53 26L70 13L87 26Z',fill:'#e8efff',stroke:pk2,'stroke-width':2}),mfly);
-  const mflap=sv('path',R({d:'M53 2L70 16L87 2Z',fill:'#f2c94c',stroke:pk2,'stroke-width':2}),mfly);
+  const pk2='#0b0e14', chat=sv('g',{opacity:0},fr), feed=sv('g',{opacity:0},fr);
   sv('path',R({d:'M-88 -73H-60Q-56 -73 -56 -69V-55Q-56 -51 -60 -51H-72L-80 -43L-79 -51H-88Q-92 -51 -92 -55V-69Q-92 -73 -88 -73Z',fill:'#fff',stroke:'#2f8f66','stroke-width':3}),chat);
   const dots=[-82,-74,-66].map(x=>sv('circle',{cx:x,cy:-62,r:2.9,fill:'#2f8f66'},chat));
   const badge=sv('g',{display:'none'},chat); sv('circle',{cx:-58,cy:-74,r:8.5,fill:'#e5484d',stroke:'#fff','stroke-width':1.6},badge);
@@ -851,7 +866,7 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   sv('rect',R({x:57,y:-64,width:34,height:24,rx:5,fill:'#e0569a',stroke:'#fff','stroke-width':2.4}),feed);
   const scr=sv('rect',{x:61,y:-60,width:22,height:16,rx:3,fill:'#1d2026'},feed); sv('path',R({d:'M68 -57L68 -47L77 -52Z',fill:'#fff'}),feed);
   sv('circle',{cx:87,cy:-56,r:1.6,fill:'#fff'},feed); sv('circle',{cx:87,cy:-50,r:1.6,fill:'#fff'},feed);
-  return {mail:{g:mail,fly:mfly,flap:mflap,let:mlet},chat:{g:chat,dots,badge,bt,n:0},feed:{g:feed,scr,ant:tvA},tie,hb,bd,hf,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,um,drops,lensL,lensR,brg,glintL,glintR}; }
+  return {chat:{g:chat,dots,badge,bt,n:0},feed:{g:feed,scr,ant:tvA},tie,hb,bd,hf,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,um,drops,lensL,lensR,brg,glintL,glintR}; }
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
 function drawSkin(back,front,L,bodyFill='url(#ballG)'){
   back.innerHTML=''; front.innerHTML='';
@@ -1072,7 +1087,7 @@ const G={ sz:new Spring(1,2,.75), tilt:new Spring(0,.8,.85), dx:new Spring(0,2.4
   wob:new Spring(0,1.7,.22),
   gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), sit:new Spring(0,2.4,.55), sitShade:new Spring(0,2.4,.55), sitGl:new Spring(0,2.4,.55), sitP:new Spring(0,2.4,.55), sitR:new Spring(0,2.4,.55), sitN:new Spring(0,2.4,.55), sitLift:new Spring(0,3,.8), sitMusic:new Spring(0,2.4,.55), sitW:new Spring(0,1.7,.22), zoom:new Spring(1,1.6,.7),
   appear:new Spring(.2,1.5,.55), open:new Spring(0,1.8,.55), think:new Spring(0,1.6,.6), anger:new Spring(0,1.8,.55), qm:new Spring(0,1.8,.55),
-  agent:new Spring(0,2.6,.5), sitMail:new Spring(0,2.6,.5), sitChat:new Spring(0,2.6,.5), sitFeed:new Spring(0,2.6,.5), mic:new Spring(0,2.6,.7), rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
+  agent:new Spring(0,2.6,.5), sitChat:new Spring(0,2.6,.5), sitFeed:new Spring(0,2.6,.5), mic:new Spring(0,2.6,.7), rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
 let idlePu=null, idleSwapAt=performance.now()+15000;
 const restPu=()=>PUP_STYLES.includes(info.pupil_style)?info.pupil_style:'slit';
 function popPupils(){ for(const e of [SP.L,SP.R]){ e.w.kick(10); e.h.kick(10); } }
@@ -1370,17 +1385,14 @@ function frame(ts){
     const w=G.sitW.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)*.6, sp=(S_,on)=>S_.to(on?1:0,dt), skinless=LOOK.skin==='none';
     const tp=skinless&&sitOn.party, tr=skinless&&!tp&&sitOn.rain, tn=skinless&&!tp&&!tr&&sitOn.night;     // top zone: party hat > umbrella > nightcap, and only with no skin
     const a=sp(G.sit,sitOn.meeting), b=sp(G.sitMusic,sitOn.music), c=sp(G.sitShade,sitOn.fullscreen), g=sp(G.sitGl,sitOn.coding&&!sitOn.fullscreen),   // eyes: shades > glasses
-      pa=sp(G.sitP,tp), um=sp(G.sitR,tr), ni=sp(G.sitN,tn), pm=sp(G.sitMail,propOn&&propOn.cat==='mail'&&ts<propOn.until), pch=sp(G.sitChat,propOn&&propOn.cat==='chat'&&ts<propOn.until), pf=sp(G.sitFeed,propOn&&propOn.cat==='video'&&ts<propOn.until), L=G.sitLift.to(isTalk(m)||m==='listening'||['reading','editing','running','searching','looking','thinking'].includes(m)?1:0,dt);
+      pa=sp(G.sitP,tp), um=sp(G.sitR,tr), ni=sp(G.sitN,tn), pch=sp(G.sitChat,propOn&&propOn.cat==='chat'&&ts<propOn.until), pf=sp(G.sitFeed,propOn&&propOn.cat==='video'&&ts<propOn.until), L=G.sitLift.to(isTalk(m)||m==='listening'||['reading','editing','running','searching','looking','thinking'].includes(m)?1:0,dt);
     const put=(el,x,ax,ay,rot)=>{ el.setAttribute('opacity',clamp(x,0,1).toFixed(2)); el.setAttribute('transform',`translate(${ax} ${ay})${rot?` rotate(${rot.toFixed(2)})`:''} scale(${(.7+.3*x).toFixed(3)}) translate(${-ax} ${-ay})`); };
     const lift=(el,x)=>{ put(el,x,0,-4); el.setAttribute('transform',`translate(0 ${(-32*L).toFixed(1)}) scale(${(1-.08*L).toFixed(3)}) `+el.getAttribute('transform')); };   // (lifted onto the forehead while he talks, so his eyes stay visible)
-    const off=!(sitOn.meeting||sitOn.music||sitOn.fullscreen||sitOn.coding||tp||tr||tn)&&Math.max(a,b,c,g,pa,um,ni,pm,pch,pf)<.002;
+    const off=!(sitOn.meeting||sitOn.music||sitOn.fullscreen||sitOn.coding||tp||tr||tn)&&Math.max(a,b,c,g,pa,um,ni,pch,pf)<.002;
     if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,b,0,-4,G.sitW.x*.25); put(SIT_P.hf,b,0,-4,G.sitW.x*.25); sitSettled=off;
       lift(SIT_P.sh,c); put(SIT_P.gl,g,0,-4); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3); put(SIT_P.um,um,0,-84);
       if(um>.002) SIT_P.drops.forEach((d,i)=>d.setAttribute('transform',`translate(0 ${((t*55+i*23)%58).toFixed(1)})`));
       const el=propOn?ts-propOn.t0:0, prop=(Q,x,ax,ay,f)=>{ if(x>.002){ put(Q.g,x,ax,ay); Q.on=true; f(Q); } else if(Q.on){ Q.g.setAttribute('opacity','0'); Q.on=false; } };   // (a prop writes only while it shows)
-      prop(SIT_P.mail,pm,70,14,Q=>{ Q.fly.setAttribute('transform',`translate(${(50*(1-pm)).toFixed(1)} ${(-34*(1-pm)).toFixed(1)}) rotate(${(18*(1-pm)).toFixed(1)} 70 14)`);
-        Q.flap.setAttribute('transform',`translate(0 2) scale(1 ${(1-2*clamp((el-250)/200,0,1)).toFixed(2)}) translate(0 -2)`);
-        Q.let.setAttribute('transform',`translate(0 ${(-14*clamp((el-350)/300,0,1)).toFixed(1)})`); });
       prop(SIT_P.chat,pch,-74,-60,Q=>{ Q.dots.forEach((d,i)=>d.setAttribute('transform',`translate(0 ${(Math.sin(t*9-i*1.1)*3).toFixed(2)})`));
         const n=propOn&&propOn.cat==='chat'?propOn.n||1:1; if(n!==Q.n){ Q.n=n; Q.badge.setAttribute('display',n>1?'':'none'); Q.bt.textContent='×'+n; } });
       prop(SIT_P.feed,pf,74,-52,Q=>{ Q.scr.setAttribute('fill',el>=120&&el<200?'#fff':'#1d2026');
@@ -1802,12 +1814,12 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
   const c=ev.app==='nixi-job'?NOTE.job:NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null}; notifyRow=row; notifyAt=ts+5000;
   wake(); G.jelly.kick(-.45); popPupils(); poke(c[3],c[4]); burstLines(c[2],ev.category==='meeting'?8:ev.category==='download'?10:ev.category==='other'&&ev.app!=='nixi-job'?1:3);
   if(ev.category==='chat') G.tilt.kick(-8);
-  { const pt={mail:3200,chat:2800,video:2400}[ev.category];                      // the prop for this kind; a new one replaces the old
+  { const pt={chat:2800,video:2400}[ev.category];                      // the prop for this kind; a new one replaces the old
     if(pt){ const same=propOn&&propOn.cat===ev.category&&now<propOn.until;
       if(same&&ev.category==='chat') propOn.until=Math.max(propOn.until,now+pt);
       else { if(same&&ev.category==='video'){ G.sitFeed.x=0; G.sitFeed.v=0; } propOn={cat:ev.category,t0:now,until:now+pt,n:1}; }
       if(ev.category==='video') G.jelly.kick(-.4); } }
-  if(ev.category==='mail') poke('reading',2600);
+  if(ev.category==='mail'){ poke('reading',2600); mailPop(ev); }
   if(ev.category==='meeting') setTimeout(()=>{ if(notifyRow===row) poke('t_serious',2000); },750);
   if(ev.category==='video') setTimeout(()=>{ if(!FID&&mood(performance.now())==='idle') { FID={name:'hum',t0:performance.now(),dur:2000}; FIDGETS.hum.start&&FIDGETS.hum.start(FID); } },1500);
   notifyShow(row,notifyText(ev,1));
@@ -1815,10 +1827,22 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
     const who=notifyWho(ev); enqueue(ev.category==='mail'?(info.notify_details&&info.notify_speak_subject&&ev.summary?ev.summary:'New mail'+(who?' from '+who:'')):c[1],{follow:false});
     if(ev.category==='mail'){ talk.away=[5,1]; talk.awayUntil=now+1500; } } }   // (not say(): that would wipe the row)
   setTimeout(()=>{ if(notifyRow===row) notifyClear(); },5000); }
+// mail (#138): the envelope pops out beside him (the side with more room), opens, and goes back in after ~5 s
+let mailT=[], popWant=[0,0];
+function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.classList.contains('bar')||info.hover) return;
+  mailT.forEach(clearTimeout); mailT=[]; el.classList.remove('on','open','up');
+  el.querySelector('b').textContent=notifyWho(ev)||'Mail'; el.querySelector('span').textContent=ev.summary||'New mail';
+  popWant=[260,0]; sizeWindow();
+  const at=(ms,f)=>mailT.push(setTimeout(f,ms));
+  at(60,()=>{ const right=innerWidth/fitK-layoutX-340, left=layoutX/fitK; el.classList.toggle('l',left>right); void el.offsetWidth; el.classList.add('on'); sendRegion(true); });
+  at(420,()=>el.classList.add('open')); at(720,()=>el.classList.add('up'));
+  at(4300,()=>el.classList.remove('up')); at(4650,()=>el.classList.remove('open'));
+  at(5000,()=>{ el.classList.remove('on'); sendRegion(true); }); at(5400,()=>{ popWant=[0,0]; sizeWindow(); }); }
 function notifyClear(){ const sp=notifyRow&&notifyRow.span; notifyRow=null; cap.classList.remove('note');
   if(sp&&sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } sendRegion(true); }
 function notifyAct(how){ const r=notifyRow; if(!r||!r.span.isConnected) return; post('/api/notify/act',{key:r.key,how}).catch(()=>{}); notifyClear(); }
 cap.addEventListener('click',()=>notifyAct('open'));
+$('#mailPop').addEventListener('click',e=>{ e.stopPropagation(); notifyAct('open'); });   // (the envelope opens the mail, like the caption)
 function himSet(t,bad){ karaDrop(); himEl.classList.toggle('err',!!bad); himEl.textContent=''; shownTxt=''; if(t) showHim(t,true); }
 function showHim(s,end){
   const p=untag(plain(s)).trim(); let ln=himEl.querySelector('.ln'), fresh=false;
@@ -2658,7 +2682,7 @@ function calmCheck(){ document.body.classList.toggle('calm', setEl.classList.con
 let fitK=1, layoutX=0, layoutY=0;
 // room for a long approval card / terminal sheet: ask the window for extra width and height (it shrinks back at [0,0])
 let cardWant=[0,0], sheetWant=[0,0];
-function sizeWindow(){ const w=Math.max(cardWant[0],sheetWant[0]), h=Math.max(cardWant[1],sheetWant[1]);
+function sizeWindow(){ const w=Math.max(cardWant[0],sheetWant[0],popWant[0]), h=Math.max(cardWant[1],sheetWant[1],popWant[1]);
   native('size:'+w+','+h); }   // (sent every time: the window ignores a repeat, and a lost message would leave the card clipped)
 function fit(){ const k=Math.min(1, innerWidth/340, innerHeight/460); fitK=k>0.995?1:k; const bs=document.body.style;
   bs.transformOrigin='0 0'; bs.margin='0'; bs.marginLeft=layoutX+'px'; bs.marginTop=layoutY+'px';
@@ -2685,6 +2709,7 @@ function sendRegion(force){
   if(ask.classList.contains('on')) add(ask,4);
   if(chip.classList.contains('act')&&chip.classList.contains('on')) add(chip,4);
   if(cap.classList.contains('note')) add(cap,4);
+  if($('#mailPop').classList.contains('on')) add($('#mailPop'),4);
   if(setEl.classList.contains('on')) add(setEl,4);
   if(panelEl.classList.contains('on')) add(panelEl,4);
   if(apEl.classList.contains('on')) add(apEl,4); if(pwEl.classList.contains('on')) add(pwEl,4);
