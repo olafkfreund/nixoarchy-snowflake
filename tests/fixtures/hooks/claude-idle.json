@@ -1,0 +1,8 @@
+{
+  "session_id": "s",
+  "transcript_path": "/home/user/.claude/projects/x/s.jsonl",
+  "cwd": "/home/user/src/snowflake",
+  "hook_event_name": "Notification",
+  "message": "Claude is waiting for your input",
+  "notification_type": "idle_prompt"
+}

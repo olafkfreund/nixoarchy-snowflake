@@ -80,6 +80,37 @@ every code block.
 **When a long task finishes** while it is hidden, you get a desktop notification. You can also have it pop back up
 (Settings → More).
 
+## Agent alerts
+
+Coding agents in your terminal (Claude Code, Codex, agy) can tell the snowflake when they need you or when they are
+done. A small mark above its head shows which agent it is: an orange sunburst for Claude, a dark `>_` square for Codex,
+a blue ring with a dot for agy.
+
+- **Needs you** (a permission prompt or a question): it looks pleading, flashes orange and says the agent and the
+  project, and the reason if there is one. The mark pulses for up to a minute. Click the line under it, or the notch, to
+  jump to that agent's pane or window. Hidden, you get a desktop notification instead.
+- **Finished:** a happy face, a soft chime and a line like "✓ Claude finished · myproject". The mark shows a check for a
+  moment. It does not talk, and when it is hidden it stays quiet.
+
+Each kind has its own 30-second limit, so a finish never hides a question. Nothing the agents say is saved or logged,
+and anything that looks like a password or key is dropped from the reason.
+
+Put these in the agents' own settings. Nixi must be running; if it is not, the lines do nothing and the agent carries on.
+
+```sh
+# ~/.claude/settings.json  Notification hook
+sh -c 'command -v nixi-companion >/dev/null || exit 0; exec nixi-companion attention --from claude --hook'
+# ~/.codex/config.toml  (Codex appends the JSON event as the last argument)
+notify = ["sh", "-c", "command -v nixi-companion >/dev/null && nixi-companion attention --from codex --hook \"$1\"; exit 0", "codex-notify"]
+# ~/.gemini/config/hooks.json  Stop (and Notification, if agy fires one)
+sh -c 'command -v nixi-companion >/dev/null && nixi-companion attention --from agy --hook; echo "{}"'
+```
+
+Old hook lines (`nixi-companion attention --from claude is waiting for you`) still work; they count as "needs you".
+
+Two limits: Codex has no approval hook, so it only ever says "finished". agy does not send its reply text, so its
+"finished" has no reason line.
+
 ## Hover mode
 
 Turn it on in the menu, in Settings → Look, or with `nixi-companion hover`. **It becomes your mouse cursor**: a small

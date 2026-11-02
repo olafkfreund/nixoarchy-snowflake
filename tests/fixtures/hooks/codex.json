@@ -1,0 +1,11 @@
+{
+  "type": "agent-turn-complete",
+  "thread-id": "01a19bc9-3e44-7461-bac7-566f1b53bf4d",
+  "turn-id": "01a19bc9-4085-79e2-8007-c3428704922b",
+  "cwd": "/home/user/src/snowflake",
+  "client": "codex_exec",
+  "input-messages": [
+    "run the tests"
+  ],
+  "last-assistant-message": "All 42 tests pass.\nNothing else changed."
+}

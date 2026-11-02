@@ -71,7 +71,7 @@ body.bar.e-right #stage{transform:translate(136px,68px) scale(.46)}
    of the notch, its neck stretches thin and snaps, and it wobbles round. The real ball parts are hidden meanwhile. */
 body.nixi .nx{display:none!important}
 body.bar #body>.ball,body.bar #body>ellipse,body.bar #orbBack,body.bar #orbFront,body.bar #workW,body.bar #haloW,body.bar #raysW,
-body.bar #vring,body.bar #shadow,body.bar #accBack,body.bar #sitBack,body.bar #accFront,body.bar #sitFront,body.bar #liveTag,
+body.bar #vring,body.bar #agentMark,body.bar #shadow,body.bar #accBack,body.bar #sitBack,body.bar #accFront,body.bar #sitFront,body.bar #liveTag,
 body.goohide #body>.ball,body.goohide #body>ellipse,body.goohide #orbBack,body.goohide #orbFront,body.goohide #haloW,
 body.goohide #shadow,body.goohide #accBack,body.goohide #sitBack,body.goohide #accFront,body.goohide #sitFront{opacity:0;transition:none}
 body.unfold #body>.ball,body.unfold #body>ellipse,body.unfold #shadow,body.unfold #accBack,body.unfold #sitBack,body.unfold #accFront,body.unfold #sitFront{transition:opacity .12s linear}
@@ -327,7 +327,7 @@ body.pw #cap,body.pw #appr{opacity:0}
 #paint{position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:40}
 #menu{z-index:20} .pn{z-index:21} #appr{z-index:22} #ask{z-index:19} #atts{z-index:18} #cap{z-index:5} #chip{z-index:30}
 /* while something is open over him, the stuff behind the card stops moving */
-body.calm #orbBack,body.calm #orbFront,body.calm #raysW,body.calm #vring,body.calm #fx,body.calm #fxBack{display:none}
+body.calm #agentMark,body.calm #orbBack,body.calm #orbFront,body.calm #raysW,body.calm #vring,body.calm #fx,body.calm #fxBack{display:none}
 
 @keyframes flash{0%{opacity:.18}100%{opacity:0}}
 /* ===== settings, take two: cards, a sliding tab pill, a live clickable preview and a proper colour picker ===== */
@@ -516,6 +516,13 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <g id="sitFront"></g>
         <g id="frost" display="none" pointer-events="none"></g>
         <g id="cue" display="none" transform="translate(8 -122)" style="cursor:pointer"><circle id="cueD" r="10" stroke="#0008" stroke-width="1"/><text id="cueT" text-anchor="middle" y="4.5" font-size="12" pointer-events="none"></text></g>
+        <g id="agentMark" opacity="0" transform="translate(8 -108)" pointer-events="none">   <!-- who is calling: original marks, not logos -->
+          <circle id="amRing" r="12" fill="none" stroke="#ff8a2a" stroke-width="2"/>
+          <g id="amC" fill="#d97757"><rect x="-2" y="-16" width="4" height="11" rx="2"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(45)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(90)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(135)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(180)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(225)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(270)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(315)"/></g>
+          <g id="amX"><rect x="-13" y="-11" width="26" height="22" rx="6" fill="#1d2026" style="stroke:var(--acc)" stroke-width="1.5"/><path d="M-7-4L-2 0L-7 4" fill="none" style="stroke:var(--acc)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect id="amU" x="1" y="3" width="7" height="2" rx="1" style="fill:var(--acc)"/></g>
+          <g id="amA"><circle r="11" fill="none" stroke="#4c8bf5" stroke-width="3.5"/><circle id="amD" r="3" fill="#4c8bf5"/></g>
+          <path id="amChk" d="M5 8L10 13L19 2" fill="none" stroke="#3fbf7f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="30" stroke-dashoffset="30"/>
+        </g>
         <g id="liveTag" transform="translate(50 58) rotate(-14)" display="none"><rect x="-21" y="-8.5" width="42" height="17" rx="6" fill="#2f8f66" stroke="#7fd6ae" stroke-width="1"/><circle id="liveDot" cx="-12" cy="0" r="2.6" fill="#fff"/><text x="4" y="3.6" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff" font-family="monospace" letter-spacing="1">LIVE</text></g>
         <g id="think" opacity="0"><circle class="thk" cx="64" cy="-70" r="4"/><circle class="thk" cx="79" cy="-86" r="6"/><circle class="thk" cx="99" cy="-106" r="9"/></g>
         <g id="anger" opacity="0"><path class="ang" d="M-10-3Q-3-3-3-10M3-10Q3-3 10-3M10 3Q3 3 3 10M-3 10Q-3 3-10 3"/></g>
@@ -1029,6 +1036,9 @@ const toD=pts=>'M'+pts.map(p=>p[0].toFixed(2)+' '+p[1].toFixed(2)).join('L')+'Z'
 const NS='http://www.w3.org/2000/svg';
 const E={}; ['cam','body','eL','eR','pL','pR','cpL','cpR','hlL','hlR','zz','qmark','shadow','rays','raysW','fx','fxBack','think','anger','sweat',
   'halo','haloW','vring','workW','orbBack','orbFront','tears'].forEach(k=>E[k]=document.getElementById(k));
+let AM=null;     // the agent mark on show: {from, kind: ask|done, t0, until}
+const AMX={mk:$('#agentMark'),C:$('#amC'),U:$('#amU'),D:$('#amD'),ring:$('#amRing'),chk:$('#amChk')};
+AMX.mk.style.cursor='pointer'; AMX.mk.addEventListener('click',e=>{ e.stopPropagation(); attnJump(); renderCue(); });   // (live only during a question)
 const val=(v,i)=>Array.isArray(v)?v[i]:v;
 
 class Spring{   // f = natural frequency (Hz), z = damping ratio (1 = no overshoot)
@@ -1043,7 +1053,7 @@ const G={ sz:new Spring(1,2,.75), tilt:new Spring(0,.8,.85), dx:new Spring(0,2.4
   wob:new Spring(0,1.7,.22),
   gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), sit:new Spring(0,2.4,.55), sitShade:new Spring(0,2.4,.55), sitGl:new Spring(0,2.4,.55), sitP:new Spring(0,2.4,.55), sitR:new Spring(0,2.4,.55), sitN:new Spring(0,2.4,.55), sitLift:new Spring(0,3,.8), sitMusic:new Spring(0,2.4,.55), sitW:new Spring(0,1.7,.22), zoom:new Spring(1,1.6,.7),
   appear:new Spring(.2,1.5,.55), open:new Spring(0,1.8,.55), think:new Spring(0,1.6,.6), anger:new Spring(0,1.8,.55), qm:new Spring(0,1.8,.55),
-  rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
+  agent:new Spring(0,2.6,.5), rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
 let idlePu=null, idleSwapAt=performance.now()+15000;
 const restPu=()=>PUP_STYLES.includes(info.pupil_style)?info.pupil_style:'slit';
 function popPupils(){ for(const e of [SP.L,SP.R]){ e.w.kick(10); e.h.kick(10); } }
@@ -1337,6 +1347,16 @@ function frame(ts){
     if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,b,0,-4); put(SIT_P.hf,b,0,-4); sitSettled=off;
       lift(SIT_P.sh,c); put(SIT_P.gl,g,0,-4); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3); put(SIT_P.um,um,0,-84);
       if(um>.002) SIT_P.drops.forEach((d,i)=>d.setAttribute('transform',`translate(0 ${((t*55+i*23)%58).toFixed(1)})`)); } }   // (nothing to write while all are off)
+  if(AM||G.agent.x>.002){                 // the agent mark (nothing to write while it is gone)
+    const v=G.agent.to(AM&&ts<AM.until&&!document.body.classList.contains('bar')?1:0,dt), ask=AM&&AM.kind==='ask', mk=AMX.mk, r=(t*.7)%1;
+    mk.setAttribute('opacity',clamp(v,0,1).toFixed(2)); mk.setAttribute('transform',`translate(8 -108) scale(${(1.35*(.6+.4*v)*(ask?1+.12*Math.max(0,Math.sin(t*8.8)):1)).toFixed(3)})`);
+    if(AM&&v>.002){ const f=AM.from;       // only the moving part of this agent, and the one indicator of this kind
+      if(f==='claude') AMX.C.setAttribute('transform',`rotate(${(t*6%360).toFixed(1)})`);
+      else if(f==='codex') AMX.U.setAttribute('opacity',t%1<.5?1:0);
+      else { AMX.D.setAttribute('cx',(11*Math.cos(t*3.93)).toFixed(2)); AMX.D.setAttribute('cy',(11*Math.sin(t*3.93)).toFixed(2)); }
+      if(ask){ AMX.ring.setAttribute('r',(12+14*r).toFixed(1)); AMX.ring.setAttribute('opacity',(1-r).toFixed(2)); }
+      else AMX.chk.setAttribute('stroke-dashoffset',(30*(1-Math.min(1,Math.max(0,(ts-AM.t0-150)/300)))).toFixed(1)); }
+    if(AM&&ts>=AM.until&&v<.002){ AM=null; G.agent.x=0; G.agent.v=0; mk.setAttribute('opacity','0'); mk.setAttribute('pointer-events','none'); renderCue(); } }
   // tears
   if(m==='sad' && ts>tearAt){ tearAt=ts+1900+Math.random()*900; tear(Math.random()<.6?-1:1); }
   if(m==='scared') shakeAmp=Math.max(shakeAmp,.5);
@@ -1561,7 +1581,8 @@ let AMB={sys:[],cal:null,weather:null};
 const CUES={attn:['#ff8a2a','!'],cal:['#4d6fb7','📅'],sys:['#e5a50a','⚠']};
 function ambKind(){ if(attnPend&&performance.now()-attnPend.at<60000) return 'attn'; if(AMB.cal) return 'cal'; if(AMB.sys&&AMB.sys.length) return 'sys'; return ''; }
 function renderCue(){ const k=ambKind(), g=$('#cue'), bar=document.body.classList.contains('bar');   // (the notch only pulses)
-  g.setAttribute('display',k&&!bar?'':'none'); g.setAttribute('class',k);
+  g.setAttribute('display',k&&!bar&&!AM?'':'none');   // (the agent mark stands in for the !)
+  g.setAttribute('class',k);
   if(k){ $('#cueD').setAttribute('fill',CUES[k][0]); $('#cueT').textContent=CUES[k][1]; }
   const w=!k&&!bar&&AMB.weather, fr=$('#frost');
   if(!fr.firstChild) fr.innerHTML=[0,1,2,3,4,5].map(i=>`<g transform="rotate(${i*60})"><circle cx="-8" cy="124" r="4"/><circle cx="-24" cy="118" r="2.2"/><circle cx="-56" cy="120" r="2.6"/></g>`).join('');
@@ -1571,8 +1592,13 @@ $('#cue').addEventListener('click',e=>{ e.stopPropagation(); const k=ambKind();
   if(k==='attn'){ attnJump(); renderCue(); }
   else if(k==='cal'&&AMB.cal) tick('📅 '+AMB.cal.time+' '+AMB.cal.title);
   else if(k==='sys') tick('failed: '+AMB.sys.join(', '),true); });
+function agentMark(from,kind){ const c={claude:'amC',codex:'amX',agy:'amA'}[from], now=performance.now(); if(!c) return false;    // (unknown agent: the old ! cue)
+  if(AM&&AM.kind==='ask'&&kind==='done'&&now<AM.until) return true;               // a finish never hides a question
+  for(const id of ['amC','amX','amA']) $('#'+id).setAttribute('display',id===c?'':'none');
+  $('#amRing').setAttribute('display',kind==='ask'?'':'none'); $('#amChk').setAttribute('display',kind==='ask'?'none':'');
+  AM={from,kind,t0:now,until:now+(kind==='ask'?60000:2500)}; AMX.mk.setAttribute('pointer-events',kind==='ask'?'all':'none'); renderCue(); return true; }
 let attnPend=null;     // the last agent nudge nobody has acted on yet (≤ 60 s): where a click on the notch / hovering orb jumps to
-function attnJump(){ const p=attnPend; attnPend=null; if(!p||performance.now()-p.at>60000) return false;
+function attnJump(){ const p=attnPend; attnPend=null; if(!p||performance.now()-p.at>60000) return false; if(AM){ AM.until=0; AMX.mk.setAttribute('pointer-events','none'); }
   post('/api/attention/focus',{from:p.from}).catch(()=>{}); chip.classList.remove('on','act'); renderCue(); sendRegion(); return true; }
 function onEvent(ev){
   if(ev.t==='theme'){ info.theme=ev.theme; lookShown=''; syncLook(); if(setEl.classList.contains('on')) renderSettings(); return; }
@@ -1599,10 +1625,14 @@ function onEvent(ev){
   else if(ev.t==='spk_done'){ quietNative(); }
   else if(ev.t==='approve') queueApproval(ev);
   else if(ev.t==='attention'){                            // an agent (claude/codex/agy…) is waiting for you: `nixi-companion attention`
-    const msg=ev.name+' needs you'+(ev.text?': '+ev.text:'');
-    if(hiddenNow){ post('/api/notify',{title:'Nixi',body:msg}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
-    if(info.hover) comeBack(); wake(); sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(msg); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
-    if(!muted) sayAside(ev.name+' needs you'); }
+    const ask=ev.kind!=='done', r=(ev.text||'').replace(new RegExp('^'+ev.name+'\\s+','i'),''), pj=ev.project?' · '+ev.project:'';
+    const head=ask?(/^(needs|is waiting|wants)\b/i.test(r)?ev.name+' '+r:ev.name+' needs you'+(r?': '+r:'')):'✓ '+ev.name+' finished'+(r?': '+r:'');   // ("Claude needs your permission…", not "Claude needs you: Claude needs…")
+    if(hiddenNow){ if(ask) post('/api/notify',{title:'Nixi',body:head+pj}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
+    if(info.hover) comeBack(); wake(); agentMark(ev.from,ask?'ask':'done');
+    if(!ask&&((attnPend&&performance.now()-attnPend.at<60000)||(AM&&AM.kind==='ask'&&performance.now()<AM.until))){ sfx('done'); poke('t_beam',1400); return; }   // (a finish never takes over a question)
+    if(!ask){ sfx('done'); poke('t_beam',1400); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; sendRegion(); return; }   // (no flash, no talking)
+    sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
+    if(!muted) sayAside(head+(ev.project?', in '+ev.project:'')); }
   else if(ev.t==='notify') notifyIn(ev);
   else if(ev.t==='nudge') { ev.rt=performance.now(); nudgeQ.set(ev.kind,ev); nudgeDrain(performance.now()); }
   else if(ev.t==='situation'){ SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party;

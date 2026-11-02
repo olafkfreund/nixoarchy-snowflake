@@ -26,10 +26,28 @@ if [ -d "$ROOT/app" ] || [ -z "$SHARE" ] || [ ! -d "$SHARE/app" ]; then APP="$RO
 PY="$ROOT/venv/bin/python"; LOG="$ROOT/server.log"
 if [ -n "${NIXI_COMPANION_APP:-}" ] && [ -n "${NIXI_COMPANION_PYTHON:-}" ]; then APP="$NIXI_COMPANION_APP"; PY="$NIXI_COMPANION_PYTHON"; fi
 # an agent's hook says it needs you: tell the running companion, never start it, never fail (hooks must not break an agent)
-#   nixi-companion attention --from claude [message words…]
+#   nixi-companion attention --from claude [--hook [{json}]] [message words…]    (--hook: the agent's JSON, as the last argument or on stdin)
 if [ "${1:-}" = attention ]; then shift; FROM=agent
   [ "${1:-}" = --from ] && { FROM="${2:-agent}"; shift 2 || shift; }
-  "${NIXI_COMPANION_PYTHON:-python3}" -c 'import json,sys,os,urllib.request as u
+  HOOK=0; [ "${1:-}" = --hook ] && { HOOK=1; shift; }
+  "${NIXI_COMPANION_PYTHON:-python3}" -c 'import json,sys,os,select,time,urllib.request as u
+def rd():                                                # stdin, but never wait on it: up to 2 s, stop as soon as it is one JSON object
+    buf, end = b"", time.time() + 2
+    while len(buf) < 65536 and select.select([0], [], [], max(0, end - time.time()))[0]:
+        c = os.read(0, 4096)
+        if not c:
+            break
+        buf += c
+        try:
+            json.loads(buf)
+            break
+        except ValueError:
+            pass
+    return buf.decode("utf-8", "replace")
+def cut(v):                                              # 300 characters, at a word: a token over the cut is dropped, not left as a prefix
+    if len(v) <= 300:
+        return v
+    return v[:300].rsplit(None, 1)[0] if not v[300].isspace() and len(v[:300].split()) > 1 else v[:300]
 try:
     e, pids, pid = os.environ, [], os.getppid()          # where the agent lives: its herdr pane, and the ancestors (one is its terminal window)
     try:
@@ -38,12 +56,28 @@ try:
             pid = int(open("/proc/%d/stat" % pid).read().rsplit(")", 1)[1].split()[1])
     except (OSError, ValueError, IndexError):
         pass
+    hook, words = None, sys.argv[3:]
+    if sys.argv[2] == "1":                                # only these fields, short, so no transcript or prompt text travels
+        try:
+            a = sys.argv[-1] if len(sys.argv) > 3 and sys.argv[-1].startswith("{") else ""
+            if a:
+                words = sys.argv[3:-1]                    # (raw JSON is never the text, even when it does not parse)
+            h = json.loads(a or (rd() if not sys.stdin.isatty() else ""))
+            hook = {k: cut(h[k]) for k in ("notification_type", "message", "type", "last-assistant-message", "hook_event_name", "cwd", "title", "prompt_response", "response", "error") if isinstance(h.get(k), str)}
+            if isinstance(h.get("fullyIdle"), bool):
+                hook["fullyIdle"] = h["fullyIdle"]
+            wp = h.get("workspacePaths")
+            if "cwd" not in hook and isinstance(wp, list) and wp and isinstance(wp[0], str):
+                hook["cwd"] = cut(wp[0])
+            words = []
+        except Exception:
+            hook = None                                   # legacy path: the words
     tgt = {"pids": pids, "herdr": {"pane": e.get("HERDR_PANE_ID"), "session": e.get("HERDR_SESSION")} if e.get("HERDR_ENV") == "1" else None}
     rt = json.load(open(os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "nixi-companion", "runtime.json")))
-    u.urlopen(u.Request("http://127.0.0.1:%s/api/attention" % rt["port"], json.dumps({"from": sys.argv[1], "text": " ".join(sys.argv[2:]), "target": tgt}).encode(),
+    u.urlopen(u.Request("http://127.0.0.1:%s/api/attention" % rt["port"], json.dumps({"from": sys.argv[1], "text": " ".join(words), "target": tgt, **({"hook": hook} if hook is not None else {})}).encode(),
               {"Content-Type": "application/json", "X-Nixi-Token": rt["token"]}), timeout=3).read()
 except Exception:
-    pass' "$FROM" "$@" >/dev/null 2>&1
+    pass' "$FROM" "$HOOK" "$@" >/dev/null 2>&1
   exit 0
 fi
 # move him to another screen from a key bind: nixi-companion monitor next|prev|focused|<name> (e.g. DP-1)

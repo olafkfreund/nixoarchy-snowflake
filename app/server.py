@@ -941,7 +941,7 @@ def notify(title, body):
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-_ATTN_LAST = {}                                # agent name → time of its last nudge
+_ATTN_LAST = {}                                # (agent name, kind) → time of its last nudge
 _ATTN_NAMES = {"claude": "Claude", "codex": "Codex", "agy": "agy"}
 
 
@@ -984,17 +984,58 @@ def _attention_focus(t):
     return done
 
 
-def attention_accept(frm, text, now=None, target=None):
-    """Validate an agent's "needs input" nudge, rate-limit it (one per agent per 30 s) and publish it. True if shown."""
+def attention_parse(frm, hook):
+    """(kind, project, reason) for an agent's hook payload, or None to stay quiet. Every field is optional; a hook that is
+    not a dict is an old-style line (reason = its words). reason is one scrubbed line of at most 90 characters."""
+    if not isinstance(hook, dict):
+        return "ask", "", hook if isinstance(hook, str) else ""
+    g = lambda *ks: next((hook[k] for k in ks if isinstance(hook.get(k), str) and hook[k].strip()), "")
+    if frm == "claude":
+        nt = g("notification_type")
+        if nt == "auth_success":
+            return None
+        msg = g("message")
+        ask = nt in ("permission_prompt", "elicitation_dialog") if nt else bool(re.search(r"(?i)permission|approve|allow|needs your", msg))
+        kind, why = ("ask", msg) if ask else ("done", "")
+    elif frm == "codex":
+        ty = g("type")
+        if ty == "agent-turn-complete":
+            kind, why = "done", g("last-assistant-message")
+        elif "approval" in ty:
+            kind, why = "ask", g("title", "message")
+        else:
+            return None
+    elif frm == "agy":
+        if g("hook_event_name") == "Notification":
+            kind, why = "ask", g("message")
+        elif hook.get("fullyIdle") is False:
+            return None                                          # a sub-run ended, the agent is still working
+        else:
+            kind, why = "done", g("error")
+    else:                                                        # another agent: only a message says it wants you
+        kind, why = "ask", g("message", "title")
+        if not why:
+            return None
+    proj = os.path.basename(g("cwd").rstrip("/"))
+    return kind, proj if re.fullmatch(r"[\w.@+-]{1,40}", proj) else "", why
+
+
+def attention_accept(frm, text, now=None, target=None, hook=None):
+    """Validate an agent's nudge, rate-limit it (one per agent and kind per 30 s) and publish it. True if shown."""
     frm = frm if isinstance(frm, str) and re.fullmatch(r"[a-z0-9-]{1,20}", frm) else "agent"
-    text = re.sub(r"\s+", " ", text).strip()[:120] if isinstance(text, str) else ""
     now = time.monotonic() if now is None else now
     if target is not None:
         _ATTN_TARGET[frm] = attention_target(target)             # latest wins, even when rate-limited
-    if now - _ATTN_LAST.get(frm, -1e9) < 30:
+    p = attention_parse(frm, hook if isinstance(hook, dict) else text)
+    if p is None:
         return False
-    _ATTN_LAST[frm] = now
-    BUS.pub(t="attention", **{"from": frm, "name": _ATTN_NAMES.get(frm) or frm.capitalize(), "text": text})
+    kind, project, reason = p
+    reason = re.sub(r"\s+", " ", next((ln for ln in reason.splitlines() if ln.strip()), "")).strip()   # its first line
+    reason = "" if reason == "is waiting for you" or SECRET_LINE.search(reason) else reason[:90]        # (scrubbed whole, then cut)
+    if now - _ATTN_LAST.get((frm, kind), -1e9) < 30:
+        return False
+    _ATTN_LAST[(frm, kind)] = now
+    BUS.pub(t="attention", **{"from": frm, "name": _ATTN_NAMES.get(frm) or frm.capitalize(), "kind": kind, "project": project, "text": reason})
     return True
 
 
@@ -4287,7 +4328,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": str(e)}, 400)
             if p == "/api/attention":                # `nixi-companion attention --from claude [words]`: an agent wants you
                 b = json.loads(self._body() or b"{}")
-                return self._json({"ok": True, "shown": attention_accept(b.get("from"), b.get("text"), target=b.get("target"))})
+                return self._json({"ok": True, "shown": attention_accept(b.get("from"), b.get("text"), target=b.get("target"),
+                                                                  hook=b.get("hook") if isinstance(b.get("hook"), dict) and len(b["hook"]) <= 12 else None)})
             if p == "/api/attention/focus":
                 f = json.loads(self._body() or b"{}").get("from")
                 return self._json({"ok": attention_focus(f) if isinstance(f, str) else False})
