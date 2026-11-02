@@ -168,6 +168,12 @@ class Store:
         with self.lock:
             self.prev, self.cur, self.vis = self.cur, None, False
 
+    def clear(self):
+        """Forget both stages (Answer stages was turned off): nothing can be restored."""
+        with self.lock:
+            self.prev = self.cur = None
+            self.vis = False
+
 
 def maps_url(dest, mode=None):
     """Directions to dest, or a place search when mode is None. No origin, no key."""

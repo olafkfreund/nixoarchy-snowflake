@@ -3844,7 +3844,7 @@ def run_bridge(prompt, emit):
             mid = o.get("messageId")
             emit(t="delta", text=str(o.get("text") or ""))
         elif ty == "tool":
-            emit(t="tool", name=str(o.get("title") or "tool"), detail="", id="", input=None)
+            emit(t="tool", name=str(o.get("title") or "tool"), detail="", id="", input=None, status=str(o.get("status") or ""))
         elif ty == "permission":
             threading.Thread(target=approve, args=(o,), daemon=True).start()
         elif ty in ("notice", "status"):
@@ -3875,6 +3875,16 @@ def run_bridge(prompt, emit):
 STAGES = stages.Store()                                  # the stage on screen and the one before it (#144)
 
 
+def stages_on():
+    return CFG.get("answer_stages", True) is not False
+
+
+def stages_off():
+    """Answer stages was turned off: forget what we held and tell the page to put it away."""
+    STAGES.clear()
+    BUS.pub(t="stage_close")
+
+
 def board_up():
     cur = STAGES.current()
     return bool(cur and cur["kind"] == "commands" and STAGES.visible())
@@ -3893,6 +3903,8 @@ def stage_trust():
 
 def stage_act(token, act):
     """A button on the stage (never Run: that is a turn, see ask). Only what the store holds is ever used, never page text."""
+    if not stages_on() and act not in ("close", "shown", "hidden"):
+        return {"ok": False, "error": "off"}
     if act in ("shown", "hidden"):                     # the page says whether it really drew the stage
         STAGES.set_visible(act == "shown")
         return {"ok": True}
@@ -4507,6 +4519,8 @@ class Handler(BaseHTTPRequestHandler):
                             "barge_in", "sfx", "update_check", "auto_compact", "full_text", "lean", "follow_focus", "step_aside", "answer_stages", "ambient_system", "ambient_calendar", "ambient_weather", *NOTIFY_FLAGS):
                     if key in b:
                         upd[key] = bool(b[key])
+                if "answer_stages" in b and not b["answer_stages"]:
+                    stages_off()
                 ns = b.get("notify_speak")
                 if isinstance(ns, list) and len(ns) <= 6 and all(x in NOTIFY_CATS for x in ns):
                     upd["notify_speak"] = list(dict.fromkeys(ns))
@@ -4547,6 +4561,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.events()
             if p == "/api/quick":
                 said = json.loads(self._body() or b"{}").get("text", "")
+                fp = stages.fast_path(said, None) if BRIDGED and stages_on() else None      # "go back" is a stage's before it is the music's
+                if fp and ((fp[0] == "close" and STAGES.current()) or (fp[0] in ("back", "show") and (STAGES.current() or STAGES.has_prev()))):
+                    return self._json({"handled": False})
                 mem = recall.answer(said)                # answered from his quick memory: no Claude call, no usage
                 if mem:
                     return self._json({"handled": True, "say": mem, "mood": "happy", "state": state_info()})
@@ -4797,7 +4814,7 @@ class Handler(BaseHTTPRequestHandler):
         body = json.loads(self._body() or b"{}")
         said = (body.get("prompt") or "").strip()
         run_cmd = tok = None                                   # a stage's Run: the command comes from the store, never from the page
-        if BRIDGED and not body.get("attach") and not (body.get("stage") and body.get("act") == "run"):
+        if BRIDGED and stages_on() and not body.get("attach") and not (body.get("stage") and body.get("act") == "run"):
             cur = STAGES.current()
             vis = cur if STAGES.visible() else None            # only what is really on screen can be run or copied by voice
             fp = stages.fast_path(said, vis)                   # ("run the first one", "copy that", "close"...): no agent turn
@@ -4813,7 +4830,7 @@ class Handler(BaseHTTPRequestHandler):
                 if stage_act("", fp[0])["ok"]:
                     return self._said("Done.")
         if body.get("stage") and body.get("act") == "run":
-            got = STAGES.get(str(body["stage"])) if BRIDGED else None
+            got = STAGES.get(str(body["stage"])) if BRIDGED and stages_on() else None
             if not got or got[0] != "command":
                 return self._json({"error": "that command is gone"}, 410)
             tok, run_cmd = str(body["stage"]), got[1]["cmd"]
@@ -4875,16 +4892,22 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 real_emit(**kw)
 
-            run_state = {"seen": False, "other": False}
+            run_state = {"seen": False, "other": False, "ok": False, "failed": ""}
 
             def run_emit(**kw):                                  # a stage Run: waiting → running → done / failed on the item
                 t = kw.get("t")
                 if t == "stage_status" and kw.get("state") == "other":
                     run_state["other"] = True
                 if t in ("result", "error", "stopped") and not run_state["other"]:
-                    err = t != "result" or kw.get("is_error") or not run_state["seen"]     # (no tool event = nothing ran)
-                    line = ((str(kw.get("text") or "").strip() or ("stopped" if t == "stopped" else "" if run_state["seen"] else "Nixi didn't run it")).splitlines() or [""])[0][:200]
+                    err = t != "result" or kw.get("is_error") or not run_state["ok"] or bool(run_state["failed"])     # (done only once its tool completed)
+                    miss = "Nixi didn't run it" if not run_state["seen"] else "Couldn't confirm it finished"
+                    line = ((run_state["failed"] or str(kw.get("text") or "").strip() or ("stopped" if t == "stopped" else miss)).splitlines() or [""])[0][:200]
                     emit(t="stage_status", token=tok, state="failed" if err else "done", **({"error": line} if err else {}))
+                if t == "tool":
+                    if kw.get("status") == "failed":
+                        run_state["failed"] = (str(kw.get("name") or "the command") + " failed")
+                    elif kw.get("status") == "completed":
+                        run_state["ok"] = True
                 emit(**kw)
                 if t == "tool" and not run_state["seen"] and not run_state["other"]:
                     run_state["seen"] = True
@@ -4913,7 +4936,7 @@ class Handler(BaseHTTPRequestHandler):
                     tail, blk = cutter.close()
                     if tail:
                         out(t="delta", text=tail)
-                    st = stages.validate(blk) if t == "result" and blk and run_cmd is None else None    # (a Run never replaces the board)
+                    st = stages.validate(blk) if t == "result" and blk and run_cmd is None and stages_on() else None    # (a Run never replaces the board)
                     if st:
                         out(t="stage", **stage_event(STAGES.put(st)))
                 out(**kw)

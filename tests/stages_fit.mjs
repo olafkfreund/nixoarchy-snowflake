@@ -83,6 +83,39 @@ for (const [pn, ox] of Object.entries(POS)) for (const [fn, fx] of Object.entrie
     check(r[0] === "closed" && !r[1] && want.every(w => r[2].includes(w)), `declined stage becomes a caption: ${k}`, JSON.stringify(r)); }
   await ev("SIT.fullscreen=false; himSet(''); return 1"); }
 
+// what the page tells the server about visibility, inertness, and the window's keys
+await ev("window.__acts=[]; const of=window.fetch; window.fetch=(u,o)=>{ if(String(u).includes('/api/stage/act')) __acts.push(JSON.parse(o.body).act); return of(u,o); }; return 1");
+const acts = () => ev("return __acts.slice()");
+{ await ev("stageClose(); await new Promise(r=>setTimeout(r,320)); __acts.length=0; return 1");
+  await show(FIX["commands (mechanic)"], w => 0);
+  check((await acts()).includes("shown"), "a drawn stage reports shown", JSON.stringify(await acts()));
+  const i0 = await ev("return [document.getElementById('stg').inert, document.getElementById('stgTab').inert]");
+  check(i0[0] === false && i0[1] === true, "open: frame live, tab inert", JSON.stringify(i0));
+  // Enter and Space on a focused stage button don't reach the window's shortcuts (ask box, recording)
+  const k = await ev(`const b=document.querySelector('#stg .sb'); b.focus(); let ran=0; b.addEventListener('click',()=>ran++);
+    for(const key of ['Enter',' ']) b.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));
+    await new Promise(r=>setTimeout(r,200)); return [ask.classList.contains('on'), !!rec]`);
+  check(k[0] === false && k[1] === false, "Enter/Space in a stage button don't trigger window shortcuts", JSON.stringify(k));
+  // Settings open (body.calm) hides the frame: say so, and say shown again when it is back
+  await ev("__acts.length=0; setEl.classList.add('on'); await new Promise(r=>setTimeout(r,1000)); return 1");
+  const a1 = await acts();
+  await ev("setEl.classList.remove('on'); await new Promise(r=>setTimeout(r,1000)); return 1");
+  const a2 = await acts();
+  check(a1.at(-1) === "hidden" && a2.at(-1) === "shown", "calm reports hidden, then shown", JSON.stringify([a1, a2]));
+  // a stage that arrives while calm is a caption, not a frame, and the old frame is put away locally (no close sent)
+  await ev("__acts.length=0; himSet(''); setEl.classList.add('on'); await new Promise(r=>setTimeout(r,500)); return 1");
+  await ev(`onEvent(${JSON.stringify(FIX["facts"])}); await new Promise(r=>setTimeout(r,500)); return 1`);
+  const d = await ev("return [stgState, stgTimer, document.getElementById('stg').inert, document.getElementById('him').textContent.replace(/\\s+/g,' ').includes('Two highs a day')]");
+  const a3 = await acts();
+  await ev("setEl.classList.remove('on'); await new Promise(r=>setTimeout(r,800)); return 1");
+  check(d[0] === "closed" && d[1] === null && d[2] === true && d[3] && !a3.includes("close") && !a3.includes("shown"), "declined replacement: old frame gone locally, no close, no shown", JSON.stringify([d, a3]));
+  // shrunk to the tab: the frame is inert and the tab is live; restoring flips it back
+  await show(FIX["commands (mechanic)"], w => 0);
+  const t1 = await ev("stageHide(true); await new Promise(r=>setTimeout(r,300)); return [document.getElementById('stg').inert, document.getElementById('stgTab').inert]");
+  await ev("stageRestore(); await new Promise(r=>setTimeout(r,400)); return 1");
+  const t2 = await ev("return [document.getElementById('stg').inert, document.getElementById('stgTab').inert]");
+  check(t1[0] === true && t1[1] === false && t2[0] === false && t2[1] === true, "tab state is inert-correct both ways", JSON.stringify([t1, t2])); }
+
 // motion: the flourish runs normally, and not at all under reduced motion
 { await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "no-preference" }] });
   await show(FIX["commands (mechanic)"], w => 0);

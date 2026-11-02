@@ -125,7 +125,7 @@ class StageActionsTest(unittest.TestCase):
         def fake_bridge(prompt, emit, *_):
             prompts.append((prompt, s.ST.stage_run))
             if tool:
-                emit(t="tool", name="Bash", detail="", id="", input=None)
+                emit(t="tool", name="Bash", detail="", id="", input=None, status=tool if isinstance(tool, str) else "completed")
             for d in deltas:
                 emit(t="delta", text=d)
             emit(t="result", text="", is_error=False)
@@ -262,6 +262,92 @@ class StageActionsTest(unittest.TestCase):
         self.s.ST.last_you = "how do I install firefox?"
         self.ask({"stage": self.tok, "act": "run", "prompt": "Install it", "you": "Install it"})
         self.assertEqual(self.s.ST.last_you, "how do I install firefox?")
+
+    # ---- Copilot review
+    def post(self, path, body):
+        s = self.s
+        h = s.Handler.__new__(s.Handler)
+        h.path, h.headers = path, {"Host": "127.0.0.1", "X-Nixi-Token": s.TOKEN}
+        h._body = lambda: json.dumps(body).encode()
+        h._json = mock.Mock()
+        h.do_POST()
+        return h._json
+
+    def test_turning_stages_off_clears_and_gates(self):
+        s = self.s
+        seen = []
+        with mock.patch.object(s.BUS, "pub", lambda **kw: seen.append(kw)), mock.patch.object(s.quick, "projects", return_value={}):
+            self.post("/api/settings", {"answer_stages": False})
+            self.assertFalse(s.CFG.get("answer_stages", True))
+            self.assertIn({"t": "stage_close"}, seen)
+            self.assertIsNone(s.STAGES.current())
+            self.assertIsNone(s.STAGES.back())                    # nothing to restore either
+            self.assertEqual(s.stage_act(self.tok, "copy"), {"ok": False, "error": "off"})
+            self.assertEqual(s.stage_act("", "back"), {"ok": False, "error": "off"})
+            s.CFG["answer_stages"] = True
+
+    def test_off_means_no_fast_path_and_no_run(self):
+        with mock.patch.dict(self.s.CFG, {"answer_stages": False}):
+            evs, prompts, j = self.ask({"stage": self.tok, "act": "run"})
+            self.assertEqual((prompts, j.call_args[0][1]), ([], 410))
+            evs, prompts, _ = self.ask({"prompt": "run the first one"})
+            self.assertEqual(prompts[0][1], None)                 # an ordinary turn
+
+    def test_reply_finished_after_turning_off_gets_no_stage(self):
+        s = self.s
+        block = '\n<<stage>>{"v":1,"kind":"facts","title":"t","points":["p"]}'
+
+        def fake(prompt, emit, *_):
+            emit(t="delta", text="Here." + block)
+            s.CFG["answer_stages"] = False
+            emit(t="result", text="", is_error=False)
+            return "done"
+
+        h = s.Handler.__new__(s.Handler)
+        h.wfile = io.BytesIO()
+        h.send_response, h.send_header, h.end_headers = mock.Mock(), mock.Mock(), mock.Mock()
+        h._body = lambda: json.dumps({"prompt": "tides?"}).encode()
+        try:
+            with mock.patch.object(s, "run_bridge", fake), mock.patch.object(s, "BRIDGED", True), mock.patch.object(s, "hist_add"), \
+                    mock.patch.object(s, "pick_auto", return_value=None), mock.patch.object(s.recall, "add"), mock.patch.dict(s.CFG, {"auto_compact": False}):
+                h.ask()
+        finally:
+            s.CFG["answer_stages"] = True
+        out = h.wfile.getvalue().decode()
+        self.assertNotIn('"stage"', out)
+        self.assertNotIn("<<stage", out)
+
+    def test_quick_leaves_stage_phrases_to_ask(self):
+        s = self.s
+        with mock.patch.object(s, "BRIDGED", True), mock.patch.object(s.quick, "handle", side_effect=AssertionError("music took it")):
+            self.assertEqual(self.post("/api/quick", {"text": "go back"}).call_args[0][0], {"handled": False})
+            s.STAGES.close()                                       # nothing on screen, but one to come back to
+            self.assertEqual(self.post("/api/quick", {"text": "go back"}).call_args[0][0], {"handled": False})
+            self.assertEqual(self.post("/api/quick", {"text": "show it"}).call_args[0][0], {"handled": False})
+
+    def test_quick_still_does_music_without_a_stage(self):
+        s = self.s
+        s.STAGES.clear()
+        with mock.patch.object(s, "BRIDGED", True), mock.patch.object(s.quick, "handle", return_value={"say": "Going back."}) as h, \
+                mock.patch.object(s.recall, "answer", return_value=None), mock.patch.object(s, "state_info", return_value={}):
+            j = self.post("/api/quick", {"text": "go back"})
+        self.assertTrue(h.called)
+        self.assertTrue(j.call_args[0][0]["handled"])
+
+    def test_run_done_needs_a_completed_tool_and_failed_shows_why(self):
+        for status, want in (("completed", ["waiting", "running", "done"]), ("failed", ["waiting", "running", "failed"]), ("", ["waiting", "running", "failed"])):
+            evs, _, _ = self.ask({"stage": self.tok, "act": "run"}, tool=status or "in_progress")
+            st = [e for e in evs if e["t"] == "stage_status"]
+            self.assertEqual([e["state"] for e in st], want, status)
+        evs, _, _ = self.ask({"stage": self.tok, "act": "run"}, tool="failed")
+        self.assertEqual([e for e in evs if e.get("state") == "failed"][0]["error"], "Bash failed")
+
+    def test_run_bridge_passes_the_tool_status_on(self):
+        events = []
+        p = mock.Mock(stdout=iter([json.dumps({"type": "tool", "title": "Bash", "status": "failed"}) + "\n", json.dumps({"type": "done"}) + "\n"]))
+        with mock.patch.object(self.s.BRIDGE, "start", return_value=p), mock.patch.object(self.s.BRIDGE, "send"):
+            self.s.run_bridge("x", lambda **kw: events.append(kw))
+        self.assertEqual([e["status"] for e in events if e["t"] == "tool"], ["failed"])
 
     def test_stage_trust(self):
         for conf, want in (({"permissionMode": "yolo", "trust": "guide"}, "yolo"), ({"trust": "mechanic"}, "mechanic"), ({}, "unknown")):

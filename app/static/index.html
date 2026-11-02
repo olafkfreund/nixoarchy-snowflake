@@ -615,8 +615,8 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 
 <div id="code"><div class="tb"><b></b><span></span></div><div class="lines"></div><i class="rootb" title="Root mode: Claude can run anything, incl. sudo">ROOT</i></div>
 <div id="chip"></div>
-<section id="stg" role="dialog" aria-labelledby="stgT" aria-hidden="true"><header><button class="hb" id="stgBack" aria-label="Previous answer" hidden>←</button><h2 id="stgT"></h2><button class="hb" id="stgX" aria-label="Close">✕</button></header><svg class="ul" viewBox="0 0 160 8" aria-hidden="true"><path pathLength="1" d="M2 5 C 40 1, 90 8, 158 3"/></svg><div class="bd" id="stgBd"></div><footer><div class="fn" id="stgFn"></div><div class="acts" id="stgActs"></div></footer></section>
-<button id="stgTab" aria-label="Show the answer again"></button><div id="chalk" aria-hidden="true"></div>
+<section id="stg" role="dialog" aria-labelledby="stgT" aria-hidden="true" inert><header><button class="hb" id="stgBack" aria-label="Previous answer" hidden>←</button><h2 id="stgT"></h2><button class="hb" id="stgX" aria-label="Close">✕</button></header><svg class="ul" viewBox="0 0 160 8" aria-hidden="true"><path pathLength="1" d="M2 5 C 40 1, 90 8, 158 3"/></svg><div class="bd" id="stgBd"></div><footer><div class="fn" id="stgFn"></div><div class="acts" id="stgActs"></div></footer></section>
+<button id="stgTab" aria-label="Show the answer again" inert></button><div id="chalk" aria-hidden="true"></div>
 <div id="mailPop" aria-hidden="true"><div class="env"><div class="bk"></div><div class="lt"><b></b><span></span></div><div class="fr"></div><div class="fl"></div></div></div>
 <div id="cap" class="off"><div id="you"></div><div id="him"></div></div>
 <div id="wk"></div>
@@ -1920,10 +1920,12 @@ function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.c
   at(5000,()=>{ el.classList.remove('on'); sendRegion(true); }); at(5400,()=>{ popWant=[0,0]; sizeWindow(); }); }
 /* ================= answer stages (#144): the page only draws what the server sends, every field via textContent; Run, Copy and the rest go back as a token ================= */
 const stgEl=$('#stg'), stgTab=$('#stgTab'), chalkEl=$('#chalk'), REDUCED=matchMedia('(prefers-reduced-motion: reduce)');
-let stg=null, stgState='closed', stgSide='r', stgUse=0, stgQuiet=0, stgTimer=null, stgOffT=null, stgRunTok=null, stgTm=[];
+let stgPosted=false, stg=null, stgState='closed', stgSide='r', stgUse=0, stgQuiet=0, stgTimer=null, stgOffT=null, stgRunTok=null, stgTm=[];
 const hx=(tag,cls,txt)=>{ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; };
 const stgOpen=()=>stgState==='open';
 function stgSize(w){ stageWant=[w,0]; sizeWindow(); }
+function stagePost(v){ if(stgPosted===v) return; stgPosted=v; post('/api/stage/act',{act:v?'shown':'hidden'}).catch(()=>{}); }
+function stageVisSync(){ const B=document.body.classList; stagePost(stgState==='open'&&stgEl.classList.contains('on')&&!B.contains('calm')&&!B.contains('bar')&&!B.contains('hover')); }
 function stagePlace(){ if(stgState==='closed') return;
   const right=innerWidth/fitK-layoutX-340, left=layoutX/fitK, need=stgState==='open'?400:160;
   stgSide=right>=need?'r':left>=need?'l':right>=left?'r':'l';
@@ -1952,27 +1954,29 @@ function stageBuild(ev){
 function stageText(ev){ const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
-  if(hiddenNow||document.body.classList.contains('bar')||info.hover||SIT.fullscreen||SIT.locked||rec||pendingAppr){ post('/api/stage/act',{act:'hidden'}).catch(()=>{}); return false; }
+  stgPosted=false;
+  if(hiddenNow||document.body.classList.contains('bar')||document.body.classList.contains('calm')||info.hover||SIT.fullscreen||SIT.locked||rec||pendingAppr){ if(stgState!=='closed') stageHide(false); return false; }
   stgTm.forEach(clearTimeout); stgTm=[]; clearTimeout(stgOffT);
   stg=ev; stageBuild(ev); stgState='open'; stgRunTok=null; stgUse=stgQuiet=performance.now();
-  stgTab.classList.remove('on'); stgEl.setAttribute('aria-hidden','false');
+  stgTab.classList.remove('on'); stgTab.inert=true; stgEl.inert=false; stgEl.setAttribute('aria-hidden','false');
   stgSize(800); stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt');
   const at=(ms,f)=>stgTm.push(setTimeout(f,ms));
-  at(90,()=>{ if(!stgOpen()) return; stagePlace(); void stgEl.offsetWidth; stgEl.classList.add('on'); if(!REDUCED.matches) stgEl.classList.add('go'); sendRegion(true); post('/api/stage/act',{act:'shown'}).catch(()=>{});
+  at(90,()=>{ if(!stgOpen()) return; stagePlace(); void stgEl.offsetWidth; stgEl.classList.add('on'); if(!REDUCED.matches) stgEl.classList.add('go'); sendRegion(true); stagePost(true);
     if(ev.kind==='commands'&&!REDUCED.matches){ chalkEl.classList.add('on'); at(250,()=>{ chalkEl.classList.add('pt'); const r=stgEl.querySelector('.it'); if(r) r.classList.add('pt'); }); } });
   at(500,()=>sendRegion(true));
   clearInterval(stgTimer); stgTimer=setInterval(stageTick,1000);
 }
 function stageHide(toTab){
   stgTm.forEach(clearTimeout); stgTm=[]; clearInterval(stgTimer); stgTimer=null;
-  stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); stgEl.setAttribute('aria-hidden','true');
-  if(toTab){ post('/api/stage/act',{act:'hidden'}).catch(()=>{}); stgState='tab'; stgTab.textContent=$('#stgT').textContent; stagePlace(); stgSize(300); void stgTab.offsetWidth; stgTab.classList.add('on'); }
+  stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); stgEl.setAttribute('aria-hidden','true'); stgEl.inert=true; stgTab.inert=!toTab;
+  if(!toTab) stgPosted=false;
+  if(toTab){ stagePost(false); stgState='tab'; stgTab.textContent=$('#stgT').textContent; stagePlace(); stgSize(300); void stgTab.offsetWidth; stgTab.classList.add('on'); }
   else { stgState='closed'; stgTab.classList.remove('on'); stgOffT=setTimeout(()=>{ if(stgState==='closed') stgSize(0); sendRegion(true); },200); }
   sendRegion(true); setTimeout(()=>sendRegion(true),260);
 }
 function stageClose(){ if(stgState==='closed') return; stageHide(false); post('/api/stage/act',{act:'close'}).catch(()=>{}); }
-function stageRestore(){ if(stgState!=='tab'||!stg) return; stgState='open'; stgUse=stgQuiet=performance.now(); stgTab.classList.remove('on'); stgEl.setAttribute('aria-hidden','false'); stgSize(800);
-  stgTm.push(setTimeout(()=>{ if(!stgOpen()) return; stagePlace(); void stgEl.offsetWidth; stgEl.classList.add('on'); sendRegion(true); post('/api/stage/act',{act:'shown'}).catch(()=>{}); },90)); clearInterval(stgTimer); stgTimer=setInterval(stageTick,1000); }
+function stageRestore(){ if(stgState!=='tab'||!stg) return; stgState='open'; stgUse=stgQuiet=performance.now(); stgTab.classList.remove('on'); stgTab.inert=true; stgEl.inert=false; stgEl.setAttribute('aria-hidden','false'); stgSize(800);
+  stgTm.push(setTimeout(()=>{ if(!stgOpen()) return; stagePlace(); void stgEl.offsetWidth; stgEl.classList.add('on'); sendRegion(true); stagePost(true); },90)); clearInterval(stgTimer); stgTimer=setInterval(stageTick,1000); }
 function stageTick(){ const now=performance.now(), hov=stgEl.matches(':hover');
   if(hov) stgUse=now;
   if(playing||busy||hov||pendingAppr) stgQuiet=now;
@@ -1991,6 +1995,7 @@ $('#stgX').addEventListener('click',e=>{ e.stopPropagation(); stageClose(); });
 $('#stgBack').addEventListener('click',e=>{ e.stopPropagation(); post('/api/stage/act',{act:'back'}).catch(()=>{}); });
 stgTab.addEventListener('click',e=>{ e.stopPropagation(); stageRestore(); });
 stgEl.addEventListener('mousedown',e=>e.stopPropagation());
+for(const el of [stgEl,stgTab]) for(const k of ['keydown','keyup']) el.addEventListener(k,e=>{ if(e.key==='Enter'||e.key===' ') e.stopPropagation(); });   /* a focused button keeps its own Enter/Space; the window's shortcuts (ask box, recording) must not see them */
 stgEl.addEventListener('transitionend',e=>{ if(e.target===stgEl) sendRegion(true); });
 function notifyClear(){ const sp=notifyRow&&notifyRow.span; notifyRow=null; cap.classList.remove('note');
   if(sp&&sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } sendRegion(true); }
@@ -2881,7 +2886,7 @@ function sendRegion(force){
   if(moreEl.classList.contains('on')) add(moreEl,2);
   const s=JSON.stringify(rs); if(!force&&s===lastRegion) return; lastRegion=s; native('region:'+s);
 }
-setInterval(()=>sendRegion(false),400);
+setInterval(()=>{ sendRegion(false); stageVisSync(); },400);
 $('#stage').addEventListener('transitionend',e=>{ if(e.target===e.currentTarget) sendRegion(true); });   // (the peek's size changes over .65 s: re-measure when it lands)
 // panels slide in — re-measure once they've landed so their clickable area matches what you see
 addEventListener('transitionend',e=>{ if(e.target.matches&&e.target.matches('#menu,.pn,#appr,#ask,#pwbox')) sendRegion(true); });
