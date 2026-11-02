@@ -197,6 +197,7 @@ DEFAULTS = {
     # desktop awareness (#133): all off but the per-category sound and the spoken categories
     "proactive": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"],
     "notify_sound": True, "look_meeting": False, "look_music": False,
+    "look_beat": False, "notify_speak_subject": False,
     "look_fullscreen": False, "react_load": False, "react_break": False, "react_welcome": False,
     "look_coding": False, "look_night": False, "look_weather": False, "look_party": False, "react_quips": False,
     # projects you can switch to by voice: {"delivery app": "/home/you/code/diq"}
@@ -3018,7 +3019,7 @@ def clamp01(x):
 
 NOTIFY_FLAGS = ("proactive", "notifications_takeover", "notify_details", "notify_sound", "look_meeting", "look_music",
                 "look_fullscreen", "react_load", "react_break", "react_welcome",
-                "look_coding", "look_night", "look_weather", "look_party", "react_quips")
+                "look_coding", "look_night", "look_weather", "look_party", "react_quips", "look_beat", "notify_speak_subject")
 NOTIFY_CATS = ("mail", "chat", "meeting", "video", "download", "other")
 
 
