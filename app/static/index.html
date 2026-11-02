@@ -1037,6 +1037,8 @@ const NS='http://www.w3.org/2000/svg';
 const E={}; ['cam','body','eL','eR','pL','pR','cpL','cpR','hlL','hlR','zz','qmark','shadow','rays','raysW','fx','fxBack','think','anger','sweat',
   'halo','haloW','vring','workW','orbBack','orbFront','tears'].forEach(k=>E[k]=document.getElementById(k));
 let AM=null;     // the agent mark on show: {from, kind: ask|done, t0, until}
+const AMX={mk:$('#agentMark'),C:$('#amC'),U:$('#amU'),D:$('#amD'),ring:$('#amRing'),chk:$('#amChk')};
+AMX.mk.style.cursor='pointer'; AMX.mk.addEventListener('click',e=>{ e.stopPropagation(); attnJump(); renderCue(); });   // (live only during a question)
 const val=(v,i)=>Array.isArray(v)?v[i]:v;
 
 class Spring{   // f = natural frequency (Hz), z = damping ratio (1 = no overshoot)
@@ -1346,13 +1348,15 @@ function frame(ts){
       lift(SIT_P.sh,c); put(SIT_P.gl,g,0,-4); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3); put(SIT_P.um,um,0,-84);
       if(um>.002) SIT_P.drops.forEach((d,i)=>d.setAttribute('transform',`translate(0 ${((t*55+i*23)%58).toFixed(1)})`)); } }   // (nothing to write while all are off)
   if(AM||G.agent.x>.002){                 // the agent mark (nothing to write while it is gone)
-    const v=G.agent.to(AM&&ts<AM.until?1:0,dt), ask=AM&&AM.kind==='ask', mk=$('#agentMark'), r=(t*.7)%1;
+    const v=G.agent.to(AM&&ts<AM.until&&!document.body.classList.contains('bar')?1:0,dt), ask=AM&&AM.kind==='ask', mk=AMX.mk, r=(t*.7)%1;
     mk.setAttribute('opacity',clamp(v,0,1).toFixed(2)); mk.setAttribute('transform',`translate(8 -108) scale(${(1.35*(.6+.4*v)*(ask?1+.12*Math.max(0,Math.sin(t*8.8)):1)).toFixed(3)})`);
-    if(AM){ $('#amC').setAttribute('transform',`rotate(${(t*6%360).toFixed(1)})`); $('#amU').setAttribute('opacity',t%1<.5?1:0);
-      $('#amD').setAttribute('cx',(11*Math.cos(t*3.93)).toFixed(2)); $('#amD').setAttribute('cy',(11*Math.sin(t*3.93)).toFixed(2));
-      $('#amRing').setAttribute('r',(12+14*r).toFixed(1)); $('#amRing').setAttribute('opacity',(1-r).toFixed(2));
-      $('#amChk').setAttribute('stroke-dashoffset',(30*(1-Math.min(1,Math.max(0,(ts-AM.t0-150)/300)))).toFixed(1)); }
-    if(AM&&ts>=AM.until&&v<.002){ AM=null; mk.setAttribute('opacity','0'); renderCue(); } }
+    if(AM&&v>.002){ const f=AM.from;       // only the moving part of this agent, and the one indicator of this kind
+      if(f==='claude') AMX.C.setAttribute('transform',`rotate(${(t*6%360).toFixed(1)})`);
+      else if(f==='codex') AMX.U.setAttribute('opacity',t%1<.5?1:0);
+      else { AMX.D.setAttribute('cx',(11*Math.cos(t*3.93)).toFixed(2)); AMX.D.setAttribute('cy',(11*Math.sin(t*3.93)).toFixed(2)); }
+      if(ask){ AMX.ring.setAttribute('r',(12+14*r).toFixed(1)); AMX.ring.setAttribute('opacity',(1-r).toFixed(2)); }
+      else AMX.chk.setAttribute('stroke-dashoffset',(30*(1-Math.min(1,Math.max(0,(ts-AM.t0-150)/300)))).toFixed(1)); }
+    if(AM&&ts>=AM.until&&v<.002){ AM=null; G.agent.x=0; G.agent.v=0; mk.setAttribute('opacity','0'); mk.setAttribute('pointer-events','none'); renderCue(); } }
   // tears
   if(m==='sad' && ts>tearAt){ tearAt=ts+1900+Math.random()*900; tear(Math.random()<.6?-1:1); }
   if(m==='scared') shakeAmp=Math.max(shakeAmp,.5);
@@ -1592,9 +1596,9 @@ function agentMark(from,kind){ const c={claude:'amC',codex:'amX',agy:'amA'}[from
   if(AM&&AM.kind==='ask'&&kind==='done'&&now<AM.until) return true;               // a finish never hides a question
   for(const id of ['amC','amX','amA']) $('#'+id).setAttribute('display',id===c?'':'none');
   $('#amRing').setAttribute('display',kind==='ask'?'':'none'); $('#amChk').setAttribute('display',kind==='ask'?'none':'');
-  AM={from,kind,t0:now,until:now+(kind==='ask'?60000:2500)}; renderCue(); return true; }
+  AM={from,kind,t0:now,until:now+(kind==='ask'?60000:2500)}; AMX.mk.setAttribute('pointer-events',kind==='ask'?'all':'none'); renderCue(); return true; }
 let attnPend=null;     // the last agent nudge nobody has acted on yet (≤ 60 s): where a click on the notch / hovering orb jumps to
-function attnJump(){ const p=attnPend; attnPend=null; if(!p||performance.now()-p.at>60000) return false; if(AM) AM.until=0;
+function attnJump(){ const p=attnPend; attnPend=null; if(!p||performance.now()-p.at>60000) return false; if(AM){ AM.until=0; AMX.mk.setAttribute('pointer-events','none'); }
   post('/api/attention/focus',{from:p.from}).catch(()=>{}); chip.classList.remove('on','act'); renderCue(); sendRegion(); return true; }
 function onEvent(ev){
   if(ev.t==='theme'){ info.theme=ev.theme; lookShown=''; syncLook(); if(setEl.classList.contains('on')) renderSettings(); return; }
@@ -1625,9 +1629,10 @@ function onEvent(ev){
     const head=ask?(/^(needs|is waiting|wants)\b/i.test(r)?ev.name+' '+r:ev.name+' needs you'+(r?': '+r:'')):'✓ '+ev.name+' finished'+(r?': '+r:'');   // ("Claude needs your permission…", not "Claude needs you: Claude needs…")
     if(hiddenNow){ if(ask) post('/api/notify',{title:'Nixi',body:head+pj}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
     if(info.hover) comeBack(); wake(); agentMark(ev.from,ask?'ask':'done');
+    if(!ask&&((attnPend&&performance.now()-attnPend.at<60000)||(AM&&AM.kind==='ask'&&performance.now()<AM.until))){ sfx('done'); poke('t_beam',1400); return; }   // (a finish never takes over a question)
     if(!ask){ sfx('done'); poke('t_beam',1400); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; sendRegion(); return; }   // (no flash, no talking)
     sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
-    if(!muted) sayAside(head.slice(0,90)+(ev.project?', in '+ev.project:'')); }
+    if(!muted) sayAside(head+(ev.project?', in '+ev.project:'')); }
   else if(ev.t==='notify') notifyIn(ev);
   else if(ev.t==='nudge') { ev.rt=performance.now(); nudgeQ.set(ev.kind,ev); nudgeDrain(performance.now()); }
   else if(ev.t==='situation'){ SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party;

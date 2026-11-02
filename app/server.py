@@ -1005,12 +1005,17 @@ def attention_parse(frm, hook):
             kind, why = "ask", g("title", "message")
         else:
             return None
-    elif g("hook_event_name") == "Notification":
-        kind, why = "ask", g("message")
-    elif hook.get("fullyIdle") is False:
-        return None                                              # a sub-run ended, the agent is still working
-    else:
-        kind, why = "done", g("error")
+    elif frm == "agy":
+        if g("hook_event_name") == "Notification":
+            kind, why = "ask", g("message")
+        elif hook.get("fullyIdle") is False:
+            return None                                          # a sub-run ended, the agent is still working
+        else:
+            kind, why = "done", g("error")
+    else:                                                        # another agent: only a message says it wants you
+        kind, why = "ask", g("message", "title")
+        if not why:
+            return None
     proj = os.path.basename(g("cwd").rstrip("/"))
     return kind, proj if re.fullmatch(r"[\w.@+-]{1,40}", proj) else "", why
 
@@ -1025,9 +1030,8 @@ def attention_accept(frm, text, now=None, target=None, hook=None):
     if p is None:
         return False
     kind, project, reason = p
-    reason = re.sub(r"\s+", " ", next((ln for ln in reason.splitlines() if ln.strip()), "")).strip()[:90]   # its first line
-    if reason == "is waiting for you" or SECRET_LINE.search(reason):
-        reason = ""
+    reason = re.sub(r"\s+", " ", next((ln for ln in reason.splitlines() if ln.strip()), "")).strip()   # its first line
+    reason = "" if reason == "is waiting for you" or SECRET_LINE.search(reason) else reason[:90]        # (scrubbed whole, then cut)
     if now - _ATTN_LAST.get((frm, kind), -1e9) < 30:
         return False
     _ATTN_LAST[(frm, kind)] = now

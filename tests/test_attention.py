@@ -71,6 +71,16 @@ class AttentionTest(_ServerEnv):
         self.assertTrue(shown)
         self.assertEqual(kw["text"], "")
 
+    def test_secret_straddling_the_cut_is_scrubbed(self):
+        msg = "note " * 14 + "ghp_" + "a1B2" * 9                    # the token starts at 70 and ends past 90
+        _, kw = self.accept("claude", {"notification_type": "permission_prompt", "message": msg})
+        self.assertEqual(kw["text"], "")
+
+    def test_other_agents(self):
+        self.assertEqual(self.parse("newagent", {"message": "m", "cwd": "/x/y"}), ("ask", "y", "m"))
+        self.assertEqual(self.parse("newagent", {"title": "t"}), ("ask", "", "t"))
+        self.assertIsNone(self.parse("newagent", {"cwd": "/x/y"}))
+
     def test_published_fields(self):
         _, kw = self.accept("claude", fx("claude-permission"))
         self.assertEqual((kw["t"], kw["from"], kw["name"], kw["kind"], kw["project"]), ("attention", "claude", "Claude", "ask", "snowflake"))
