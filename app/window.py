@@ -712,6 +712,7 @@ class NixiWindow:
         if self.aside:
             self.aside["parked"] = self._spot()
             self._remap()
+        self._send_corner()
 
     def _remap(self):
         """Re-map at the GTK level only (no page callbacks: nixiHidden would put him to sleep) → stacks above the card."""
@@ -731,7 +732,7 @@ class NixiWindow:
                 if name:
                     self.go_monitor(name)
             else:
-                self._glide_to(h[1] - self.wide_shift, h[2] - self.top_shift)
+                self._glide_to(h[1] - self.wide_shift, h[2] - self.top_shift, self._send_corner)
                 GLib.timeout_add(int(GLIDE * 1000) + 300, lambda: (self.aside or self._save_pos(), False)[1])   # (not if aside again)
         return False
 

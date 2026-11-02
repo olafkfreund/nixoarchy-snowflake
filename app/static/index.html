@@ -2008,7 +2008,7 @@ const MEM_SHOW=/^(?:hey\s+nixi[,\s]+)?what (?:do|did) you (?:remember|know about
 const PROJ_ADD=/^(?:hey\s+nixi[,\s]+)?(?:remember|note)\s+(?:that\s+)?((?:my|the)\s+.+?)\s+(?:project\s+|folder\s+|repo\s+)?(?:is|lives)\s+(?:in|at)\s+(~?\/?[\w.\/-]+)\s*\.?$/i;
 const NICE=/\b(thank(s| you)|good job|well done|nice( one| work)?|love you|you'?re (the best|awesome|cute|great)|good boy|cutie)\b/i;
 async function send(text,opts={}){
-  text=(text||'').trim(); if(!text&&!atts.length) return; wake();
+  text=(text||'').trim(); if(!text&&!atts.length) return; wake(); lastUser=performance.now();
   if(text.startsWith('/') && !(info.bridge && /^\/(mechanic|guide)$/.test(text))) return slash(text);   // nixi's trust: to the server
   // memory: handled right here, instantly
   let mm; const question=/\?\s*$/.test(text)||/^(?:hey\s+nixi[,\s]+)?(?:do|did|can|could) you\b|^remember (what|when|how|where|why|which|who|if|the time)\b/i.test(text);
@@ -2674,7 +2674,8 @@ function toggleMute(){ muted=!muted; try{localStorage.setItem('nixi.muted',muted
 // hidden (Esc, hide, closing him) = fully off: he stops talking and the server closes the mic — no "hey Nixi" until
 // he's shown again (Start menu, your hotkey, or `nixi-companion`)
 window.nixiHidden=()=>{ hiddenNow=true; endListening(); menu(false); hideAsk(); shush(); post('/api/sleep',{on:true}).catch(()=>{}); };
-window.nixiShown=()=>{ hiddenNow=false; post('/api/sleep',{on:false}).catch(()=>{}); entrance(); wake(); refresh().then(()=>{ syncEye(true); if(pendingAppr||busy) return;
+window.nixiShown=()=>{ hiddenNow=false; dozing=false; restore(15000);   // (the host showed him: leave doze without another native message)
+  post('/api/sleep',{on:false}).catch(()=>{}); entrance(); wake(); refresh().then(()=>{ syncEye(true); if(pendingAppr||busy) return;
   if(info.listen_on_show&&!info.hover) setTimeout(()=>startRec('auto'),450); else setTimeout(()=>poke('wink',900),350); }); };
 async function comeBack(){ if(!info.hover) return; await toggleHover(false); await sleep(700); }
 window.nixiCmd=async c=>{ hiddenNow=false; restore(15000,true);
@@ -2729,7 +2730,7 @@ function sendRegion(force){
   const s=JSON.stringify(rs); if(!force&&s===lastRegion) return; lastRegion=s; native('region:'+s);
 }
 setInterval(()=>sendRegion(false),400);
-$('#stage').addEventListener('transitionend',()=>sendRegion(true));   // (the peek's size changes over .65 s: re-measure when it lands)
+$('#stage').addEventListener('transitionend',e=>{ if(e.target===e.currentTarget) sendRegion(true); });   // (the peek's size changes over .65 s: re-measure when it lands)
 // panels slide in — re-measure once they've landed so their clickable area matches what you see
 addEventListener('transitionend',e=>{ if(e.target.matches&&e.target.matches('#menu,.pn,#appr,#ask,#pwbox')) sendRegion(true); });
 
@@ -2737,31 +2738,36 @@ addEventListener('transitionend',e=>{ if(e.target.matches&&e.target.matches('#me
 let downAt=null, dragged=false, clicks=[];
 E.body.addEventListener('mousedown',e=>{ if(e.button!==0) return; downAt=[e.clientX,e.clientY]; dragged=false; });
 // ---- idle (#140): after a while he shrinks into the corner nearest him (peek), then optionally hides without sleeping (doze)
-let idleSt='full', idleHoldUntil=0, IDLE_K=1, eatClick=false, peekT=null, corner='br';
+let idleSt='full', idleHoldUntil=0, lastUser=performance.now(), IDLE_K=1, eatClick=false, peekT=null, corner='br';
 const IDLE_SHRINK=45000, IDLE_DOZE=300000;
 window.nixiIdleScale=k=>{ IDLE_K=k; };      // test hook: multiplies the timers
 window.nixiCorner=c=>{ corner=c; const x=c[1]==='l'?-102:102, y=c[0]==='t'?-99:99; document.body.style.setProperty('--px',x+'px'); document.body.style.setProperty('--py',y+'px'); };
-function idleBusy(){ const now=performance.now(), on=el=>el.classList.contains('on'), B=document.body.classList;
-  return busy||playing||!!rec||transcribing||follow||menuOn||!!pendingAppr||on(pwEl)||on(apEl)||on(ask)||on(setEl)||on(panelEl)||capOn||!!notifyRow
-    ||chip.classList.contains('act')||!!AM||(!!attnPend&&now-attnPend.at<60000)||on($('#mailPop'))||(!!propOn&&now<propOn.until)
-    ||B.contains('hover')||B.contains('bar')||dragged||!!downAt||hiddenNow; }
+// idleActive: your own action, or something that needs you: he stays (or comes back) up. idleShowing: a passive indicator: he just doesn't shrink further.
+function idleActive(){ const on=el=>el.classList.contains('on'), B=document.body.classList;
+  return busy||!!rec||transcribing||follow||menuOn||!!pendingAppr||on(pwEl)||on(apEl)||on(ask)||on(setEl)||on(panelEl)
+    ||B.contains('hover')||B.contains('bar')||!!downAt||hiddenNow; }
+function idleShowing(){ const now=performance.now();
+  return playing||capOn||!!notifyRow||chip.classList.contains('act')||!!AM||(!!attnPend&&now-attnPend.at<60000)
+    ||$('#mailPop').classList.contains('on')||(!!propOn&&now<propOn.until); }
 function setIdle(st){ if(st===idleSt) return;
   const was=idleSt; idleSt=st; document.body.classList.toggle('peek',st!=='full');
-  if(st==='doze'){ dozing=true; native('doze:hide'); } else if(was==='doze') dozing=false;
-  sendRegion(true); }
-function restore(hold,focus){ const now=performance.now(); idleHoldUntil=Math.max(idleHoldUntil,now+(hold||0));
-  if(dozing){ native(focus?'show':'doze:show'); entrance(); }
-  setIdle('full');
-  if(framePaused){ framePaused=false; requestAnimationFrame(frame); } }
-function idleCheck(){ const mode=info.idle_mode||'shrink';
-  if(mode==='off'||idleBusy()){ if(idleSt!=='full'){ if(hiddenNow) setIdle('full'); else restore(0); } return; }
-  const t=performance.now()-Math.max(lastActive,lastMouse,idleHoldUntil);
+  if(st==='doze') dozing=native('doze:hide');          // (no host, no pause)
+  else if(was==='doze'){ dozing=false; if(framePaused){ framePaused=false; requestAnimationFrame(frame); } }
+  sendRegion(true); setTimeout(()=>sendRegion(true),700); }   // (transitionend may not fire)
+function restore(hold,focus){ const now=performance.now(); idleHoldUntil=Math.max(idleHoldUntil,now+(hold||0)); lastUser=now;
+  if(dozing){ native(focus?'show':'doze:show'); entrance(); }     // (not when the host already showed him: dozing is cleared first)
+  setIdle('full'); }
+function idleCheck(){ const mode=info.idle_mode||'shrink', now=performance.now();
+  if(framePaused&&AM&&now>=AM.until){ AM=null; G.agent.x=0; G.agent.v=0; AMX.mk.setAttribute('opacity','0'); AMX.mk.setAttribute('pointer-events','none'); renderCue(); }   // (frame() isn't running to expire it)
+  if(mode==='off'||idleActive()){ if(idleSt==='doze'&&!hiddenNow) restore(0); else setIdle('full'); return; }
+  if(idleShowing()) return;
+  const t=now-Math.max(lastUser,idleHoldUntil);
   setIdle(mode==='doze'&&t>=IDLE_DOZE*IDLE_K?'doze':t>=IDLE_SHRINK*IDLE_K?'peek':idleSt==='doze'?'doze':idleSt); }   // (only forward; back only through restore)
 setInterval(idleCheck,500);
-E.body.addEventListener('pointerdown',e=>{ if(!document.body.classList.contains('peek')) return;
-  eatClick=true; setTimeout(()=>{ eatClick=false; },600); restore(12000); e.stopPropagation(); e.preventDefault(); },true);
+E.body.addEventListener('pointerdown',e=>{ if(e.button!==0||!document.body.classList.contains('peek')) return;
+  eatClick=true; setTimeout(()=>{ eatClick=false; },600); restore(15000); e.stopPropagation(); e.preventDefault(); },true);
 E.body.addEventListener('click',e=>{ if(eatClick){ eatClick=false; e.stopImmediatePropagation(); } },true);   // (the click that woke him opens no menu)
-E.body.addEventListener('mouseenter',()=>{ if(document.body.classList.contains('peek')) peekT=setTimeout(()=>restore(12000),300); });
+E.body.addEventListener('mouseenter',()=>{ if(document.body.classList.contains('peek')) peekT=setTimeout(()=>restore(15000),300); });
 E.body.addEventListener('mouseleave',()=>{ clearTimeout(peekT); });
 let mode={layer:false,cursor:true}, dragNative=false;
 window.nixiMode=m=>{ mode=m;
@@ -2775,7 +2781,7 @@ E.body.addEventListener('mousemove',ev=>{ if(ev.buttons) return; const d=Math.si
 function dodge(){ G.dx.kick((Math.random()<.5?-1:1)*1100); G.jelly.kick(-.6); sfx('pop'); }
 // time of day: sleepier late at night
 function nightTime(){ const h=new Date().getHours(); return h>=23||h<5; }
-addEventListener('mousemove',ev=>{ wake(); lastMouse=performance.now();
+addEventListener('mousemove',ev=>{ wake(); lastMouse=lastUser=performance.now();
   if(downAt && (ev.buttons&1) && !dragged && Math.hypot(ev.clientX-downAt[0],ev.clientY-downAt[1])>5){ dragged=true; snapMorph(); dragNative=native('drag'); if(dragNative&&!(mode.layer&&!mode.cursor)) downAt=null; }
   // overlay without a global cursor (e.g. sway): tell the window how far you've dragged from where you grabbed him
   if(dragged && downAt && mode.layer && !mode.cursor && (ev.buttons&1)) native(`dragby:${(ev.clientX-downAt[0]).toFixed(0)},${(ev.clientY-downAt[1]).toFixed(0)}`);
@@ -2803,7 +2809,7 @@ addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('mouseup',()=>{ if(dragNative){ dragNative=false; native('dragend'); } downAt=null; });
 addEventListener('mousedown',e=>{ if(!e.target.closest('#body,#barPill,#menu,#ask,.pn,#appr,#atts,#pwbox')){ menu(false); closePanels(); if(!input.value) hideAsk(); } });
 
-addEventListener('keydown',e=>{ wake();
+addEventListener('keydown',e=>{ wake(); lastUser=performance.now();
   const askOn=ask.classList.contains('on'), k=e.key.toLowerCase(), typing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&document.activeElement!==input;
   if(pendingAppr && !askOn && !typing){ if((e.key==='Enter'||k==='y')&&pendingAppr.confirm==='click'){ e.preventDefault(); return; } if(e.key==='Enter'||k==='y'){ e.preventDefault(); return answer('yes'); } if(e.key==='Escape'||k==='n'){ e.preventDefault(); return answer('no'); } }
   if(e.key==='Escape'){ e.preventDefault();
