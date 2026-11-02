@@ -4,7 +4,8 @@
 // Chrome hung an AMD GPU twice, #138). Turns each look / skin / prop / mark on in turn, waits for its spring to
 // settle, samples its on-screen box while it sways, and fails if any part leaves the window. Exit 0 = all fit.
 const [port, url] = process.argv.slice(2);
-const MARGIN = 3, TOP = 18;                               // (SVG boxes leave out the stroke; the top keeps real headroom)
+const MARGIN = 3, TOP = 3;                                // (SVG boxes leave out the stroke: keep a little room for it;
+                                                          //  his own arms reach ~10 px from the top in every move)
 const t = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: "PUT" })).json();
 const ws = new WebSocket(t.webSocketDebuggerUrl);
 await new Promise(r => ws.addEventListener("open", r, { once: true }));
@@ -17,7 +18,7 @@ const ev = async js => { const r = await send("Runtime.evaluate", { expression: 
 await send("Page.enable");
 await send("Emulation.setDeviceMetricsOverride", { width: 340, height: 460, deviceScaleFactor: 1, mobile: false });
 await send("Page.navigate", { url }); await sleep(4500);
-await ev("window.__hold=null; await post('/api/settings',{idle_mode:'off'}).then(r=>r.json()).then(j=>{info=j;}); if(window.setIdle) setIdle('full'); return 1");   // (measure him full size: no idle peek)
+await ev("setInterval(()=>{ nextFidAt=1e15; },50); window.__hold=null; await post('/api/settings',{idle_mode:'off'}).then(r=>r.json()).then(j=>{info=j;}); if(window.setIdle) setIdle('full'); return 1");   // (measure him full size: no idle peek)
 
 // one case = how to turn it on, and which element(s) to measure
 const LOOKS = { tie: "meeting", hb: "music", hf: "music", sh: "fullscreen", gl: "coding", nc: "night", ph: "party", um: "rain" };
@@ -51,9 +52,14 @@ for (const c of cases) {
   const sample = `const a=${box(c.el)}, b=${c.also ? box(c.also) : "null"}; return [a,b];`;
   const grow = b => { for (const r of b) if (r) worst = worst ? [Math.min(worst[0], r[0]), Math.min(worst[1], r[1]), Math.max(worst[2], r[2]), Math.max(worst[3], r[3])] : r; };
   for (let i = 0; i < 6; i++) { grow(await ev(sample)); await sleep(120); }
-  if (!c.noBounce) grow(await ev(`poke('happy',1500); const out=[]; const t0=performance.now();
-    while(performance.now()-t0<1400){ const s=(()=>{${sample}})(); out.push(...s); await new Promise(r=>requestAnimationFrame(r)); } return out;`));
-  if (!c.noBounce) await sleep(1200);
+  // then through each of his biggest moves, one at a time (random fidgets are held off, so the result never depends on luck):
+  // the "happy" punch-zoom and jelly bounce, a yawn (he stretches up from the bottom) and a roll (a full spin)
+  const during = (start, ms) => ev(`${start}; const out=[]; const t0=performance.now();
+    while(performance.now()-t0<${ms}){ const s=(()=>{${sample}})(); out.push(...s); await new Promise(r=>requestAnimationFrame(r)); } return out;`);
+  if (!c.noBounce) {
+    grow(await during("poke('happy',1500)", 1400)); await sleep(1200);
+    for (const f of ["yawn", "roll"]) { grow(await during(`FID={name:'${f}',t0:performance.now(),dur:FIDGETS.${f}.dur}; FIDGETS.${f}.start&&FIDGETS.${f}.start(FID)`, 2600)); await ev("FID=null; return 1"); await sleep(600); }
+  }
   const W = 340, H = 460, g = c.grow || 0, ok = worst && worst[0] >= MARGIN - g && worst[1] >= TOP && worst[2] <= W + g - MARGIN && worst[3] <= H - MARGIN;
   console.log(`${ok ? "ok  " : "CUT "} ${c.name.padEnd(26)} ${worst ? worst.map(v => v.toFixed(0)).join(",") : "not drawn"}`);
   if (!ok) fails.push(c.name);

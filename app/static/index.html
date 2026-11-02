@@ -537,7 +537,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <g id="sitFront"></g>
         <g id="frost" display="none" pointer-events="none"></g>
         <g id="cue" display="none" transform="translate(8 -110)" style="cursor:pointer"><circle id="cueD" r="10" stroke="#0008" stroke-width="1"/><text id="cueT" text-anchor="middle" y="4.5" font-size="12" pointer-events="none"></text></g>
-        <g id="agentMark" opacity="0" transform="translate(8 -94)" pointer-events="none">   <!-- who is calling: original marks, not logos -->
+        <g id="agentMark" opacity="0" transform="translate(8 -90)" pointer-events="none">   <!-- who is calling: original marks, not logos -->
           <circle id="amRing" r="12" fill="none" stroke="#ff8a2a" stroke-width="2"/>
           <g id="amC" fill="#d97757"><rect x="-2" y="-16" width="4" height="11" rx="2"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(45)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(90)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(135)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(180)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(225)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(270)"/><rect x="-2" y="-16" width="4" height="11" rx="2" transform="rotate(315)"/></g>
           <g id="amX"><rect x="-13" y="-11" width="26" height="22" rx="6" fill="#1d2026" style="stroke:var(--acc)" stroke-width="1.5"/><path d="M-7-4L-2 0L-7 4" fill="none" style="stroke:var(--acc)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect id="amU" x="1" y="3" width="7" height="2" rx="1" style="fill:var(--acc)"/></g>
@@ -847,8 +847,8 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   sv('path',{d:'M-3 76L5 76L8 96',fill:'none',stroke:'#ffffff40','stroke-width':2,'stroke-linecap':'round'},tie);
   // headphones: a band behind his head (bd bobs inside hb, which frame() fades), a cup each side (frame() places them: they follow his gaze)
   const ink='#26282e', rim=shade(ink,.35), cup={};
-  sv('path',R({d:'M-84 -20C-100 -152 100 -152 84 -20',fill:'none',stroke:ink,'stroke-width':10}),bd);
-  sv('path',R({d:'M-84 -20C-100 -152 100 -152 84 -20',fill:'none',stroke:acc,'stroke-width':3}),bd);
+  sv('path',R({d:'M-84 -20C-100 -144 100 -144 84 -20',fill:'none',stroke:ink,'stroke-width':10}),bd);
+  sv('path',R({d:'M-84 -20C-100 -144 100 -144 84 -20',fill:'none',stroke:acc,'stroke-width':3}),bd);
   for(const s of [-1,1]){ const g=cup[s]=sv('g',{},hf);
     sv('ellipse',{rx:17,ry:28,fill:ink,stroke:acc,'stroke-width':3},g);                                // the shell
     sv('ellipse',{cx:-s*8,rx:7,ry:21,fill:acc},g);                                                       // the cushion, against his head
@@ -880,7 +880,7 @@ function drawSkin(back,front,L,bodyFill='url(#ballG)'){
   const R=(at)=>({...at,'stroke-linejoin':'round','stroke-linecap':'round'});
   switch(L.skin){
     case 'halo': { const g=sv('g',{},front);
-        sv('ellipse',{cx:0,cy:-120,rx:36,ry:6,fill:'none',stroke:soft,'stroke-width':4},g); parts.halo=g; break; }
+        sv('ellipse',{cx:0,cy:-114,rx:36,ry:6,fill:'none',stroke:soft,'stroke-width':4},g); parts.halo=g; break; }
     case 'crown': { const g=sv('g',{transform:'translate(0 -58) scale(.85) translate(0 68)'},front);
         sv('path',R({d:'M-22 -68L-26 -94L-11 -80L0 -98L11 -80L26 -94L22 -68Z',fill:soft,stroke:soft,'stroke-width':6}),g); break; }
     case 'sprout': { const g=sv('g',{},front);   // in front: the lambdas would hide it
@@ -1186,7 +1186,7 @@ let dartAt=0, frameN=0, tearAt=0;
 const easeIO=p=>p<.5?2*p*p:1-Math.pow(-2*p+2,2)/2, bump=(p,a,b)=>clamp((p-a)/(b-a),0,1);
 const FIDGETS={
   lookaround:{dur:4200, f:p=>{ const seq=[[-7,-1],[7,-1],[5,-5],[-3,3],[0,0]], i=Math.min(4,p*5|0); return {tx:seq[i][0],ty:seq[i][1],tilt:seq[i][0]*.9}; }},
-  roll:      {dur:1500, start:()=>G.jelly.kick(.5), f:p=>({rot:360*easeIO(p), eye:{top:.2*Math.sin(Math.PI*p)}})},
+  roll:      {dur:1500, start:()=>G.jelly.kick(.3), f:p=>({rot:360*easeIO(p), eye:{top:.2*Math.sin(Math.PI*p)}})},
   eyeroll:   {dur:1700, f:p=>{ const a=-Math.PI/2-p*Math.PI*2; return {tx:Math.cos(a)*6.5,ty:Math.sin(a)*5.5,eye:{top:.22},pu:'small',tilt:-4}; }},
   yawn:      {dur:3000, f:p=>{ const c=bump(p,0,.25)*(1-bump(p,.62,.72)); const wide=bump(p,.68,.76)*(1-bump(p,.85,1));
                return {eye:{shut:c,cup:c,es:wide*.1},jt:p<.62?-.09*bump(p,.05,.3):0,tilt:-6*c,ty:-2*c,pu:wide>0?'small':null}; }},
@@ -1410,7 +1410,7 @@ function frame(ts){
         if(k>.6&&ts-nodAt>=200){ nodAt=ts; G.jelly.kick(.015*k); } } } }   // (nothing to write while all are off)
   if(AM||G.agent.x>.002){                 // the agent mark (nothing to write while it is gone)
     const v=G.agent.to(AM&&ts<AM.until&&!document.body.classList.contains('bar')?1:0,dt), ask=AM&&AM.kind==='ask', mk=AMX.mk, r=(t*.7)%1;
-    mk.setAttribute('opacity',clamp(v,0,1).toFixed(2)); mk.setAttribute('transform',`translate(8 -94) scale(${(1.35*(.6+.4*v)*(ask?1+.12*Math.max(0,Math.sin(t*8.8)):1)).toFixed(3)})`);
+    mk.setAttribute('opacity',clamp(v,0,1).toFixed(2)); mk.setAttribute('transform',`translate(8 -90) scale(${(1.35*(.6+.4*v)*(ask?1+.12*Math.max(0,Math.sin(t*8.8)):1)).toFixed(3)})`);
     if(AM&&v>.002){ const f=AM.from;       // only the moving part of this agent, and the one indicator of this kind
       if(f==='claude') AMX.C.setAttribute('transform',`rotate(${(t*6%360).toFixed(1)})`);
       else if(f==='codex') AMX.U.setAttribute('opacity',t%1<.5?1:0);
