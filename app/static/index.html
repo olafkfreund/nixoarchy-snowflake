@@ -798,7 +798,7 @@ let SKIN_PARTS={}, SIT_P=null, sitSettled=false;
 function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) return null; bk.innerHTML=''; fr.innerHTML='';
   const acc=L.skinColor||L.pupL, R=at=>({...at,'stroke-linejoin':'round','stroke-linecap':'round'});
   const nc=sv('g',{opacity:0},fr), um=sv('g',{opacity:0},fr), ph=sv('g',{opacity:0},fr);   // top zone, drawn first: the headphone band passes in front
-  const tie=sv('g',{opacity:0},fr), hb=sv('g',{opacity:0},fr), hf=sv('g',{opacity:0},fr), gl=sv('g',{opacity:0},fr), sh=sv('g',{opacity:0},fr);
+  const hb=sv('g',{opacity:0},bk), bd=sv('g',{},hb), tie=sv('g',{opacity:0},fr), hf=sv('g',{opacity:0},fr), gl=sv('g',{opacity:0},fr), sh=sv('g',{opacity:0},fr);
   const wh=L.whiteL, pc=L.pupL, pd=shade(pc,-.3);
   // nightcap: a soft cone drooping to one side, a pom-pom, a pale brim
   sv('path',R({d:'M-34 -84Q-30 -140 6 -158Q40 -168 64 -124Q30 -140 34 -84Z',fill:pc,stroke:pd,'stroke-width':2.5}),nc);
@@ -819,14 +819,14 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   sv('path',R({d:'M-11 58L11 58L7 70L-7 70Z',fill:shade(red,-.12),stroke:dk,'stroke-width':2.5}),tie);
   sv('path',R({d:'M-7 70L7 70L14 104L0 118L-14 104Z',fill:red,stroke:dk,'stroke-width':2.5}),tie);
   sv('path',{d:'M-3 76L5 76L8 96',fill:'none',stroke:'#ffffff40','stroke-width':2,'stroke-linecap':'round'},tie);
-  // headphones: a dark band over the top of his head, in front, so it reads; big cups just outside his sides
-  const ink='#26282e', rim=shade(ink,.35);
-  sv('path',R({d:'M-74 -14C-80 -104 80 -104 74 -14',fill:'none',stroke:ink,'stroke-width':11}),hb);
-  sv('path',R({d:'M-70 -24C-74 -96 74 -96 70 -24',fill:'none',stroke:acc,'stroke-width':3}),hb);
-  for(const s of [-1,1]){
-    sv('rect',{x:s*80-13,y:-34,width:26,height:50,rx:12,fill:ink,stroke:rim,'stroke-width':2.5},hf);
-    sv('rect',{x:s>0?67-1:-80+1,y:-28,width:13,height:38,rx:6,fill:acc},hf);   // the cushion, against his head
-    sv('ellipse',{cx:s*84,cy:-20,rx:3,ry:6,fill:'#ffffff30'},hf); }
+  // headphones: a band behind his head (bd bobs inside hb, which frame() fades), a cup each side (frame() places them: they follow his gaze)
+  const ink='#26282e', rim=shade(ink,.35), cup={};
+  sv('path',R({d:'M-84 -20C-100 -168 100 -168 84 -20',fill:'none',stroke:ink,'stroke-width':10}),bd);
+  sv('path',R({d:'M-84 -20C-100 -168 100 -168 84 -20',fill:'none',stroke:acc,'stroke-width':3}),bd);
+  for(const s of [-1,1]){ const g=cup[s]=sv('g',{},hf);
+    sv('ellipse',{rx:17,ry:28,fill:ink,stroke:acc,'stroke-width':3},g);                                // the shell
+    sv('ellipse',{cx:-s*8,rx:7,ry:21,fill:acc},g);                                                       // the cushion, against his head
+    sv('ellipse',{cx:s*5,cy:-8,rx:3,ry:6,fill:'#ffffff30'},g); }
   // shades (fullscreen): wayfarers over the top two thirds of his eyes (EYE: 47×81 at ±27.5,-4.5), a solid top bar, a glint
   for(const s of [-1,1]){ const g=sv('g',{transform:`translate(${s*27.5} -12) rotate(${s*-4})`},sh);
     sv('path',R({d:'M-27 -18L27 -18L24 10Q22 20 10 20L-10 20Q-22 20 -24 10Z',fill:'#121419',stroke:acc,'stroke-width':2.2}),g);
@@ -836,7 +836,7 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   // glasses (coding): clear lenses that follow his eyes; frame() draws their outlines (like the eyes) while they are on
   const lens=()=>sv('path',R({d:'',fill:'#ffffff0d',stroke:acc,'stroke-width':2.6}),gl), line=w=>sv('path',R({d:'',fill:'none',stroke:w||acc,'stroke-width':w?2.4:2.6}),gl);
   const lensL=lens(), lensR=lens(), brg=line(), glintL=line('#ffffff60'), glintR=line('#ffffff60');
-  return {tie,hb,hf,sh,gl,nc,ph,um,drops,lensL,lensR,brg,glintL,glintR}; }
+  return {tie,hb,bd,hf,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,um,drops,lensL,lensR,brg,glintL,glintR}; }
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
 function drawSkin(back,front,L,bodyFill='url(#ballG)'){
   back.innerHTML=''; front.innerHTML='';
@@ -1037,6 +1037,7 @@ const toD=pts=>'M'+pts.map(p=>p[0].toFixed(2)+' '+p[1].toFixed(2)).join('L')+'Z'
 const NS='http://www.w3.org/2000/svg';
 const E={}; ['cam','body','eL','eR','pL','pR','cpL','cpR','hlL','hlR','zz','qmark','shadow','rays','raysW','fx','fxBack','think','anger','sweat',
   'halo','haloW','vring','workW','orbBack','orbFront','tears'].forEach(k=>E[k]=document.getElementById(k));
+let beat=0, beatAt=-1e9, nodAt=0;     // the kick of the music (0-1), when it last came, the last head nod
 let AM=null;     // the agent mark on show: {from, kind: ask|done, t0, until}
 const AMX={mk:$('#agentMark'),C:$('#amC'),U:$('#amU'),D:$('#amD'),ring:$('#amRing'),chk:$('#amChk')};
 AMX.mk.style.cursor='pointer'; AMX.mk.addEventListener('click',e=>{ e.stopPropagation(); attnJump(); renderCue(); });   // (live only during a question)
@@ -1352,9 +1353,14 @@ function frame(ts){
     const put=(el,x,ax,ay,rot)=>{ el.setAttribute('opacity',clamp(x,0,1).toFixed(2)); el.setAttribute('transform',`translate(${ax} ${ay})${rot?` rotate(${rot.toFixed(2)})`:''} scale(${(.7+.3*x).toFixed(3)}) translate(${-ax} ${-ay})`); };
     const lift=(el,x)=>{ put(el,x,0,-4); el.setAttribute('transform',`translate(0 ${(-32*L).toFixed(1)}) scale(${(1-.08*L).toFixed(3)}) `+el.getAttribute('transform')); };   // (lifted onto the forehead while he talks, so his eyes stay visible)
     const off=!(sitOn.meeting||sitOn.music||sitOn.fullscreen||sitOn.coding||tp||tr||tn)&&Math.max(a,b,c,g,pa,um,ni)<.002;
-    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,b,0,-4); put(SIT_P.hf,b,0,-4); sitSettled=off;
+    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,b,0,-4,G.sitW.x*.25); put(SIT_P.hf,b,0,-4,G.sitW.x*.25); sitSettled=off;
       lift(SIT_P.sh,c); put(SIT_P.gl,g,0,-4); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3); put(SIT_P.um,um,0,-84);
-      if(um>.002) SIT_P.drops.forEach((d,i)=>d.setAttribute('transform',`translate(0 ${((t*55+i*23)%58).toFixed(1)})`)); } }   // (nothing to write while all are off)
+      if(um>.002) SIT_P.drops.forEach((d,i)=>d.setAttribute('transform',`translate(0 ${((t*55+i*23)%58).toFixed(1)})`));
+      if(G.sitMusic.x>.002){ beat=Math.max(0,beat-dt*8);        // headphones: the cups follow his gaze and swell with the beat (or a slow sway)
+        const k=info.look_beat&&beatAt>ts-500?beat:.25*(.5+.5*Math.sin(t*2.2)), X=Math.max(88,EYE_HALFW*G.sz.x+EYE.cx+22);
+        for(const [s,cu] of [[-1,SIT_P.cL],[1,SIT_P.cR]]) cu.setAttribute('transform',`translate(${(s*X-s*lx*.6).toFixed(2)} -8) rotate(${(s*8+(s<0?-12*L:0)).toFixed(2)}) scale(${(1+.07*k).toFixed(3)})`);
+        SIT_P.bd.setAttribute('transform',`translate(0 ${(-1.5*k).toFixed(2)})`);
+        if(k>.6&&ts-nodAt>=200){ nodAt=ts; G.jelly.kick(.015*k); } } } }   // (nothing to write while all are off)
   if(AM||G.agent.x>.002){                 // the agent mark (nothing to write while it is gone)
     const v=G.agent.to(AM&&ts<AM.until&&!document.body.classList.contains('bar')?1:0,dt), ask=AM&&AM.kind==='ask', mk=AMX.mk, r=(t*.7)%1;
     mk.setAttribute('opacity',clamp(v,0,1).toFixed(2)); mk.setAttribute('transform',`translate(8 -108) scale(${(1.35*(.6+.4*v)*(ask?1+.12*Math.max(0,Math.sin(t*8.8)):1)).toFixed(3)})`);
@@ -1610,6 +1616,7 @@ function attnJump(){ const p=attnPend; attnPend=null; if(!p||performance.now()-p
   post('/api/attention/focus',{from:p.from}).catch(()=>{}); chip.classList.remove('on','act'); renderCue(); sendRegion(); return true; }
 function onEvent(ev){
   if(ev.t==='theme'){ info.theme=ev.theme; lookShown=''; syncLook(); if(setEl.classList.contains('on')) renderSettings(); return; }
+  if(ev.t==='beat'){ beat=Math.max(beat,+ev.v||0); beatAt=performance.now(); return; }   // the music's kick (look_beat)
   if(ev.t==='saw'){ poke('looking',1800); wake(); return; }   // Claude took a look at your screen (`nixi-companion see`)
   if(ev.t==='ctx'){ onContext(ev); return; }
   if(ev.t==='follow'){ follow=!!ev.on; hearRaw=0; if(follow) wake(); return; }
