@@ -1796,7 +1796,7 @@ const NOTE={mail:['✉','New mail','#4d6fb7','reading',2200,'pop'], chat:['💬'
   meeting:['📅','Meeting','#ffb02a','surprised',700,'remind'], video:['▶','New post','#e0569a','t_excited',1400,'ok'],
   download:['⬇','Download','#3ddc84','t_beam',1600,'done'], job:['✔','A long command finished','#3ddc84','t_beam',1800,'done'], other:['🔔','Notification','#7fd6ae','curious',1000,'pop']};
 const notifyQ=[]; let notifyRow=null, notifyAt=0, notifyBurst={cat:'',n:0,t:0};
-const APP_NAMES={'teams-for-linux':'Teams','thunderbird':'Thunderbird','geary':'Geary','slack':'Slack','discord':'Discord','signal':'Signal','element':'Element','telegramdesktop':'Telegram','firefox':'Firefox','chromium':'Chromium','google-chrome':'Chrome','brave-browser':'Brave'};   // what people call the app
+const APP_NAMES={'teams-for-linux':'Teams','web.whatsapp.com':'WhatsApp','www.messenger.com':'Messenger','messenger.com':'Messenger','thunderbird':'Thunderbird','geary':'Geary','slack':'Slack','discord':'Discord','signal':'Signal','element':'Element','telegramdesktop':'Telegram','firefox':'Firefox','chromium':'Chromium','google-chrome':'Chrome','brave-browser':'Brave'};   // what people call the app
 const notifyWho=ev=>{ const raw=(ev.source||ev.app||'').trim(); return APP_NAMES[raw.toLowerCase()]||raw; };
 function notifyText(ev,n){ if(ev.app==='nixi-job') return '✔ '+(ev.summary||NOTE.job[1]);   // a long command finished (the shell hook)
   const c=NOTE[ev.category]||NOTE.other, who=notifyWho(ev);

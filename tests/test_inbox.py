@@ -92,6 +92,15 @@ class InboxTest(_ServerEnv):
                 self.row(key="n5", category="other", app="tubafont")]
         self.assertEqual([r["category"] for r in self.server.Inbox.rows(json.dumps(rows))], ["video", "video", "mail", "other", "other"])
 
+    def test_mail_and_chat_the_shell_misses(self):
+        rows = [self.row(key="o1", category="other", app="Omamail", source="Omamail"),
+                self.row(key="o2", category="other", app="Google Chrome", source="outlook.cloud.microsoft"),
+                self.row(key="w1", category="other", app="Google Chrome", source="web.whatsapp.com"),
+                self.row(key="f1", category="other", app="Google Chrome", source="www.messenger.com"),
+                self.row(key="m1", category="meeting", app="teams-for-linux", source="outlook"),
+                self.row(key="x1", category="other", app="Google Chrome", source="claude.ai")]
+        self.assertEqual([r["category"] for r in self.server.Inbox.rows(json.dumps(rows))], ["mail", "mail", "chat", "chat", "meeting", "other"])
+
     def test_text_only_with_details(self):
         S = self.server
         out = json.dumps([self.row()])
