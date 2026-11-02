@@ -40,7 +40,7 @@ class StageActionsTest(unittest.TestCase):
         self.tok = self.page["items"][0]["token"]
 
     def tearDown(self):
-        self.s.ST.stage_run = None
+        self.s.ST.stage_run = self.s.ST.stage_run_tok = None
 
     # ---- the byte-exact check, through run_bridge's real approve()
     def permission(self, perm, stage_run):
@@ -48,7 +48,7 @@ class StageActionsTest(unittest.TestCase):
         lines = [json.dumps({"type": "permission", "id": 7, "title": "Bash", "options": OPTS, **perm}) + "\n"]
         p = mock.Mock(stdout=iter(lines + [json.dumps({"type": "done"}) + "\n"]))
         ask = mock.Mock(return_value="a1")
-        self.s.ST.stage_run = stage_run
+        self.s.ST.stage_run, self.s.ST.stage_run_tok = stage_run, "tk"
         with mock.patch.object(self.s.BRIDGE, "start", return_value=p), mock.patch.object(self.s.BRIDGE, "send", lambda m: sent.append(m)), \
                 mock.patch.object(self.s.BRIDGE, "proc", p), mock.patch.object(self.s.APPROVALS, "ask_bridge", ask):
             self.s.run_bridge("x", lambda **kw: events.append(kw))
@@ -62,7 +62,7 @@ class StageActionsTest(unittest.TestCase):
         sent, events, ask = self.permission({"command": CMD + " && rm -rf ~"}, CMD)
         self.assertEqual(sent, [{"type": "permission", "id": 7, "optionId": "r1"}])
         self.assertFalse(ask.called)
-        self.assertIn({"t": "stage_status", "state": "other"}, events)
+        self.assertIn({"t": "stage_status", "state": "other", "token": "tk"}, events)
 
     def test_missing_command_denied(self):
         sent, events, ask = self.permission({}, CMD)
@@ -82,7 +82,7 @@ class StageActionsTest(unittest.TestCase):
         finally:
             OPTS = saved
         self.assertEqual(sent, [])
-        self.assertIn({"t": "stage_status", "state": "other"}, events)
+        self.assertIn({"t": "stage_status", "state": "other", "token": "tk"}, events)
 
     def test_not_a_stage_run_unchanged(self):
         sent, _, ask = self.permission({"command": "anything"}, None)

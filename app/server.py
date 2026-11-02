@@ -324,6 +324,7 @@ class State:
         self.auto_pick = ""
         self.last_worked = False                   # did the last answer use tools? then a short "yes" is still work
         self.last_you = ""                         # the last request, for "continue in nixi" (nixi mode keeps no history)
+        self.stage_run_tok = None                  # …and the item it belongs to, so a denial can say which one
         self.stage_run = None                      # the one command a stage's Run may ask for (#144): any other permission is denied
 
     def save(self):
@@ -3807,7 +3808,7 @@ def run_bridge(prompt, emit):
     def approve(o):                                      # (a worker: the card waits for you, the reader goes on)
         opts = [x for x in o.get("options") or [] if isinstance(x, dict)]
         if ST.stage_run is not None and o.get("command") != ST.stage_run:    # byte-exact; no `command` field = not it (fail closed)
-            emit(t="stage_status", state="other")
+            emit(t="stage_status", state="other", token=ST.stage_run_tok)
             rej = next((x.get("id") for x in opts if x.get("kind") == "reject_once"), None) \
                 or next((x.get("id") for x in opts if str(x.get("kind")).startswith("reject")), None)
             if rej and BRIDGE.proc is p:                 # (no reject option: send nothing; an allow is never the fallback)
@@ -3824,7 +3825,7 @@ def run_bridge(prompt, emit):
     if CFG.get("answer_stages", True):
         note = note[:-3] + (" When the answer is commands to run, or 2-5 facts, do not speak them: say what they are in a sentence, then "
                             "end the reply with ONE last line, <<stage>> followed by JSON on that line: "
-                            '{"v":1,"kind":"commands","items":[{"label":"what it does","cmd":"the command"}]} or '
+                            '{"v":1,"kind":"commands","title":"optional plaque, 1-4 words","items":[{"label":"what it does","cmd":"the command"}]} or '
                             '{"v":1,"kind":"facts","title":"...","points":["..."],"source":"optional"}; '
                             "at most 5 items, labels and points under 120 characters, commands under 500, no line breaks inside.)\n\n")
     BRIDGE.send({"type": "prompt", "text": note + prompt})
@@ -4929,7 +4930,7 @@ class Handler(BaseHTTPRequestHandler):
 
             ST.stopped = False
             partial = bool(CFG["partial_messages"])
-            ST.stage_run = run_cmd
+            ST.stage_run, ST.stage_run_tok = run_cmd, tok
             if run_cmd is not None:
                 emit(t="stage_status", token=tok, state="waiting")
             for _ in range(3):
@@ -4959,7 +4960,7 @@ class Handler(BaseHTTPRequestHandler):
                 print(f"[nixi] history/quick memory: {e}", file=sys.stderr)
             emit(t="done")
         finally:
-            ST.stage_run = None
+            ST.stage_run = ST.stage_run_tok = None
             ST.lock.release()
         if CFG.get("auto_compact", True) and ST.ctx_used >= ctx_scale() * float(CFG.get("compact_at") or 0.7):
             threading.Thread(target=auto_compact, daemon=True).start()

@@ -83,7 +83,12 @@ def validate(obj):
             if label is None or cmd is None:
                 return None
             out.append({"label": label, "cmd": cmd})
-        return {"v": 1, "kind": "commands", "items": out}
+        out = {"v": 1, "kind": "commands", "items": out}
+        if obj.get("title") is not None:
+            if _str(obj["title"], 120) is None:
+                return None
+            out["title"] = _str(obj["title"], 120)
+        return out
     if kind == "facts":
         title, pts = _str(obj.get("title"), 120), obj.get("points")
         if title is None or not isinstance(pts, list) or not 1 <= len(pts) <= 5:

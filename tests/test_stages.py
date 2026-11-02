@@ -47,6 +47,12 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(v["items"][0]["cmd"], "nix profile install nixpkgs#firefox")
         self.assertEqual(set(v), {"v", "kind", "items"})
 
+    def test_commands_title_optional_and_checked(self):
+        self.assertEqual(S.validate({**CMDS, "title": " Install "})["title"], "Install")
+        self.assertNotIn("title", S.validate(CMDS))
+        for bad in ("", "x" * 121, "a\nb", 5):
+            self.assertIsNone(S.validate({**CMDS, "title": bad}))
+
     def test_facts_ok(self):
         self.assertEqual(S.validate(FACTS), FACTS)
 
