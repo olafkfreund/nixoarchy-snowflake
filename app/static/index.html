@@ -1810,9 +1810,9 @@ function notifyText(ev,n){ if(ev.app==='nixi-job') return '✔ '+(ev.summary||NO
   const t=c[0]+' '+head+(ev.summary&&n<3?' · '+ev.summary:'');
   return ev.category==='chat'&&ev.body&&n<3?(t+' · '+ev.body.split(/\s+/).slice(0,6).join(' ')).slice(0,90):t; }   // (a chat shows the first words too)
 const iconUrl=ev=>/^[0-9a-f]{16}$/.test(ev.icon||'')?'/api/icon/'+ev.icon:'';   // (only a validated id ever goes in the URL)
-function noteIcon(row,ev){ const u=iconUrl(ev); if(row.img&&row.img.isConnected&&row.img.getAttribute('src')===u) return;   // (a text update wipes it: put it back) if(row.img){ row.img.remove(); row.img=null; }
+function noteIcon(row,ev){ const u=iconUrl(ev); if(row.img&&row.img.isConnected&&row.img.getAttribute('src')===u) return; if(row.img){ row.img.remove(); row.img=null; }   // (a text update wipes it: put it back)
   if(!u||!row.span||!row.span.isConnected) return; const im=document.createElement('img'); im.className='nicon'; im.alt=''; im.src=u; im.onerror=()=>im.remove(); row.span.prepend(im); row.img=im; }   // (inside the line, so it sits before the words)
-function propIcon(P,ev){ const u=iconUrl(ev); if(!P||!P.img) return; if(u) P.img.setAttribute('href',u); P.img.setAttribute('display',u?'':'none'); }
+function propIcon(P,ev){ const u=iconUrl(ev); if(!P||!P.img) return; P.img.onerror=()=>P.img.setAttribute('display','none'); if(u) P.img.setAttribute('href',u); P.img.setAttribute('display',u?'':'none'); }
 function notifyShow(row,txt,ev){ karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; setYou('');
   const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); row.span=sp; noteIcon(row,ev); shownTxt=''; capShow(); cap.classList.add('note'); sendRegion(true); dropSync(); }
 function notifySeen(key){ post('/api/notify/seen',{key}).catch(()=>{}); }

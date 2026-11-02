@@ -1553,10 +1553,10 @@ class Icons:
     HOST = re.compile(r"[a-z0-9-]+(\.[a-z0-9-]+)+")
     HOSTS = tuple((re.compile(p), n) for p, n in (
         (r"mail\.google\.com$", "gmail"), (r"outlook\.", "outlook"), (r"web\.whatsapp\.com$", "whatsapp"),
-        (r"teams\.microsoft\.com$", "teams"), (r".*youtube\.com$", "youtube"), (r".*reddit\.com$", "reddit"),
-        (r".*messenger\.com$", "messenger"), (r"discord\.com$", "discord"), (r"app\.slack\.com$", "slack")))
+        (r"teams\.microsoft\.com$", "teams"), (r"(.*\.)?youtube\.com$", "youtube"), (r"(.*\.)?reddit\.com$", "reddit"),
+        (r"(.*\.)?messenger\.com$", "messenger"), (r"discord\.com$", "discord"), (r"app\.slack\.com$", "slack")))
     THEMES = ("hicolor", "Papirus", "Adwaita")
-    SIZES = ("128x128", "256x256", "96x96", "64x64", "48x48", "scalable")
+    SIZES = ("128x128", "256x256", "96x96", "64x64", "48x48", "512x512", "scalable")
     MAX = 512 * 1024
     TTL = 600
     served = {}                                                # id -> path
@@ -1568,7 +1568,7 @@ class Icons:
 
     @staticmethod
     def _data():
-        d = [os.path.join(os.environ.get("HOME", ""), ".local/share")]
+        d = [os.environ.get("XDG_DATA_HOME") or os.path.join(os.environ.get("HOME", ""), ".local/share")]
         return d + [x for x in (os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":") if x]
 
     @classmethod
@@ -4252,11 +4252,19 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"version": VERSION})
         if p.startswith("/api/icon/"):             # app icons: only ids the server handed out, re-checked on every read (#142)
             f = Icons.served.get(p[10:]) if re.fullmatch(r"[0-9a-f]{16}", p[10:]) else None
-            if not f or not Icons._ok(f):
+            data = None
+            if f and Icons._ok(f):
+                try:                                               # (it may vanish or grow between the check and the read)
+                    with open(f, "rb") as fh:
+                        data = fh.read(Icons.MAX + 1)
+                except OSError:
+                    data = None
+            if not data or len(data) > Icons.MAX:
                 return self._json({"error": "not found"}, 404)
-            data = Path(f).read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", "image/svg+xml" if f.endswith(".svg") else "image/png")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'")   # (an SVG opened on its own can't run script)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "max-age=86400")
             self.end_headers()

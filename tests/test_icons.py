@@ -106,7 +106,10 @@ class IconsTest(_ServerEnv):
 
     def test_svg_type(self):
         f = self.theme_icon("v", "scalable", b"<svg/>", ".svg")
-        self.assertEqual(self.serve("/api/icon/" + self.I.register(f))[1]["Content-Type"], "image/svg+xml")
+        h = self.serve("/api/icon/" + self.I.register(f))[1]
+        self.assertEqual(h["Content-Type"], "image/svg+xml")
+        self.assertEqual(h["X-Content-Type-Options"], "nosniff")              # opened on its own, an SVG can't run script
+        self.assertIn("sandbox", h["Content-Security-Policy"])
 
     def test_row_gets_an_icon_the_route_serves(self):
         self.theme_icon("gm")
