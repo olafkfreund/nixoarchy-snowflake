@@ -71,7 +71,7 @@ body.bar.e-right #stage{transform:translate(136px,68px) scale(.46)}
    of the notch, its neck stretches thin and snaps, and it wobbles round. The real ball parts are hidden meanwhile. */
 body.nixi .nx{display:none!important}
 body.bar #body>.ball,body.bar #body>ellipse,body.bar #orbBack,body.bar #orbFront,body.bar #workW,body.bar #haloW,body.bar #raysW,
-body.bar #vring,body.bar #agentMark,body.bar #shadow,body.bar #accBack,body.bar #sitBack,body.bar #accFront,body.bar #sitFront,body.bar #liveTag,
+body.bar #vring,body.bar #agentMark,body.bar #micBars,body.bar #shadow,body.bar #accBack,body.bar #sitBack,body.bar #accFront,body.bar #sitFront,body.bar #liveTag,
 body.goohide #body>.ball,body.goohide #body>ellipse,body.goohide #orbBack,body.goohide #orbFront,body.goohide #haloW,
 body.goohide #shadow,body.goohide #accBack,body.goohide #sitBack,body.goohide #accFront,body.goohide #sitFront{opacity:0;transition:none}
 body.unfold #body>.ball,body.unfold #body>ellipse,body.unfold #shadow,body.unfold #accBack,body.unfold #sitBack,body.unfold #accFront,body.unfold #sitFront{transition:opacity .12s linear}
@@ -327,7 +327,7 @@ body.pw #cap,body.pw #appr{opacity:0}
 #paint{position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:40}
 #menu{z-index:20} .pn{z-index:21} #appr{z-index:22} #ask{z-index:19} #atts{z-index:18} #cap{z-index:5} #chip{z-index:30}
 /* while something is open over him, the stuff behind the card stops moving */
-body.calm #agentMark,body.calm #orbBack,body.calm #orbFront,body.calm #raysW,body.calm #vring,body.calm #fx,body.calm #fxBack{display:none}
+body.calm #agentMark,body.calm #micBars,body.calm #orbBack,body.calm #orbFront,body.calm #raysW,body.calm #vring,body.calm #fx,body.calm #fxBack{display:none}
 
 @keyframes flash{0%{opacity:.18}100%{opacity:0}}
 /* ===== settings, take two: cards, a sliding tab pill, a live clickable preview and a proper colour picker ===== */
@@ -530,6 +530,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       </g>
       <g id="orbFront" class="orb" filter="url(#glow)"></g>
       <g id="fx"></g>
+      <g id="micBars" opacity="0" pointer-events="none"><rect x="-29.5" y="129" width="7" height="2" rx="3.5" style="fill:var(--acc)" opacity=".7"/><rect x="-16.5" y="129" width="7" height="2" rx="3.5" style="fill:var(--acc)"/><rect x="-3.5" y="129" width="7" height="2" rx="3.5" style="fill:var(--hot)"/><rect x="9.5" y="129" width="7" height="2" rx="3.5" style="fill:var(--acc)"/><rect x="22.5" y="129" width="7" height="2" rx="3.5" style="fill:var(--acc)" opacity=".7"/></g>
     </g>
   </svg>
 </div>
@@ -1037,6 +1038,7 @@ const toD=pts=>'M'+pts.map(p=>p[0].toFixed(2)+' '+p[1].toFixed(2)).join('L')+'Z'
 const NS='http://www.w3.org/2000/svg';
 const E={}; ['cam','body','eL','eR','pL','pR','cpL','cpR','hlL','hlR','zz','qmark','shadow','rays','raysW','fx','fxBack','think','anger','sweat',
   'halo','haloW','vring','workW','orbBack','orbFront','tears'].forEach(k=>E[k]=document.getElementById(k));
+const MB={g:$('#micBars'),r:[...document.querySelectorAll('#micBars rect')],h:[2,2,2,2,2],on:false};   // the mic bars (B6)
 let beat=0, beatAt=-1e9, nodAt=0;     // the kick of the music (0-1), when it last came, the last head nod
 let AM=null;     // the agent mark on show: {from, kind: ask|done, t0, until}
 const AMX={mk:$('#agentMark'),C:$('#amC'),U:$('#amU'),D:$('#amD'),ring:$('#amRing'),chk:$('#amChk')};
@@ -1055,7 +1057,7 @@ const G={ sz:new Spring(1,2,.75), tilt:new Spring(0,.8,.85), dx:new Spring(0,2.4
   wob:new Spring(0,1.7,.22),
   gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), sit:new Spring(0,2.4,.55), sitShade:new Spring(0,2.4,.55), sitGl:new Spring(0,2.4,.55), sitP:new Spring(0,2.4,.55), sitR:new Spring(0,2.4,.55), sitN:new Spring(0,2.4,.55), sitLift:new Spring(0,3,.8), sitMusic:new Spring(0,2.4,.55), sitW:new Spring(0,1.7,.22), zoom:new Spring(1,1.6,.7),
   appear:new Spring(.2,1.5,.55), open:new Spring(0,1.8,.55), think:new Spring(0,1.6,.6), anger:new Spring(0,1.8,.55), qm:new Spring(0,1.8,.55),
-  agent:new Spring(0,2.6,.5), rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
+  agent:new Spring(0,2.6,.5), mic:new Spring(0,2.6,.7), rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
 let idlePu=null, idleSwapAt=performance.now()+15000;
 const restPu=()=>PUP_STYLES.includes(info.pupil_style)?info.pupil_style:'slit';
 function popPupils(){ for(const e of [SP.L,SP.R]){ e.w.kick(10); e.h.kick(10); } }
@@ -1192,6 +1194,10 @@ function frame(ts){
   for(const key of PUP_KEYS){ SP.L[key].to(val(pu[key],0),dt); SP.R[key].to(val(pu[key],1),dt); }
   { const sl=info.voice_native?spkLevel(ts):null; lvl=approach(lvl,clamp(sl!=null?sl:rms(spkAn)*5.5,0,1),dt,16); }
   micLvl=approach(micLvl,rec&&!rec.stopping?micRaw:follow?hearRaw:0,dt,14);
+  { const v=G.mic.to(rec&&!rec.stopping||follow?1:0,dt);     // five bars under him while he listens (nothing written while they are gone)
+    if(v>.002){ MB.on=true; MB.g.setAttribute('opacity',clamp(v,0,1).toFixed(2));
+      MB.r.forEach((r,i)=>{ const h=MB.h[i]=Math.max(3+20*micLvl*[.5,.8,1,.8,.5][i]+2.5*micLvl*Math.sin(t*17+i*1.9),MB.h[i]-dt*100); r.setAttribute('y',(130-h/2).toFixed(2)); r.setAttribute('height',h.toFixed(2)); }); }
+    else if(MB.on){ MB.on=false; MB.g.setAttribute('opacity','0'); } }
   if(playing&&info.voice_native&&!spkMap.size&&ts>spkGuard+4000) playing=false;      // safety: never stuck 'talking'
 
   // ---- body: stays in place. Just a soft squish (on clicks / mood changes), slow breathing and a slight sway
@@ -1278,7 +1284,7 @@ function frame(ts){
   const auraTr=`${bodyTr} scale(${(sx*pump).toFixed(4)},${(sy*pump).toFixed(4)})`;
   E.vring.setAttribute('transform',auraTr); E.orbBack.setAttribute('transform',auraTr); E.orbFront.setAttribute('transform',auraTr);
   E.halo.setAttribute('opacity',clamp(ha+Math.sin(t*1.3)*.07+micLvl*.3+lvl*.25,0,1).toFixed(3));
-  ringAmt=approach(ringAmt,m==='listening'?.25+micLvl*1.1:isTalk(m)?lvl*.9:0,dt,10);
+  ringAmt=approach(ringAmt,m==='listening'?.25+micLvl*(G.mic.x>.5?.7:1.1):isTalk(m)?lvl*.9:0,dt,10);
   if(ringAmt>.01){ const pts=[];
     for(let i=0;i<72;i++){ const a=i/72*Math.PI*2, nz=.5*Math.sin(a*5+t*5)+.3*Math.sin(a*9-t*7.5)+.2*Math.sin(a*14+t*11);
       const r=84+ringAmt*(3+8*(nz*.5+.5)); pts.push([Math.cos(a)*r,Math.sin(a)*r]); }
