@@ -197,6 +197,7 @@ DEFAULTS = {
     # desktop awareness (#133): all off but the per-category sound and the spoken categories
     "proactive": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"],
     "notify_sound": True, "look_meeting": False, "look_music": False,
+    "look_beat": False, "notify_speak_subject": False,
     "look_fullscreen": False, "react_load": False, "react_break": False, "react_welcome": False,
     "look_coding": False, "look_night": False, "look_weather": False, "look_party": False, "react_quips": False,
     # projects you can switch to by voice: {"delivery app": "/home/you/code/diq"}
@@ -1226,6 +1227,7 @@ class Ambient:
         cls.meeting, cls.music = meeting, music
         if cls.situation() != before:
             BUS.pub(t="situation", **cls.situation())
+        Beat.sync()
 
     @classmethod
     def loop(cls):
@@ -1410,6 +1412,7 @@ class Inbox:
     socket (renewed every second). Row text is never logged, written to disk or sent to the agent."""
     CATS = ("mail", "chat", "meeting", "video", "download", "other")
     KEY = re.compile(r"[A-Za-z0-9:_-]{1,64}")
+    FEED = re.compile(r"(?i)youtube\.com|youtu\.be|twitch\.tv|reddit\.com|bsky\.app|mastodon|\bx\.com|twitter\.com|freetube|grayjay|\btuba\b|\btokodon\b")   # feeds: posts, not mail
     # a code word and something shaped like a code (digits, spaced digit groups, a 6-10 char mix with 2+ digits) in one text
     OTP = re.compile(r"(?=.*\b(?:codes?|otp|verif\w*|log[- ]?in|passcode|pin|one[- ]?time|security|sign[- ]?in|mfa|2fa|auth\w*)\b)"
                      r"(?=.*(?:\b\d{4,10}\b|\b\d{2,4}(?:[ -]\d{2,4}){1,3}\b|\b(?=[A-Za-z0-9]{6,10}\b)(?:[A-Za-z]*\d){2}[A-Za-z0-9]*\b))", re.I | re.S)
@@ -1487,6 +1490,8 @@ class Inbox:
             return []
         keep = []
         for x in data if isinstance(data, list) else []:
+            if isinstance(x, dict) and x.get("category") == "other" and cls.FEED.search(str(x.get("source") or "") + " " + str(x.get("app") or "")):
+                x["category"] = "video"
             if not isinstance(x, dict) or not isinstance(x.get("key"), str) or not cls.KEY.fullmatch(x["key"]) or x.get("category") not in cls.CATS:
                 continue
             summary, body = str(x.get("summary") or "")[:120], str(x.get("body") or "")[:120]
@@ -2082,6 +2087,69 @@ FOLLOW_NOTE = ("(Voice note from Nixi: the mic picked this up a few seconds afte
                "If it is clearly not meant for you, e.g. the user thinking out loud, talking to themselves or to someone "
                "else, reply with exactly [ignore] and nothing else, and use no tools. Otherwise just answer it normally.)\n\n")
 IGNORE = "[ignore]"
+
+class Beat:
+    """The real output level for "Pulse to the beat" (#138): a recorder on the monitor of the default sink, 2 kHz mono, boiled
+    down to one 0-1 kick number about 20 times a second. Runs only while wanted; the samples are never kept, written or logged."""
+    thread = None
+
+    @staticmethod
+    def want():
+        return bool(CFG.get("proactive") and CFG.get("look_beat") and Ambient.music and not Ambient.meeting and not Ambient.locked
+                    and not Wake.asleep and BUS.subs)          # (the desktop companion master switch, and never while locked)
+
+    @staticmethod
+    def level(avg, rms):
+        """(new slow average, kick 0-1) for one block: how far this block's loudness is above what the music has been."""
+        avg = rms if avg is None else avg + (rms - avg) * .05
+        return avg, round(min(1, max(0, (rms / max(avg, 1e-4) - 1) / .8)), 2)
+
+    @staticmethod
+    def cmd():
+        if shutil.which("parecord"):
+            return ["parecord", "-d", "@DEFAULT_MONITOR@", "--raw", "--format=s16le", "--rate=2000", "--channels=1", "--latency-msec=50"]
+        if shutil.which("pw-record"):
+            return ["pw-record", "-P", "{ stream.capture.sink=true }", "--rate", "2000", "--channels", "1", "--format", "s16", "--raw", "-"]   # (what the default output plays)
+        return None
+
+    @classmethod
+    def run(cls):
+        c = cls.cmd()
+        if not c:
+            return
+        try:
+            p = subprocess.Popen(c, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)   # (stderr unread: it must not fill)
+        except OSError:
+            return
+        avg, buf, last = None, b"", None
+        try:
+            while cls.want():                                 # (re-checked every block: the 2 s Ambient tick is too slow to stop it)
+                if not select.select([p.stdout], [], [], .5)[0]:
+                    continue
+                got = os.read(p.stdout.fileno(), 4096)
+                if not got:
+                    break
+                buf += got
+                while len(buf) >= 200:
+                    a = array.array("h")
+                    a.frombytes(buf[:200])
+                    buf = buf[200:]
+                    avg, v = cls.level(avg, math.sqrt(sum(x * x for x in a) / len(a)))
+                    if v != last:                         # (only changes: a quiet passage sends one 0, not twenty a second)
+                        BUS.pub(t="beat", v=v)
+                    last = v
+        except OSError:
+            pass
+        finally:
+            kill(p)
+            p.stdout.close()
+
+    @classmethod
+    def sync(cls):
+        if cls.want() and not (cls.thread and cls.thread.is_alive()):
+            cls.thread = threading.Thread(target=cls.run, daemon=True)
+            cls.thread.start()
+
 
 # what the speech model "hears" in background noise — never treat these as a follow-up request
 NOISE_WORDS = {"you", "thank you", "thanks", "bye", "thanks for watching", "thank you for watching", "uh", "um", "hmm"}
@@ -3018,7 +3086,7 @@ def clamp01(x):
 
 NOTIFY_FLAGS = ("proactive", "notifications_takeover", "notify_details", "notify_sound", "look_meeting", "look_music",
                 "look_fullscreen", "react_load", "react_break", "react_welcome",
-                "look_coding", "look_night", "look_weather", "look_party", "react_quips")
+                "look_coding", "look_night", "look_weather", "look_party", "react_quips", "look_beat", "notify_speak_subject")
 NOTIFY_CATS = ("mail", "chat", "meeting", "video", "download", "other")
 
 

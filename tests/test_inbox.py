@@ -86,6 +86,12 @@ class InboxTest(_ServerEnv):
         rows = [self.row(key="../x"), self.row(category="evil"), "str", self.row(key="n" + "a" * 64), self.row()]
         self.assertEqual([r["key"] for r in self.server.Inbox.rows(json.dumps(rows))], ["nabc12"])
 
+    def test_feeds_are_relabelled(self):
+        rows = [self.row(key="n1", category="other", source="www.reddit.com"), self.row(key="n2", category="other", app="freetube"),
+                self.row(key="n3", category="mail", source="reddit.com"), self.row(key="n4", category="other", source="example.org"),
+                self.row(key="n5", category="other", app="tubafont")]
+        self.assertEqual([r["category"] for r in self.server.Inbox.rows(json.dumps(rows))], ["video", "video", "mail", "other", "other"])
+
     def test_text_only_with_details(self):
         S = self.server
         out = json.dumps([self.row()])
