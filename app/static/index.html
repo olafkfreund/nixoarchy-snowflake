@@ -638,6 +638,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <label class="tg"><input type="checkbox" id="bargeSw"><span class="sw"></span><span class="l">Interrupt him by voice<small>Say “stop” (or “hey Nixi”) while he's talking.</small></span></label>
         <label class="tg"><input type="checkbox" id="listenShowSw"><span class="sw"></span><span class="l">Listen as soon as he pops up</span></label>
         <label class="tg"><input type="checkbox" id="fullSw"><span class="sw"></span><span class="l">Show everything I said<small>The end of your words, wrapped over a few lines, instead of one cut-off line.</small></span></label>
+        <label class="tg"><input type="checkbox" id="stagesSw"><span class="sw"></span><span class="l">Answer stages<small>Commands and facts appear on a board beside him instead of being read out. Off: everything stays a caption.</small></span></label>
         <label class="tg"><input type="checkbox" id="sfxSw"><span class="sw"></span><span class="l">Sound effects<small>Little blips when he wakes, opens his menu or finishes.</small></span></label>
       </div>
       <div class="row"><div class="t">Push-to-talk hotkey</div><div class="h" id="pttHelp">Hold it anywhere, even in another app, to talk. Let go to send.</div>
@@ -2485,7 +2486,7 @@ function renderSettings(){
   $('#modelChips').innerHTML=MODELS.map(([id,l])=>`<button data-m="${id}" class="${cur===id?'on':''}">${l}</button>`).join('');
   $('#voiceChips').innerHTML=(info.voices||[]).map(v=>`<button data-v="${v.id}" class="${info.voice===v.id?'on':''}">${v.label}${v.downloading?'<i>⇣</i>':''}</button>`).join('');
   const sw={rootSw:info.root,speakSw:!muted,wakeSw:info.wake_word,autoSw:info.autostart,listenShowSw:info.listen_on_show,hoverSw:info.hover,
-    followSw:!!info.follow_focus,asideSw:info.step_aside!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,proactiveSw:!!info.proactive,takeoverSw:!!info.notifications_takeover,detailsSw:!!info.notify_details,nsoundSw:info.notify_sound!==false,lookMeetSw:!!info.look_meeting,lookMusicSw:!!info.look_music,lookBeatSw:!!info.look_beat,speakSubjSw:!!info.notify_speak_subject,lookFsSw:!!info.look_fullscreen,reactLoadSw:!!info.react_load,reactBreakSw:!!info.react_break,reactWelcomeSw:!!info.react_welcome,lookCodingSw:!!info.look_coding,lookNightSw:!!info.look_night,lookWeatherSw:!!info.look_weather,lookPartySw:!!info.look_party,reactQuipsSw:!!info.react_quips,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
+    followSw:!!info.follow_focus,asideSw:info.step_aside!==false,stagesSw:info.answer_stages!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,proactiveSw:!!info.proactive,takeoverSw:!!info.notifications_takeover,detailsSw:!!info.notify_details,nsoundSw:info.notify_sound!==false,lookMeetSw:!!info.look_meeting,lookMusicSw:!!info.look_music,lookBeatSw:!!info.look_beat,speakSubjSw:!!info.notify_speak_subject,lookFsSw:!!info.look_fullscreen,reactLoadSw:!!info.react_load,reactBreakSw:!!info.react_break,reactWelcomeSw:!!info.react_welcome,lookCodingSw:!!info.look_coding,lookNightSw:!!info.look_night,lookWeatherSw:!!info.look_weather,lookPartySw:!!info.look_party,reactQuipsSw:!!info.react_quips,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
     updSw:info.update_check!==false,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
   renderUpdate(); renderPtt();
@@ -2612,6 +2613,7 @@ setEl.addEventListener('change',e=>{
   if(id==='listenShowSw') setSetting({listen_on_show:on});
   if(id==='wakeSw') setSetting({wake_word:on}).then(()=>tick(on?'say “hey Nixi” any time':'wake word off'));
   if(id==='bargeSw') setSetting({barge_in:on});
+  if(id==='stagesSw') setSetting({answer_stages:on});
   if(id==='sfxSw') setSetting({sfx:on}).then(()=>on&&sfx('ok'));
   if(id==='hoverSw') toggleHover(on);
   if(id==='asideSw') setSetting({step_aside:on}).then(()=>native('aside:set-'+(on?'on':'off')));

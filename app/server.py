@@ -193,6 +193,7 @@ DEFAULTS = {
     "look": {},
     # lambda-tip cues: failed user units + new generation (local); next calendar item (gog) and weather look (network): off
     "follow_focus": False,                  # move to the screen you focus (Hyprland)
+    "answer_stages": True,                  # a board/notebook beside him for commands and facts (#144); off = captions only
     "step_aside": True,                     # slide out of the way while nixi's card is open
     "idle_mode": "shrink",                  # when idle: off (stay) | shrink (peek at the edge) | doze
     "ambient_system": True, "ambient_calendar": False, "ambient_weather": False,
@@ -2599,10 +2600,11 @@ def say_path(p):
     return f"your {last} folder" if home and len(parts) == 1 else f"the {last} folder"
 
 
-def speakable(t: str) -> str:
+def speakable(t: str, board: bool = False) -> str:
+    """`board`: a commands stage is on screen, so a command is pointed at; otherwise there is nowhere to read it, so it is said."""
     t = untag(t)
     t = re.sub(r"```.*?```", " I put some code on screen. ", t, flags=re.S)
-    t = re.sub(r"`(?![\w ]+(?:\s*\+\s*[\w ]+)+`)([^`]*\s[^`]*)`", "the command on screen", t)   # a command is pointed at, never read out (S24); a key combo is still said
+    t = re.sub(r"`(?![\w ]+(?:\s*\+\s*[\w ]+)+`)([^`]*\s[^`]*)`", "the command on the board", t) if board else t   # (S24) a key combo is still said
     t = re.sub(r"`([^`]*)`", r"\1", t)
     t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)
     t = re.sub(r"https?://\S+", "a link", t)
@@ -3870,6 +3872,11 @@ def run_bridge(prompt, emit):
 STAGES = stages.Store()                                  # the stage on screen and the one before it (#144)
 
 
+def board_up():
+    cur = STAGES.current()
+    return bool(cur and cur["kind"] == "commands")
+
+
 def stage_trust():
     """What the page may say about Run: nixi's trust, or "yolo" (no request reaches us then, so nothing to check)."""
     c = nixi_conf()
@@ -4240,7 +4247,7 @@ def state_info():
         "click_through": bool(CFG.get("click_through")),
         "autostart": bool(CFG.get("autostart")), "listen_on_show": bool(CFG.get("listen_on_show")),
         "barge_in": bool(CFG.get("barge_in")), "sfx": bool(CFG.get("sfx")), "look": look(), "skins": SKINS, "ambient": Ambient.snapshot(),
-        "follow_focus": bool(CFG.get("follow_focus")), "step_aside": CFG.get("step_aside", True) is not False,
+        "follow_focus": bool(CFG.get("follow_focus")), "step_aside": CFG.get("step_aside", True) is not False, "answer_stages": CFG.get("answer_stages", True) is not False,
         **{k: bool(CFG.get(k, k == "ambient_system")) for k in Ambient.FLAG.values()},
         "projects": quick.projects(),
         **{k: bool(CFG.get(k, k == "notify_sound")) for k in NOTIFY_FLAGS}, "notify_speak": CFG.get("notify_speak", ["meeting"]),
@@ -4357,7 +4364,7 @@ class Handler(BaseHTTPRequestHandler):
                 b = json.loads(self._body() or b"{}")
                 return self._json(stage_act(str(b.get("token") or ""), str(b.get("act") or "")))
             if p == "/api/tts":
-                text = speakable(json.loads(self._body() or b"{}").get("text", ""))
+                text = speakable(json.loads(self._body() or b"{}").get("text", ""), board_up())
                 if not text or not tts_engine():
                     self.send_response(204)
                     self.end_headers()
@@ -4378,7 +4385,7 @@ class Handler(BaseHTTPRequestHandler):
                 return None
             if p == "/api/say":                       # speak this (played by the server, see Speaker)
                 b = json.loads(self._body() or b"{}")
-                text = speakable(b.get("text", ""))
+                text = speakable(b.get("text", ""), board_up())
                 if not text or not tts_engine() or (Ambient.meeting and b.get("follow", True) is False):   # (no unasked speech in a meeting)
                     BUS.pub(t="spk_skip", id=b.get("id"))
                 else:
@@ -4485,7 +4492,7 @@ class Handler(BaseHTTPRequestHandler):
                 except (TypeError, ValueError):
                     pass
                 for key in ("wake_word", "notify_done", "popup_done", "code_panel", "hover", "click_through", "autostart", "listen_on_show",
-                            "barge_in", "sfx", "update_check", "auto_compact", "full_text", "lean", "follow_focus", "step_aside", "ambient_system", "ambient_calendar", "ambient_weather", *NOTIFY_FLAGS):
+                            "barge_in", "sfx", "update_check", "auto_compact", "full_text", "lean", "follow_focus", "step_aside", "answer_stages", "ambient_system", "ambient_calendar", "ambient_weather", *NOTIFY_FLAGS):
                     if key in b:
                         upd[key] = bool(b[key])
                 ns = b.get("notify_speak")

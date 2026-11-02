@@ -31,13 +31,27 @@ class _ServerEnv(unittest.TestCase):
 
 
 class SpeakableTest(_ServerEnv):
-    """S24: a command is pointed at, never read out; single words still are."""
+    """S24 + #144: a command is pointed at only while a board shows it, else it is read out; single words always are."""
 
-    def test_inline_command_is_pointed_at(self):
-        said = self.server.speakable("Run `nixarchy pkg add firefox` then `nixarchy apply`.")
-        self.assertIn("the command on screen", said)
+    def test_inline_command_is_pointed_at_on_a_board(self):
+        said = self.server.speakable("Run `nixarchy pkg add firefox` then `nixarchy apply`.", board=True)
+        self.assertIn("the command on the board", said)
         self.assertNotIn("pkg add", said)
         self.assertNotIn("apply", said)
+
+    def test_inline_command_is_read_out_without_a_board(self):
+        for said in (self.server.speakable("Run `nixarchy pkg add firefox`."), self.server.speakable("Run `nixarchy pkg add firefox`.", board=False)):
+            self.assertEqual(said, "Run nixarchy pkg add firefox.")
+
+    def test_board_up_follows_the_store(self):
+        s = self.server
+        s.STAGES.close()
+        self.assertFalse(s.board_up())
+        s.STAGES.put({"v": 1, "kind": "facts", "title": "t", "points": ["p"]})
+        self.assertFalse(s.board_up())
+        s.STAGES.put({"v": 1, "kind": "commands", "items": [{"label": "a", "cmd": "ls -l"}]})
+        self.assertTrue(s.board_up())
+        s.STAGES.close()
 
     def test_single_word_is_still_spoken(self):
         self.assertEqual(self.server.speakable("`btop` is already installed."), "btop is already installed.")
