@@ -597,6 +597,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       </div>
       <div class="row"><div class="t">Skin</div><div class="h">Something to wear. The sprout sways.</div><div class="skins" id="skinGrid"></div></div>
       <div class="row"><div class="t">Resting pupils</div><div class="h">His everyday look — they still change with his mood.</div><div class="seg" id="pupChips"></div></div>
+      <div class="row"><div class="t">When idle</div><div class="h">Pops back up when something happens.</div><div class="seg" id="idleChips"></div></div>
       <div class="row"><label class="tg"><input type="checkbox" id="codeSw"><span class="sw"></span><span class="l">Terminal<small>While he works he holds a little terminal showing the code he writes and the commands he runs.</small></span></label>
 </div>
       <div class="row"><label class="tg"><input type="checkbox" id="hoverSw"><span class="sw"></span><span class="l">Hover mode<small>He becomes your mouse cursor. Call him to bring him back.</small></span></label></div>
@@ -1670,6 +1671,7 @@ function onEvent(ev){
   if(ev.t==='wake'){ if(rec||transcribing) return;
     if(ev.follow&&hiddenNow) return;          // you sent him away: talking afterwards isn't for him (only "hey Nixi" is)
     if(hiddenNow) native('show');
+    restore(15000,true);
     if(info.hover){ comeBack().then(()=>onEvent(ev)); return; }
     if(ev.follow){ if(busy) return; wake(); send(ev.text,{follow:true}); return; }   // talked right after he answered: no "hey Nixi" needed
     poke('surprised',500); wake(); sfx('wake');
@@ -1677,35 +1679,36 @@ function onEvent(ev){
   }
   else if(ev.t==='barge'){ if(!playing) return; shush(); sfx('pop'); poke('surprised',600);
     if(ev.listen){ if(ev.text&&ev.text.split(/\s+/).length>=2) send(ev.text); else startRec('auto'); } else tick('okay, okay — shh'); }
-  else if(ev.t==='remind'){ if(hiddenNow) native('show'); if(info.hover) comeBack(); sfx('remind'); poke('excited',1800); say(ev.text); tick('⏰ '+ev.text); }
+  else if(ev.t==='remind'){ if(hiddenNow) native('show'); restore(12000,false); if(info.hover) comeBack(); sfx('remind'); poke('excited',1800); say(ev.text); tick('⏰ '+ev.text); }
   else if(ev.t==='spk'){ const it=spkMap.get(ev.id); if(!it) return; spkMap.delete(ev.id); spkGuard=performance.now()+ev.at+ev.dur*1000;
     const t0=performance.now()+ev.at;
     if(ev.level) spkLv.push({t0,level:ev.level,step:ev.step||40}); if(spkLv.length>12) spkLv.shift();
     if(it.cap) capSpeak(it.cap,ev.dur,it.fresh,t0,ev.words,1); }
   else if(ev.t==='spk_skip'){ const it=spkMap.get(ev.id); spkMap.delete(ev.id); if(it&&it.cap) karaNow(it.cap,it.fresh); quietNative(); }
   else if(ev.t==='spk_done'){ quietNative(); }
-  else if(ev.t==='approve') queueApproval(ev);
+  else if(ev.t==='approve'){ restore(20000,true); queueApproval(ev); }
   else if(ev.t==='attention'){                            // an agent (claude/codex/agy…) is waiting for you: `nixi-companion attention`
     const ask=ev.kind!=='done', r=(ev.text||'').replace(new RegExp('^'+ev.name+'\\s+','i'),''), pj=ev.project?' · '+ev.project:'';
     const head=ask?(/^(needs|is waiting|wants)\b/i.test(r)?ev.name+' '+r:ev.name+' needs you'+(r?': '+r:'')):'✓ '+ev.name+' finished'+(r?': '+r:'');   // ("Claude needs your permission…", not "Claude needs you: Claude needs…")
     if(hiddenNow){ if(ask) post('/api/notify',{title:'Nixi',body:head+pj}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
+    if(ask||!(SIT.fullscreen||SIT.meeting)) restore(ask?20000:11000,false);
     if(info.hover) comeBack(); wake(); agentMark(ev.from,ask?'ask':'done');
     if(!ask&&((attnPend&&performance.now()-attnPend.at<60000)||(AM&&AM.kind==='ask'&&performance.now()<AM.until))){ sfx('done'); poke('t_beam',1400); return; }   // (a finish never takes over a question)
     if(!ask){ sfx('done'); poke('t_beam',1400); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; sendRegion(); return; }   // (no flash, no talking)
     sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
     if(!muted) sayAside(head+(ev.project?', in '+ev.project:'')); }
   else if(ev.t==='notify') notifyIn(ev);
-  else if(ev.t==='nudge') { ev.rt=performance.now(); nudgeQ.set(ev.kind,ev); nudgeDrain(performance.now()); }
+  else if(ev.t==='nudge') { if(!(SIT.fullscreen||SIT.meeting)) restore(11000,false); ev.rt=performance.now(); nudgeQ.set(ev.kind,ev); nudgeDrain(performance.now()); }
   else if(ev.t==='situation'){ SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party;
     if(ev.weather==='snow'&&SIT.weather!=='snow'&&info.look_weather) poke('excited',1800);      // he loves snow: once, when it starts
     SIT.weather=ev.weather||null; }
-  else if(ev.t==='ambient'){ const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive) poke('confused',1500);
+  else if(ev.t==='ambient'){ if(ev.alert) restore(12000,false); const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive) poke('confused',1500);
     if(ev.glint&&info.proactive){ poke('t_beam',1800); burstLines('#77b6e1',8); }      // a new NixOS generation: proud
     if(ev.glint){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
     if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')) flash('#4d6fb7'); }   // (never spoken)
     else if(more&&document.body.classList.contains('bar')) flash('#e5a50a'); }
   else if(ev.t==='approve_done') approvalGone(ev.id);
-  else if(ev.t==='askpass') askPass(ev);
+  else if(ev.t==='askpass'){ restore(20000,true); askPass(ev); }
   else if(ev.t==='askpass_done') pwGone(ev.id);
 }
 
@@ -1815,7 +1818,7 @@ function notifyIn(ev){
   notifyDrain(now); }
 function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
   const now=performance.now(); while(notifyQ.length&&now-notifyQ[0].rt>4000) notifyQ.shift();   // too old: the server is giving it back at 5 s
-  const ev=notifyQ.shift(); if(!ev) return; notifySeen(ev.key);
+  const ev=notifyQ.shift(); if(!ev) return; notifySeen(ev.key); restore(11000,false);   // (before the mail pop-out is measured)
   const c=ev.app==='nixi-job'?NOTE.job:NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null}; notifyRow=row; notifyAt=ts+5000;
   wake(); G.jelly.kick(-.45); popPupils(); poke(c[3],c[4]); burstLines(c[2],ev.category==='meeting'?8:ev.category==='download'?10:ev.category==='other'&&ev.app!=='nixi-job'?1:3);
   if(ev.category==='chat') G.tilt.kick(-8);
@@ -2054,7 +2057,7 @@ async function send(text,opts={}){
     if(!res.ok){ const j=await res.json().catch(()=>({})); throw new Error(j.error||res.statusText); }
     await readSSE(res,handle);
   }catch(e){ failed=true; himSet(e.message,true); }
-  busy=false; $('#wk').textContent=''; toolMood=null; wake(); capQuiet(); document.body.classList.remove('busy'); workChip(); CP.done();
+  busy=false; idleHoldUntil=performance.now()+15000; $('#wk').textContent=''; toolMood=null; wake(); capQuiet(); document.body.classList.remove('busy'); workChip(); CP.done();
   while(apprQ.length) apprQ.pop(); if(pendingAppr){ pendingAppr=null; nextApproval(); }
   if(ignored){ setYou(''); himSet(''); cap.classList.add('off'); capOn=false; return; }   // you weren't talking to him: say and show nothing
   const answerText=untag(buf||all).trim();
@@ -2478,6 +2481,7 @@ function renderSettings(){
   for(const [k,on] of [['lookBeatSw',info.look_music],['speakSubjSw',info.notify_details]]){ const e=$('#'+k); e.disabled=!on; e.closest('.row').style.opacity=on?'':'.5'; }   // (each needs its parent switch)
   const ps=restPu();
   $('#pupChips').innerHTML=[['slit','▮ slits'],['circle','● circles'],['dot','• dots']].map(([id,l])=>`<button data-ps="${id}" class="${ps===id?'on':''}">${l}</button>`).join('');
+  { const im=info.idle_mode||'shrink'; $('#idleChips').innerHTML=[['off','Stay'],['shrink','Shrink'],['doze','Shrink, then hide']].map(([id,l])=>`<button data-idle="${id}" class="${im===id?'on':''}">${l}</button>`).join(''); }
   { const ve=$('#voiceEng'); if(ve) ve.textContent=({kokoro:'(Kokoro voices)',piper:'(piper voices — run ./install.sh for the nicer Kokoro voices)',espeak:'(robot voice only — run ./install.sh)'})[info.voice_engine]||''; }
   $('#nsChips').innerHTML=['mail','chat','meeting','video','download','other'].map(c=>`<button data-ns="${c}" class="${(info.notify_speak||[]).includes(c)?'on':''}">${c==='video'?'Feeds':c}</button>`).join('');
   $('#sttChips').innerHTML=STT.map(([id,l])=>`<button data-stt="${id}" class="${(info.whisper_model||'auto')===id?'on':''}">${l}</button>`).join('');
@@ -2557,7 +2561,7 @@ setEl.addEventListener('click',e=>{
   const g=k=>e.target.closest(`[data-${k}]`);
   const be=g('eff'); if(be) return setSetting({effort:be.dataset.eff}).then(()=>tick('effort → '+be.dataset.eff));
   const bn=g('ns'); if(bn){ const l=info.notify_speak||[], c=bn.dataset.ns; return setSetting({notify_speak:l.includes(c)?l.filter(x=>x!==c):[...l,c]}); }
-  const bm=g('m'), bv=g('v'), bp=g('ps'), bs=g('stt'), bt=g('trust'), bo=g('open'), bk=g('skin'), bsw=g('sw'), bpd=g('pdel');
+  const bm=g('m'), bv=g('v'), bp=g('ps'), bi=g('idle'), bs=g('stt'), bt=g('trust'), bo=g('open'), bk=g('skin'), bsw=g('sw'), bpd=g('pdel');
   const part=e.target.closest('#lookPrev [data-part], #partChips [data-part]');
   if(part&&part.dataset.part) return selectPart(part.dataset.part);
   if(bsw){ const v=bsw.dataset.sw; if(v===''){ const L=curLook(); L.skinColor=''; setLook({skinColor:''}).then(()=>selectPart('skin')); } else setPart(v); return; }
@@ -2567,6 +2571,7 @@ setEl.addEventListener('click',e=>{
     if(vv&&!vv.ready) tick('downloading that voice… using another one till it lands');
     if(muted) toggleMute(); shush(); say(['hi! this is my new voice.','how do i sound?','ooh, i like this one.'][Math.random()*3|0]); });
   if(bp) setSetting({pupil_style:bp.dataset.ps}).then(()=>{ idlePu=null; idleSwapAt=performance.now()+12000; popPupils(); });
+  if(bi) setSetting({idle_mode:bi.dataset.idle});
   if(bs) setSetting({whisper_model:bs.dataset.stt}).then(()=>tick('speech recognition: '+bs.textContent+' (loading…)'));
   if(bt){ const tr=bt.dataset.trust; setSetting({trust:tr}).then(()=>{ poke(tr==='trust'?'excited':tr==='readonly'?'curious':'wink',1000);
     tick({ask:"I'll ask before running anything",trust:"okay — I'll just do it",readonly:"looking only, no touching"}[tr]); }); }
@@ -2672,7 +2677,7 @@ window.nixiHidden=()=>{ hiddenNow=true; endListening(); menu(false); hideAsk(); 
 window.nixiShown=()=>{ hiddenNow=false; post('/api/sleep',{on:false}).catch(()=>{}); entrance(); wake(); refresh().then(()=>{ syncEye(true); if(pendingAppr||busy) return;
   if(info.listen_on_show&&!info.hover) setTimeout(()=>startRec('auto'),450); else setTimeout(()=>poke('wink',900),350); }); };
 async function comeBack(){ if(!info.hover) return; await toggleHover(false); await sleep(700); }
-window.nixiCmd=async c=>{ hiddenNow=false;
+window.nixiCmd=async c=>{ hiddenNow=false; restore(15000,true);
   if(c==='home'){ return comeBack(); }
   if(c==='listen'){ await comeBack(); if(rec) stopRec(false); else startRec('auto'); }
   else if(c==='look'){ await comeBack(); shoot('window').then(j=>{ if(j) startRec('auto'); }); }

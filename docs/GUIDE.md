@@ -134,6 +134,22 @@ Instead of floating, it can **merge into an edge of your screen** as a black not
 - **Where it works:** Linux with layer-shell (Hyprland, sway, KDE Plasma, river, niri…) and X11 or GNOME (through
   XWayland). On sway there is no global mouse position, so push it past the edge to dock it.
 
+## When idle
+
+After a while with nothing going on, it **shrinks into the corner of its spot** nearest the screen edge. Set it in
+Settings → Look → *When idle*:
+
+- **Stay:** never shrinks.
+- **Shrink** (the default): shrinks after about 45 seconds.
+- **Shrink, then hide:** shrinks, then after about 5 minutes hides. It is still awake: the wake word, notifications
+  and agent alerts keep working.
+
+It pops back up when something happens: you speak or call it, an agent needs you or finishes, a reminder or a
+notification comes in, or you click it or rest the mouse on it. It stays up for a while after. It never shrinks while it
+is busy, talking, listening, or has a menu, panel, question or approval open, or when it is a notch or hover cursor.
+Sending it away on purpose still turns it fully off. When it pops up from hiding on its own, it does not take your
+keyboard; only your own actions and approval or password prompts do.
+
 ## Commands
 
 | command | what it does |
