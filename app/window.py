@@ -328,6 +328,7 @@ class NixiWindow:
         self.glide_end = 0.0
         self.follow_focus = False               # move to the monitor you focus (the page tells us; Hyprland only)
         self.follow_t = None
+        self.drag_t_end = None
         self.step_aside = True                  # slide out of the way of nixi's card (the page tells us)
         self.aside = None                       # while aside: {"home": (mon, x, y), "mode": side|monitor|hover, "parked": (mon, x, y)|None}
         self.dpos = None                        # drag_by: his unclamped global position while dragged
@@ -672,7 +673,7 @@ class NixiWindow:
                         if ev:
                             GLib.idle_add(self.aside_on if ev == "open" else self.aside_off, *([True] if ev == "open" else []))
                         if ln.startswith(b"focusedmon>>") and self.follow_focus:
-                            GLib.idle_add(self._follow, ln[12:].decode(errors="replace").split(",")[0])
+                            GLib.idle_add(self._follow_focus, ln[12:].decode(errors="replace").split(",")[0])
             except OSError:
                 pass
             time.sleep(2)
@@ -683,7 +684,7 @@ class NixiWindow:
         if self.aside and aside.may_return(self._spot(), self.aside["parked"]):
             return False                                           # already aside
         self.aside = None                                          # (he was moved since: start afresh)
-        if not (self.step_aside and self.layer and self.win.get_visible()) or self.dragging or self.pmoving or self.bar or self.hover:
+        if not (self.step_aside and self.layer and self.win.get_visible()) or self.dragging or self.pmoving or self.dpos is not None or self.bar or self.hover:
             return False
         ms = self._hmons() if self.hypr.ok() else []
         if hypr:
@@ -743,13 +744,16 @@ class NixiWindow:
                 GLib.timeout_add(int(GLIDE * 1000) + 300, lambda: (self.aside or self._save_pos(), False)[1])   # (not if aside again)
         return False
 
-    def _follow(self, name):
+    def _follow_focus(self, name):
+        if screens.focus_blocked(self.dragging, self.pmoving, self.dpos, time.monotonic(), self.drag_t_end):
+            return False
         if self.follow_t:
             GLib.source_remove(self.follow_t)
 
         def go():
             self.follow_t = None
-            if self.follow_focus and not self.dragging and not self.pmoving and time.monotonic() >= self.glide_end:
+            if self.follow_focus and not self.dragging and not self.pmoving and not screens.focus_blocked(
+                    self.dragging, self.pmoving, self.dpos, time.monotonic(), self.drag_t_end) and time.monotonic() >= self.glide_end:
                 self.go_monitor(name)
             return False
         self.follow_t = GLib.timeout_add(300, go)
@@ -1030,6 +1034,7 @@ class NixiWindow:
         return False
 
     def _drag_finished(self, edge=None):
+        self.drag_t_end = time.monotonic()
         self.dpos = None
         if not self.pmoving:
             self._dock_if_edge(edge)
