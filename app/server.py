@@ -3408,14 +3408,25 @@ class PageFloor:
     """The floor while the page plays his voice itself (voice_out="page"). The page says when it starts and stops; if it
     vanishes, the clips /api/tts served (including ones prefetched before its first hold) say when he must be done."""
 
+    GRACE = 15.0   # no clip made yet: how long synthesis may take before a silent page lets the floor go
+
     def __init__(self, floor=None, clock=time.monotonic, tail=lambda: float(CFG.get("follow_up") or 0)):
         self.floor, self.clock, self.tail = floor, clock, tail
         self.lock = threading.Lock()
-        self.held, self.first, self.clips, self.timer = False, 0.0, 0.0, None
+        self.held = self.acquired = False
+        self.first = self.clips = self.last_end = 0.0
+        self.timer = None
+
+    def _deadline(self):
+        # Never before the newest clip could have finished: it plays no sooner than it was served.
+        if not self.clips:
+            return self.first + self.GRACE + self.tail()
+        return max(self.first + self.clips, self.last_end) + self.tail()
 
     def served(self, dur):
         with self.lock:
             self.clips += dur
+            self.last_end = max(self.last_end, self.clock() + dur)
         self._arm()
 
     def hold(self):
@@ -3426,12 +3437,12 @@ class PageFloor:
         ok = (self.floor or FLOOR).hold("page", cancelled=lambda: not self.held)
         with self.lock:
             self.first = self.clock()       # the page plays from here, not from when it asked
-        if ok:
-            self._arm()
+            self.acquired = ok and self.held
+        self._arm()
 
     def release(self, tail=None):
         with self.lock:
-            was, self.held, self.clips = self.held, False, 0.0
+            was, self.held, self.acquired, self.clips, self.last_end = self.acquired, False, False, 0.0, 0.0
             if self.timer:
                 self.timer.cancel()
                 self.timer = None
@@ -3441,7 +3452,7 @@ class PageFloor:
     def check(self):
         """The fallback: the deadline already includes the tail, so the floor is let go at once."""
         with self.lock:
-            due = self.held and self.clock() >= self.first + self.clips + self.tail()
+            due = self.acquired and self.clock() >= self._deadline()
         if due:
             self.release(0)
         else:
@@ -3452,8 +3463,8 @@ class PageFloor:
             if self.timer:
                 self.timer.cancel()
                 self.timer = None
-            if self.held:
-                wait = max(0.05, self.first + self.clips + self.tail() - self.clock())
+            if self.acquired:               # not while waiting for the floor: nothing is playing yet
+                wait = max(0.05, self._deadline() - self.clock())
                 self.timer = threading.Timer(wait, self.check)
                 self.timer.daemon = True
                 self.timer.start()

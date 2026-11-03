@@ -240,6 +240,38 @@ class PageFloorTest(_Base):
         pf.check()
         self.assertFalse(self.probe_free())
 
+    def test_a_clip_served_while_waiting_does_not_cancel_the_wait(self):
+        # #25 review: served() during the wait armed a 50 ms deadline that cancelled it.
+        t = [100.0]
+        pf = self.make(t)
+        real_hold = pf.floor.hold
+
+        def busy_hold(key, cancelled=None):
+            pf.served(2.0)                  # /api/tts finished while Oma still spoke
+            time.sleep(0.15)                # longer than the 50 ms the old code armed
+            t[0] += 10.0
+            return real_hold(key, cancelled)
+        pf.floor.hold = busy_hold
+        pf.hold()
+        self.assertTrue(pf.acquired)
+        self.assertFalse(self.probe_free())
+
+    def test_no_clip_yet_keeps_the_floor_through_synthesis(self):
+        # #25 review: with no clip served, the deadline was first + 0 + tail.
+        t = [100.0]
+        pf = self.make(t)
+        pf.hold()
+        t[0] = 110.0                        # past first + tail, synthesis still running
+        pf.check()
+        self.assertFalse(self.probe_free())
+        pf.served(2.0)                      # the clip arrives at 110 and plays to 112
+        t[0] = 115.9                        # max(100+2, 112) + 4 = 116
+        pf.check()
+        self.assertFalse(self.probe_free())
+        t[0] = 116.0
+        pf.check()
+        self.assertTrue(self.probe_free())
+
     def test_page_release_uses_the_tail(self):
         pf = self.make([0.0])
         pf.hold()
@@ -294,17 +326,20 @@ class PlayerDeathTest(_Base):
             f"sys.path.insert(0, {str(APP)!r})\n"
             "import server\n"
             "server.audio_player_cmd = lambda rate: ['sleep', '30']\n"
-            "out = []\n"
-            "t = threading.Thread(target=lambda: out.append(server.make_player(22050).pid))\n"
-            "t.start(); t.join()\n"
-            "print(out[0], flush=True)\n"
+            # Spawned from a thread that stays alive, like _player_loop: pdeathsig fires when the
+            # spawning THREAD exits, so a thread that returned would kill the player on its own.
+            "def worker():\n"
+            "    print(server.make_player(22050).pid, flush=True)\n"
+            "    time.sleep(60)\n"
+            "threading.Thread(target=worker, daemon=True).start()\n"
             "time.sleep(60)\n")
         env = {**self.env, "HOME": self.dir.name, "XDG_CONFIG_HOME": self.dir.name, "XDG_DATA_HOME": self.dir.name,
                "XDG_STATE_HOME": self.dir.name}
         parent = subprocess.Popen([sys.executable, "-c", script], env=env, stdout=subprocess.PIPE, text=True)
         self.addCleanup(lambda: (parent.kill() if parent.poll() is None else None, parent.communicate()))
         pid = int(parent.stdout.readline())
-        self.assertTrue(Path(f"/proc/{pid}").exists())
+        time.sleep(0.3)
+        self.assertTrue(Path(f"/proc/{pid}").exists(), "the player died before its parent did")
         parent.send_signal(signal.SIGKILL)
         parent.wait()
         self.assertTrue(wait_for(lambda: not Path(f"/proc/{pid}").exists() or
