@@ -173,6 +173,76 @@ class MapsTest(unittest.TestCase):
         self.assertEqual(st.get(page["open"])[1]["url"], "https://www.google.com/maps/search/?api=1&query=Tate+Modern")
         self.assertEqual(st.get(page["copy"])[1]["text"], "Tate Modern")
 
+    def test_origin_only_when_given(self):
+        self.assertEqual(S.maps_url("Oxford station", "transit", "51.75,-1.26"),
+                         "https://www.google.com/maps/dir/?api=1&destination=Oxford+station&travelmode=transit&origin=51.75%2C-1.26")
+        self.assertNotIn("origin", S.maps_url("Oxford station", "transit"))
+        for bad in ("", "  ", "a\nb"):
+            with self.assertRaises(ValueError):
+                S.maps_url("x", "driving", bad)
+
+    def test_home_and_work_are_valid_destinations(self):
+        for d in ("@home", "@work"):
+            self.assertEqual(S.validate({"v": 1, "kind": "place", "dest": d, "mode": "driving"})["dest"], d)
+
+    HOME = {"name": "Lisbon", "latitude": 38.72, "longitude": -9.14}
+
+    def put(self, loc, dest="@home", mode="driving"):
+        st = S.Store(where=lambda: loc)
+        return st, st.put(S.validate({"v": 1, "kind": "place", "dest": dest, "mode": mode}))
+
+    def test_home_resolves_to_the_stored_place(self):
+        st, page = self.put({"now": None, "chosen": False, "home": self.HOME, "work": None})
+        self.assertEqual(page["dest"], "Lisbon")
+        self.assertNotIn("from", page)
+        self.assertEqual(st.get(page["open"])[1]["url"],
+                         "https://www.google.com/maps/dir/?api=1&destination=38.72%2C-9.14&travelmode=driving")
+        self.assertEqual(st.get(page["copy"])[1]["text"], "Lisbon")
+        self.assertNotIn("38.72", json.dumps(page))
+
+    def test_unset_home_gets_no_token(self):
+        st, page = self.put({"now": None, "chosen": False, "home": None, "work": self.HOME})
+        self.assertEqual(page["unset"], "home")
+        self.assertNotIn("open", page)
+        self.assertNotIn("copy", page)
+        self.assertIsNone(st.get("anything"))
+
+    def test_unset_without_any_location(self):
+        st = S.Store()                                     # (no lookup at all)
+        page = st.put(S.validate({"v": 1, "kind": "place", "dest": "@work"}))
+        self.assertEqual(page["unset"], "work")
+
+    def test_a_chosen_place_is_the_origin(self):
+        loc = {"now": {"name": "Porto"}, "chosen": True, "home": self.HOME, "work": None}
+        st, page = self.put(loc, "Oxford station")
+        self.assertEqual(page["from"], "Porto")
+        self.assertTrue(st.get(page["open"])[1]["url"].endswith("&origin=Porto"))
+        st, page = self.put({**loc, "now": self.HOME}, "Oxford station")
+        self.assertIn("origin=38.72%2C-9.14", st.get(page["open"])[1]["url"])
+
+    def test_a_plain_place_search_has_no_start(self):
+        loc = {"now": {"name": "Porto"}, "chosen": True, "home": self.HOME, "work": None}
+        st, page = self.put(loc, "Oxford station", mode=None)
+        self.assertNotIn("from", page)
+        self.assertNotIn("origin", st.get(page["open"])[1]["url"])
+
+    def test_home_is_matched_loosely(self):
+        for d in ("@Home", "@HOME", "@home"):
+            st = S.Store(where=lambda: {"home": self.HOME})
+            page = st.put({"v": 1, "kind": "place", "dest": " " + d + " ", "mode": "driving"})
+            self.assertEqual(page["dest"], "Lisbon", d)
+
+    def test_a_guess_is_never_an_origin(self):
+        st, page = self.put({"now": {"name": "Guessville"}, "chosen": False, "home": None, "work": None}, "Oxford station")
+        self.assertNotIn("from", page)
+        self.assertNotIn("origin", st.get(page["open"])[1]["url"])
+
+    def test_a_failing_lookup_still_shows_the_card(self):
+        def boom():
+            raise RuntimeError("x")
+        page = S.Store(where=boom).put(S.validate({"v": 1, "kind": "place", "dest": "Oxford"}))
+        self.assertIn("open", page)
+
     def test_bad(self):
         for a in (("x", "flying"), ("", "driving"), ("a\nb", "driving")):
             with self.assertRaises(ValueError):

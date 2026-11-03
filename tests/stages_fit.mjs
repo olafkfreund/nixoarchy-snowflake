@@ -157,6 +157,33 @@ const acts = () => ev("return __acts.slice()");
   check(!off[0] && off[1] === "none" && off[2] === "none" && off[3] === 0 && (off[4] === "none" || off[4] === "matrix(1, 0, 0, 1, 0, 0)"), "reduced motion: a fade only", JSON.stringify(off));
   await send("Emulation.setEmulatedMedia", { features: [] }); }
 
+// Location (#152): the map card's unset and "From" states, and the settings section
+{ await show({ ...FIX.place, dest: "@home", unset: "home", open: undefined, copy: undefined }, w => 0);
+  const u = await ev(`const f=document.getElementById('stg'); return [f.querySelector('.dst').textContent, [...f.querySelectorAll('.sb')].map(b=>b.textContent).join(), f.classList.contains('map')]`);
+  check(u[0] === "Set Home in Nixi\u2019s settings" && u[1] === "Settings" && u[2], "map: unset Home asks for settings, no Maps button", JSON.stringify(u));
+  await ev(`[...document.querySelectorAll('#stg .sb')].find(b=>b.textContent==='Settings').click(); return 1`); await sleep(400);
+  const o = await ev(`return [setEl.classList.contains('on'), document.querySelector('#set .tab[data-tab=voice]').classList.contains('on'), !!document.getElementById('locRow')]`);
+  check(o[0] && o[1] && o[2], "map: Settings opens the Location section", JSON.stringify(o));
+  await ev(`settings(false); return 1`); await sleep(300);
+  await show({ ...FIX.place, dest: "Oslo", from: "<b>Lisbon</b>" }, w => 0);
+  const fr = await ev(`const f=document.getElementById('stg'); return [document.getElementById('stgFn').textContent, f.querySelectorAll('b').length, [...f.querySelectorAll('.sb')].map(b=>b.textContent).join()]`);
+  check(fr[0] === "From <b>Lisbon</b> \u00b7 a sketch, not the route" && fr[1] === 0 && fr[2] === "Open in Google Maps,Copy address", "map: footnote names where from, as text", JSON.stringify(fr));
+  await ev(`settings(true,'voice'); await locLoad(); return 1`);
+  const l = await ev(`const w=document.getElementById('locWifi'); return [document.getElementById('locNow').textContent, [...document.querySelectorAll('#locChips button')].map(b=>b.textContent).join(), (w.style.display==='none')===!(loc.wifi&&loc.wifi.device), document.getElementById('locHome').placeholder]`);
+  check(/^Now: /.test(l[0]) && l[1] === "Home,Work,Auto" && l[2], "settings: Location section draws, Wi-Fi block follows the device", JSON.stringify(l));
+  await ev(`await locAct({act:'set',place:'home',name:'<b>x</b>'}); return 1`);
+  const w = await ev(`return [document.getElementById('locErr').textContent, document.getElementById('locHome').value, document.querySelectorAll('#locRow b').length]`);
+  check(w[0] === "needs nixarchy-location (update nixarchy)" && w[2] === 0, "settings: a write without the command says what to update", JSON.stringify(w));
+  // suggestions: an answer to an old question is dropped, and picking puts the name in the field
+  const sg = await ev(`const mk=(n)=>({name:n,admin:'',country:'',latitude:1,longitude:2}); const i=document.getElementById('locHome');
+    locSug.home=[mk('Oxford'),mk('Oslo')]; locIdx.home=-1; locSugShow('home');
+    const g0=locGen.home; locAsk('home','ox'); const stale=g0!==locGen.home;
+    locDrop('home'); const dropped=locGen.home>g0+1 && document.getElementById('locHomeSug').children.length===0;
+    locSug.home=[mk('Oxford'),mk('Oslo')]; locSugShow('home'); locPick('home',1);
+    return [stale, dropped, i.value, document.getElementById('locHomeSug').children.length]`);
+  check(sg[0] && sg[1] && sg[2] === "Oslo" && sg[3] === 0, "settings: stale suggestions are ignored, a pick fills the field", JSON.stringify(sg));
+  await ev(`settings(false); return 1`); }
+
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
 console.log(fails.length ? `\n${fails.length} failed: ${fails.join(", ")}` : "\nall pass");
 process.exit(fails.length ? 1 : 0);

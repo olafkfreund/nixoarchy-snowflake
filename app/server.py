@@ -32,7 +32,7 @@ import time
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
@@ -1043,6 +1043,159 @@ def attention_accept(frm, text, now=None, target=None, hook=None):
     _ATTN_LAST[(frm, kind)] = now
     BUS.pub(t="attention", **{"from": frm, "name": _ATTN_NAMES.get(frm) or frm.capitalize(), "kind": kind, "project": project, "text": reason})
     return True
+
+
+LOC_CACHE = {"at": -1e9, "v": None}
+
+
+def _place(v):
+    """A stored place cleaned to {name, latitude?, longitude?}, or None."""
+    if not isinstance(v, dict) or not isinstance(v.get("name"), str):
+        return None
+    name = v["name"].strip()
+    if not 0 < len(name) <= 120 or re.search(r"[\x00-\x1f\x7f]", name):
+        return None
+    out = {"name": name}
+    for k in ("latitude", "longitude"):
+        if isinstance(v.get(k), (int, float)) and not isinstance(v.get(k), bool):
+            out[k] = v[k]
+    return out if ("latitude" in out) == ("longitude" in out) else {"name": name}
+
+
+def _location_files():
+    """What `nixarchy-location --json` says, read from the two files when the command isn't installed."""
+    d = Path.home() / ".local/state/omarchy/settings"        # (not XDG_STATE_HOME: upstream's weather panel reads this exact path)
+
+    def load(n):
+        try:
+            v = json.loads((d / n).read_text())
+            return v if isinstance(v, dict) else None
+        except (OSError, ValueError):
+            return None
+    w, p = load("weather.json"), load("places.json") or {}
+    now = _place(w)
+    # (a picked weather.json is Home only before places.json exists, as nixarchy-location migrates it)
+    home = _place(p.get("home")) or (now if w and w.get("source") != "wifi" and not (d / "places.json").exists() else None)
+    return {"now": now, "chosen": now is not None, "how": "auto" if now is None else "wifi" if w.get("source") == "wifi" else "picked",
+            "home": home, "work": _place(p.get("work"))}
+
+
+def location():
+    """The user's places and the one they are at, cached 60 s. Only what they set: never an IP guess, and no network call here."""
+    if time.monotonic() - LOC_CACHE["at"] < 60 and LOC_CACHE["v"] is not None:
+        return LOC_CACHE["v"]
+    try:
+        r = subprocess.run(["nixarchy-location", "--json"], capture_output=True, text=True, timeout=2, stdin=subprocess.DEVNULL)
+        j = json.loads(r.stdout) if r.returncode == 0 else None
+        if not isinstance(j, dict):
+            raise ValueError("no answer")
+        now = _place(j.get("now")) if j.get("chosen") else None
+        v = {"now": now, "chosen": now is not None, "how": j.get("how") if j.get("how") in ("picked", "wifi") and now else "auto",
+             "home": _place(j.get("home")), "work": _place(j.get("work"))}
+    except (OSError, ValueError, subprocess.SubprocessError):
+        v = _location_files()
+    LOC_CACHE.update(at=time.monotonic(), v=v)
+    return v
+
+
+LOC_ERR = "needs nixarchy-location (update nixarchy)"
+_LOC_CTRL = re.compile(r"[\x00-\x1f\x7f]")
+_COORDS = re.compile(r"^(-?[0-9]+(\.[0-9]+)?),(-?[0-9]+(\.[0-9]+)?)$")
+
+
+def wifi_now():
+    """-> (has a Wi-Fi device, the connected network's name or None), from nmcli."""
+    try:
+        r = subprocess.run(["nmcli", "-t", "-f", "TYPE,STATE,CONNECTION", "device"], capture_output=True, text=True, timeout=2, stdin=subprocess.DEVNULL,
+                           env={**os.environ, "LC_ALL": "C"})
+    except (OSError, subprocess.SubprocessError):
+        return False, None
+    rows = [ln for ln in r.stdout.splitlines() if ln.startswith("wifi:")] if r.returncode == 0 else []
+    net = next((re.sub(r"\\(.)", r"\1", ln[len("wifi:connected:"):]) for ln in rows if ln.startswith("wifi:connected:")), None)
+    return bool(rows), net or None
+
+
+def location_links():
+    """{network: "home"|"work"}, read-only from places.json (writes go through nixarchy-location)."""
+    try:
+        w = json.loads((Path.home() / ".local/state/omarchy/settings/places.json").read_text()).get("wifi")
+    except (OSError, ValueError, AttributeError):
+        return {}
+    return {k: v for k, v in w.items() if v in ("home", "work")} if isinstance(w, dict) else {}
+
+
+def location_api():
+    """What the Location settings draw: the places, how Now was set, and the Wi-Fi block."""
+    device, net = wifi_now()
+    return {**location(), "wifi": {"device": device, "network": net, "links": location_links() if device else {}}}
+
+
+def _loc_name(v):
+    return v.strip() if isinstance(v, str) and 0 < len(v.strip()) <= 120 and not _LOC_CTRL.search(v) else None
+
+
+def location_argv(b):
+    """-> the arguments for nixarchy-location, or an error string. Everything is checked here; nothing from the page reaches argv unchecked."""
+    act, place = b.get("act"), b.get("place")
+    if act == "set":
+        name = _loc_name(b.get("name"))
+        if place not in ("home", "work") or name is None:
+            return "bad place or name"
+        la, lo = b.get("latitude"), b.get("longitude")
+        if la is None and lo is None:
+            return ["set", place, name]
+        ok = all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (la, lo)) and -90 <= la <= 90 and -180 <= lo <= 180
+        c = "%.6f,%.6f" % (la, lo) if ok else ""
+        return ["set", place, name, c] if _COORDS.match(c) else "bad coordinates"
+    if act == "now":
+        return ["now", b.get("value")] if b.get("value") in ("home", "work", "auto") else "bad value"
+    if act == "link":
+        return ["wifi", "link", place] if place in ("home", "work") else "bad place"
+    if act == "unlink":
+        net = _loc_name(b.get("network"))
+        return ["wifi", "unlink", net] if net else "bad network"
+    return "bad act"
+
+
+def location_act(b, run=subprocess.run):
+    """A Location setting: validated, then done by nixarchy-location (never by writing its files), then re-read."""
+    argv = location_argv(b if isinstance(b, dict) else {})
+    if isinstance(argv, str):
+        return {"ok": False, "error": argv}
+    try:
+        r = run(["nixarchy-location", *argv], capture_output=True, text=True, timeout=5, stdin=subprocess.DEVNULL)
+    except FileNotFoundError:
+        return {"ok": False, "error": LOC_ERR}
+    except (OSError, subprocess.SubprocessError):
+        return {"ok": False, "error": "nixarchy-location didn't answer"}
+    finally:
+        LOC_CACHE.update(at=-1e9, v=None)
+    if r.returncode != 0:
+        return {"ok": False, "error": ((r.stderr or "").strip().splitlines() or ["it failed"])[-1][:200].replace("nixarchy-location: ", "")}
+    return {"ok": True, **location_api()}
+
+
+def location_suggest(q, urlopen=None):
+    """Open-Meteo place names for the settings field. Fetched here, not by the page. -> a list, or None when it couldn't."""
+    q = q.strip() if isinstance(q, str) else ""
+    if not 2 <= len(q) <= 80 or _LOC_CTRL.search(q):
+        return []
+    import urllib.request
+    from urllib.parse import urlencode
+    try:
+        with (urlopen or urllib.request.urlopen)("https://geocoding-api.open-meteo.com/v1/search?" + urlencode(
+                {"name": q, "count": 5, "language": "en", "format": "json"}), timeout=4) as r:
+            res = json.loads(r.read(200000)).get("results") or []
+    except (OSError, ValueError, AttributeError):
+        return None
+    out = []
+    for x in res:
+        nm = _loc_name(x.get("name")) if isinstance(x, dict) else None
+        num = [isinstance(x.get(k), (int, float)) and not isinstance(x.get(k), bool) for k in ("latitude", "longitude")] if nm else []
+        if nm and all(num):
+            out.append({"name": nm, "admin": _loc_name(x.get("admin1")) or "", "country": _loc_name(x.get("country")) or "",
+                        "latitude": x["latitude"], "longitude": x["longitude"]})
+    return out
 
 
 class Ambient:
@@ -3824,12 +3977,16 @@ def run_bridge(prompt, emit):
     # nixi's agent writes for a screen; this is read aloud, so ask for speech (the grounding stays the bridge's own)
     note = ("(Spoken reply via Nixi's voice: 1-4 short spoken sentences, no tables, lists or code blocks; you may start with "
             "one mood tag, one of " + ", ".join(f"[{t}]" for t in FACE_TAGS) + ".)\n\n")
+    here = location()
+    if here["chosen"]:                                   # (only a place the user chose: the note never carries an IP guess)
+        note = note[:-3] + f" The user is in {here['now']['name']}.)\n\n"
     if CFG.get("answer_stages", True) and ST.stage_run is None:
         note = note[:-3] + (" When the answer is commands to run, or 2-5 facts, do not speak them: say what they are in a sentence, then "
                             "end the reply with ONE last line, <<stage>> followed by JSON on that line: "
                             '{"v":1,"kind":"commands","title":"optional plaque, 1-4 words","items":[{"label":"what it does","cmd":"the command"}]} or '
                             '{"v":1,"kind":"facts","title":"...","points":["..."],"source":"optional"} or, to find videos, {"v":1,"kind":"video","query":"search words"} (the server searches) or, for directions or a place, '
                             "{\"v\":1,\"kind\":\"place\",\"dest\":\"address or name\",\"mode\":\"MODE\"}, where MODE is one of driving, walking, bicycling, transit (leave mode out for a plain place); "
+                            "for the user's own home or work, say dest \"@home\" or \"@work\": the server fills in the address, never ask for it or guess it; "
                             "at most 5 items, labels and points under 120 characters, commands under 500, no line breaks inside.)\n\n")
     BRIDGE.send({"type": "prompt", "text": note + prompt})
     mid = None
@@ -3874,7 +4031,7 @@ def run_bridge(prompt, emit):
 
 
 THUMBS = {}                                              # posters of the stage on screen, by token (dropped with the stage)
-STAGES = stages.Store(on_new=THUMBS.clear)                                  # the stage on screen and the one before it (#144)
+STAGES = stages.Store(on_new=THUMBS.clear, where=lambda: location())                                  # the stage on screen and the one before it (#144)
 
 
 def stages_on():
@@ -4387,6 +4544,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(hit[0])))
             self.end_headers()
             return self.wfile.write(hit[0])
+        if p in ("/api/location", "/api/location/suggest"):      # the Location settings; the window's token only
+            if not secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
+                return self._json({"error": "forbidden"}, 403)
+            if p == "/api/location":
+                return self._json(location_api())
+            got = location_suggest((parse_qs(urlparse(self.path).query).get("q") or [""])[0])
+            return self._json({"error": "couldn't search"}, 502) if got is None else self._json(got)
         if p == "/":
             p = "/index.html"
         f = (STATIC / p.lstrip("/")).resolve()
@@ -4424,6 +4588,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"theme": THEME})
             if p == "/api/ask":
                 return self.ask()
+            if p == "/api/location":
+                return self._json(location_act(json.loads(self._body() or b"{}")))
             if p == "/api/stage/act":
                 b = json.loads(self._body() or b"{}")
                 return self._json(stage_act(str(b.get("token") or ""), str(b.get("act") or "")))

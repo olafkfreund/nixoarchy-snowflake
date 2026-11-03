@@ -164,8 +164,9 @@ def fetch_thumb(vid, limit=200_000, timeout=5):
 class Store:
     """The current stage and the one before it; tokens are only valid for the current one."""
 
-    def __init__(self, ttl=600, now=time.monotonic, on_new=None):
+    def __init__(self, ttl=600, now=time.monotonic, on_new=None, where=None):
         self.ttl, self.now, self.lock, self.on_new = ttl, now, threading.Lock(), on_new
+        self.where = where           # -> {"now", "chosen", "home", "work"}: the user's places (server.location), or None
         self.cur = self.prev = None  # (page_stage, {token: (kind, item)}, born)
         self.vis = False             # the page really drew the current stage (it may decline: fullscreen, dictation...)
 
@@ -191,9 +192,7 @@ class Store:
             page["search"] = secrets.token_urlsafe(12)
             toks[page["search"]] = ("link", {"url": search_url(stage["query"])})
         elif stage["kind"] == "place":  # the page gets two tokens, never the URL
-            page["open"], page["copy"] = secrets.token_urlsafe(12), secrets.token_urlsafe(12)
-            toks[page["open"]] = ("place", {"url": maps_url(stage["dest"], stage.get("mode"))})
-            toks[page["copy"]] = ("place", {"text": stage["dest"]})
+            self._place(stage, page, toks)
         else:  # facts: one token, Copy takes the whole text
             t = secrets.token_urlsafe(12)
             toks[t] = ("facts", {"text": "\n".join([stage["title"], *stage["points"]])})
@@ -203,6 +202,27 @@ class Store:
         if self.on_new:
             self.on_new()
         return page
+
+    def _place(self, stage, page, toks):
+        """@home / @work become the stored place (the agent never sees the address); a place the user chose is where
+        directions start. An unset Home or Work gets no token at all: there is nothing to open or copy."""
+        try:
+            loc = (self.where() if self.where else None) or {}
+        except Exception:                                  # (a broken lookup is "no location", never a lost card)
+            loc = {}
+        dest = stage["dest"]
+        if dest.strip().lower() in ("@home", "@work"):
+            p = loc.get(dest.strip().lower()[1:])
+            if not p:
+                page["unset"] = dest.strip().lower()[1:]
+                return
+            page["dest"], dest = p["name"], _coords(p)
+        origin = None
+        if stage.get("mode") and loc.get("chosen") and loc.get("now"):      # (a plain place search has no start)
+            origin, page["from"] = _coords(loc["now"]), loc["now"]["name"]
+        page["open"], page["copy"] = secrets.token_urlsafe(12), secrets.token_urlsafe(12)
+        toks[page["open"]] = ("place", {"url": maps_url(dest, stage.get("mode"), origin)})
+        toks[page["copy"]] = ("place", {"text": page["dest"]})
 
     def get(self, token):
         """-> (kind, item) for a token of the current stage, else None."""
@@ -247,8 +267,13 @@ class Store:
             self.vis = False
 
 
-def maps_url(dest, mode=None):
-    """Directions to dest, or a place search when mode is None. No origin, no key."""
+def _coords(p):
+    """"lat,lon" when the place has them, else its name: Maps takes either."""
+    return "%s,%s" % (p["latitude"], p["longitude"]) if "latitude" in p and "longitude" in p else p["name"]
+
+
+def maps_url(dest, mode=None, origin=None):
+    """Directions to dest, or a place search when mode is None. An origin only when given (and only for directions); no key."""
     dest = (dest or "").strip()
     if not dest or _CTRL.search(dest):
         raise ValueError("bad destination")
@@ -256,7 +281,10 @@ def maps_url(dest, mode=None):
         return "https://www.google.com/maps/search/?api=1&query=" + quote_plus(dest)
     if mode not in MODES:
         raise ValueError("bad mode")
-    return "https://www.google.com/maps/dir/?api=1&destination=%s&travelmode=%s" % (quote_plus(dest), mode)
+    if origin is not None and (not origin.strip() or _CTRL.search(origin)):
+        raise ValueError("bad origin")
+    return "https://www.google.com/maps/dir/?api=1&destination=%s&travelmode=%s%s" % (
+        quote_plus(dest), mode, "&origin=" + quote_plus(origin.strip()) if origin else "")
 
 
 _ORD = {"first": 0, "second": 1, "third": 2, "fourth": 3, "fifth": 4,

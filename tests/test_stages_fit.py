@@ -42,6 +42,8 @@ class StagesFit(unittest.TestCase):
         home = Path(tempfile.mkdtemp(prefix="nixi-stagefit-"))
         env = dict(os.environ, HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
                    XDG_DATA_HOME=str(home / "data"), XDG_STATE_HOME=str(home / "state"))
+        # no nixarchy-location on this server's PATH, whatever the machine has: the page must say what to update
+        env["PATH"] = os.pathsep.join(d for d in os.environ.get("PATH", "").split(os.pathsep) if not os.path.exists(os.path.join(d, "nixarchy-location")))
         for d in (".config/nixi-companion", "data", "state"):
             (home / d).mkdir(parents=True, exist_ok=True)
         port, cdp = _free_port(), _free_port()
