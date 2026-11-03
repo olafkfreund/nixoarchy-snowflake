@@ -1,6 +1,7 @@
 {
   lib,
   stdenvNoCC,
+  callPackage,
   makeWrapper,
   wrapGAppsHook3,
   gobject-introspection,
@@ -27,6 +28,8 @@
   # companion plugins (#149): folders or packages, each linked into share/nixi-companion/plugins/ (the server scans it)
   plugins ? [ ],
 }:
+assert lib.assertMsg (lib.all (p: lib.isStorePath "${p}") plugins)
+  "nixi-companion: every entry of `plugins` must be a package or a path in the Nix store (build raw folders with passthru.mkCompanionPlugin)";
 let
   # speaking only: no Japanese (its pyopenjtalk-plus fails its tests on current unstable) and no training extras
   piper = piper-tts.override {
@@ -45,6 +48,9 @@ stdenvNoCC.mkDerivation {
   pname = "nixi-companion";
   version = "0.1.0";
   src = ../.;
+
+  # the module builds a plugin folder through this, so a raw path is checked before it is linked in
+  passthru.mkCompanionPlugin = callPackage ./plugin.nix { };
 
   nativeBuildInputs = [
     makeWrapper
@@ -74,7 +80,7 @@ stdenvNoCC.mkDerivation {
     install -m644 app/static/icon.png $out/share/icons/hicolor/512x512/apps/nixi-companion.png
     mkdir -p $out/share/nixi-companion/plugins
     for p in ${lib.escapeShellArgs (map (p: "${p}") plugins)}; do
-      ln -s "$p" "$out/share/nixi-companion/plugins/$(basename "$p")"
+      ln -sfT "$p" "$out/share/nixi-companion/plugins/$(basename "$p")"
     done
     ${lib.optionalString (nixiBridge != null) ''
       substituteInPlace $out/share/nixi-companion/app/server.py \

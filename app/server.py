@@ -1447,23 +1447,24 @@ class Plug:
     @classmethod
     def reload(cls):
         st = plugins.State()
-        cls.loaded = [p for p in plugins.scan(plugins.plugin_dirs()) if not p.error and st.get(p.id)["enabled"]]
-        cls.quips, cls.rules, cls.props, cls.prop_errors = {}, [], [], {}
-        for p in cls.loaded:
+        loaded = [p for p in plugins.scan(plugins.plugin_dirs()) if not p.error and st.get(p.id)["enabled"]]
+        quips, rules, props, errors = {}, [], [], {}               # built aside, then swapped in at once: no half-loaded state
+        for p in loaded:
             m = p.manifest
             if "quips" in m:
                 try:
                     for ev, ls in cls.clean(json.loads((p.dir / m["quips"]).read_text(encoding="utf-8"))).items():
-                        cls.quips.setdefault(ev, []).extend(ls)
+                        quips.setdefault(ev, []).extend(ls)
                 except (OSError, ValueError):
                     pass                                        # an unreadable pack adds nothing
             if "prop" in m:
                 try:
                     nodes = plugins.sanitize_svg((p.dir / m["prop"]["file"]).read_bytes())
-                    cls.props.append({"id": p.id, "name": m["name"], "anchor": m["prop"]["anchor"], "layer": m["prop"].get("layer", "front"), "nodes": nodes})
+                    props.append({"id": p.id, "name": m["name"], "anchor": m["prop"]["anchor"], "layer": m["prop"].get("layer", "front"), "nodes": nodes})
                 except (OSError, ValueError) as e:
-                    cls.prop_errors[p.id] = str(e)              # the whole prop is dropped; the plugin's other parts stay
-            cls.rules += [(k, n[k], n["category"]) for n in m.get("notifications", []) for k in ("app", "host") if k in n]
+                    errors[p.id] = str(e)                       # the whole prop is dropped; the plugin's other parts stay
+            rules += [(k, n[k], n["category"]) for n in m.get("notifications", []) for k in ("app", "host") if k in n]
+        cls.loaded, cls.quips, cls.rules, cls.props, cls.prop_errors = loaded, quips, rules, props, errors
         Quips.bags.clear()
 
     @classmethod
@@ -1521,10 +1522,10 @@ def plugins_act(b):
         Plug.reload()
         return plugins_api()
     pid, on = str(b.get("id") or ""), b.get("enabled")
-    p = next((x for x in plugins.scan(plugins.plugin_dirs()) if x.id == pid), None)
+    p = min((x for x in plugins.scan(plugins.plugin_dirs()) if x.id == pid), key=lambda x: bool(x.error), default=None)
     if p is None or not isinstance(on, bool):
         return plugins_api("no such plugin")
-    if p.error:
+    if p.error and on:                                         # (a broken plugin can still be switched off)
         return plugins_api("it is broken: " + p.error)
     if on and "stage" in (p.manifest or {}):
         return plugins_api("plugins that run programs can't be switched on yet")

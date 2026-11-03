@@ -978,11 +978,10 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   return {chat:{g:chat,dots,badge,bt,n:0,img:ic(-99,-80,chat)},feed:{g:feed,scr,ant:tvA,img:ic(48,-70,feed)},tie,hb,bd,hf,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,um,drops,lensL,lensR,brg,glintL,glintR}; }
 // a plugin's prop (#149): the server already sanitised it to a node list; only createElementNS + setAttribute here, no ids, no markup
 const PROP_BOX={head:[-30,-112,60,54],left:[-98,-34,40,40],right:[58,-34,40,40],base:[-36,68,72,26]}, PROP_COL={acc:'var(--acc)',text:'var(--text)',dim:'var(--dim)'};
-function drawProp(par,P){
-  const [bx,by,bw,bh]=PROP_BOX[P.anchor]||PROP_BOX.head, vb=(P.nodes[0].a.viewBox||'0 0 100 100').split(/[\s,]+/).map(Number), k=Math.min(bw/vb[2],bh/vb[3]);
-  const els=[sv('g',{transform:`translate(${bx+bw/2-(vb[0]+vb[2]/2)*k} ${by+bh/2-(vb[1]+vb[3]/2)*k}) scale(${k})`},par)];
+function drawProp(par,P){   // a nested <svg> at the anchor box: it scales the prop and clips it to the box
+  const [x,y,width,height]=PROP_BOX[P.anchor]||PROP_BOX.head, els=[sv('svg',{x,y,width,height,viewBox:P.nodes[0].a.viewBox.join(' ')},par)];
   P.nodes.forEach((n,i)=>{ if(!i) return; const e=document.createElementNS(SVGNS,n.tag);
-    for(const a in n.a) e.setAttribute(a,(a==='fill'||a==='stroke')&&PROP_COL[n.a[a]]||n.a[a]);
+    for(const a in n.a){ if((a==='fill'||a==='stroke')&&PROP_COL[n.a[a]]) e.style.setProperty(a,PROP_COL[n.a[a]]); else e.setAttribute(a,n.a[a]); }   // (WebKitGTK: var() only works as a style)
     els[n.p].appendChild(e); els[i]=e; });
 }
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
@@ -2801,7 +2800,7 @@ function plugRender(j){
   const box=$('#plugList'); box.replaceChildren(); $('#plugErr').textContent=j.error||'';
   for(const p of j.items||[]){
     const row=document.createElement('label'), cb=document.createElement('input'), sw=document.createElement('span'), l=document.createElement('span');
-    row.className='tg'; cb.type='checkbox'; cb.checked=!!p.enabled; cb.disabled=!!p.error; sw.className='sw'; l.className='l';
+    row.className='tg'; cb.type='checkbox'; cb.checked=!!p.enabled; cb.disabled=!!p.error&&!p.enabled;   // (one that is on can always be switched off) sw.className='sw'; l.className='l';
     l.append(document.createTextNode(p.name+' '+p.version+' · '+p.source));
     const lines=[...p.caps||[]]; if(p.error) lines.unshift("Doesn't load: "+p.error);
     for(const t of lines){ const s=document.createElement('small'); s.textContent=t; if(p.error&&t===lines[0]) s.style.color='#e8836f'; l.appendChild(s); }

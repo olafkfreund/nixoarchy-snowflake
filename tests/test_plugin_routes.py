@@ -82,6 +82,27 @@ class PluginRoutesTest(_ServerEnv):
         it = self.items(S.plugins_api())["hat-one"]
         self.assertIn("element not allowed", it["error"])
 
+    def test_odd_manifests_leave_the_others_working(self):
+        S = self.server
+        mock.patch.object(S.quick, "projects", return_value={}).start()
+        self.mk("good-one", prop={"file": "prop.svg", "anchor": "head"})
+        self.mk("odd-cat", notifications=[{"app": "x", "category": ["chat"]}])
+        self.mk("odd-read", stage={"phrases": ["a b"], "argv": ["run"], "reads": [[1]]})
+        S.plugins_act({"id": "good-one", "enabled": True})
+        got = self.items(S.plugins_api())
+        self.assertTrue(got["odd-cat"]["error"] and got["odd-read"]["error"])
+        self.assertEqual([p["id"] for p in S.state_info()["plugin_props"]], ["good-one"])
+        self.assertIn("broken", S.plugins_act({"id": "odd-cat", "enabled": True})["error"])
+
+    def test_an_enabled_plugin_with_a_prop_error_can_be_switched_off(self):
+        S = self.server
+        self.mk("hat-one", prop={"file": "prop.svg", "anchor": "head"})
+        S.plugins_act({"id": "hat-one", "enabled": True})
+        (self.root / "pk" / "hat-one" / "prop.svg").write_text(SVG.replace("circle", "script"))
+        it = self.items(S.plugins_act({"reload": True}))["hat-one"]
+        self.assertTrue(it["enabled"] and it["error"])                        # the page keeps its switch usable
+        self.assertFalse(self.items(S.plugins_act({"id": "hat-one", "enabled": False}))["hat-one"]["enabled"])
+
     def test_routes_need_the_window_token(self):
         import urllib.error
         import urllib.request
