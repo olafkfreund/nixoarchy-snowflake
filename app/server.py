@@ -33,7 +33,7 @@ import unicodedata
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
@@ -1175,6 +1175,7 @@ def location_act(b, run=subprocess.run):
         LOC_CACHE.update(at=-1e9, v=None)
     if r.returncode != 0:
         return {"ok": False, "error": ((r.stderr or "").strip().splitlines() or ["it failed"])[-1][:200].replace("nixarchy-location: ", "")}
+    Ambient.poke()
     return {"ok": True, **location_api()}
 
 
@@ -1216,8 +1217,12 @@ class Ambient:
     music_due = 0.0
     cpu_hot = ram_low = fullscreen = locked = False
     coding = night = party = False
-    weather = None                                             # "rain" | "snow" | None, as worn
-    sky = None                                                 # the same, as fetched (omarchy weather icon)
+    weather = sky = None
+    day = True
+    wx = omx = None
+    cold, windy, lean, heavy, wkey = 0, False, 0, False, None
+    wsrc = feel = wspeed = None                                  # the last reading sense() used, for /api/state (no lookups there)
+    urlopen = None
     birthdays = set()                                          # ISO dates of calendar items that mention a birthday; never a title
     RAIN = {0xE318, 0xE333, 0xE308, 0xE3AD, 0xE31D}
     SNOW = {0xE327, 0xE30A, 0xE31A}
@@ -1275,14 +1280,77 @@ class Ambient:
             return False
         out = cls.run(["omarchy", "weather", "status"], timeout=10)
         m = re.search(r"(-?\d+(?:\.\d+)?)\s*°\s*C", out or "")
-        cls.data["weather"] = None if not m else "cold" if float(m.group(1)) < 0 else "hot" if float(m.group(1)) > 28 else None
-        cls.sky = cls.sky_of(cls.run(["omarchy", "weather", "icon"], timeout=10))     # (exits 1 offline: none)
+        w = re.search(r"Wind\s*\S*?\s*(\d+(?:\.\d+)?)\s*km/h", out or "")
+        sky = cls.sky_of(cls.run(["omarchy", "weather", "icon"], timeout=10))
+        if m or w or sky:
+            cls.omx = {"sky": sky, "temp": float(m.group(1)) if m else None,
+                       "wind": float(w.group(1)) if w else None}
+        if CFG.get("proactive") and CFG.get("ambient_weather") and CFG.get("look_weather"):
+            key = cls.place_key()
+            if key is not None:
+                forecast = cls.forecast(key)
+                if forecast is not None:
+                    cls.wx = forecast
+        _, cls.sky, _, _, temp, _, _ = cls.reading()
+        cls.data["weather"] = cls.frost(temp)
         return False
 
     @classmethod
     def sky_of(cls, icon):
         g = (icon or "").strip()[:1]
         return "rain" if g and ord(g) in cls.RAIN else "snow" if g and ord(g) in cls.SNOW else None
+
+    @staticmethod
+    def frost(temp):
+        return None if temp is None else "cold" if temp < 0 else "hot" if temp > 28 else None
+
+    @staticmethod
+    def place_key():
+        places = location()
+        for name in ("now", "home"):
+            place = places.get(name) or {}
+            if all(isinstance(place.get(k), (int, float)) and not isinstance(place.get(k), bool) and math.isfinite(place[k])
+                   for k in ("latitude", "longitude")):
+                return round(place["latitude"], 2), round(place["longitude"], 2)
+        return None
+
+    @classmethod
+    def forecast(cls, key):
+        import urllib.request
+        try:
+            url = "https://api.open-meteo.com/v1/forecast?" + urlencode({
+                "latitude": key[0], "longitude": key[1],
+                "current": "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,is_day",
+                "timezone": "auto"})
+            with (cls.urlopen or urllib.request.urlopen)(url, timeout=8) as r:
+                current = json.loads(r.read(200000))["current"]
+            if not isinstance(current, dict):
+                return None
+            def number(name, low, high):
+                v = current.get(name)
+                return v if isinstance(v, (int, float)) and not isinstance(v, bool) and low <= v <= high else None
+            code = current.get("weather_code")
+            code = code if isinstance(code, int) and not isinstance(code, bool) else None
+            sky = ("clear" if code == 0 else "partly" if code in (1, 2) else "cloudy" if code in (3, 45, 48)
+                   else "rain" if code is not None and (51 <= code <= 67 or 80 <= code <= 82 or 95 <= code <= 99)
+                   else "snow" if code is not None and (71 <= code <= 77 or 85 <= code <= 86) else None)
+            day = current.get("is_day")
+            return {"key": key, "at": time.monotonic(), "sky": sky, "heavy": code in (65, 67, 82),
+                    "feel": number("apparent_temperature", -80, 60), "temp": number("temperature_2m", -80, 60),
+                    "wind": number("wind_speed_10m", 0, 400), "dir": number("wind_direction_10m", 0, 360),
+                    "day": day if type(day) is int and day in (0, 1) else None}
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            return None
+
+    @classmethod
+    def reading(cls):
+        wx = cls.wx
+        if wx and wx["key"] == cls.place_key() and 0 <= time.monotonic() - wx["at"] < 7200:
+            return "open-meteo", *(wx[k] for k in ("sky", "heavy", "feel", "temp", "wind", "dir"))
+        omx = cls.omx
+        if omx:
+            return "omarchy", omx["sky"], False, omx["temp"], omx["temp"], omx["wind"], None
+        return None, None, False, None, None, None, None
 
     @classmethod
     def generation(cls):
@@ -1341,7 +1409,7 @@ class Ambient:
 
     @classmethod
     def situation(cls):
-        return {k: getattr(cls, k) for k in ("meeting", "music", "cpu_hot", "ram_low", "fullscreen", "locked", "coding", "weather", "night", "party")}
+        return {k: getattr(cls, k) for k in ("meeting", "music", "cpu_hot", "ram_low", "fullscreen", "locked", "coding", "weather", "day", "cold", "windy", "lean", "heavy", "night", "party")}
 
     @classmethod
     def sense(cls, now=None, proc="/proc", mono=None):
@@ -1375,7 +1443,44 @@ class Ambient:
         cls.locked = locked
         cls.fullscreen = on and Desk.fullscreen
         cls.coding = bool(on and CFG.get("look_coding") and Desk.coding_since and t - Desk.coding_since >= 60)
-        cls.weather = cls.sky if on and CFG.get("look_weather") and CFG.get("ambient_weather") else None
+        gate = on and CFG.get("look_weather") and CFG.get("ambient_weather")
+        if gate:
+            key = cls.place_key()
+            if key != cls.wkey:
+                cls.cold, cls.windy, cls.lean, cls.heavy = 0, False, 0, False
+                cls.wkey = key
+                cls.poke()
+        else:
+            cls.cold, cls.windy, cls.lean, cls.heavy = 0, False, 0, False
+        source, sky, heavy, feel, temp, wind, direction = cls.reading()
+        cls.wsrc, cls.feel, cls.wspeed = source, feel, wind
+        if cls.wx is None and cls.omx is None:
+            sky = cls.sky  # preserve an icon reading already held by older callers
+        cls.sky = sky
+        if CFG.get("ambient_weather"):
+            cls.data["weather"] = cls.frost(temp)
+        cls.weather = sky if gate else None
+        cls.day = bool(cls.wx["day"]) if source == "open-meteo" and cls.wx["day"] is not None else 7 <= now.hour < 19
+        if gate:
+            if feel is None:
+                cls.cold = 0
+            elif feel > 7:
+                cls.cold = 0
+            elif cls.cold == 2:
+                if feel > -3:
+                    cls.cold = 1
+            elif feel <= -5:
+                cls.cold = 2 if cls.cold else 1
+            elif cls.cold == 0 and feel <= 5:
+                cls.cold = 1
+            if wind is None:
+                cls.windy = False
+            elif wind >= 25:
+                cls.windy = True
+            elif wind < 20:
+                cls.windy = False
+            cls.lean = (1 if math.sin(math.radians(direction)) > .3 else -1 if math.sin(math.radians(direction)) < -.3 else 0) if direction is not None else 0
+            cls.heavy = heavy
         cls.night = bool(on and CFG.get("look_night") and (now.hour >= 23 or now.hour < 5))
         cls.party = bool(on and CFG.get("look_party") and ((now.month, now.day) in ((1, 1), (12, 24), (12, 25), (12, 31))
                                                            or now.date().isoformat() in cls.birthdays))
@@ -4667,6 +4772,8 @@ def state_info():
         "click_through": bool(CFG.get("click_through")),
         "autostart": bool(CFG.get("autostart")), "listen_on_show": bool(CFG.get("listen_on_show")),
         "barge_in": bool(CFG.get("barge_in")), "sfx": bool(CFG.get("sfx")), "look": look(), "skins": SKINS, "plugin_props": (Plug.ensure(), Plug.props)[1], "ambient": Ambient.snapshot(),
+        "weather": {"sky": Ambient.sky, "cold": Ambient.cold, "windy": Ambient.windy, "lean": Ambient.lean,
+                    "heavy": Ambient.heavy, "feel": Ambient.feel, "wind": Ambient.wspeed, "day": Ambient.day, "source": Ambient.wsrc},
         "follow_focus": bool(CFG.get("follow_focus")), "step_aside": CFG.get("step_aside", True) is not False, "answer_stages": CFG.get("answer_stages", True) is not False,
         **{k: bool(CFG.get(k, k == "ambient_system")) for k in Ambient.FLAG.values()},
         "projects": quick.projects(),
@@ -4990,7 +5097,7 @@ class Handler(BaseHTTPRequestHandler):
                     reset_whisper()
                 if "autostart" in upd:
                     sync_autostart()
-                if any(k.startswith("ambient_") for k in upd):
+                if any(k.startswith("ambient_") for k in upd) or "proactive" in upd or "look_weather" in upd:
                     Ambient.poke()
                 if upd.get("wake_word"):
                     threading.Thread(target=lambda: _try(whisper), daemon=True).start()
