@@ -329,6 +329,9 @@ def handle(text):
     if not t or len(t) > 120:
         return None
 
+    if t in ("take control back", "stop the agent", "revoke control", "give me my desktop back"):
+        return {"mirror": "off"}
+
     # running agent sessions (#95): the server resolves the name and talks to herdr
     m = re.match(r"^(?:how is|how's|hows) (?:the |my )?(.+?) session (?:doing|going)$", t)
     if m:

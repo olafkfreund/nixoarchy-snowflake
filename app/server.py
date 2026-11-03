@@ -528,6 +528,142 @@ class Bus:
 
 BUS = Bus()
 
+MIRROR_OFF = ["ai-mirror", "control", "off"]
+MIRROR_STATUS = ["ai-mirror", "status"]
+
+
+class Mirror:
+    """Cache ai-mirror's control state for the page; only this watcher runs status."""
+    state = {"owner": None, "watching": False}
+    lock = threading.Lock()
+    thread = None
+    installed = False
+    checked = 0.0
+    stamp = None
+    last_status = 0.0
+    expires = None
+    revokes = 0                                      # bumped by revoke(): a status that started before it is stale
+    retry_at = None                                  # set when no source answered: ask again then, whatever the cached owner
+
+    @classmethod
+    def snapshot(cls):
+        with cls.lock:
+            return dict(cls.state)
+
+    @classmethod
+    def publish(cls, owner, watching):
+        owner = owner if owner in ("off", "pending", "agent") else None
+        new = {"owner": owner, "watching": watching}
+        with cls.lock:
+            if new == cls.state:
+                return
+            cls.state = new
+        BUS.pub(t="mirror", **new)
+
+    @classmethod
+    def tick(cls):
+        now, mono = time.time(), time.monotonic()
+        if mono >= cls.checked:
+            cls.installed = bool(shutil.which("ai-mirror"))
+            cls.checked = mono + 60
+        root = os.environ.get("XDG_RUNTIME_DIR")
+        if not root or not cls.installed:
+            cls.stamp = None
+            cls.expires = None
+            cls.publish(None, False)
+            return
+        path = Path(root) / "ai-mirror"
+        try:
+            st = (path / "state.json").stat()
+            stamp = (st.st_mtime_ns, st.st_size, st.st_ino)
+        except FileNotFoundError:
+            stamp = None
+        except OSError:
+            stamp = cls.stamp
+        changed = stamp != cls.stamp
+        cls.stamp = stamp
+        try:
+            watching = -1 <= now - float((path / "watching").read_text().strip()) < 10     # (ai-mirror rounds it to the second)
+        except (OSError, ValueError):
+            watching = False
+        owner = cls.snapshot()["owner"]
+        if stamp is None:
+            cls.expires = None
+            cls.publish("off", watching)
+            return
+        expired = owner == "pending" and cls.expires is not None and cls.expires < now
+        due = cls.retry_at is not None and mono >= cls.retry_at
+        if changed or expired or due or (owner != "off" and mono - cls.last_status >= 30):
+            cls.last_status, revokes = mono, cls.revokes
+            try:
+                r = subprocess.run(MIRROR_STATUS, capture_output=True, text=True, timeout=3, stdin=subprocess.DEVNULL)
+                data = json.loads(r.stdout) if r.returncode == 0 else None
+                if not isinstance(data, dict):
+                    raise ValueError("bad status")
+            except (OSError, ValueError, subprocess.SubprocessError):
+                try:
+                    data = json.loads((path / "state.json").read_text())
+                    if not isinstance(data, dict):
+                        raise ValueError("bad state")
+                except (OSError, ValueError):
+                    data = None
+            cls.retry_at = mono + 5 if data is None else None    # neither answered: keep the last state, ask again in 5 s
+            if data is not None and revokes != cls.revokes:  # a revoke landed while status ran: its answer is older than the revoke,
+                cls.stamp = None                             # so ask again next tick (the revoke may have failed: never lose a grant)
+                return
+            if data is not None:
+                owner = data.get("owner")
+                request = data.get("request")
+                cls.expires = request.get("expires") if isinstance(request, dict) and isinstance(request.get("expires"), (int, float)) else None
+                if owner == "pending" and cls.expires is not None and cls.expires < now:
+                    owner = "off"
+                cls.publish(owner, watching)
+                return
+        cls.publish(owner, watching)
+
+    @classmethod
+    def loop(cls):
+        while True:
+            try:
+                cls.tick()
+            except Exception as e:  # noqa: BLE001
+                print(f"[nixi] mirror: {e}", file=sys.stderr)
+            time.sleep(5 if Wake.asleep else 1)
+
+    @classmethod
+    def start(cls):
+        if not cls.thread:
+            cls.thread = threading.Thread(target=cls.loop, daemon=True)
+            cls.thread.start()
+
+    @staticmethod
+    def live_owner():
+        """ai-mirror's own answer right now (expired requests already lapsed), or None if it couldn't say."""
+        try:
+            r = subprocess.run(MIRROR_STATUS, capture_output=True, text=True, timeout=3, stdin=subprocess.DEVNULL)
+            data = json.loads(r.stdout) if r.returncode == 0 else None
+            return data.get("owner") if isinstance(data, dict) else None
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return None
+
+    @classmethod
+    def revoke(cls):
+        cls.revokes += 1
+        try:
+            r = subprocess.run(MIRROR_OFF, capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL)
+            try:
+                data = json.loads(r.stdout)
+            except ValueError:
+                data = None
+            if r.returncode == 0 and isinstance(data, dict) and data.get("owner") == "off":
+                cls.publish("off", cls.snapshot()["watching"])      # (a recent read stays a recent read)
+                return {"ok": True}
+            msg = data.get("error", {}).get("message") if isinstance(data, dict) and isinstance(data.get("error"), dict) else None
+            error = msg or ((r.stderr or "").strip().splitlines() or ["ai-mirror could not release control"])[-1]
+        except (OSError, subprocess.SubprocessError) as e:
+            error = str(e)
+        return {"ok": False, "error": str(error)[:200]}
+
 
 # ---------------------------------------------------------------- "ask me first" approvals
 def summarize_command(cmd):
@@ -4775,7 +4911,7 @@ def state_info():
 
         "wake_word": bool(CFG.get("wake_word")), "notify_done": bool(CFG.get("notify_done")),
         "popup_done": bool(CFG.get("popup_done")), "hover": bool(CFG.get("hover")), "code_panel": CFG.get("code_panel", True) is not False, "live_minutes": int(CFG.get("live_minutes") or 10), "voice_native": Speaker.available(), "code_face": "you" if CFG.get("code_face") == "you" else "him",
-        "click_through": bool(CFG.get("click_through")),
+        "click_through": bool(CFG.get("click_through")), "mirror": Mirror.snapshot(),
         "autostart": bool(CFG.get("autostart")), "listen_on_show": bool(CFG.get("listen_on_show")),
         "barge_in": bool(CFG.get("barge_in")), "sfx": bool(CFG.get("sfx")), "look": look(), "skins": SKINS, "plugin_props": (Plug.ensure(), Plug.props)[1], "ambient": Ambient.snapshot(),
         "weather": {"sky": Ambient.sky, "cold": Ambient.cold, "windy": Ambient.windy, "lean": Ambient.lean,
@@ -4909,6 +5045,8 @@ class Handler(BaseHTTPRequestHandler):
         if not full and not (secrets.compare_digest(tok, TOOL_TOKEN) and p in TOOL_PATHS):
             return self._json({"error": "forbidden"}, 403)
         try:
+            if p == "/api/mirror/off":
+                return self._json(Mirror.revoke())
             if p == "/api/ticket":                 # (window token only) a one-time ticket for the browser fallback
                 return self._json({"ticket": Tickets.new()})
             if p == "/api/theme":                  # the Omarchy theme changed: re-read it and tell the page
@@ -5120,6 +5258,14 @@ class Handler(BaseHTTPRequestHandler):
                 if mem:
                     return self._json({"handled": True, "say": mem, "mood": "happy", "state": state_info()})
                 r = quick.handle(said)
+                if r and r.get("mirror") == "off":
+                    # (ask ai-mirror itself, not the cache: the cache can lag a grant by a few seconds; nothing held → no revoke)
+                    if not shutil.which("ai-mirror") or Mirror.live_owner() == "off":
+                        r = {"say": "No agent is controlling the mouse and keyboard through ai-mirror.", "mood": "curious"}
+                    elif Mirror.revoke()["ok"]:
+                        r = {"say": "Control is back with you.", "mood": "happy", "sfx": "ok"}
+                    else:
+                        r = {"say": "I couldn't take it back — press Super, Shift and Escape.", "mood": "sad", "sfx": "error"}
                 if r and ("session_status" in r or "session_send" in r):    # nixi's agent does the work, as an ordinary ask (#95)
                     say, ask = session_send(*r["session_send"]) if "session_send" in r else session_status(r["session_status"], r.get("loose"))
                     if ask:
@@ -5341,6 +5487,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             emit(t="hello")
             emit(t="situation", **Ambient.situation())
+            emit(t="mirror", **Mirror.snapshot())
             while alive[0]:
                 try:
                     ev = q.get(timeout=15)
@@ -5647,6 +5794,7 @@ def main():
     threading.Thread(target=warm_tts, daemon=True).start()
     Wake.ensure()
     Ambient.start()
+    Mirror.start()
     Inbox.start()
     Desk.start()
     if not BRIDGED:
