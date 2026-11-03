@@ -1045,6 +1045,58 @@ def attention_accept(frm, text, now=None, target=None, hook=None):
     return True
 
 
+LOC_CACHE = {"at": -1e9, "v": None}
+
+
+def _place(v):
+    """A stored place cleaned to {name, latitude?, longitude?}, or None."""
+    if not isinstance(v, dict) or not isinstance(v.get("name"), str):
+        return None
+    name = v["name"].strip()
+    if not 0 < len(name) <= 120 or re.search(r"[\x00-\x1f\x7f]", name):
+        return None
+    out = {"name": name}
+    for k in ("latitude", "longitude"):
+        if isinstance(v.get(k), (int, float)) and not isinstance(v.get(k), bool):
+            out[k] = v[k]
+    return out if ("latitude" in out) == ("longitude" in out) else {"name": name}
+
+
+def _location_files():
+    """What `nixarchy-location --json` says, read from the two files when the command isn't installed."""
+    d = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "omarchy/settings"
+
+    def load(n):
+        try:
+            v = json.loads((d / n).read_text())
+            return v if isinstance(v, dict) else None
+        except (OSError, ValueError):
+            return None
+    w, p = load("weather.json"), load("places.json") or {}
+    now = _place(w)
+    home = _place(p.get("home")) or (now if w and w.get("source") != "wifi" else None)    # (a picked file is Home until places.json says)
+    return {"now": now, "chosen": now is not None, "how": "auto" if now is None else "wifi" if w.get("source") == "wifi" else "picked",
+            "home": home, "work": _place(p.get("work"))}
+
+
+def location():
+    """The user's places and the one they are at, cached 60 s. Only what they set: never an IP guess, and no network call here."""
+    if time.monotonic() - LOC_CACHE["at"] < 60 and LOC_CACHE["v"] is not None:
+        return LOC_CACHE["v"]
+    try:
+        r = subprocess.run(["nixarchy-location", "--json"], capture_output=True, text=True, timeout=2, stdin=subprocess.DEVNULL)
+        j = json.loads(r.stdout) if r.returncode == 0 else None
+        if not isinstance(j, dict):
+            raise ValueError("no answer")
+        now = _place(j.get("now")) if j.get("chosen") else None
+        v = {"now": now, "chosen": now is not None, "how": j.get("how") if j.get("how") in ("picked", "wifi") and now else "auto",
+             "home": _place(j.get("home")), "work": _place(j.get("work"))}
+    except (OSError, ValueError, subprocess.SubprocessError):
+        v = _location_files()
+    LOC_CACHE.update(at=time.monotonic(), v=v)
+    return v
+
+
 class Ambient:
     """Small cues for the lambda tips: failed user units / a new NixOS generation (local), the next calendar item (gog) and
     the weather (omarchy weather). Its own thread, a TTL per source, paused while he is hidden; never run from state_info()."""
@@ -3824,12 +3876,16 @@ def run_bridge(prompt, emit):
     # nixi's agent writes for a screen; this is read aloud, so ask for speech (the grounding stays the bridge's own)
     note = ("(Spoken reply via Nixi's voice: 1-4 short spoken sentences, no tables, lists or code blocks; you may start with "
             "one mood tag, one of " + ", ".join(f"[{t}]" for t in FACE_TAGS) + ".)\n\n")
+    here = location()
+    if here["chosen"]:                                   # (only a place the user chose: the note never carries an IP guess)
+        note = note[:-3] + f" The user is in {here['now']['name']}.)\n\n"
     if CFG.get("answer_stages", True) and ST.stage_run is None:
         note = note[:-3] + (" When the answer is commands to run, or 2-5 facts, do not speak them: say what they are in a sentence, then "
                             "end the reply with ONE last line, <<stage>> followed by JSON on that line: "
                             '{"v":1,"kind":"commands","title":"optional plaque, 1-4 words","items":[{"label":"what it does","cmd":"the command"}]} or '
                             '{"v":1,"kind":"facts","title":"...","points":["..."],"source":"optional"} or, to find videos, {"v":1,"kind":"video","query":"search words"} (the server searches) or, for directions or a place, '
                             "{\"v\":1,\"kind\":\"place\",\"dest\":\"address or name\",\"mode\":\"MODE\"}, where MODE is one of driving, walking, bicycling, transit (leave mode out for a plain place); "
+                            "for the user's own home or work, say dest \"@home\" or \"@work\": the server fills in the address, never ask for it or guess it; "
                             "at most 5 items, labels and points under 120 characters, commands under 500, no line breaks inside.)\n\n")
     BRIDGE.send({"type": "prompt", "text": note + prompt})
     mid = None
@@ -3874,7 +3930,7 @@ def run_bridge(prompt, emit):
 
 
 THUMBS = {}                                              # posters of the stage on screen, by token (dropped with the stage)
-STAGES = stages.Store(on_new=THUMBS.clear)                                  # the stage on screen and the one before it (#144)
+STAGES = stages.Store(on_new=THUMBS.clear, where=lambda: location())                                  # the stage on screen and the one before it (#144)
 
 
 def stages_on():
