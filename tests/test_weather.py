@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import time
 import unittest
 from unittest import mock
 
@@ -102,16 +103,23 @@ class WeatherTest(_ServerEnv):
         self.body = {}
         self.assertIsNone(self.A.forecast(self.A.place_key()))
 
+    def test_omarchy_reading_expires(self):
+        A = self.A
+        A.omx = {"sky": "rain", "temp": 3.0, "wind": 12.0, "at": time.monotonic() - 7201}   # (Codex, agy, Opus: it never expired)
+        self.assertIsNone(A.reading()[0])
+        A.run = staticmethod(lambda *a, **k: None)                                            # offline: omarchy answers nothing
+        A.fetch("weather")
+        self.assertIsNone(A.omx)
+
     # ---- margins
     def test_cold_margins(self):
         A = self.A
-        seq = [(6, 0), (5, 1), (6, 1), (7.5, 0), (-5, 1), (-5, 2), (-4, 2), (-2.9, 1), (8, 0)]
+        seq = [(6, 0), (5, 1), (6, 1), (7.5, 0), (-5, 2), (-4, 2), (-2.9, 1), (8, 0)]   # (0 → 2 in one step, plan step 5)
         for feel, want in seq:
             self.hold(feel=feel)
             self.tick()
             self.assertEqual(A.cold, want, feel)
         self.hold(feel=-5)
-        self.tick()
         self.tick()
         self.assertEqual(A.cold, 2)
         self.hold(feel=8)
@@ -183,7 +191,7 @@ class WeatherTest(_ServerEnv):
     def test_an_old_reading_falls_back_to_omarchy(self):
         self.hold(sky="snow", feel=-9)
         self.A.wx["at"] -= 7201
-        self.A.omx = {"sky": "rain", "temp": 3.0, "wind": 12.0}
+        self.A.omx = {"sky": "rain", "temp": 3.0, "wind": 12.0, "at": time.monotonic()}
         self.tick()
         self.assertEqual((self.A.wsrc, self.A.weather, self.A.feel, self.A.wspeed), ("omarchy", "rain", 3.0, 12.0))
 
@@ -193,7 +201,7 @@ class WeatherTest(_ServerEnv):
         self.tick()
         self.tick()
         self.assertEqual(A.cold, 2)
-        A.omx = {"sky": None, "temp": 0.0, "wind": 1.0}
+        A.omx = {"sky": None, "temp": 0.0, "wind": 1.0, "at": time.monotonic()}
         self.places = {"now": {"latitude": 40.0, "longitude": 10.0}, "home": None, "work": None}
         self.tick()
         self.assertEqual(A.wsrc, "omarchy")

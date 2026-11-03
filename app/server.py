@@ -14,6 +14,7 @@ import collections
 import hashlib
 import io
 import json
+import http.client
 import math
 import os
 import random
@@ -1085,8 +1086,9 @@ def _location_files():
 
 def location():
     """The user's places and the one they are at, cached 60 s. Only what they set: never an IP guess, and no network call here."""
-    if time.monotonic() - LOC_CACHE["at"] < 60 and LOC_CACHE["v"] is not None:
-        return LOC_CACHE["v"]
+    at, cached = LOC_CACHE["at"], LOC_CACHE["v"]                # (one read: location_act may reset it from another thread)
+    if time.monotonic() - at < 60 and cached is not None:
+        return cached
     try:
         r = subprocess.run(["nixarchy-location", "--json"], capture_output=True, text=True, timeout=2, stdin=subprocess.DEVNULL)
         j = json.loads(r.stdout) if r.returncode == 0 else None
@@ -1282,9 +1284,8 @@ class Ambient:
         m = re.search(r"(-?\d+(?:\.\d+)?)\s*°\s*C", out or "")
         w = re.search(r"Wind\s*\S*?\s*(\d+(?:\.\d+)?)\s*km/h", out or "")
         sky = cls.sky_of(cls.run(["omarchy", "weather", "icon"], timeout=10))
-        if m or w or sky:
-            cls.omx = {"sky": sky, "temp": float(m.group(1)) if m else None,
-                       "wind": float(w.group(1)) if w else None}
+        cls.omx = {"sky": sky, "temp": float(m.group(1)) if m else None, "wind": float(w.group(1)) if w else None,
+                   "at": time.monotonic()} if (m or w or sky) else None      # (offline: no reading, as before)
         if CFG.get("proactive") and CFG.get("ambient_weather") and CFG.get("look_weather"):
             key = cls.place_key()
             if key is not None:
@@ -1339,16 +1340,20 @@ class Ambient:
                     "feel": number("apparent_temperature", -80, 60), "temp": number("temperature_2m", -80, 60),
                     "wind": number("wind_speed_10m", 0, 400), "dir": number("wind_direction_10m", 0, 360),
                     "day": day if type(day) is int and day in (0, 1) else None}
-        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, http.client.HTTPException):
             return None
+
+    @staticmethod
+    def gated():
+        return bool(CFG.get("proactive") and CFG.get("ambient_weather") and CFG.get("look_weather"))
 
     @classmethod
     def reading(cls):
-        wx = cls.wx
-        if wx and wx["key"] == cls.place_key() and 0 <= time.monotonic() - wx["at"] < 7200:
+        wx, t = cls.wx, time.monotonic()
+        if wx and cls.gated() and 0 <= t - wx["at"] < 7200 and wx["key"] == cls.place_key():
             return "open-meteo", *(wx[k] for k in ("sky", "heavy", "feel", "temp", "wind", "dir"))
         omx = cls.omx
-        if omx:
+        if omx and 0 <= t - omx["at"] < 7200:
             return "omarchy", omx["sky"], False, omx["temp"], omx["temp"], omx["wind"], None
         return None, None, False, None, None, None, None
 
@@ -1457,8 +1462,9 @@ class Ambient:
         if cls.wx is None and cls.omx is None:
             sky = cls.sky  # preserve an icon reading already held by older callers
         cls.sky = sky
-        if CFG.get("ambient_weather"):
-            cls.data["weather"] = cls.frost(temp)
+        if CFG.get("ambient_weather") and cls.data["weather"] != cls.frost(temp):
+            cls.data["weather"] = cls.frost(temp)          # (an expiry or a place change, between fetches: tell the page now)
+            BUS.pub(t="ambient", glint=False, alert=False, **cls.data)
         cls.weather = sky if gate else None
         cls.day = bool(cls.wx["day"]) if source == "open-meteo" and cls.wx["day"] is not None else 7 <= now.hour < 19
         if gate:
@@ -1470,7 +1476,7 @@ class Ambient:
                 if feel > -3:
                     cls.cold = 1
             elif feel <= -5:
-                cls.cold = 2 if cls.cold else 1
+                cls.cold = 2
             elif cls.cold == 0 and feel <= 5:
                 cls.cold = 1
             if wind is None:
