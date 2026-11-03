@@ -1546,7 +1546,7 @@ let dozing=false, framePaused=false;
 requestAnimationFrame(frame);
 
 /* ================= voice out (sentence-streamed) ================= */
-let floorOn=false, floorReq=Promise.resolve(); function floorPage(on){ if(floorOn===on) return floorReq; floorOn=on; return floorReq=post('/api/floor',{hold:on}).catch(()=>{}); }   // the voice floor (one speaker at a time)
+let floorOn=false, floorReq=Promise.resolve(); function floorPage(on){ if(floorOn===on) return floorReq; floorOn=on; return floorReq=floorReq.then(()=>post('/api/floor',{hold:on})).catch(()=>{}); }   // in order: a late release must not undo the next hold   // the voice floor (one speaker at a time)
 let actx=null, spkAn=null, srcs=[], curIt=null, playing=false, gen=0, nextAt=0, pumpGen=-1; const q=[];
 function ac(){ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==='suspended') actx.resume(); return actx; }
 // enqueue(text, {cap:true}) also puts the words on screen, one by one, as he says them

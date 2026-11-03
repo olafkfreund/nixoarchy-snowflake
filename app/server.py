@@ -3438,6 +3438,9 @@ class PageFloor:
         with self.lock:
             self.first = self.clock()       # the page plays from here, not from when it asked
             self.acquired = ok and self.held
+            lost = ok and not self.held     # cut off between taking the lock and getting here
+        if lost:
+            (self.floor or FLOOR).release("page", 0)
         self._arm()
 
     def release(self, tail=None):

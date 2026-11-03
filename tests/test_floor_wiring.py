@@ -272,6 +272,20 @@ class PageFloorTest(_Base):
         pf.check()
         self.assertTrue(self.probe_free())
 
+    def test_a_cut_off_during_acquisition_does_not_keep_the_floor(self):
+        # #25 review: release() ran between the lock being taken and `acquired` being set.
+        pf = self.make([0.0])
+        real_hold = pf.floor.hold
+
+        def racing_hold(key, cancelled=None):
+            ok = real_hold(key, cancelled)
+            pf.release()                    # the page's cut-off lands right here
+            return ok
+        pf.floor.hold = racing_hold
+        pf.hold()
+        self.assertFalse(pf.acquired)
+        self.assertTrue(self.probe_free(), "the page key kept the floor")
+
     def test_page_release_uses_the_tail(self):
         pf = self.make([0.0])
         pf.hold()
@@ -315,6 +329,7 @@ class PageSourceTest(unittest.TestCase):
         self.assertRegex(html, r"post\('/api/floor',\{hold:on\}\)")
         pump = html[html.index("async function pump()"):html.index("function quietNative")]
         self.assertIn("await floorPage(true)", pump)
+        self.assertIn("floorReq=floorReq.then(", html)
         self.assertIn("floorPage(false)", html[html.index("function quietCheck"):html.index("// shush")])
         self.assertIn("floorPage(false)", html[html.index("function shush"):html.index("const untilQuiet")])
 
