@@ -40,6 +40,7 @@ APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 import plugins  # noqa: E402
 from floor import FLOOR, pdeathsig_preexec  # noqa: E402
+import day  # noqa: E402
 import quick  # noqa: E402
 import recall  # noqa: E402
 import stages  # noqa: E402
@@ -1377,6 +1378,15 @@ class Ambient:
         except (OSError, subprocess.SubprocessError):
             return None
 
+    @staticmethod
+    def cal_ids():
+        """The enabled calendars Nixi reads (also the day desk's)."""
+        try:
+            return [c["googleCalendarId"] for c in json.loads((NIXI_CONF.parent / "calendars.json").read_text(encoding="utf-8"))
+                    if isinstance(c, dict) and c.get("enabled") and isinstance(c.get("googleCalendarId"), str)]
+        except (OSError, ValueError, KeyError, TypeError):
+            return []
+
     @classmethod
     def poke(cls):
         """Fetch everything again on the next tick (he was shown, or a setting changed)."""
@@ -1394,12 +1404,7 @@ class Ambient:
             cls.data["sys"] = [ln.replace("●", " ").split()[0] for ln in (out or "").splitlines() if ln.replace("●", " ").split()]
             return cls.generation()
         if what == "cal":
-            conf = NIXI_CONF.parent / "calendars.json"
-            try:
-                ids = [c["googleCalendarId"] for c in json.loads(conf.read_text(encoding="utf-8"))
-                       if isinstance(c, dict) and c.get("enabled") and isinstance(c.get("googleCalendarId"), str)]
-            except (OSError, ValueError, KeyError, TypeError):
-                ids = []
+            ids = cls.cal_ids()
             out = ids and cls.run(["gog", "--readonly", "--json", "calendar", "events", *ids, "--from", "now", "--days", "2",
                                    "--sort", "start", "--max", "20"], timeout=10)
             if out:
@@ -4460,9 +4465,13 @@ def run_bridge(prompt, emit):
                             '{"v":1,"kind":"commands","title":"optional plaque, 1-4 words","items":[{"label":"what it does","cmd":"the command"}]} or '
                             '{"v":1,"kind":"facts","title":"...","points":["..."],"source":"optional"} or, to find videos, {"v":1,"kind":"video","query":"search words"} (the server searches) or, for directions or a place, '
                             "{\"v\":1,\"kind\":\"place\",\"dest\":\"address or name\",\"mode\":\"MODE\"}, where MODE is one of driving, walking, bicycling, transit (leave mode out for a plain place); "
+                            "for \"how does my day look?\", \"what's next today?\" or \"what's on today?\", {\"v\":1,\"kind\":\"day\"} (calendar, tasks and GitHub: the server fetches them, say only a sentence); "
                             "for the weather, the calendar or the user's herdr sessions and failed services, {\"v\":1,\"kind\":\"weather\"}, {\"v\":1,\"kind\":\"calendar\"} or {\"v\":1,\"kind\":\"status\"} (the server fills them in: say only a sentence); "
                             "for the user's own home or work, say dest \"@home\" or \"@work\": the server fills in the address, never ask for it or guess it; "
                             "at most 5 items, labels and points under 120 characters, commands under 500, no line breaks inside.)\n\n")
+    cur = STAGES.current() if stages_on() and ST.stage_run is None else None
+    if cur and cur["kind"] == "day" and DAY["snap"] and DAY["snap"]["date"] == time.strftime("%Y-%m-%d"):        # a question while the desk is open: the agent gets the short summary, once, here only
+        note += day.summary(DAY["snap"]) + "\n\n"
     BRIDGE.send({"type": "prompt", "text": note + prompt})
     mid = None
     for line in p.stdout:
@@ -4560,6 +4569,33 @@ def video_stage(st, before):
     st = {**st, "items": stages.video_search(st["query"])}      # (the agent only said what to look for)
     if stages_on() and STAGES.current() is before:
         BUS.pub(t="stage", **stage_event(STAGES.put(st)))
+
+
+DAY = {"snap": None}                                    # the snapshot behind the day stage on screen (memory only; titles are never logged)
+
+
+def day_snapshot(cache_only=False):
+    import datetime
+    return day.snapshot(datetime.datetime.now().astimezone(), Ambient.cal_ids() if CFG.get("ambient_calendar") else [], cache_only=cache_only)
+
+
+def day_stage(st, before):
+    """Fetch the day off the turn (gog and gh take seconds), then show it, unless the stage on screen changed meanwhile."""
+    snap = day_snapshot()
+    DAY["snap"] = snap
+    if stages_on() and STAGES.current() is before:
+        BUS.pub(t="stage", **stage_event(STAGES.put(day.stage(snap))))
+
+
+def day_next():
+    """'What's next?' without an agent turn: the cached day, or a look (the desk opens when it arrives)."""
+    if not BRIDGED or not stages_on():
+        return None
+    snap = day_snapshot(cache_only=True)
+    if snap is None:
+        threading.Thread(target=day_stage, args=(None, STAGES.current()), daemon=True).start()
+        return {"say": "Let me look at your day.", "mood": "curious"}
+    return {"say": day.whats_next(snap), "mood": "happy"}
 
 
 def stage_act(token, act):
@@ -5311,6 +5347,8 @@ class Handler(BaseHTTPRequestHandler):
                     if ask:
                         return self._json({"handled": False, "ask": ask})
                     r = {"say": say, "mood": "curious"} if say else None
+                elif r and "whats_next" in r:            # the day desk's cached answer (#144): no agent turn
+                    r = day_next()
                 elif r and "nixi_ask" in r:
                     r = {"say": open_in_nixi(r["nixi_ask"]), "mood": "happy"} if BRIDGED else None
                 elif r and "session_show" in r:
@@ -5678,9 +5716,9 @@ class Handler(BaseHTTPRequestHandler):
                     if tail:
                         out(t="delta", text=tail)
                     st = stages.validate(blk) if t == "result" and blk and run_cmd is None and stages_on() else None    # (a Run never replaces the board)
-                    if st and st["kind"] == "video":
+                    if st and st["kind"] in ("video", "day"):
                         out(**kw)                                                      # (the turn ends now; the search may take 8 s)
-                        threading.Thread(target=video_stage, args=(st, STAGES.current()), daemon=True).start()
+                        threading.Thread(target=video_stage if st["kind"] == "video" else day_stage, args=(st, STAGES.current()), daemon=True).start()
                         return
                     if st:
                         out(t="stage", **stage_event(STAGES.put(desk_stage(st) if st["kind"] in stages.SERVER_KINDS else st)))

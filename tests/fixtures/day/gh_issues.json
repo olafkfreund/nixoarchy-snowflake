@@ -1,0 +1,2 @@
+[{"number": 18, "repository": {"name": "showcase", "nameWithOwner": "someone/showcase"}, "title": "Fix the flaky build", "url": "https://github.com/someone/showcase/issues/18"},
+ {"number": 7, "repository": {"name": "tools", "nameWithOwner": "someone/tools"}, "title": "Odd link", "url": "https://evil.example/someone/tools/issues/7"}]

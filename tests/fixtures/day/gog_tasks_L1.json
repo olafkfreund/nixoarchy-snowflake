@@ -1,0 +1,6 @@
+{"nextPageToken": "", "tasks": [
+ {"id": "t1", "title": "Send invoice", "status": "needsAction", "due": "{Y}T00:00:00.000Z", "webViewLink": "https://tasks.google.com/task/t1"},
+ {"id": "t2", "title": "Book dentist", "status": "needsAction", "due": "{D}T00:00:00.000Z"},
+ {"id": "t3", "title": "Already done", "status": "completed", "completed": "{D}T07:00:00.000Z", "due": "{Y}T00:00:00.000Z"},
+ {"id": "t4", "title": "No due date", "status": "needsAction"}
+]}

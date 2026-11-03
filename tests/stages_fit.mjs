@@ -38,6 +38,12 @@ const FIX = {
   "calendar (empty)": { t: "stage", v: 1, kind: "calendar", open: "o1", at: "09:55", events: [] },
   "status": { t: "stage", v: 1, kind: "status", term: "t0", sys_on: true, failed: Array.from({ length: 5 }, (_, i) => "unit-" + i + ".service"), failed_n: 7, sessions: Array.from({ length: 5 }, (_, i) => ({ title: long, status: "working", open: "s" + i })) },
   "status (empty)": { t: "stage", v: 1, kind: "status", term: "t0", sys_on: false, failed: [], failed_n: 0, sessions: [] },
+  "day (full)": { t: "stage", v: 1, kind: "day", wd: "Wednesday", md: "28 Sep", at: "09:55", cal: "ok", next: { when: "10:40", title: long, in: "in 45 min", open: "n1", join: "j1" },
+    rows: [["today", "Today", 12, "ok", "14:00", false], ["tasks", "Tasks", 9, "ok", "overdue", true], ["github", "GitHub", 11, "ok", "some-long-repository-name#1234", false]].map(([key, label, n, st, when, bad]) =>
+      ({ key, label, n, st, items: Array.from({ length: 8 }, (_, i) => ({ when, title: long, bad: bad && i < 2, open: "o" + key + i })) })) },
+  "day (stale and off)": { t: "stage", v: 1, kind: "day", wd: "Wednesday", md: "28 Sep", at: "09:55", cal: "stale@09:30", next: { when: "10:40", title: "Stand-up", in: "in 45 min", open: null, join: null },
+    rows: [{ key: "today", label: "Today", n: 1, st: "stale@09:30", items: [{ when: "all day", title: "Release day", open: "o1" }] }, { key: "tasks", label: "Tasks", n: 0, st: "stale@09:55", items: [] }, { key: "github", label: "GitHub", n: 0, st: "off", items: [] }] },
+  "day (empty)": { t: "stage", v: 1, kind: "day", wd: "Sunday", md: "1 Jan", at: "09:55", cal: "ok", next: null, rows: ["today", "tasks", "github"].map(key => ({ key, label: key, n: 0, st: "ok", items: [] })) },
   "facts": { t: "stage", v: 1, kind: "facts", trust: "mechanic", title: "Tides", token: "f1", points: ["Two highs a day", "Two lows a day", "Springs at new moon"], source: "NOAA" },
   "facts (5 long)": { t: "stage", v: 1, kind: "facts", trust: "mechanic", title: long, token: "f1", points: Array.from({ length: 5 }, () => long), source: long },
 };
@@ -124,6 +130,32 @@ for (const [pn, ox] of Object.entries(POS)) for (const [fn, fx] of Object.entrie
   await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }); await sleep(200);
   await show(FIX.calendar, w => 0);
   check(await ev("return getComputedStyle(document.querySelector('#stg .pg')).animationName") === "none", "desk: flip still under reduced motion");
+  await send("Emulation.setEmulatedMedia", { features: [] }); }
+
+// the day desk: a date tab that flips once, a Next card with Join, three rows that open a detail view in the same frame
+{ await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "no-preference" }] });
+  const D = FIX["day (full)"];
+  await show({ ...D, wd: "<b>Wed</b>", next: { ...D.next, title: "<b>Stand-up</b>" }, rows: D.rows.map((r, i) => i ? r : { ...r, items: r.items.map(x => ({ ...x, title: "<i>t</i>" })) }) }, w => 0);
+  const d = await ev(`const f=document.getElementById('stg'); return [f.classList.contains('desk'), f.querySelectorAll('b,i').length, f.querySelector('.pgd').textContent, f.querySelector('.nxl').textContent, [...f.querySelectorAll('.nxa .sb')].map(b=>b.textContent).join(), f.querySelectorAll('.rw').length, [...f.querySelectorAll('.rwc')].map(x=>x.textContent).join(), getComputedStyle(f.querySelector('.pg')).animationName, document.getElementById('stgT').textContent, document.getElementById('wtc').classList.contains('on'), f.querySelectorAll('.rw')[0].querySelectorAll('.rwl').length]`);
+  check(d[0] && d[1] === 0 && d[2] === "<b>Wed</b>" && d[3] === "<b>Stand-up</b>" && d[4] === "Join,Open" && d[5] === 3 && d[6] === "12,9,11" && d[7] === "stgFlip" && d[8] === "Your day" && d[9] && d[10] === 2, "day desk: layout and markup as text", JSON.stringify(d));
+  await show({ ...D, rows: D.rows.map(r => ({ ...r, items: r.items.slice(0, 2).map(x => ({ ...x, title: "Short title" })) })), next: { ...D.next, title: "Stand-up" } }, w => 0);
+  const nf = await ev("const b=document.querySelector('#stg .bd'); return [b.scrollHeight, b.clientHeight]");
+  check(nf[0] <= nf[1], "day desk: a normal day shows all three rows without scrolling", JSON.stringify(nf));
+  await show({ ...D, wd: "<b>Wed</b>", next: { ...D.next, title: "<b>Stand-up</b>" }, rows: D.rows.map((r, i) => i ? r : { ...r, items: r.items.map(x => ({ ...x, title: "<i>t</i>" })) }) }, w => 0);
+  await ev("document.querySelectorAll('#stg .rw')[1].click(); return 1"); await sleep(80);
+  const v = await ev(`const f=document.getElementById('stg'), r=f.getBoundingClientRect(); return [f.querySelectorAll('.tk').length, [...f.querySelectorAll('.sb')].map(b=>b.textContent).filter((x,i,a)=>a.indexOf(x)===i).join(), f.querySelectorAll('.tt.od').length, f.textContent.includes('+ 1 more'), r.height, f.querySelectorAll('.pg').length, f.querySelector('.bd').scrollHeight>=f.querySelector('.bd').clientHeight]`);
+  check(v[0] === 8 && v[1] === "Open,\u2190 Day" && v[2] === 2 && v[3] && v[4] <= 440 && v[5] === 0, "day desk: detail view", JSON.stringify(v));
+  await ev("[...document.querySelectorAll('#stg .sb')].find(b=>b.textContent.includes('Day')).click(); return 1"); await sleep(80);
+  check(await ev("const f=document.getElementById('stg'); return f.querySelectorAll('.rw').length===3 && getComputedStyle(f.querySelector('.pg')).animationName==='none'"), "day desk: back to the day, no second flip");
+  await show(FIX["day (stale and off)"], w => 0);
+  const o = await ev(`const f=document.getElementById('stg'); return [[...f.querySelectorAll('.rwm')].map(x=>x.textContent).join('|'), [...f.querySelectorAll('.nxa .sb')].length, f.querySelectorAll('.rwc')[2].textContent]`);
+  check(o[0] === "couldn\u2019t refresh \u00b7 09:30|couldn\u2019t refresh \u00b7 09:55|not set up" && o[1] === 0 && o[2] === "", "day desk: stale and off rows say so", JSON.stringify(o));
+  await show(FIX["day (empty)"], w => 0);
+  check(await ev("const x=document.getElementById('stg').textContent; return x.includes('Nothing else timed today') && x.includes('Nothing')"), "day desk: empty day");
+  check(await ev("const t=stageText(" + JSON.stringify(FIX["day (stale and off)"]) + "); return t.includes('GitHub: not set up') && t.includes('Next: 10:40 Stand-up') && t.includes('Release day')"), "day desk: text fallback");
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }); await sleep(200);
+  await show(D, w => 0);
+  check(await ev("return getComputedStyle(document.querySelector('#stg .pg')).animationName") === "none", "day desk: flip still under reduced motion");
   await send("Emulation.setEmulatedMedia", { features: [] }); }
 
 // trust notes and Run
