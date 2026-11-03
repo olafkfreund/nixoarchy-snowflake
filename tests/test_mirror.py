@@ -114,7 +114,7 @@ class MirrorTest(unittest.TestCase):
     def test_watching_boundary_at_10s(self):
         self.state_file("off")
         self.fakeout("status", '{"owner":"off"}')
-        for age, want in ((9.9, True), (10, False), (-1, False)):
+        for age, want in ((9.9, True), (10, False), (-0.5, True), (-1.5, False)):   # (ai-mirror rounds to the second: up to 1 s ahead is fresh)
             self.watching(age)
             self.assertIs(self.tick()["watching"], want, age)
 
@@ -255,7 +255,7 @@ class MirrorTest(unittest.TestCase):
         for s in ('"say": "Control is back with you.", "mood": "happy", "sfx": "ok"',
                   '"say": "I couldn\'t take it back — press Super, Shift and Escape.", "mood": "sad", "sfx": "error"',
                   '"say": "No agent is controlling the mouse and keyboard through ai-mirror.", "mood": "curious"',
-                  'not shutil.which("ai-mirror")', "Mirror.revoke()[\"ok\"]"):
+                  'Mirror.live_owner() == "off"', "Mirror.revoke()[\"ok\"]"):
             self.assertIn(s, src)
 
     def test_state_info_carries_mirror(self):

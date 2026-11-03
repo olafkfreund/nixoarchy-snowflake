@@ -108,9 +108,9 @@ class MirrorHttp(unittest.TestCase):
         r = json.loads(self.post("/api/quick", {"text": "take control back"}).read())
         self.assertEqual(r.get("say"), "Control is back with you.")
         self.assertEqual(r.get("mood"), "happy")
-        r = json.loads(self.post("/api/quick", {"text": "take control back"}).read())   # (it always asks ai-mirror: the cache can lag)
-        self.assertEqual(r.get("say"), "Control is back with you.")
-        self.assertEqual(self.argv_log.read_text().count("control off"), 2)
+        r = json.loads(self.post("/api/quick", {"text": "take control back"}).read())   # (it asks ai-mirror live: nothing held now)
+        self.assertEqual(r.get("say"), "No agent is controlling the mouse and keyboard through ai-mirror.")
+        self.assertEqual(self.argv_log.read_text().count("control off"), 1)              # (no needless revoke, no audit entry)
 
         argv = self.argv_log.read_text().split("\n")
         self.assertTrue(set(a for a in argv if a) <= {"status", "control off"}, argv)   # never agent/confirm/deny

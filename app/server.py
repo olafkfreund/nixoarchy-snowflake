@@ -542,6 +542,7 @@ class Mirror:
     stamp = None
     last_status = 0.0
     expires = None
+    revokes = 0                                      # bumped by revoke(): a status that started before it is stale
 
     @classmethod
     def snapshot(cls):
@@ -581,7 +582,7 @@ class Mirror:
         changed = stamp != cls.stamp
         cls.stamp = stamp
         try:
-            watching = 0 <= now - float((path / "watching").read_text().strip()) < 10
+            watching = -1 <= now - float((path / "watching").read_text().strip()) < 10     # (ai-mirror rounds it to the second)
         except (OSError, ValueError):
             watching = False
         owner = cls.snapshot()["owner"]
@@ -591,7 +592,7 @@ class Mirror:
             return
         expired = owner == "pending" and cls.expires is not None and cls.expires < now
         if changed or expired or (owner != "off" and mono - cls.last_status >= 30):
-            cls.last_status = mono
+            cls.last_status, revokes = mono, cls.revokes
             try:
                 r = subprocess.run(MIRROR_STATUS, capture_output=True, text=True, timeout=3, stdin=subprocess.DEVNULL)
                 data = json.loads(r.stdout) if r.returncode == 0 else None
@@ -605,7 +606,9 @@ class Mirror:
                 except (OSError, ValueError):
                     data = None
             if data is None:                                 # neither answered: keep the last state, ask again in 5 s, not 30
-                cls.last_status, cls.stamp = mono - 25, None
+                cls.last_status = mono - 25
+            if data is not None and revokes != cls.revokes:  # a revoke landed while status ran: its answer is older than the revoke
+                return
             if data is not None:
                 owner = data.get("owner")
                 request = data.get("request")
@@ -631,8 +634,19 @@ class Mirror:
             cls.thread = threading.Thread(target=cls.loop, daemon=True)
             cls.thread.start()
 
+    @staticmethod
+    def live_owner():
+        """ai-mirror's own answer right now (expired requests already lapsed), or None if it couldn't say."""
+        try:
+            r = subprocess.run(MIRROR_STATUS, capture_output=True, text=True, timeout=3, stdin=subprocess.DEVNULL)
+            data = json.loads(r.stdout) if r.returncode == 0 else None
+            return data.get("owner") if isinstance(data, dict) else None
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return None
+
     @classmethod
     def revoke(cls):
+        cls.revokes += 1
         try:
             r = subprocess.run(MIRROR_OFF, capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL)
             try:
@@ -5243,8 +5257,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"handled": True, "say": mem, "mood": "happy", "state": state_info()})
                 r = quick.handle(said)
                 if r and r.get("mirror") == "off":
-                    # (always revoke when ai-mirror is here: the cached owner can lag a grant by a few seconds)
-                    if not shutil.which("ai-mirror"):
+                    # (ask ai-mirror itself, not the cache: the cache can lag a grant by a few seconds; nothing held → no revoke)
+                    if not shutil.which("ai-mirror") or Mirror.live_owner() == "off":
                         r = {"say": "No agent is controlling the mouse and keyboard through ai-mirror.", "mood": "curious"}
                     elif Mirror.revoke()["ok"]:
                         r = {"say": "Control is back with you.", "mood": "happy", "sfx": "ok"}
