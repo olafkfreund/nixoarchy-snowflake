@@ -25,6 +25,11 @@ if ((await ev(`plugRender({items:[{id:'x-1',name:'<b>x</b>',version:'<i>1</i>',s
   const l=document.getElementById('plugList'); return [l.querySelector('b,i,u,img,s')!==null||document.querySelector('#plugErr s')!==null, l.textContent.includes('<b>x</b>'), l.textContent.includes('<img src=x onerror=1>')];`)).join() !== "false,true,true") {
   console.log("CUT  plugin names are not plain text"); process.exit(1);
 }
+// #149: each row has a visible switch (a mid-line // comment once removed its class, so it rendered as nothing)
+if ((await ev(`plugRender({items:[{id:'a-1',name:'A',version:'1',source:'Nix',enabled:false,caps:[],error:''},{id:'b-1',name:'B',version:'1',source:'Nix',enabled:true,caps:[],error:''}]});
+  return [...document.querySelectorAll('#plugList label.tg')].map(r=>{ const s=r.querySelector('.sw'); return !!s && parseFloat(getComputedStyle(s).width)>=30; }).join();`)) !== "true,true") {
+  console.log("CUT  a plugin row has no visible switch"); process.exit(1);
+}
 await ev("plugRender({items:[]}); return 1");
 
 // one case = how to turn it on, and which element(s) to measure
