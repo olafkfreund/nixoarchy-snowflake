@@ -24,6 +24,8 @@
   pipewire,
   alsa-utils,
   nixiBridge ? null,
+  # companion plugins (#149): folders or packages, each linked into share/nixi-companion/plugins/ (the server scans it)
+  plugins ? [ ],
 }:
 let
   # speaking only: no Japanese (its pyopenjtalk-plus fails its tests on current unstable) and no training extras
@@ -70,6 +72,10 @@ stdenvNoCC.mkDerivation {
     install -m755 bin/nixi-companion $out/bin/nixi-companion
     install -m644 data/nixi-companion.desktop $out/share/applications/nixi-companion.desktop
     install -m644 app/static/icon.png $out/share/icons/hicolor/512x512/apps/nixi-companion.png
+    mkdir -p $out/share/nixi-companion/plugins
+    for p in ${lib.escapeShellArgs (map (p: "${p}") plugins)}; do
+      ln -s "$p" "$out/share/nixi-companion/plugins/$(basename "$p")"
+    done
     ${lib.optionalString (nixiBridge != null) ''
       substituteInPlace $out/share/nixi-companion/app/server.py \
         --replace-fail '"@nixiBridge@"' ${lib.escapeShellArg (builtins.toJSON (builtins.toJSON nixiBridge))}

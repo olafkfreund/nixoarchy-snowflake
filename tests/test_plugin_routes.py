@@ -82,6 +82,32 @@ class PluginRoutesTest(_ServerEnv):
         it = self.items(S.plugins_api())["hat-one"]
         self.assertIn("element not allowed", it["error"])
 
+    def test_routes_need_the_window_token(self):
+        import urllib.error
+        import urllib.request
+        S = self.server
+        srv = S.ThreadingHTTPServer(("127.0.0.1", 0), S.Handler)
+        S.threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            base = "http://127.0.0.1:%d" % srv.server_address[1]
+
+            def call(path, method, token):
+                req = urllib.request.Request(base + path, method=method, data=b"{}" if method == "POST" else None,
+                                             headers={"X-Nixi-Token": token} if token else {})
+                try:
+                    with urllib.request.urlopen(req, timeout=5) as r:
+                        return r.status
+                except urllib.error.HTTPError as e:
+                    return e.code
+            for path, method in (("/api/companion-plugins", "GET"), ("/api/companion-plugins", "POST"),
+                                 ("/api/companion-plugins/reload", "POST")):
+                self.assertEqual(call(path, method, None), 403, (path, method))
+                self.assertEqual(call(path, method, S.TOOL_TOKEN), 403, (path, method, "tool token"))
+                self.assertEqual(call(path, method, S.TOKEN), 200, (path, method))
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
 
 if __name__ == "__main__":
     unittest.main()

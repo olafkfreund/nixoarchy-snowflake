@@ -193,5 +193,19 @@ class Sanitize(unittest.TestCase):
         self.assertIsNone(plugins._check(m, d))
 
 
+class Cli(unittest.TestCase):
+    def run_check(self, d):
+        import subprocess
+        return subprocess.run([sys.executable, str(plugins.APP_DIR / "plugins.py"), "--check", str(d)], capture_output=True, text=True)
+
+    def test_check(self):
+        root = plugins.APP_DIR.parent
+        good = self.run_check(root / "plugins/examples/party-hat-plus")
+        self.assertEqual((good.returncode, good.stdout.strip()), (0, "ok"))
+        bad = self.run_check(root / "tests/fixtures/plugins/broken")
+        self.assertEqual(bad.returncode, 1)
+        self.assertIn("unknown key: surprise", bad.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

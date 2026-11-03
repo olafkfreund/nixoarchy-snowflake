@@ -267,3 +267,29 @@ def sanitize_svg(data):
 
     walk(root, -1, 1)
     return nodes
+
+
+def check_dir(d):
+    """Build-time check (`plugins.py --check <dir>`): the reason a plugin folder is bad, or None."""
+    d = Path(d)
+    try:
+        m = json.loads((d / "plugin.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        return f"plugin.json unreadable: {e}"
+    err = _check(m, d)
+    if not err and "prop" in m:
+        try:
+            sanitize_svg((d / m["prop"]["file"]).read_bytes())
+        except (OSError, ValueError) as e:
+            err = f"prop: {e}"
+    return err
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) != 3 or sys.argv[1] != "--check":
+        sys.exit("usage: plugins.py --check <plugin folder>")
+    bad = check_dir(sys.argv[2])
+    if bad:
+        sys.exit(f"{sys.argv[2]}: {bad}")
+    print("ok")
