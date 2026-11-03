@@ -29,6 +29,7 @@ import sys
 import tempfile
 import threading
 import time
+import unicodedata
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -36,6 +37,7 @@ from urllib.parse import parse_qs, urlparse
 
 APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
+import plugins  # noqa: E402
 import quick  # noqa: E402
 import recall  # noqa: E402
 import stages  # noqa: E402
@@ -1419,6 +1421,60 @@ QUIP_FALLBACK = {
     "coding": ("{n} hours of code. Water?",), "done": ("All done!",)}
 
 
+class Plug:
+    """Enabled companion plugins (#149), scanned once and again on reload(): their quip lines and notification rules."""
+    loaded = None
+    quips = {}                                                  # event -> lines from enabled packs
+    rules = []                                                  # (kind "app"|"host", value, category)
+    SLOT = re.compile(r"\{[a-z_]+\}")
+
+    @classmethod
+    def clean(cls, d):
+        """Lines of a pack: at most 120 chars, no control characters, only plain {slot} braces; 200 lines in all."""
+        out, n = {}, 0
+        for ev, lines in d.items() if isinstance(d, dict) else ():
+            for x in lines if isinstance(lines, list) else ():
+                if n >= 200:
+                    return out
+                if isinstance(x, str) and x.strip() and len(x) <= 120 and not any(unicodedata.category(c) == "Cc" for c in x) \
+                        and not cls.SLOT.sub("", x).count("{") + cls.SLOT.sub("", x).count("}"):
+                    out.setdefault(ev, []).append(x)
+                    n += 1
+        return out
+
+    @classmethod
+    def reload(cls):
+        st = plugins.State()
+        cls.loaded = [p for p in plugins.scan(plugins.plugin_dirs()) if not p.error and st.get(p.id)["enabled"]]
+        cls.quips, cls.rules = {}, []
+        for p in cls.loaded:
+            m = p.manifest
+            if "quips" in m:
+                try:
+                    for ev, ls in cls.clean(json.loads((p.dir / m["quips"]).read_text(encoding="utf-8"))).items():
+                        cls.quips.setdefault(ev, []).extend(ls)
+                except (OSError, ValueError):
+                    pass                                        # an unreadable pack adds nothing
+            cls.rules += [(k, n[k], n["category"]) for n in m.get("notifications", []) for k in ("app", "host") if k in n]
+        Quips.bags.clear()
+
+    @classmethod
+    def ensure(cls):
+        if cls.loaded is None:
+            cls.reload()
+
+    @classmethod
+    def category(cls, app, source):
+        """The plugin map's category for a notification the built-in rules left in "other", or "other"."""
+        cls.ensure()
+        app = app.strip().lower()
+        host = re.sub(r"^[a-z][a-z0-9+.-]*://", "", source.strip().lower()).split("/")[0].split(":")[0]
+        for kind, v, cat in cls.rules:
+            if (kind == "app" and v == app) or (kind == "host" and host and (host == v or (v.startswith("*.") and host.endswith(v[1:])))):
+                return "video" if cat == "feed" else cat
+        return "other"
+
+
 class Quips:
     """A shuffled bag per event: no line repeats until the list is used up. The file is re-read when it changes."""
     path = APP_DIR / "quips.json"
@@ -1439,7 +1495,9 @@ class Quips:
                 cls.data = {k: [x for x in v if isinstance(x, str) and x.strip()] for k, v in d.items() if isinstance(v, list)}
             except (OSError, ValueError, AttributeError):
                 cls.data = {}                                   # broken or missing: the built-in lines
-        return cls.data.get(event) or list(QUIP_FALLBACK.get(event, ()))
+        Plug.ensure()
+        extra = Plug.quips.get(event, []) if event in cls.data or event in QUIP_FALLBACK else []   # unknown events are ignored
+        return (cls.data.get(event) or list(QUIP_FALLBACK.get(event, ()))) + extra
 
 
 def quip(event, **slots):
@@ -1652,7 +1710,7 @@ class Inbox:
         for x in data if isinstance(data, list) else []:
             if isinstance(x, dict) and x.get("category") == "other":     # the shell's own sorting misses these: put them right
                 who = str(x.get("source") or "") + " " + str(x.get("app") or "")
-                x["category"] = "mail" if cls.MAIL.search(who) else "chat" if cls.CHAT.search(who) else "video" if cls.FEED.search(who) else "other"
+                x["category"] = "mail" if cls.MAIL.search(who) else "chat" if cls.CHAT.search(who) else "video" if cls.FEED.search(who) else Plug.category(str(x.get("app") or ""), str(x.get("source") or ""))
             if not isinstance(x, dict) or not isinstance(x.get("key"), str) or not cls.KEY.fullmatch(x["key"]) or x.get("category") not in cls.CATS:
                 continue
             summary, body = str(x.get("summary") or "")[:120], str(x.get("body") or "")[:120]
