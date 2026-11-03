@@ -2254,10 +2254,10 @@ function stageFilm(ev,bd,acts,fn){
 const SKYW={partly:'partly cloudy'};   /* the sky kinds are single words; this one reads oddly alone */
 function skyWords(ev){ return [ev.temp==null?'':ev.temp+'\u00b0C', (ev.heavy?'heavy ':'')+(SKYW[ev.sky]||ev.sky||''), ev.feel!=null&&ev.feel!==ev.temp?'feels '+ev.feel+'\u00b0':'', ev.wind!=null?'wind '+ev.wind+' km/h'+(ev.dir?' '+ev.dir:''):''].filter(Boolean).join(', '); }
 function stageSky(ev,bd,fn){
-  if(ev.empty){ bd.appendChild(hx('div','pt1','No weather reading yet')); bd.appendChild(hx('div','src','Turn on Ambient weather in Settings, then give it a minute.')); return; }
+  if(ev.empty){ bd.appendChild(hx('div','pt1',ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet')); return; }
   const N='http://www.w3.org/2000/svg', sv=(t,a,p)=>{ const e=document.createElementNS(N,t); for(const k in a) e.setAttribute(k,a[k]); if(p) p.appendChild(e); return e; };
-  const g=sv('svg',{viewBox:'0 0 92 64','aria-hidden':'true'}), cl=['partly','cloudy','rain','snow'].includes(ev.sky), clear=!cl;
-  if(!cl||ev.sky==='partly') sv('circle',{cx:cl?34:46,cy:cl?24:30,r:cl?15:20,fill:SIT.day?'#ffd23f':'#f4f1de'},g);
+  const g=sv('svg',{viewBox:'0 0 92 64','aria-hidden':'true'}), cl=ev.sky!=='clear';   /* only clear draws a bare sun; an unknown sky is a neutral cloud */
+  if(ev.sky==='clear'||ev.sky==='partly') sv('circle',{cx:cl?34:46,cy:cl?24:30,r:cl?15:20,fill:SIT.day?'#ffd23f':'#f4f1de'},g);
   if(cl){ for(const [x,y,r] of [[40,40,15],[56,36,18],[70,42,13]]) sv('circle',{cx:x,cy:y,r,fill:SIT.day?'#ffffff':'#b9c3e6'},g);
     if(ev.sky==='rain') for(const x of [38,52,66]) sv('path',{d:'M'+x+' 56l-4 8',stroke:'#2a6fb0','stroke-width':3,'stroke-linecap':'round'},g);
     if(ev.sky==='snow') for(const x of [38,52,66]) sv('circle',{cx:x,cy:60,r:2.5,fill:'#fff'},g); }
@@ -2270,7 +2270,7 @@ function stageSky(ev,bd,fn){
 function stageOpen(b,fn,token,act,bad){ post('/api/stage/act',{token,act}).then(r=>r.json()).then(j=>stageOpened(b,fn,j,bad||"Couldn't open it")).catch(()=>{}); }
 function stageCal(ev,bd,acts,fn){
   acts.appendChild(stageBtn('Open calendar',b=>stageOpen(b,fn,ev.open,'open')));
-  if(ev.off){ bd.appendChild(hx('div','pt1','The calendar isn\u2019t switched on')); bd.appendChild(hx('div','src','Turn on Ambient calendar in Settings.')); return; }
+  if(ev.off||ev.unread){ bd.appendChild(hx('div','pt1',ev.off?'Calendar is off':'Calendar couldn\u2019t be read')); if(ev.off) bd.appendChild(hx('div','src','Turn on Ambient calendar in Settings.')); return; }
   const E=ev.events||[]; fn.textContent=ev.at?'From your calendar \u00b7 as of '+ev.at:'';
   if(!E.length){ bd.appendChild(hx('div','pt1','Nothing coming up')); return; }
   const join=e=>stageBtn('Join',b=>stageOpen(b,fn,e.join,'open','Couldn\'t open the link')), pg=hx('div','pg');
@@ -2285,7 +2285,7 @@ function stageStat(ev,bd,acts,fn){
   bd.appendChild(hx('div',F.length?'src bad':'src',!ev.sys_on?'Services not checked (Ambient system is off)':F.length?'Failed services: '+F.join(', ')+(more>0?' +'+more+' more':''):'No failed services'));
   acts.appendChild(stageBtn('Open terminal',b=>stageOpen(b,fn,ev.term,'terminal')));
 }
-function stageText(ev){ if(ev.kind==='weather') return ev.empty?'No weather reading yet':'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'The calendar isn\u2019t switched on':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return (ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running'; if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
+function stageText(ev){ if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
   stgPosted=false;

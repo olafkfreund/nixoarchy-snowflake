@@ -17,7 +17,7 @@ GOG = {"events": [                                     # fixture shaped like `go
     {"id": "a", "summary": "Stand-up", "start": {"dateTime": (NOW + datetime.timedelta(minutes=40)).isoformat()},
      "hangoutLink": "https://meet.google.com/abc-defg-hij", "description": "join https://evil.example/x"},
     {"id": "b", "summary": "Review", "start": {"dateTime": (NOW + datetime.timedelta(hours=3)).isoformat()},
-     "conferenceData": {"entryPoints": [{"entryPointType": "phone", "uri": "tel:+4712345678"}, {"entryPointType": "video", "uri": "https://zoom.example/j/1"}]}},
+     "conferenceData": {"entryPoints": [{"entryPointType": "phone", "uri": "tel:+4712345678"}, {"entryPointType": "video", "uri": "https://zoom.us/j/1"}]}},
     {"id": "c", "summary": "Anna's birthday", "start": {"date": NOW.date().isoformat()}},
     {"id": "d", "summary": "Day off", "start": {"date": (NOW + datetime.timedelta(days=1)).date().isoformat()}},
     {"id": "e", "summary": "Old", "start": {"dateTime": (NOW - datetime.timedelta(hours=2)).isoformat()}, "hangoutLink": "http://insecure.example"},
@@ -69,13 +69,14 @@ class DeskStagesTest(unittest.TestCase):
     def test_weather_with_the_open_meteo_reading(self):
         A = self.s.Ambient
         A.wx = {"key": (1, 2), "at": time.monotonic(), "sky": "snow", "heavy": True, "feel": -3.2, "temp": -1.0, "wind": 20, "dir": 225, "day": 1}
-        with mock.patch.object(A, "gated", return_value=True), mock.patch.object(A, "place_key", return_value=(1, 2)):
+        with mock.patch.object(A, "gated", return_value=True), mock.patch.object(A, "wkey", (1, 2)):
             w = self.s.desk_stage({"v": 1, "kind": "weather"})
         self.assertEqual((w["source"], w["sky"], w["heavy"], w["feel"], w["dir"]), ("open-meteo", "snow", True, -3, "SW"))
 
     def test_no_reading_is_an_empty_stage_and_no_network(self):
         with mock.patch.object(self.s.Ambient, "run") as run, mock.patch("urllib.request.urlopen") as uo:
-            self.assertEqual(self.s.desk_stage({"v": 1, "kind": "weather"}), {"v": 1, "kind": "weather", "empty": True})
+            with mock.patch.dict(self.s.CFG, {"ambient_weather": True}):
+                self.assertEqual(self.s.desk_stage({"v": 1, "kind": "weather"}), {"v": 1, "kind": "weather", "empty": True, "off": False})
             self.s.desk_stage({"v": 1, "kind": "calendar"})
         self.assertFalse(run.called or uo.called)
 
@@ -97,7 +98,7 @@ class DeskStagesTest(unittest.TestCase):
         self.fetch()
         links = {i["title"]: i["link"] for i in self.s.Ambient.cal_items}
         self.assertEqual(links["Stand-up"], "https://meet.google.com/abc-defg-hij")
-        self.assertEqual(links["Review"], "https://zoom.example/j/1")
+        self.assertEqual(links["Review"], "https://zoom.us/j/1")
         self.assertIsNone(links["Notes only"])                # a URL in a location or description is not a meeting link
         self.assertIsNone(links["Old"])                       # http is refused
         self.assertNotIn("Anna", repr(self.s.Ambient.cal_items))
@@ -114,6 +115,48 @@ class DeskStagesTest(unittest.TestCase):
         self.assertNotIn("Anna's birthday", titles)
         self.assertEqual([r["link"] for r in rows if r["title"] == "Stand-up"], ["https://meet.google.com/abc-defg-hij"])
         self.assertFalse(st["off"])
+
+    def test_one_bad_event_does_not_drop_the_batch_and_naive_time_is_local(self):
+        good = {"id": "g", "summary": "Good", "start": {"dateTime": "2099-01-01T10:00:00"}, "end": {"dateTime": "2099-01-01T11:00:00"}}
+        bad = {"id": "b", "summary": "Bad", "start": {"dateTime": "not a time"}}
+        conf = self.s.NIXI_CONF.parent / "calendars.json"
+        conf.parent.mkdir(parents=True, exist_ok=True)
+        conf.write_text(json.dumps([{"enabled": True, "googleCalendarId": "cal"}]))
+        self.addCleanup(conf.unlink)
+        with mock.patch.object(self.s.Ambient, "run", return_value=json.dumps({"events": [bad, good]})):
+            self.s.Ambient.fetch("cal")
+        self.assertEqual([i["title"] for i in self.s.Ambient.cal_items], ["Good"])
+        it = self.s.Ambient.cal_items[0]
+        self.assertIsNotNone(it["start"].tzinfo)
+        self.assertEqual(it["end"] - it["start"], datetime.timedelta(hours=1))
+
+    def test_welcome_names_only_todays_next_event(self):
+        now = datetime.datetime(2026, 11, 3, 10, 0).astimezone()
+        A = self.s.Ambient
+        with mock.patch.object(A, "events", [(now + datetime.timedelta(days=1), "Tomorrow", "t")]), mock.patch.dict(self.s.CFG, {"ambient_calendar": True}), \
+                mock.patch.object(self.s.Nudge, "missed", return_value=0):
+            self.assertNotIn("Next:", self.s.Nudge.welcome(0, [], now))
+        with mock.patch.object(A, "events", [(now + datetime.timedelta(hours=1), "Today", "t")]), mock.patch.dict(self.s.CFG, {"ambient_calendar": True}), mock.patch.object(self.s.Nudge, "missed", return_value=0):
+            self.assertIn("Next: Today at 11:00", self.s.Nudge.welcome(0, [], now))
+
+    def test_calendar_unread_off_and_empty_are_told_apart(self):
+        with mock.patch.dict(self.s.CFG, {"ambient_calendar": True}):
+            self.s.Ambient.cal_at, self.s.Ambient.cal_items = None, []
+            self.assertTrue(self.s.desk_stage({"v": 1, "kind": "calendar"})["unread"])
+            self.s.Ambient.cal_at = time.monotonic()
+            st = self.s.desk_stage({"v": 1, "kind": "calendar"})
+            self.assertFalse(st["unread"] or st["off"])
+        with mock.patch.dict(self.s.CFG, {"ambient_calendar": False}):
+            self.assertTrue(self.s.desk_stage({"v": 1, "kind": "calendar"})["off"])
+
+    def test_weather_never_calls_location_and_says_why_it_is_empty(self):
+        A = self.s.Ambient
+        with mock.patch.object(self.s, "location", side_effect=AssertionError("subprocess")), mock.patch.dict(self.s.CFG, {"ambient_weather": False}):
+            self.assertEqual(self.s.desk_stage({"v": 1, "kind": "weather"}), {"v": 1, "kind": "weather", "empty": True, "off": True})
+        A.wx = {"key": (1, 2), "at": time.monotonic(), "sky": "snow", "heavy": False, "feel": 0, "temp": 0, "wind": 1, "dir": 0, "day": 1}
+        with mock.patch.object(self.s, "location", side_effect=AssertionError("subprocess")), mock.patch.object(A, "gated", return_value=True), \
+                mock.patch.object(A, "wkey", (1, 2)):
+            self.assertEqual(self.s.desk_stage({"v": 1, "kind": "weather"})["source"], "open-meteo")
 
     def test_calendar_off_says_so(self):
         with mock.patch.dict(self.s.CFG, {"ambient_calendar": False}):
@@ -200,8 +243,34 @@ class PureTest(unittest.TestCase):
         self.assertIsNone(ml({"hangoutLink": "https://a.example/x y"}))
         self.assertIsNone(ml({"hangoutLink": "https://a.example/" + "x" * 300}))
         self.assertIsNone(ml({"description": "https://zoom.example/j/1"}))
-        self.assertEqual(ml({"conferenceData": {"entryPoints": [{"uri": 5}, {"uri": "https://t.example/1"}]}}), "https://t.example/1")
+        self.assertEqual(ml({"conferenceData": {"entryPoints": [{"entryPointType": "video", "uri": 5}, {"entryPointType": "video", "uri": "https://us02web.zoom.us/j/1"}]}}), "https://us02web.zoom.us/j/1")
         self.assertIsNone(ml({"conferenceData": "https://t.example/1"}))
+
+    def test_meeting_hosts_and_entry_point_type(self):
+        ml = self.st.meeting_link
+        for u in ("https://evil.example/zoom.us", "https://zoom.us.evil.example/j", "https://notzoom.us/j", "https://u:p@zoom.us/j", "http://zoom.us/j"):
+            self.assertIsNone(ml({"hangoutLink": u}), u)
+        for u in ("https://zoom.us/j/1", "https://a.webex.com/m", "https://teams.microsoft.com/l/x", "https://teams.live.com/meet/1"):
+            self.assertEqual(ml({"hangoutLink": u}), u)
+        cd = {"entryPoints": [{"entryPointType": "more", "uri": "https://zoom.us/more"}, {"entryPointType": "video", "uri": "https://zoom.us/v"}]}
+        self.assertEqual(ml({"hangoutLink": "https://meet.google.com/h", "conferenceData": cd}), "https://zoom.us/v")      # video entry point first
+        self.assertIsNone(ml({"conferenceData": {"entryPoints": [{"entryPointType": "phone", "uri": "https://zoom.us/p"}]}}))
+
+    def test_ongoing_events_stay_until_they_end(self):
+        now = datetime.datetime(2026, 11, 3, 10, 0).astimezone()
+        H = lambda h: now + datetime.timedelta(hours=h)
+        items = [{"start": H(-1), "end": H(1), "day": "2026-11-03", "title": "Running", "link": None},
+                 {"start": H(-2), "end": H(-1), "day": "2026-11-03", "title": "Over", "link": None},
+                 {"start": H(-1), "end": None, "day": "2026-11-03", "title": "No end", "link": None},
+                 {"start": None, "end": None, "day": "2026-11-01", "end_day": "2026-11-04", "title": "Trip", "link": None},
+                 {"start": None, "end": None, "day": "2026-11-01", "end_day": "2026-11-03", "title": "Trip over", "link": None}]
+        self.assertEqual([r["title"] for r in self.st.calendar_rows(items, now)], ["Trip", "Running"])
+
+    def test_rows_use_local_zone_rules_not_a_fixed_offset(self):
+        now = datetime.datetime(2026, 11, 3, 10, 0).astimezone()
+        utc = (now + datetime.timedelta(hours=2)).astimezone(datetime.timezone.utc)
+        row = self.st.calendar_rows([{"start": utc, "end": None, "day": "x", "title": "T", "link": None}], now.astimezone(datetime.timezone.utc))[0]
+        self.assertEqual(row["when"], (now + datetime.timedelta(hours=2)).strftime("%H:%M"))
 
     def test_rows_label_today_tomorrow_and_all_day(self):
         now = datetime.datetime(2026, 11, 3, 10, 0).astimezone()
@@ -212,6 +281,14 @@ class PureTest(unittest.TestCase):
         rows = self.st.calendar_rows(items, now)
         self.assertEqual([(r["when"], r["title"]) for r in rows], [("all day", "Today all day"), ("10:05", "Soon"), ("Wed 11:00", "T")])
         self.assertEqual(len(self.st.calendar_rows(items * 3, now)), 4)
+
+    def test_open_it_on_a_status_stage(self):
+        fp = self.st.fast_path
+        one = {"kind": "status", "sessions": [{"open": "t"}], "term": "x"}
+        self.assertEqual(fp("open it", one), ("open", 0))
+        self.assertEqual(fp("open it", {**one, "sessions": [{"open": "a"}, {"open": "b"}]}), ("ask", None))
+        self.assertIsNone(fp("open it", {"kind": "status", "sessions": [], "term": "x"}))
+        self.assertEqual(fp("open it", {"kind": "calendar", "events": [], "open": "o"}), ("open", 0))
 
     def test_sky_stage_rounds_and_names_the_compass(self):
         w = self.st.sky_stage("omarchy", "clear", False, 20.6, 21.4, 3.5, 350, "09:00", True)

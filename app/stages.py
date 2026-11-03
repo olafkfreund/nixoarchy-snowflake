@@ -12,6 +12,7 @@ import subprocess
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from urllib.parse import quote_plus
 
@@ -150,33 +151,57 @@ def video_search(query, run=subprocess.run):
 _DIRS = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
 
 
-def sky_stage(source, sky, heavy, feel, temp, wind, deg, at, day):
+def sky_stage(source, sky, heavy, feel, temp, wind, deg, at, day, off=False):
     """The weather stage from a cached reading (Ambient.reading()); at = 'HH:MM' of that reading. No source: nothing cached.
     There is no forecast: neither source returns one, so the stage never shows one."""
     if source is None:
-        return {"v": 1, "kind": "weather", "empty": True}
+        return {"v": 1, "kind": "weather", "empty": True, "off": bool(off)}
     r = lambda v: None if v is None else round(v)
     return {"v": 1, "kind": "weather", "source": source, "sky": sky, "heavy": bool(heavy), "temp": r(temp), "feel": r(feel),
             "wind": r(wind), "dir": None if deg is None else _DIRS[round(deg / 45) % 8], "at": at, "day": bool(day)}
 
 
+_HOSTS = ("meet.google.com", "zoom.us", "teams.microsoft.com", "teams.live.com")
+_SUFFIX = (".zoom.us", ".webex.com")
+
+
+def _meeting_ok(u):
+    if not isinstance(u, str) or len(u) > 300 or re.search(r"[\s\x00-\x1f\x7f-\x9f]", u):
+        return False
+    try:
+        p = urllib.parse.urlsplit(u)
+        host = (p.hostname or "").lower()
+    except ValueError:
+        return False
+    return p.scheme == "https" and not p.username and (host in _HOSTS or host.endswith(_SUFFIX))
+
+
 def meeting_link(event):
-    """A calendar event's join link: hangoutLink or a conferenceData entry point only, https only. Never from the title or notes."""
-    cands = [event.get("hangoutLink")]
-    cd = event.get("conferenceData")
+    """A calendar event's join link: a video conferenceData entry point, else hangoutLink; https on a known meeting host only.
+    Never from the title or notes."""
+    cd, cands = event.get("conferenceData"), []
     if isinstance(cd, dict):
-        cands += [ep.get("uri") for ep in cd.get("entryPoints") or [] if isinstance(ep, dict)]
-    return next((u for u in cands if isinstance(u, str) and u.startswith("https://") and len(u) <= 300 and not re.search(r"[\s\x00-\x1f\x7f-\x9f]", u)), None)
+        cands += [ep.get("uri") for ep in cd.get("entryPoints") or [] if isinstance(ep, dict) and ep.get("entryPointType") == "video"]
+    cands.append(event.get("hangoutLink"))
+    return next((u for u in cands if _meeting_ok(u)), None)
 
 
 def calendar_rows(items, now, n=4):
-    """The next n events from [{start (aware datetime or None for all-day), day 'YYYY-MM-DD', title, link}] -> [{when,title,link}]."""
+    """The next n events from [{start (aware datetime or None for all-day), end (aware datetime or None), end_day (exclusive
+    'YYYY-MM-DD' of an all-day event, or None), day 'YYYY-MM-DD', title, link}] -> [{when,title,link}]. A timed event stays
+    until it ends; a multi-day all-day one stays through its last day. Local zone rules, so a DST change cannot shift a time."""
+    now = now.astimezone()
     today = now.date().isoformat()
     rows = []
     for e in items:
-        st = e["start"].astimezone(now.tzinfo) if e["start"] else None
-        if (st and st >= now) or (not st and e["day"] >= today):
-            d = st.date().isoformat() if st else e["day"]
+        st = e["start"].astimezone() if e["start"] else None
+        if st:
+            end = e.get("end")
+            keep = (end.astimezone() > now) if end else st >= now
+        else:
+            keep = e["day"] >= today or (e.get("end_day") or "") > today
+        if keep:
+            d = st.date().isoformat() if st else max(e["day"], today)
             hm = st.strftime("%H:%M") if st else ""
             rows.append(((d, hm), {"when": (hm or "all day") if d == today else datetime.date.fromisoformat(d).strftime("%a") + (" " + hm if hm else ""),
                                    "title": e["title"], "link": e.get("link")}))
@@ -185,7 +210,7 @@ def calendar_rows(items, now, n=4):
 
 def calendar_stage(events, at):
     """events None = the calendar cue is off (nothing cached); at = 'HH:MM' of the fetch, or None."""
-    return {"v": 1, "kind": "calendar", "events": events or [], "off": events is None, "at": at}
+    return {"v": 1, "kind": "calendar", "events": events or [], "off": events is None, "unread": events is not None and at is None, "at": at}
 
 
 def status_stage(sessions, failed, sys_on):
@@ -377,7 +402,9 @@ def fast_path(said, stage):
     m = _ACT.fullmatch(t)
     if not m or not stage:
         return None
-    n = len(stage.get("items") or [None])  # facts: one target
+    n = len(stage.get("items") or stage.get("sessions") or [None])  # facts: one target; a status stage: its sessions
+    if stage.get("kind") == "status" and not stage.get("sessions"):
+        return None
     if m.group(2):
         i = _ORD[m.group(2)]
         return (m.group(1), i) if i < n else None

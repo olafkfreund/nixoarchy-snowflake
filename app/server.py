@@ -1406,17 +1406,23 @@ class Ambient:
                 try:
                     import datetime
                     ev, bd, items = [], set(), []
+                    loc = lambda v: datetime.datetime.fromisoformat(v).astimezone()     # (a naive time is local time)
                     for e in json.loads(out).get("events") or []:
-                        start = e.get("start") or {}
-                        st = start.get("dateTime")                           # (all-day items have only "date": no cue)
-                        if st:
-                            ev.append((datetime.datetime.fromisoformat(st), str(e.get("summary") or "(busy)")[:60], str(e.get("id"))))
-                        day = str(st or start.get("date") or "")[:10]        # a birthday today: only that fact is kept
-                        if day and re.search(r"birthday|bursdag", str(e.get("summary") or ""), re.I):
-                            bd.add(day)
-                        elif day:                                            # (a birthday's title is never kept, so the desk never shows it)
-                            items.append({"start": datetime.datetime.fromisoformat(st) if st else None, "day": day,
-                                          "title": str(e.get("summary") or "(busy)")[:60], "link": stages.meeting_link(e)})
+                        try:
+                            start, end = e.get("start") or {}, e.get("end") or {}
+                            st, en = start.get("dateTime"), end.get("dateTime")          # (all-day items have only "date": no cue)
+                            title = str(e.get("summary") or "(busy)")[:60]
+                            s_dt = loc(st) if st else None
+                            if s_dt:
+                                ev.append((s_dt, title, str(e.get("id"))))
+                            day = str(st or start.get("date") or "")[:10]            # a birthday today: only that fact is kept
+                            if day and re.search(r"birthday|bursdag", str(e.get("summary") or ""), re.I):
+                                bd.add(day)
+                            elif day:                                                # (a birthday's title is never kept, so the desk never shows it)
+                                items.append({"start": s_dt, "end": loc(en) if en else None, "day": day, "end_day": None if st else str(end.get("date") or "")[:10] or None,
+                                              "title": title, "link": stages.meeting_link(e)})
+                        except (ValueError, AttributeError, TypeError):
+                            continue                                                 # one bad event never drops the batch
                     cls.events, cls.birthdays, cls.cal_items, cls.cal_at = ev, bd, items, time.monotonic()
                 except (ValueError, AttributeError, TypeError):
                     pass
@@ -1489,9 +1495,10 @@ class Ambient:
         return bool(CFG.get("proactive") and CFG.get("ambient_weather") and CFG.get("look_weather"))
 
     @classmethod
-    def reading(cls):
+    def reading(cls, cached=False):
+        """cached=True: trust the place key the situation loop last saw, so the answer stream never runs location()."""
         wx, t = cls.wx, time.monotonic()
-        if wx and cls.gated() and 0 <= t - wx["at"] < 7200 and wx["key"] == cls.place_key():
+        if wx and cls.gated() and 0 <= t - wx["at"] < 7200 and wx["key"] == (cls.wkey if cached else cls.place_key()):
             return "open-meteo", *(wx[k] for k in ("sky", "heavy", "feel", "temp", "wind", "dir"))
         omx = cls.omx
         if omx and 0 <= t - omx["at"] < 7200:
@@ -1868,7 +1875,7 @@ class Nudge:
         if CFG.get("ambient_calendar"):
             import datetime
             now = now or datetime.datetime.now().astimezone()
-            nxt = min(((st, ti) for st, ti, _ in Ambient.events if st > now), default=None)
+            nxt = min(((st, ti) for st, ti, _ in Ambient.events if st > now and st.astimezone().date() == now.astimezone().date()), default=None)
             if nxt:
                 text += f" Next: {nxt[1]} at {nxt[0].astimezone().strftime('%H:%M')}."
         return text
@@ -4534,9 +4541,9 @@ def desk_stage(st):
     k, now = st["kind"], datetime.datetime.now().astimezone()
     label = lambda mono: None if mono is None else (now - datetime.timedelta(seconds=time.monotonic() - mono)).strftime("%H:%M")
     if k == "weather":
-        src, sky, heavy, feel, temp, wind, deg = Ambient.reading()
+        src, sky, heavy, feel, temp, wind, deg = Ambient.reading(cached=True)
         w = {"open-meteo": Ambient.wx, "omarchy": Ambient.omx}.get(src)
-        return stages.sky_stage(src, sky, heavy, feel, temp, wind, deg, label(w["at"]) if w else None, Ambient.day)
+        return stages.sky_stage(src, sky, heavy, feel, temp, wind, deg, label(w["at"]) if w else None, Ambient.day, not CFG.get("ambient_weather"))
     if k == "calendar":
         on = CFG.get("ambient_calendar")
         return stages.calendar_stage(stages.calendar_rows(Ambient.cal_items, now) if on else None, label(Ambient.cal_at))
@@ -5555,9 +5562,9 @@ class Handler(BaseHTTPRequestHandler):
             elif fp and fp[0] == "ask" and vis:
                 return self._said("Which one? Say the first, second or third.")
             elif fp and fp[0] in ("copy", "open", "play") and vis:
-                it = (vis.get("items") or [vis])[fp[1]]         # each set names its tokens per action (map: open/copy, cinema: play)
-                tk = {"copy": it.get("token") or vis.get("copy"), "open": vis.get("open") or it.get("play"), "play": it.get("play")}[fp[0]]
-                r = stage_act(tk or "", fp[0])
+                it = (vis.get("items") or vis.get("sessions") or [vis])[fp[1]]         # each set names its tokens per action (map: open/copy, cinema: play, desk: a session)
+                tk = {"copy": it.get("token") or vis.get("copy"), "open": vis.get("open") or it.get("play") or it.get("open"), "play": it.get("play")}[fp[0]]
+                r = stage_act(tk or "", "session" if vis.get("kind") == "status" and fp[0] == "open" else fp[0])
                 return self._said({"copy": "Copied.", "open": "Opening it.", "play": "Playing it."}[fp[0]] if r["ok"]
                                   else "I can't do that yet." if r.get("error") == "not yet" else "I couldn't do that.")
             elif fp and fp[0] in ("close", "back", "show") and (cur or fp[0] != "close"):
