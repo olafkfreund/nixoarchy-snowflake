@@ -1,0 +1,83 @@
+"""The ai-mirror control marks (#145) sit inside the window, the click revokes, and every mode has its signal (tests/mirror_fit.mjs).
+
+Starts the server in a throwaway home and a headless Chromium with the GPU switched off (software rendering only:
+an animated page on a GPU-forced Chrome hung an AMD GPU twice, #138), then runs the check. Skipped without node and
+chromium."""
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+import urllib.request
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+BROWSER = shutil.which("chromium") or shutil.which("chromium-browser")
+
+
+def _free_port():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _wait(url, secs=20):
+    end = time.monotonic() + secs
+    while time.monotonic() < end:
+        try:
+            urllib.request.urlopen(url, timeout=1).read()
+            return True
+        except OSError:
+            time.sleep(0.3)
+    return False
+
+
+@unittest.skipUnless(shutil.which("node") and BROWSER, "needs node and chromium")
+class MirrorFit(unittest.TestCase):
+    def test_mirror_marks_and_signals(self):
+        home = Path(tempfile.mkdtemp(prefix="nixi-mirrorfit-"))
+        env = dict(os.environ, HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
+                   XDG_DATA_HOME=str(home / "data"), XDG_STATE_HOME=str(home / "state"))
+        # no ai-mirror on this server's PATH, whatever the machine has: the test drives the page's mirror state itself
+        env["PATH"] = os.pathsep.join(d for d in os.environ.get("PATH", "").split(os.pathsep) if not os.path.exists(os.path.join(d, "ai-mirror")))
+        for d in (".config/nixi-companion", "data", "state"):
+            (home / d).mkdir(parents=True, exist_ok=True)
+        port, cdp = _free_port(), _free_port()
+        (home / ".config/nixi-companion/config.json").write_text(json.dumps({"port": port}))
+        procs = []
+        try:
+            procs.append(subprocess.Popen([sys.executable, str(REPO / "app/server.py")], env=env,
+                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+            procs.append(subprocess.Popen([BROWSER, "--headless=new", "--disable-gpu", "--use-angle=swiftshader",
+                                           "--enable-unsafe-swiftshader", "--disable-gpu-compositing",
+                                           f"--user-data-dir={home / 'chromium'}", f"--remote-debugging-port={cdp}",
+                                           "--no-first-run", "about:blank"],
+                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+            self.assertTrue(_wait(f"http://127.0.0.1:{port}/"), "server did not start")
+            self.assertTrue(_wait(f"http://127.0.0.1:{cdp}/json/version"), "chromium did not start")
+            for _ in range(40):                              # runtime.json carries the page's token
+                rt = home / "data/nixi-companion/runtime.json"
+                if rt.exists():
+                    break
+                time.sleep(0.25)
+            token = json.loads(rt.read_text())["token"]
+            r = subprocess.run(["node", str(REPO / "tests/mirror_fit.mjs"), str(cdp),
+                                f"http://127.0.0.1:{port}/#t={token}"], capture_output=True, text=True, timeout=300)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        finally:
+            for p in procs:
+                p.terminate()
+            for p in procs:
+                try:
+                    p.wait(5)
+                except subprocess.TimeoutExpired:
+                    p.kill()
+            shutil.rmtree(home, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    unittest.main()

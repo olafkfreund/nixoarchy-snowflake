@@ -32,7 +32,7 @@ body.bar #stage,body.unfold #stage{transition:transform .36s cubic-bezier(.3,1.2
 body.snap #stage,body.snap #barPill,body.snap #body>.ball,body.snap #body>ellipse,body.snap #orbBack,body.snap #orbFront,
 body.snap #haloW,body.snap #shadow,body.snap #accBack,body.snap #sitBack,body.snap #accFront,body.snap #sitFront{transition:none!important}  /* grabbed mid-morph */
 body.hover #orbBack,body.hover #orbFront,body.hover #workW,body.hover #haloW,body.hover #vring,body.hover #raysW,body.hover #fx,body.hover #fxBack,
-body.hover #think,body.hover #anger,body.hover #sweat,body.hover #zz,body.hover #qmark,body.hover #tears,body.hover #cap,body.hover #chip,body.hover #atts{display:none}
+body.hover #mirMk,body.hover #think,body.hover #anger,body.hover #sweat,body.hover #zz,body.hover #qmark,body.hover #tears,body.hover #cap,body.hover #chip,body.hover #atts{display:none}
 body.hover #shadow{display:none}
 /* top bar: the very same eyes (#face is untouched), his ball folded away, merged into a screen edge as a notch, the
    macOS way: pure black, flush with the edge, small inward curves where it meets the edge, no glow at rest, and every
@@ -74,9 +74,9 @@ body.bar.e-right #stage{transform:translate(136px,68px) scale(.46)}
    of the notch, its neck stretches thin and snaps, and it wobbles round. The real ball parts are hidden meanwhile. */
 body.nixi .nx{display:none!important}
 body.bar #body>.ball,body.bar #body>ellipse,body.bar #orbBack,body.bar #orbFront,body.bar #workW,body.bar #haloW,body.bar #raysW,
-body.bar #vring,body.bar #agentMark,body.bar #micBars,body.bar #shadow,body.bar #accBack,body.bar #sitBack,body.bar #accFront,body.bar #sitFront,body.bar #liveTag,
+body.bar #vring,body.bar #agentMark,body.bar #mirMk,body.bar #micBars,body.bar #shadow,body.bar #accBack,body.bar #sitBack,body.bar #accFront,body.bar #sitFront,body.bar #liveTag,
 body.goohide #body>.ball,body.goohide #body>ellipse,body.goohide #orbBack,body.goohide #orbFront,body.goohide #haloW,
-body.goohide #shadow,body.goohide #accBack,body.goohide #sitBack,body.goohide #accFront,body.goohide #sitFront{opacity:0;transition:none}
+body.goohide #mirMk,body.goohide #shadow,body.goohide #accBack,body.goohide #sitBack,body.goohide #accFront,body.goohide #sitFront{opacity:0;transition:none}
 body.unfold #body>.ball,body.unfold #body>ellipse,body.unfold #shadow,body.unfold #accBack,body.unfold #sitBack,body.unfold #accFront,body.unfold #sitFront{transition:opacity .12s linear}
 body.unfold #orbBack,body.unfold #orbFront,body.unfold #haloW{transition:opacity .25s linear .08s}
 /* pulled out of the notch by the mouse: the ball pops in where he is (the notch melts on the wall, not here) */
@@ -444,9 +444,15 @@ body.pw #cap,body.pw #appr{opacity:0}
 #paint{position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:40}
 #menu{z-index:20} .pn{z-index:21} #appr{z-index:22} #ask{z-index:19} #atts{z-index:18} #cap{z-index:5} #chip{z-index:30}
 /* while something is open over him, the stuff behind the card stops moving */
-body.calm #agentMark,body.calm #micBars,body.calm #orbBack,body.calm #orbFront,body.calm #raysW,body.calm #vring,body.calm #fx,body.calm #fxBack{display:none}
+body.calm #agentMark,body.calm #mirMk,body.calm #micBars,body.calm #orbBack,body.calm #orbFront,body.calm #raysW,body.calm #vring,body.calm #fx,body.calm #fxBack{display:none}
 
 @keyframes flash{0%{opacity:.18}100%{opacity:0}}
+/* who controls the desktop (#145): flat strokes only. Hover = a ring round him, calm = a bar over the open panel, notch = a border on the pill */
+#mirHov{display:none;fill:none;stroke:#ff3b3b;stroke-width:7;pointer-events:none} body.hover #mirHov{display:inline}
+body.bar.mir-agent #barPill{box-shadow:0 0 0 2px #ff3b3b,0 0 12px 2px #ff3b3bcc!important} body.bar.mir-pending #barPill{box-shadow:0 0 0 2px #ffb02a,0 0 12px 2px #ffb02acc!important}
+#mirBar{display:none;position:fixed;z-index:23;box-sizing:border-box;height:30px;padding:0 8px;align-items:center;justify-content:space-between;gap:8px;background:#b3141c;color:#fff;font:600 11.5px system-ui,sans-serif;border-radius:8px 8px 0 0;white-space:nowrap}
+body.calm.mir-agent #mirBar{display:flex} #mirBar span{overflow:hidden;text-overflow:ellipsis} #mirBar button{font:inherit;white-space:nowrap;color:#b3141c;background:#fff;border:0;border-radius:6px;padding:3px 8px;cursor:pointer}
+.mb.off{display:none}
 /* ===== settings, take two: cards, a sliding tab pill, a live clickable preview and a proper colour picker ===== */
 #set{background:linear-gradient(180deg,var(--panel2) 0,var(--panel) 120px,var(--panel) 100%)}
 #set .hd{padding:12px 12px 8px 14px}
@@ -583,6 +589,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 <body class="m-idle">
 <div id="flash"></div><div id="paint"></div>
 <div id="barPill"></div>
+<div id="mirBar"><span>An agent controls your desktop</span><button id="mirBarBtn">Take control back</button></div>
 <!-- the liquid for the blob ↔ notch morph: shapes blurred together and sharpened again ("goo") so they flow into one
      another -->
 <svg id="goo" viewBox="0 0 340 460">
@@ -644,11 +651,19 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
           <g id="amA"><circle r="11" fill="none" stroke="#4c8bf5" stroke-width="3.5"/><circle id="amD" r="3" fill="#4c8bf5"/></g>
           <path id="amChk" d="M5 8L10 13L19 2" fill="none" stroke="#3fbf7f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="30" stroke-dashoffset="30"/>
         </g>
+        <g id="mirMk" opacity="0" transform="translate(8 -90)" pointer-events="none" role="img" aria-label="">   <!-- ai-mirror: amber ring = asking, red ring + pointer = an agent holds control, eye = it read the screen lately -->
+          <title></title>
+          <circle id="mmRing" r="12" fill="none" stroke-width="2.5"/>
+          <path id="mmPtr" d="M-4-7L-4 8L0 4L3 10L6 8.500L3 3L8 3Z" fill="#ff3b3b" transform="scale(.8)"/>
+          <circle id="mmDot" r="3.500" fill="#ffb02a"/>
+          <g id="mmEye" fill="none" stroke="#9ecbff" stroke-width="2" stroke-linejoin="round"><path d="M-10 0Q0-8 10 0Q0 8-10 0Z"/><circle r="2.500" fill="#9ecbff" stroke="none"/></g>
+        </g>
         <g id="liveTag" transform="translate(50 58) rotate(-14)" display="none"><rect x="-21" y="-8.5" width="42" height="17" rx="6" fill="#2f8f66" stroke="#7fd6ae" stroke-width="1"/><circle id="liveDot" cx="-12" cy="0" r="2.6" fill="#fff"/><text x="4" y="3.6" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff" font-family="monospace" letter-spacing="1">LIVE</text></g>
         <g id="think" opacity="0"><circle class="thk" cx="64" cy="-70" r="4"/><circle class="thk" cx="79" cy="-86" r="6"/><circle class="thk" cx="99" cy="-106" r="9"/></g>
         <g id="anger" opacity="0"><path class="ang" d="M-10-3Q-3-3-3-10M3-10Q3-3 10-3M10 3Q3 3 3 10M-3 10Q-3 3-10 3"/></g>
         <path id="sweat" opacity="0" fill="#cfe8ff" d="M0-8C4-2 6 2 6 5A6 6 0 0 1-6 5C-6 2-4-2 0-8Z"/>
       </g>
+      <circle id="mirHov" r="140" opacity="0"/>
       <g id="orbFront" class="orb" filter="url(#glow)"></g>
       <g id="fx"></g>
       <g id="micBars" opacity="0" pointer-events="none"><rect x="-29.5" y="129" width="7" height="2" rx="3.5" style="fill:var(--acc)" opacity=".7"/><rect x="-16.5" y="129" width="7" height="2" rx="3.5" style="fill:var(--acc)"/><rect x="-3.5" y="129" width="7" height="2" rx="3.5" style="fill:var(--hot)"/><rect x="9.5" y="129" width="7" height="2" rx="3.5" style="fill:var(--acc)"/><rect x="22.5" y="129" width="7" height="2" rx="3.5" style="fill:var(--acc)" opacity=".7"/></g>
@@ -784,6 +799,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><div class="t">Plugins</div><div class="h">Things other people made for him. They never download anything; they only use what is on this computer.</div>
         <div id="plugList"></div><div class="h" id="plugErr" style="color:#e8836f"></div>
         <div class="bar"><button class="btn" id="plugReload">Reload</button></div></div>
+      <div class="row"><div class="t">ai-mirror</div><div class="h">Shows when an agent controls your desktop through ai-mirror. Super+Shift+Esc always takes it back.</div></div>
       <div class="row"><div class="t">Memory &amp; history</div><div class="h">Say “remember …” and he keeps it for every future chat.</div>
         <div class="bar"><button class="btn nx" data-open="memory">🧠 Memory <i id="memCount"></i></button><button class="btn nx" data-open="history">🕘 History</button></div></div>
       <div class="row nx"><div class="t">Nixi <span id="verTxt"></span></div><div class="h" id="updTxt"></div>
@@ -1109,6 +1125,7 @@ const MOODS={
   looking:   {sz:1.05, pu:'circle'},                                    // studying your screenshot
   pleading:  {top:.14, sl:-.32, sz:1.03, tilt:-4, pu:'plead'},          // "can I?" puppy eyes
   talking:   {pu:'circle'},
+  worried:   {top:.1, sl:-.28, bot:.08, sz:.98, tilt:-2, pu:'small'},     // an agent holds the desktop (not t_: that would count as talking)
   // talking faces — picked from what he's saying, one per sentence (see talkSentence). Gentle: no confetti or flashes.
   t_explain: {es:1.02, pu:'circle'},                                     // just explaining
   t_happy:   {bot:.3, bow:.06, sz:1.02, pu:'circle'},                     // good news: smiling eyes
@@ -1147,7 +1164,7 @@ const AURA={
   idle:{spd:.5,rad:1,a:.5,h:.45}, listening:{spd:1.3,rad:1.05,a:.95,h:.85}, thinking:{spd:2.4,rad:.93,a:.9,h:.6},
   reading:{spd:1.6,rad:.97,a:.75,h:.55}, editing:{spd:3,rad:.95,a:1,h:.7}, running:{spd:3.4,rad:.98,a:1,h:.75},
   searching:{spd:2.6,rad:1.06,a:.9,h:.65}, looking:{spd:1.2,rad:1.04,a:.8,h:.6}, pleading:{spd:.6,rad:1.02,a:.7,h:.8},
-  talking:{spd:.9,rad:1.02,a:.8,h:.6}, t_explain:{spd:.9,rad:1.02,a:.8,h:.6}, t_happy:{spd:1.3,rad:1.05,a:.9,h:.75},
+  worried:{spd:.4,rad:.97,a:.5,h:.4}, talking:{spd:.9,rad:1.02,a:.8,h:.6}, t_explain:{spd:.9,rad:1.02,a:.8,h:.6}, t_happy:{spd:1.3,rad:1.05,a:.9,h:.75},
   t_beam:{spd:1.6,rad:1.08,a:1,h:.85}, t_excited:{spd:1.8,rad:1.08,a:1,h:.9}, t_curious:{spd:.8,rad:1.02,a:.75,h:.6},
   t_unsure:{spd:.6,rad:1,a:.6,h:.5}, t_sorry:{spd:.5,rad:.98,a:.55,h:.5}, t_serious:{spd:.7,rad:.98,a:.7,h:.55},
   t_warm:{spd:.9,rad:1.04,a:.85,h:.75}, t_think:{spd:1.6,rad:.96,a:.8,h:.55}, t_surprised:{spd:1.6,rad:1.08,a:1,h:.85}, happy:{spd:2,rad:1.12,a:1,h:.9}, excited:{spd:3,rad:1.15,a:1,h:1},
@@ -1172,6 +1189,8 @@ function mood(now){
   if(transcribing || rec) return 'thinking';
   if(playing) return now<talk.beamUntil?'t_beam':(talk.face||'talking');
   if(busy) return toolMood||'thinking';
+  if(MIR.owner==='agent') return 'worried';
+  if(MIR.owner==='off'&&MIR.watching) return 'looking';
   if(now-lastActive>(nightTime()?30000:75000)) return 'sleepy';
   return 'idle';
 }
@@ -1229,6 +1248,10 @@ let AM=null;     // the agent mark on show: {from, kind: ask|done, t0, until}
 const AMX={mk:$('#agentMark'),C:$('#amC'),U:$('#amU'),D:$('#amD'),ring:$('#amRing'),chk:$('#amChk')};
 AMX.mk.style.cursor='pointer'; AMX.mk.addEventListener('click',e=>{ e.stopPropagation(); attnJump(); renderCue(); });   // (live only during a question)
 const val=(v,i)=>Array.isArray(v)?v[i]:v;
+let MIR={owner:null,watching:false}, mirV=0, mirLast='';     // ai-mirror (#145): who holds the desktop; mirV = how visible the mark is
+const MX={mk:$('#mirMk'),ring:$('#mmRing'),ptr:$('#mmPtr'),dot:$('#mmDot'),eye:$('#mmEye'),hov:$('#mirHov'),ttl:$('#mirMk title')};
+const mirKind=()=>MIR.owner==='agent'?'agent':MIR.owner==='pending'?'pending':MIR.owner==='off'&&MIR.watching?'watch':'';
+const MIR_TXT={agent:'An agent controls your desktop — click to take control back',pending:'An agent is asking to control your desktop',watch:'ai-mirror read your screen recently'};
 
 class Spring{   // f = natural frequency (Hz), z = damping ratio (1 = no overshoot)
   constructor(x,f=2,z=.8){ this.x=x; this.v=0; this.f=f; this.z=z; }
@@ -1669,9 +1692,18 @@ function frame(ts){
         SIT_P.bd.setAttribute('transform',`translate(0 ${(-1.5*k).toFixed(2)})`);
         if(k>.6&&ts-nodAt>=200){ nodAt=ts; G.jelly.kick(.015*k); } } } }   // (nothing to write while all are off)
   wxStep(t,dt);
+  { const k=mirKind(), bar=document.body.classList.contains('bar');       // the ai-mirror mark (nothing to write while it is gone)
+    if(k||mirV>0){ if(k&&k!==mirLast){ mirLast=k; MX.ring.setAttribute('r','12'); MX.ring.setAttribute('stroke',k==='agent'?'#ff3b3b':k==='pending'?'#ffb02a':'#9ecbff'); MX.ring.setAttribute('display',k==='watch'?'none':'');
+        MX.ptr.setAttribute('display',k==='agent'?'':'none'); MX.dot.setAttribute('display',k==='pending'?'':'none'); MX.eye.setAttribute('display',k==='watch'?'':'none'); MX.mk.setAttribute('pointer-events',k==='agent'?'all':'none'); }
+      mirV=approach(mirV,k&&!bar?1:0,dt,k?12:9);        // gone in about 0.4 s
+      const pu=.55+.45*Math.sin(t*Math.PI), r=(t*.9)%1;
+      MX.mk.setAttribute('opacity',(clamp(mirV,0,1)*(mirLast==='watch'?.85:1)).toFixed(2)); MX.mk.setAttribute('transform',`translate(8 -90) scale(${(1.35*(.6+.4*mirV)).toFixed(3)})`);
+      if(mirLast==='agent') MX.ring.setAttribute('opacity',pu.toFixed(2)); else if(mirLast==='pending'){ MX.ring.setAttribute('r',(12+9*r).toFixed(1)); MX.ring.setAttribute('opacity',(1-r).toFixed(2)); }
+      MX.hov.setAttribute('opacity',mirLast==='agent'?(clamp(mirV,0,1)*pu).toFixed(2):'0');
+      if(!k&&mirV<.002){ mirV=0; mirLast=''; MX.mk.setAttribute('opacity','0'); MX.mk.setAttribute('pointer-events','none'); MX.hov.setAttribute('opacity','0'); } } }
   if(AM||G.agent.x>.002){                 // the agent mark (nothing to write while it is gone)
-    const v=G.agent.to(AM&&ts<AM.until&&!document.body.classList.contains('bar')?1:0,dt), ask=AM&&AM.kind==='ask', mk=AMX.mk, r=(t*.7)%1;
-    mk.setAttribute('opacity',clamp(v,0,1).toFixed(2)); mk.setAttribute('transform',`translate(8 -90) scale(${(1.35*(.6+.4*v)*(ask?1+.12*Math.max(0,Math.sin(t*8.8)):1)).toFixed(3)})`);
+    const v=G.agent.to(AM&&ts<AM.until&&!document.body.classList.contains('bar')&&!mirKind()?1:0,dt), ask=AM&&AM.kind==='ask', mk=AMX.mk, r=(t*.7)%1;
+    mk.setAttribute('pointer-events',AM&&AM.kind==='ask'&&ts<AM.until&&!mirKind()?'all':'none'); mk.setAttribute('opacity',clamp(v,0,1).toFixed(2)); mk.setAttribute('transform',`translate(8 -90) scale(${(1.35*(.6+.4*v)*(ask?1+.12*Math.max(0,Math.sin(t*8.8)):1)).toFixed(3)})`);
     if(AM&&v>.002){ const f=AM.from;       // only the moving part of this agent, and the one indicator of this kind
       if(f==='claude') AMX.C.setAttribute('transform',`rotate(${(t*6%360).toFixed(1)})`);
       else if(f==='codex') AMX.U.setAttribute('opacity',t%1<.5?1:0);
@@ -1907,7 +1939,7 @@ let AMB={sys:[],cal:null,weather:null};
 const CUES={attn:['#ff8a2a','!'],cal:['#4d6fb7','📅'],sys:['#e5a50a','⚠']};
 function ambKind(){ if(attnPend&&performance.now()-attnPend.at<60000) return 'attn'; if(AMB.cal) return 'cal'; if(AMB.sys&&AMB.sys.length) return 'sys'; return ''; }
 function renderCue(){ const k=ambKind(), g=$('#cue'), bar=document.body.classList.contains('bar');   // (the notch only pulses)
-  g.setAttribute('display',k&&!bar&&!AM?'':'none');   // (the agent mark stands in for the !)
+  g.setAttribute('display',k&&!bar&&!AM&&!mirKind()?'':'none');   // (the agent mark stands in for the !)
   g.setAttribute('class',k);
   if(k){ $('#cueD').setAttribute('fill',CUES[k][0]); $('#cueT').textContent=CUES[k][1]; }
   const w=!k&&!bar&&AMB.weather, fr=$('#frost');
@@ -1926,7 +1958,21 @@ function agentMark(from,kind){ const c={claude:'amC',codex:'amX',agy:'amA'}[from
 let attnPend=null;     // the last agent nudge nobody has acted on yet (≤ 60 s): where a click on the notch / hovering orb jumps to
 function attnJump(){ const p=attnPend; attnPend=null; if(!p||performance.now()-p.at>60000) return false; if(AM){ AM.until=0; AMX.mk.setAttribute('pointer-events','none'); }
   post('/api/attention/focus',{from:p.from}).catch(()=>{}); chip.classList.remove('on','act'); renderCue(); sendRegion(); return true; }
+function mirSet(m){ const was=MIR.owner; MIR={owner:m&&['off','pending','agent'].includes(m.owner)?m.owner:null,watching:!!(m&&m.watching)};
+  const B=document.body.classList, k=mirKind(); B.toggle('mir-agent',MIR.owner==='agent'); B.toggle('mir-pending',MIR.owner==='pending');
+  if(k){ MX.ttl.textContent=MIR_TXT[k]; MX.mk.setAttribute('aria-label',MIR_TXT[k]); }
+  if(MIR.owner!==was){
+    if(MIR.owner==='pending'){ restore(0); poke('curious',1800); capShow(); himSet("An agent is asking to control your desktop — answer in ai-mirror's dialog."); }
+    else if(MIR.owner==='agent'){ restore(0); poke('scared',1500); } }
+  renderCue(); if(menuOn) layoutMenu(); sendRegion(true); }
+async function mirRevoke(){ let ok=false;
+  try{ const r=await post('/api/mirror/off'); ok=!!(await r.json()).ok; }catch(e){}
+  if(ok){ mirSet({owner:'off',watching:MIR.watching}); poke('happy',2000); say('Control is back with you.'); }
+  else{ poke('sad',1800); capShow(); himSet("Couldn't take control back — press Super+Shift+Esc.",true); } }
+MX.mk.addEventListener('click',e=>{ e.stopPropagation(); mirRevoke(); });
+$('#mirBarBtn').addEventListener('click',e=>{ e.stopPropagation(); mirRevoke(); });
 function onEvent(ev){
+  if(ev.t==='mirror'){ mirSet(ev); return; }
   if(ev.t==='theme'){ info.theme=ev.theme; lookShown=''; syncLook(); if(setEl.classList.contains('on')) renderSettings(); return; }
   if(ev.t==='beat'){ beat=Math.max(beat,+ev.v||0); beatAt=performance.now(); return; }   // the music's kick (look_beat)
   if(ev.t==='saw'){ poke('looking',1800); wake(); return; }   // Claude took a look at your screen (`nixi-companion see`)
@@ -2587,10 +2633,11 @@ const ICON={
   hover:'<path d="M5 3l14 7-6 2-2 6z"/><circle cx="18" cy="18" r="3"/>',
   set:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   hide:'<path d="M6 6l12 12M18 6 6 18"/>',
+  mirror:'<circle cx="12" cy="12" r="9"/><path d="M9 9h6v6H9z"/>',
 };
 // (no top bar / blob button: you dock him by dragging him into a screen edge, and pull him out to get the blob back)
 const NX_MENU=['cd','history','look','plugins'];
-const MENU=[['talk','talk'],['cd','folder'],['history','history'],['look','show my screen'],['hover','hover mode'],['plugins','plug-ins'],['set','settings'],['hide','hide']];
+const MENU=[['talk','talk'],['cd','folder'],['history','history'],['look','show my screen'],['hover','hover mode'],['plugins','plug-ins'],['mirror','take control back'],['set','settings'],['hide','hide']];
 const MENU_XY=[];
 menuEl.innerHTML=MENU.map(([a,l],i)=>{ const ang=(-168+i*(156/(MENU.length-1)))*Math.PI/180, r=122;
   MENU_XY[i]=[Math.cos(ang)*r/1.1, Math.sin(ang)*r/1.1];                 // same spot in the face's SVG units (330px = 300 units)
@@ -2599,19 +2646,26 @@ let menuOn=false;
 // in the notch his sparks fan out from it, away from the screen edge (an arc around his eyes), instead of over the ball
 const NOTCH_MENU={top:[170,26,15,165], bottom:[170,434,-165,-15], left:[34,230,-75,75], right:[306,230,105,255]};   // eye centre x,y + arc from/to (deg)
 function layoutMenu(){
-  const edge=barEdge(), bs=$$('#menu .mb');
-  bs.forEach(b=>{ if(!b.dataset.ox){ b.dataset.ox=b.style.getPropertyValue('--x'); b.dataset.oy=b.style.getPropertyValue('--y'); } });
-  if(!edge){ menuEl.style.left=''; menuEl.style.top=''; bs.forEach(b=>{ b.style.setProperty('--x',b.dataset.ox); b.style.setProperty('--y',b.dataset.oy); }); return; }
+  const edge=barEdge(), all=$$('#menu .mb');
+  all.forEach(b=>b.classList.toggle('off',b.dataset.a==='mirror'&&!(MIR.owner==='pending'||MIR.owner==='agent')));     // (only while it applies)
+  const bs=all.filter(b=>getComputedStyle(b).display!=='none'), n=bs.length;
+  MENU_XY.length=0;
+  if(!edge){ menuEl.style.left=''; menuEl.style.top='';
+    bs.forEach((b,i)=>{ const ang=(-168+i*(156/(n-1)))*Math.PI/180, r=122;
+      MENU_XY[i]=[Math.cos(ang)*r/1.1, Math.sin(ang)*r/1.1];
+      b.style.setProperty('--x',(Math.cos(ang)*r).toFixed(0)+'px'); b.style.setProperty('--y',(Math.sin(ang)*r).toFixed(0)+'px'); b.style.setProperty('--d',(.26+i*.025).toFixed(3)+'s'); });
+    return; }
   const [cx,cy,a0,a1]=NOTCH_MENU[edge], r=edge==='top'||edge==='bottom'?118:132;
   menuEl.style.left=cx+'px'; menuEl.style.top=cy+'px';
-  bs.forEach((b,i)=>{ const a=(a0+i*(a1-a0)/(bs.length-1))*Math.PI/180;
+  bs.forEach((b,i)=>{ const a=(a0+i*(a1-a0)/(n-1))*Math.PI/180;
+    MENU_XY[i]=[Math.cos(a)*r/1.1, Math.sin(a)*r/1.1];
     b.style.setProperty('--x',(Math.cos(a)*r).toFixed(0)+'px'); b.style.setProperty('--y',(Math.sin(a)*r).toFixed(0)+'px'); });
 }
 let menuShutAt=0;
 function menu(on){ if(on) layoutMenu(); if(!on&&menuOn) menuShutAt=performance.now(); if(on!==menuOn) sfx(on?'menu':'close'); menuOn=on; menuEl.classList.toggle('on',on); document.body.classList.toggle('menu',on); if(on){ closePanels(); hideAsk(); } $('[data-a="hover"]').classList.toggle('on',!!info.hover); sendRegion(true); }
 menuEl.addEventListener('click',e=>{ const b=e.target.closest('.mb'); if(!b) return; menu(false);
   ({talk:()=>startRec('auto'), bar:()=>toggleBar(), cd:()=>showAsk('/cd '), history:()=>openPanel('history'), plugins:()=>openPanel('plugins'),
-    look:()=>shoot('screen').then(j=>{ if(j) showAsk(''); }), hover:toggleHover, hide:dismiss, set:()=>settings(true)})[b.dataset.a](); });
+    look:()=>shoot('screen').then(j=>{ if(j) showAsk(''); }), hover:toggleHover, mirror:mirRevoke, hide:dismiss, set:()=>settings(true)})[b.dataset.a](); });
 function dismiss(){ menu(false); hideAsk(); closePanels(); endListening(); if(!native('hide')) poke('sleepy',1200); }
 // Esc / hiding him: he stops listening — a recording in progress is dropped and the "just keep talking" window closes
 function endListening(){ if(rec&&rec.mode!=='approve') stopRec(true); post('/api/follow',{act:'cancel'}).catch(()=>{}); follow=false; hearRaw=0; }
@@ -3110,7 +3164,7 @@ async function slash(cmd){
 }
 
 /* ================= wiring ================= */
-function showInfo(){ if(info.ambient){ AMB=info.ambient; renderCue(); } syncEye(); document.body.classList.toggle('fulltext',!!info.full_text); ctxRender(); input.placeholder=`ask in ${info.cwd_display||'~'}…`; const l=$('#cwdLbl'); if(l) l.textContent=info.cwd_display||'folder';
+function showInfo(){ if('mirror' in info) mirSet(info.mirror); if(info.ambient){ AMB=info.ambient; renderCue(); } syncEye(); document.body.classList.toggle('fulltext',!!info.full_text); ctxRender(); input.placeholder=`ask in ${info.cwd_display||'~'}…`; const l=$('#cwdLbl'); if(l) l.textContent=info.cwd_display||'folder';
   document.body.classList.toggle('root',!!info.root); document.body.classList.toggle('nixi',!!info.bridge); }
 async function refresh(){ try{ await tokenReady; const r=await fetch('/api/state',{headers:hdr()}); const j=await r.json();
   if(!('cwd' in j)) return staleToken();      // no (or an old) token: the server only said it's running
@@ -3135,7 +3189,9 @@ window.nixiCmd=async c=>{ hiddenNow=false; restore(15000,true);
 
 // click-through: tell the window which bits are solid (the ball + whatever is open); the rest passes clicks to your desktop
 let lastRegion='';
-function calmCheck(){ document.body.classList.toggle('calm', setEl.classList.contains('on')||panelEl.classList.contains('on')||apEl.classList.contains('on')); }
+function calmCheck(){ document.body.classList.toggle('calm', setEl.classList.contains('on')||panelEl.classList.contains('on')||apEl.classList.contains('on'));
+  const el=document.body.classList.contains('calm')&&MIR.owner==='agent'&&[setEl,panelEl,apEl].find(e=>e.classList.contains('on'));     // the red bar sits on top of whichever is open
+  if(el){ const r=el.getBoundingClientRect(), b=$('#mirBar').style; b.left=r.left+'px'; b.width=r.width+'px'; b.top=(r.top>=30?r.top-30:r.top)+'px'; } }
 // the page is laid out for 340×460: if the window ends up a different size, scale/centre it instead of cutting things off
 let fitK=1, layoutX=0, layoutY=0;
 // room for a long approval card / terminal sheet: ask the window for extra width and height (it shrinks back at [0,0])
@@ -3164,6 +3220,8 @@ function sendRegion(force){
     else rs.push([edge==='left'?R(r.left):R(r.right-68),R(r.top+r.height/2-65),68,130]);
   } else add(E.body,8);
   if(menuOn) $$('.mb').forEach(b=>add(b,2));
+  if(MIR.owner==='agent'&&!inBar&&!document.body.classList.contains('calm')) add(MX.mk,6);
+  if(document.body.classList.contains('calm')&&MIR.owner==='agent') add($('#mirBar'),2);
   if(ask.classList.contains('on')) add(ask,4);
   if(chip.classList.contains('act')&&chip.classList.contains('on')) add(chip,4);
   if(cap.classList.contains('ntf')) add(plate,4);
@@ -3193,7 +3251,7 @@ window.nixiCorner=c=>{ corner=c; const x=c[1]==='l'?-102:102, y=c[0]==='t'?-99:9
 // idleActive: your own action, or something that needs you: he stays (or comes back) up. idleShowing: a passive indicator: he just doesn't shrink further.
 function idleActive(){ const on=el=>el.classList.contains('on'), B=document.body.classList;
   return busy||!!rec||transcribing||follow||menuOn||!!pendingAppr||on(pwEl)||on(apEl)||on(ask)||on(setEl)||on(panelEl)
-    ||B.contains('hover')||B.contains('bar')||!!downAt||hiddenNow; }
+    ||B.contains('hover')||B.contains('bar')||!!downAt||hiddenNow||MIR.owner==='pending'||MIR.owner==='agent'; }
 function idleShowing(){ const now=performance.now();
   return playing||capOn||!!notifyRow||chip.classList.contains('act')||!!AM||(!!attnPend&&now-attnPend.at<60000)
     ||$('#mailPop').classList.contains('on')||(!!propOn&&now<propOn.until); }
@@ -3255,7 +3313,7 @@ E.body.addEventListener('click',()=>{ if(dragged){ dragged=false; return; } down
 E.body.addEventListener('contextmenu',e=>{ e.preventDefault(); hideAsk(); closePanels(); G.jelly.kick(.4); menu(!menuOn); });
 addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('mouseup',()=>{ if(dragNative){ dragNative=false; native('dragend'); } downAt=null; });
-addEventListener('mousedown',e=>{ if(!e.target.closest('#body,#barPill,#menu,#ask,.pn,#appr,#atts,#pwbox')){ menu(false); closePanels(); if(!input.value) hideAsk(); } });
+addEventListener('mousedown',e=>{ if(!e.target.closest('#body,#barPill,#menu,#ask,.pn,#appr,#atts,#pwbox,#mirBar')){ menu(false); closePanels(); if(!input.value) hideAsk(); } });
 
 addEventListener('keydown',e=>{ wake(); lastUser=performance.now();
   const askOn=ask.classList.contains('on'), k=e.key.toLowerCase(), typing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&document.activeElement!==input;
