@@ -28,6 +28,7 @@ import threading
 import time
 
 import aside
+import screens
 
 # He's an overlay (a layer-shell surface, like a bar or a notification), which only works when GTK talks Wayland.
 # Lots of setups (NVIDIA ones especially) set GDK_BACKEND=x11, or start apps without WAYLAND_DISPLAY — then GTK quietly
@@ -329,10 +330,13 @@ class NixiWindow:
         self.follow_t = None
         self.step_aside = True                  # slide out of the way of nixi's card (the page tells us)
         self.aside = None                       # while aside: {"home": (mon, x, y), "mode": side|monitor|hover, "parked": (mon, x, y)|None}
+        self.dpos = None                        # drag_by: his unclamped global position while dragged
+        self.grab_ball = False                  # the drag started by pulling the notch: the ball is the grab point
         self.dragging = False                   # (set before _place() can run — it checks this)
         self.hover = False
         self.bar, self.bar_home = None, None    # top bar: merged into a screen edge as a notch (None = the blob)
         self.pmoving = False                    # moving a panel by its header: no docking, no undocking
+        self.hypr = Hypr()                      # (before _load_pos: a saved connector name needs it)
         self.layer = GtkLayerShell is not None
         self.mon_i, self.mx, self.my = 0, 0, 0
         if self.layer:
@@ -397,7 +401,6 @@ class NixiWindow:
         if os.environ.get("NIXI_COMPANION_PARTIAL_REDRAW") != "1":
             v.add_tick_callback(lambda wid, _clock: (wid.queue_draw(), True)[1])
 
-        self.hypr = Hypr()
         self.shown = True
         self.mons = None
         if self.hypr.ok() and not self.layer:
@@ -418,6 +421,10 @@ class NixiWindow:
         d = Gdk.Display.get_default()
         return [d.get_monitor(i) for i in range(d.get_n_monitors())]
 
+    @classmethod
+    def _geoms(cls):
+        return [(g.x, g.y, g.width, g.height) for g in (m.get_geometry() for m in cls._monitors())]
+
     def _geom(self, i=None):
         ms = self._monitors()
         m = ms[min(self.mon_i if i is None else i, len(ms) - 1)]
@@ -426,9 +433,12 @@ class NixiWindow:
     def _load_pos(self):
         try:
             p = json.load(open(POS_FILE))
-            self.mon_i, self.mx, self.my = int(p["mon"]), int(p["x"]), int(p["y"])
-            if self.mon_i >= len(self._monitors()):
+            ok = self.hypr.ok()                              # a saved connector name only means something to Hyprland
+            pairs = [(n, i) for n, i, _ in self._hmons()] if ok else []
+            i = screens.pick_monitor(p if ok else dict(p, name=None), pairs, len(self._monitors()))
+            if i is None:
                 raise ValueError
+            self.mon_i, self.mx, self.my = i, int(p["x"]), int(p["y"])
         except Exception:  # noqa: BLE001
             self.mon_i = 0
             _, g = self._geom()
@@ -484,10 +494,8 @@ class NixiWindow:
                 p = json.load(open(POS_FILE))
             except (OSError, ValueError):
                 p = {}
-            p.update(mon=self.mon_i, x=self.mx + self.wide_shift, y=self.my)
             name = next((n for n, i, _ in self._hmons() if i == self.mon_i), None) if self.hypr.ok() else None
-            if name and not self.bar:                          # his spot on each screen, by Hyprland's name for it
-                p.setdefault("mons", {})[name] = [self.mx + self.wide_shift, self.my]
+            screens.pos_dict(p, self.mon_i, self.mx + self.wide_shift, self.my, name, self.bar)
             json.dump(p, open(POS_FILE, "w"))
         except OSError:
             pass
@@ -510,8 +518,7 @@ class NixiWindow:
             GtkLayerShell.set_monitor(self.win, self._geom()[0])
         _, g = self._geom()
         if clamp:                                  # keep the whole surface on screen
-            x = min(max(x, 0), max(0, g.width - self.cur_w))
-            y = min(max(y, 0), max(0, g.height - H))
+            x, y = screens.clamp_on((0, 0, g.width, g.height), x, y, self.cur_w, self.cur_h)
         nx, ny = int(round(x)), int(round(y))
         self.mx, self.my = nx, ny
         GtkLayerShell.set_margin(self.win, GtkLayerShell.Edge.LEFT, self.mx)
@@ -840,6 +847,7 @@ class NixiWindow:
                         log(f"ghost notch: {ex}")
                     return False
                 GLib.timeout_add(30, ghost)          # (a moment later: a new window right as the drag starts can upset it)
+            self.grab_ball = bool(c)                 # (the loop then keeps the ball under the cursor)
             self.set_bar(None, to=(c[0] - BALL[0], c[1] - BALL[1]) if c else "here")
         if not self.layer:
             seat = Gdk.Display.get_default().get_default_seat()
@@ -853,6 +861,8 @@ class NixiWindow:
             threading.Thread(target=self._drag_loop, daemon=True).start()
         elif not self.hypr.ok():                       # (no global cursor: the page sends dragby; judged at dragend)
             self.over = [0, 0]
+            g = self._geom()[1]
+            self.dpos = [g.x + self.mx, g.y + self.my]
 
     def _watch_release(self):
         """X11: the window manager moves the window while you drag; poll for the mouse button coming up, then see
@@ -890,12 +900,13 @@ class NixiWindow:
             c = self._cursor_or_none()
             if not c:
                 return False
-            _, g = self._mon_at(*c)
-            dist = {"top": c[1] - g.y, "bottom": g.y + g.height - 1 - c[1],
-                    "left": c[0] - g.x, "right": g.x + g.width - 1 - c[0]}
-            edge = min(dist, key=dist.get)
-            if dist[edge] >= 40:
+            i, g = self._mon_at(*c)
+            edge = screens.dock_edge(self._geoms(), i, c)
+            if not edge:
                 return False
+            if self.layer and i != self.mon_i:             # dropped on the next screen: dock there, same spot on screen
+                o = self._geom()[1]
+                self._place(self.mx + o.x - g.x, self.my + o.y - g.y, False, i)
         self.set_bar(edge)
         return False
 
@@ -967,7 +978,7 @@ class NixiWindow:
             elif to:
                 self.glide_n += 1
                 if self.layer:
-                    i, g = self._mon_at(*to)
+                    i, g = self._mon_at(to[0] + BALL[0], to[1] + BALL[1])      # the cursor's screen, not the corner's
                     self._place(to[0] - g.x, to[1] - g.y, True, i)
                 else:
                     self._xmove(*to)
@@ -982,7 +993,7 @@ class NixiWindow:
                 else:
                     self._glide_to(hx - self.wide_shift, hy)
             if was:
-                GLib.timeout_add(int(GLIDE * 1000) + 150, lambda: (self._save_pos() if self.layer else self._save_xpos(), False)[1])
+                GLib.timeout_add(int(GLIDE * 1000) + 150, lambda: (None if self.dragging or self.pmoving or self.dpos else (self._save_pos() if self.layer else self._save_xpos()), False)[1])
         # (pulled out by the mouse: the page just pops him out under it, nothing trailing behind)
         pulled = bool(to) and to != "here" and not edge
         self._js("window.nixiDock&&nixiDock(%s,%s)" % (json.dumps(edge or ""), json.dumps("pull" if pulled else "")))
@@ -994,29 +1005,45 @@ class NixiWindow:
             log(f"drag: can't read the cursor ({e})")
             self.dragging = False
             return
-        ox, oy, t0 = self.mx, self.my, time.monotonic()
+        g = self._geom()[1]
+        if self.grab_ball:                               # pulled off the notch: the ball is under the cursor
+            off = (BALL[0] + self.wide_shift, BALL[1] + self.top_shift)
+        else:
+            off = (sx - (g.x + self.mx), sy - (g.y + self.my))
+        self.grab_ball = False
+        t0 = time.monotonic()
         while self.dragging and time.monotonic() - t0 < 30:
             time.sleep(0.008)
             try:
                 cx, cy = self.hypr.cursor()
             except Exception:  # noqa: BLE001
                 continue
-            GLib.idle_add(self._place, ox + cx - sx, oy + cy - sy, True)
+            GLib.idle_add(self._drag_tick, cx, cy, off)
         self.dragging = False
         GLib.idle_add(self._drag_finished)
 
+    def _drag_tick(self, cx, cy, off):
+        """On the cursor's screen, glued to the grab point, no clamp (the release clamps)."""
+        if self.dragging:
+            i, x, y = screens.drag_place(self._geoms(), (cx, cy), off, self.mon_i)
+            self._place(x, y, False, i)
+        return False
+
     def _drag_finished(self, edge=None):
+        self.dpos = None
         if not self.pmoving:
             self._dock_if_edge(edge)
         self.pmoving = False
-        if not self.bar:                                 # docked: his blob spot (bar_home) stays where it was
-            self._save_pos()
         self._rewide()
+        if not self.bar:                                 # docked: his blob spot (bar_home) stays where it was
+            if self.layer:
+                self._place(self.mx, self.my, True)      # the whole surface (cards too) inside its screen
+            self._save_pos()
         return False
 
     def _rewide(self):
         """After a drag the room either side of him has changed: re-fit the widened window."""
-        if self.want_panel or self.want_code:
+        if self.want_panel or self.want_code or self.want_xw or self.want_h:
             self.set_wide(self.want_panel)
         return False
 
@@ -1024,12 +1051,18 @@ class NixiWindow:
         if self.layer and not self.hover:
             if self.bar and not self.pmoving:
                 self.set_bar(None, to="here")             # pulling the notch away: the blob pops out right there
-            want = (self.mx + dx, self.my + dy)
-            self._place(*want, True)
-            o = getattr(self, "over", None)               # how far you pushed past the screen's edge (he's clamped)
-            if o is not None:
-                o[0] = (o[0] + dx) if (want[0] != self.mx) else 0
-                o[1] = (o[1] + dy) if (want[1] != self.my) else 0
+            geoms = self._geoms()
+            if self.dpos is None:
+                self.dpos = [geoms[self.mon_i][0] + self.mx, geoms[self.mon_i][1] + self.my]
+            self.dpos[0] += dx
+            self.dpos[1] += dy
+            ball = (self.wide_shift + BALL[0], self.top_shift + BALL[1])
+            i = screens.mon_strict(geoms, self.dpos[0] + ball[0], self.dpos[1] + ball[1])
+            i = self.mon_i if i is None else i
+            nx, ny, ox, oy = screens.outer_clamp(geoms, i, self.dpos[0], self.dpos[1], self.cur_w, self.cur_h, ball)
+            self._place(nx - geoms[i][0], ny - geoms[i][1], False, i)
+            if getattr(self, "over", None) is not None:   # how far you pushed past an outer edge (he's clamped there)
+                self.over = [ox, oy]
 
     def drag_end(self):
         if self.dragging:
@@ -1042,13 +1075,7 @@ class NixiWindow:
                     edge = "top" if o[1] < 0 else "bottom"
                 elif abs(o[0]) >= 40:
                     edge = "left" if o[0] < 0 else "right"
-            if edge:
-                self._drag_finished(edge)
-            else:
-                self.pmoving = False
-                if not self.bar:
-                    self._save_pos()
-                self._rewide()
+            self._drag_finished(edge)
 
     # ---- click-through: only what the page says is solid takes the mouse
     def _apply_region(self):

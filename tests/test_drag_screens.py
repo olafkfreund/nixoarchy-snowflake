@@ -80,9 +80,7 @@ class DragScreensTest(unittest.TestCase):
         self.assertFalse(blocked(False, False, None, 10.6, 10))
         self.assertFalse(blocked(False, False, None, 10, None))
 
-    @unittest.expectedFailure
     def test_hypr_exists_before_first_load_pos(self):
-        # until plan step 3
         source = (ROOT / "app/window.py").read_text()
         self.assertLess(source.index("self.hypr = Hypr()"), source.index("self._load_pos()"))
 
