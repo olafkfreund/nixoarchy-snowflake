@@ -3829,7 +3829,7 @@ def run_bridge(prompt, emit):
                             "end the reply with ONE last line, <<stage>> followed by JSON on that line: "
                             '{"v":1,"kind":"commands","title":"optional plaque, 1-4 words","items":[{"label":"what it does","cmd":"the command"}]} or '
                             '{"v":1,"kind":"facts","title":"...","points":["..."],"source":"optional"} or, to find videos, {"v":1,"kind":"video","query":"search words"} (the server searches) or, for directions or a place, '
-                            "{\"v\":1,\"kind\":\"place\",\"dest\":\"address or name\",\"mode\":\"driving|walking|bicycling|transit, omit for a plain place\"}; "
+                            "{\"v\":1,\"kind\":\"place\",\"dest\":\"address or name\",\"mode\":\"MODE\"}, where MODE is one of driving, walking, bicycling, transit (leave mode out for a plain place); "
                             "at most 5 items, labels and points under 120 characters, commands under 500, no line breaks inside.)\n\n")
     BRIDGE.send({"type": "prompt", "text": note + prompt})
     mid = None
@@ -3903,6 +3903,13 @@ def stage_trust():
     return "yolo" if c.get("permissionMode") == "yolo" else c.get("trust") if c.get("trust") in ("guide", "mechanic") else "unknown"
 
 
+def video_stage(st, before):
+    """Search for a video stage off the turn, then show it, unless the stage on screen changed meanwhile."""
+    st = {**st, "items": stages.video_search(st["query"])}      # (the agent only said what to look for)
+    if stages_on() and STAGES.current() is before:
+        BUS.pub(t="stage", **stage_event(STAGES.put(st)))
+
+
 def stage_act(token, act):
     """A button on the stage (never Run: that is a turn, see ask). Only what the store holds is ever used, never page text."""
     if not stages_on() and act not in ("close", "shown", "hidden"):
@@ -3921,8 +3928,11 @@ def stage_act(token, act):
         return {"ok": bool(page)}
     got = STAGES.get(token) if act in ("copy", "open", "play") else None
     if act == "copy" and got:
+        text = got[1].get("cmd") or got[1].get("text")
+        if not text:
+            return {"ok": False, "error": "nothing to copy"}
         try:
-            r = subprocess.run(["wl-copy"], input=got[1].get("cmd", got[1].get("text", "")).encode(), timeout=5, check=False)
+            r = subprocess.run(["wl-copy"], input=text.encode(), timeout=5, check=False)
             return {"ok": r.returncode == 0}
         except (OSError, subprocess.SubprocessError):
             return {"ok": False, "error": "couldn't copy"}
@@ -4365,8 +4375,10 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/api/stage/thumb/"):      # a poster for the current stage: only a token the store handed out, only i.ytimg.com
             got = STAGES.get(p[17:]) if stages_on() else None
             hit = got and got[0] == "thumb" and (THUMBS.get(p[17:]) or stages.fetch_thumb(got[1]["id"]))
-            if hit:
+            if hit and STAGES.get(p[17:]):                   # (re-checked: the stage may have gone while we fetched)
                 THUMBS[p[17:]] = hit
+            else:
+                hit = None
             if not hit:
                 return self._json({"error": "not found"}, 404)
             self.send_response(200)
@@ -4968,7 +4980,9 @@ class Handler(BaseHTTPRequestHandler):
                         out(t="delta", text=tail)
                     st = stages.validate(blk) if t == "result" and blk and run_cmd is None and stages_on() else None    # (a Run never replaces the board)
                     if st and st["kind"] == "video":
-                        st = {**st, "items": stages.video_search(st["query"])}         # (the agent only said what to look for)
+                        out(**kw)                                                      # (the turn ends now; the search may take 8 s)
+                        threading.Thread(target=video_stage, args=(st, STAGES.current()), daemon=True).start()
+                        return
                     if st:
                         out(t="stage", **stage_event(STAGES.put(st)))
                 out(**kw)

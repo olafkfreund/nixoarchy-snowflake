@@ -1993,17 +1993,18 @@ function stageMap(ev,bd,acts,fn){
   bd.appendChild(g);
   const row=hx('div','tx'); row.appendChild(hx('div','lb dst',ev.dest)); if(ev.mode) row.appendChild(hx('div','md',ev.mode)); bd.appendChild(row);
   fn.textContent='A sketch, not the route: Google Maps picks the way and the start';
-  acts.appendChild(stageBtn('Open in Google Maps',b=>post('/api/stage/act',{token:ev.open,act:'open'}).then(r=>r.json()).then(j=>{ if(!j.ok) fn.textContent=j.error||"Couldn't open it"; }).catch(()=>{})));
+  acts.appendChild(stageBtn('Open in Google Maps',b=>post('/api/stage/act',{token:ev.open,act:'open'}).then(r=>r.json()).then(j=>stageOpened(b,fn,j,"Couldn't open it")).catch(()=>{})));
   acts.appendChild(stageBtn('Copy address',b=>stageAct('copy',ev.copy,b)));
 }
+function stageOpened(b,fn,j,bad){ if(j.ok){ b.textContent='Opened ✓'; setTimeout(()=>stageClose(),1500); } else fn.textContent=j.error||bad; }
 function stageFilm(ev,bd,acts,fn){
-  const webSearch=()=>acts.appendChild(stageBtn('Search in browser',()=>post('/api/stage/act',{token:ev.search,act:'open'}).catch(()=>{})));
+  const webSearch=()=>acts.appendChild(stageBtn('Search in browser',b=>post('/api/stage/act',{token:ev.search,act:'open'}).then(r=>r.json()).then(j=>stageOpened(b,fn,j,"Couldn't open it")).catch(()=>{})));
   if(!(ev.items||[]).length){ bd.appendChild(hx('div','pt1',"Couldn't search right now")); webSearch(); stgEl.classList.add('bare'); }
   else (ev.items).forEach((it,i)=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab'), pw=hx('div','pw'), im=hx('img','po');
     im.alt=''; im.src='/api/stage/thumb/'+encodeURIComponent(it.thumb); im.addEventListener('error',()=>im.remove()); pw.appendChild(im);
     row.appendChild(hx('div','n',String(i+1))); row.appendChild(pw);
     tx.appendChild(hx('div','lb',it.title)); tx.appendChild(hx('div','vm',[it.channel,it.duration].filter(Boolean).join(' · ')));
-    ab.appendChild(stageBtn('Play',()=>post('/api/stage/act',{token:it.play,act:'play'}).then(r=>r.json()).then(j=>{ if(!j.ok) fn.textContent=j.error||"Couldn't play it"; }).catch(()=>{})));
+    ab.appendChild(stageBtn('Play',b=>post('/api/stage/act',{token:it.play,act:'play'}).then(r=>r.json()).then(j=>stageOpened(b,fn,j,"Couldn't play it")).catch(()=>{})));
     row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
   fn.textContent='Searched YouTube for: '+ev.query;
 }
@@ -2036,8 +2037,8 @@ function stageRestore(){ if(stgState!=='tab'||!stg) return; stgState='open'; stg
 function stageTick(){ const now=performance.now(), hov=stgEl.matches(':hover');
   if(hov) stgUse=now;
   if(playing||busy||hov||pendingAppr) stgQuiet=now;
-  if(stg&&(stg.kind==='facts'||stg.kind==='place'||stg.kind==='video')&&now-stgQuiet>20000) return stageClose();
-  if(stg&&stg.kind==='commands'&&now-stgUse>30000&&!busy) stageHide(true); }
+  if(stg&&stg.kind==='facts'&&now-stgQuiet>20000) return stageClose();
+  if(stg&&stg.kind!=='facts'&&now-stgUse>30000&&!busy) stageHide(true); }
 function stageAct(act,token,btn){ post('/api/stage/act',{token,act}).then(r=>r.json()).then(j=>{ if(btn&&act==='copy'){ const t=btn.textContent; btn.textContent=j.ok?'Copied ✓':"Couldn't copy"; setTimeout(()=>{ btn.textContent=t; },1400); } }).catch(()=>{}); }
 function stageRun(it){ stgRunTok=it.token; send(it.label,{stage:it.token,claude:true}); }
 function stageStatus(ev){ if(!stgOpen()&&stgState!=='tab') return;

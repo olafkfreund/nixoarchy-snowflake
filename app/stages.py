@@ -12,7 +12,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import quote_plus
 
 MARK = "<<stage"
 MODES = ("driving", "walking", "bicycling", "transit")
@@ -125,7 +125,7 @@ def search_url(query):
 def video_search(query, run=subprocess.run):
     """-> up to 3 {id,title,channel,duration} from yt-dlp, or [] on any failure. argv list, one query argument, 8 s."""
     try:
-        r = run(["yt-dlp", "--flat-playlist", "-J", "ytsearch3:" + query], capture_output=True, timeout=8, check=False)
+        r = run(["yt-dlp", "--ignore-config", "--flat-playlist", "-J", "ytsearch3:" + query], capture_output=True, timeout=8, check=False)
         entries = json.loads(r.stdout.decode("utf-8", "replace")).get("entries") or []
     except (OSError, subprocess.SubprocessError, ValueError, AttributeError):
         return []
@@ -152,8 +152,6 @@ def fetch_thumb(vid, limit=200_000, timeout=5):
     if not _VID.fullmatch(vid or ""):
         return None
     url = "https://i.ytimg.com/vi/%s/mqdefault.jpg" % vid
-    if urlparse(url).hostname != "i.ytimg.com":
-        return None
     try:
         with urllib.request.build_opener(_NoRedirect).open(urllib.request.Request(url, headers={"User-Agent": "nixi"}), timeout=timeout) as r:
             ct = r.headers.get("Content-Type", "")
@@ -191,7 +189,7 @@ class Store:
                 toks[tt] = ("thumb", {"id": it["id"]})
                 page["items"].append({"title": it["title"], "channel": it["channel"], "duration": it["duration"], "play": pt, "thumb": tt})
             page["search"] = secrets.token_urlsafe(12)
-            toks[page["search"]] = ("video", {"url": search_url(stage["query"])})
+            toks[page["search"]] = ("link", {"url": search_url(stage["query"])})
         elif stage["kind"] == "place":  # the page gets two tokens, never the URL
             page["open"], page["copy"] = secrets.token_urlsafe(12), secrets.token_urlsafe(12)
             toks[page["open"]] = ("place", {"url": maps_url(stage["dest"], stage.get("mode"))})
