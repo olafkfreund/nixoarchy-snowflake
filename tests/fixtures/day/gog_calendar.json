@@ -1,0 +1,12 @@
+{"events": [
+ {"id": "e1", "summary": "Team stand-up", "start": {"dateTime": "{D}T09:40:00{TZ}"}, "end": {"dateTime": "{D}T10:00:00{TZ}"},
+  "hangoutLink": "https://meet.google.com/abc-defg-hij", "htmlLink": "https://www.google.com/calendar/event?eid=e1"},
+ {"id": "e0", "summary": "Early sync", "start": {"dateTime": "{D}T08:00:00{TZ}"}, "end": {"dateTime": "{D}T08:30:00{TZ}"}},
+ {"id": "e2", "summary": "Design review", "start": {"dateTime": "{D}T14:00:00{TZ}"}, "end": {"dateTime": "{D}T15:00:00{TZ}"},
+  "htmlLink": "https://calendar.google.com/calendar/event?eid=e2", "description": "join https://evil.example/x"},
+ {"id": "e3", "summary": "Release day", "start": {"date": "{D}"}, "end": {"date": "{T}"}},
+ {"id": "e4", "summary": "Yesterday's offsite", "start": {"date": "{Y}"}, "end": {"date": "{D}"}},
+ {"id": "e5", "summary": "Conf week", "start": {"date": "{Y}"}, "end": {"date": "{T}"}},
+ {"id": "e6", "summary": "<b>Markup</b> lunch", "start": {"dateTime": "{D}T12:30:00{TZ}"}, "end": {"dateTime": "{D}T13:15:00{TZ}"},
+  "htmlLink": "javascript:alert(1)"}
+]}

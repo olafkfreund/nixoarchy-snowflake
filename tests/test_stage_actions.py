@@ -24,9 +24,11 @@ class StageActionsTest(unittest.TestCase):
             os.environ[k] = os.path.join(cls.tmp, d)
             os.makedirs(os.environ[k], exist_ok=True)
         sys.path.insert(0, str(REPO_ROOT / "app"))
+        import day
         import server
         import stages
         cls.server, cls.stages = server, stages
+        globals()["day"] = day
 
     @classmethod
     def tearDownClass(cls):
@@ -352,6 +354,141 @@ class StageActionsTest(unittest.TestCase):
         self.s.ST.last_you = "how do I install firefox?"
         self.ask({"stage": self.tok, "act": "run", "prompt": "Install it", "you": "Install it"})
         self.assertEqual(self.s.ST.last_you, "how do I install firefox?")
+
+    # ---- the day desk (#144 slice 4)
+    SNAP = {"date": "", "at": "09:00", "next": {"when": "09:40", "title": "Stand-up", "in": "in 40 min", "link": None, "url": "https://calendar.google.com"},
+            "today": [], "tasks": [], "github": [], "count": {"today": 0, "tasks": 0, "github": 0}, "status": {"cal": "ok", "tasks": "ok", "gh": "off"}}
+
+    def snap(self, **kw):
+        return {**self.SNAP, "date": time.strftime("%Y-%m-%d"), **kw}
+
+    def test_day_block_is_fetched_off_the_turn(self):
+        gate, done = self.s.threading.Event(), self.s.threading.Event()
+
+        def slow(*a, **k):
+            gate.wait(5)
+            return self.snap()
+        pub = mock.Mock(side_effect=lambda **kw: done.set())
+        with mock.patch.object(self.s.day, "snapshot", slow), mock.patch.object(self.s.BUS, "pub", pub):
+            evs, _, _ = self.ask({"prompt": "how does my day look?"}, tool=False, deltas=('Here.\n<<stage>>{"v":1,"kind":"day"}',))
+            self.assertIn("result", [e["t"] for e in evs])          # the turn ended while the fetch was still blocked
+            self.assertNotIn("stage", [e["t"] for e in evs])
+            self.assertFalse(pub.called)
+            gate.set()
+            self.assertTrue(done.wait(5))
+        self.assertEqual((pub.call_args[1]["t"], pub.call_args[1]["kind"]), ("stage", "day"))
+        self.assertEqual(self.s.STAGES.current()["kind"], "day")
+
+    def test_day_result_dropped_if_the_stage_changed(self):
+        before = self.s.STAGES.current()
+        self.s.STAGES.put(self.stages.validate({"v": 1, "kind": "facts", "title": "t", "points": ["p"]}))
+        with mock.patch.object(self.s.day, "snapshot", return_value=self.snap()), mock.patch.object(self.s.BUS, "pub") as pub:
+            self.s.day_stage({"v": 1, "kind": "day"}, before)
+        self.assertFalse(pub.called)
+
+    def test_whats_next_is_answered_from_the_cache_without_a_turn(self):
+        with mock.patch.object(self.s, "BRIDGED", True), mock.patch.object(self.s.day, "snapshot", return_value=self.snap()) as sn:
+            r = self.s.day_next()
+        self.assertEqual(r["say"], "Stand-up in 40 minutes.")
+        self.assertTrue(sn.call_args[1]["cache_only"])              # (never a subprocess on the request thread)
+
+    def test_whats_next_with_a_cold_cache_looks_in_a_thread(self):
+        with mock.patch.object(self.s, "BRIDGED", True), mock.patch.object(self.s.threading, "Thread") as th:
+            with mock.patch.object(self.s.day, "snapshot", return_value=None):
+                r = self.s.day_next()
+        self.assertEqual(r["say"], "Let me look at your day.")
+        self.assertIs(th.call_args[1]["target"], self.s.day_stage)
+        th.return_value.start.assert_called_once()
+
+    def test_cold_whats_next_fetches_once_at_a_time(self):
+        self.assertTrue(self.s.day._busy.acquire(blocking=False))   # (a fetch is running)
+        try:
+            with mock.patch.object(self.s, "BRIDGED", True), mock.patch.object(self.s.threading, "Thread") as th, \
+                    mock.patch.object(self.s.day, "snapshot", return_value=None):
+                r = self.s.day_next()
+            self.assertEqual(r["say"], "Let me look at your day.")
+            th.assert_not_called()
+        finally:
+            self.s.day._busy.release()
+        with mock.patch.object(self.s, "BRIDGED", True), mock.patch.object(self.s.threading, "Thread") as th, \
+                mock.patch.object(self.s.day, "snapshot", return_value=None):
+            self.s.day_next()
+            th.return_value.start.assert_called_once()
+            self.assertFalse(self.s.day._busy.acquire(blocking=False))     # (held until the thread's day_stage lets go)
+        with mock.patch.object(self.s.day, "snapshot", return_value=self.snap()):
+            self.s.day_stage(None, self.s.STAGES.current(), True)
+        self.assertTrue(self.s.day._busy.acquire(blocking=False))
+        self.s.day._busy.release()
+
+    def test_day_snapshot_is_kept_only_when_it_is_shown(self):
+        before = self.s.STAGES.current()
+        self.s.DAY["snap"] = None
+        self.s.STAGES.put(self.stages.validate({"v": 1, "kind": "facts", "title": "t", "points": ["p"]}))
+        with mock.patch.object(self.s.day, "snapshot", return_value=self.snap()), mock.patch.object(self.s.BUS, "pub"):
+            self.s.day_stage(None, before)
+        self.assertIsNone(self.s.DAY["snap"])
+
+    def test_whats_next_phrase_reaches_the_server_and_not_the_agent(self):
+        import quick
+        for t in ("what's next?", "Nixi, what's next", "whats next please"):
+            self.assertEqual(quick.handle(t), {"whats_next": True}, t)
+        self.assertNotEqual(quick.handle("what's next on the calendar for tomorrow"), {"whats_next": True})
+
+    def prompt_sent(self):
+        sent = []
+        p = mock.Mock(stdout=iter([json.dumps({"type": "done"}) + "\n"]))
+        with mock.patch.object(self.s.BRIDGE, "start", return_value=p), mock.patch.object(self.s.BRIDGE, "send", lambda m: sent.append(m)):
+            self.s.run_bridge("any other question", lambda **kw: None)
+        return sent[-1]["text"]
+
+    def desk(self, snap):
+        st = day.stage(snap)
+        st["note"], st["date"] = day.summary(snap), snap["date"]       # (as day_stage stores it)
+        return self.s.STAGES.put(st)
+
+    def test_summary_rides_along_only_while_the_day_desk_is_current(self):
+        s = self.s
+        s.STAGES.close()
+        self.assertNotIn("from Nixi's desk", self.prompt_sent())     # (no desk is current)
+        self.desk(self.snap())
+        self.assertIn("(today, from Nixi's desk", self.prompt_sent())
+        self.desk(self.snap(date="2000-01-01"))
+        self.assertNotIn("from Nixi's desk", self.prompt_sent())     # (yesterday's desk is never passed off as today's)
+        s.STAGES.close()
+
+    def test_previous_answer_brings_back_its_own_summary(self):
+        """Codex on PR #30: two desks, then Previous answer: the agent gets the summary of the desk on screen."""
+        s = self.s
+        one = [{"when": "all day", "title": "Alpha day", "url": None, "link": None}]
+        two = [{"when": "all day", "title": "Beta day", "url": None, "link": None}]
+        self.desk(self.snap(today=one, count={"today": 1, "tasks": 0, "github": 0}))
+        self.desk(self.snap(today=two, count={"today": 1, "tasks": 0, "github": 0}))
+        self.assertIn("Beta day", self.prompt_sent())
+        s.STAGES.back()
+        sent = self.prompt_sent()
+        self.assertIn("Alpha day", sent)
+        self.assertNotIn("Beta day", sent)
+        s.STAGES.close()
+
+    def test_a_run_never_gets_the_summary(self):
+        s = self.s
+        self.desk(self.snap())
+        s.ST.stage_run = "x"
+        self.assertNotIn("from Nixi's desk", self.prompt_sent())
+        s.ST.stage_run = None
+        s.STAGES.close()
+
+    def test_day_item_opens_with_xdg_open_and_a_foreign_url_has_no_token(self):
+        sn = self.snap(today=[{"when": "all day", "title": "A", "url": "https://calendar.google.com/x", "link": None},
+                              {"when": "all day", "title": "B", "url": "javascript:alert(1)", "link": None}], count={"today": 2, "tasks": 0, "github": 0})
+        page = self.s.STAGES.put(day.stage(sn))
+        ok, bad = page["rows"][0]["items"]
+        self.assertIsNone(bad["open"])
+        with mock.patch.object(self.s.subprocess, "Popen") as po:
+            self.assertEqual(self.s.stage_act(ok["open"], "open"), {"ok": True})
+        self.assertEqual(po.call_args[0][0], ["xdg-open", "https://calendar.google.com/x"])
+        self.assertFalse(po.call_args[1].get("shell"))
+        self.assertFalse(self.s.stage_act("not-a-token", "open")["ok"])
 
     # ---- Copilot review
     def post(self, path, body):

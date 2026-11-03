@@ -113,6 +113,8 @@ def validate(obj):
         if dest is None or (mode is not None and mode not in MODES):
             return None
         return {"v": 1, "kind": "place", "dest": dest, **({"mode": mode} if mode else {})}
+    if kind == "day":  # server-made, off the turn: day.snapshot() runs in a thread, see server.day_stage()
+        return {"v": 1, "kind": "day"}
     if kind in SERVER_KINDS:  # the agent only asks; desk_stage() fills them from what the server already has cached
         return {"v": 1, "kind": kind}
     if kind == "video":  # server-made: the agent says only what to look for; results are added by video_stage()
@@ -174,6 +176,22 @@ def _meeting_ok(u):
     except ValueError:
         return False
     return p.scheme == "https" and not p.username and (host in _HOSTS or host.endswith(_SUFFIX))
+
+
+_ITEM_HOSTS = ("github.com", "calendar.google.com", "meet.google.com")
+BIRTHDAY = re.compile(r"birthday|bursdag", re.I)         # a calendar item that is a birthday: never shown, never summarised
+
+
+def item_url_ok(u):
+    """A day-desk item URL: https, no user-info, and exactly github.com, calendar.google.com, meet.google.com, or www.google.com/calendar/."""
+    if not isinstance(u, str) or len(u) > 300 or re.search(r"[\s\x00-\x1f\x7f-\x9f]", u):
+        return False
+    try:
+        p = urllib.parse.urlsplit(u)
+        host = (p.hostname or "").lower()
+        return p.scheme == "https" and not p.username and (host in _ITEM_HOSTS or (host == "www.google.com" and p.path.startswith("/calendar/")))   # (Google's own event link)
+    except ValueError:
+        return False
 
 
 def meeting_link(event):
@@ -269,6 +287,8 @@ class Store:
             toks[page["search"]] = ("link", {"url": search_url(stage["query"])})
         elif stage["kind"] == "place":  # the page gets two tokens, never the URL
             self._place(stage, page, toks)
+        elif stage["kind"] == "day":        # every item URL becomes a token (allowlisted hosts only); the page never sees a URL
+            self._day(stage, page, toks)
         elif stage["kind"] == "weather":    # read-only: nothing to press
             pass
         elif stage["kind"] == "calendar":   # Join per event with a link, and Open calendar; URLs held here, the page gets tokens
@@ -296,6 +316,19 @@ class Store:
         if self.on_new:
             self.on_new()
         return page
+
+    def _day(self, stage, page, toks):
+        def tok(url, ok):
+            if not ok(url):
+                return None
+            t = secrets.token_urlsafe(12)
+            toks[t] = ("link", {"url": url})
+            return t
+        n = stage.get("next")
+        if n:
+            page["next"] = {"when": n["when"], "title": n["title"], "in": n["in"], "open": tok(n.get("url"), item_url_ok), "join": tok(n.get("link"), _meeting_ok)}
+        page["rows"] = [{**r, "items": [{"when": i["when"], "title": i["title"], "bad": bool(i.get("overdue")), "open": tok(i.get("url"), item_url_ok)}
+                                       for i in r["items"][:8]]} for r in stage["rows"]]
 
     def _place(self, stage, page, toks):
         """@home / @work become the stored place (the agent never sees the address); a place the user chose is where
@@ -400,7 +433,7 @@ def fast_path(said, stage):
     if t in _PLAIN:
         return _PLAIN[t], None
     m = _ACT.fullmatch(t)
-    if not m or not stage:
+    if not m or not stage or stage.get("kind") == "day":  # (the day desk is clicked in v1: no voice-numbered opening)
         return None
     n = len(stage.get("items") or stage.get("sessions") or [None])  # facts: one target; a status stage: its sessions
     if stage.get("kind") == "status" and not stage.get("sessions"):

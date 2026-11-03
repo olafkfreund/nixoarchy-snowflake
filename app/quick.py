@@ -329,6 +329,9 @@ def handle(text):
     if not t or len(t) > 120:
         return None
 
+    if t in ("what's next", "whats next", "what is next"):      # answered from the day desk's cache (#144)
+        return {"whats_next": True}
+
     if t in ("take control back", "stop the agent", "revoke control", "give me my desktop back"):
         return {"mirror": "off"}
 

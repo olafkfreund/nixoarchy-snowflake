@@ -208,6 +208,20 @@ body.bar #mailPop,body.hover #mailPop,body.calm #mailPop{display:none}
 #stg .tw{flex:none;font:600 12px var(--mono);color:var(--sdim);min-width:62px}
 #stg .tt{flex:1;min-width:0;overflow-wrap:anywhere;font-size:14px}
 #stg .src.bad{color:#b3261e}
+#stg.desk .pg.seen{animation:none}
+#stg .pg.dt{margin:0 0 6px;padding:3px 12px 4px;border-top-width:6px}
+#stg .rw{padding:2px 10px 3px;margin:3px 0}#stg.desk .bd{padding-bottom:0}#stg .nxl{margin:2px 0 0}#stg .nx{padding:5px 12px 6px}
+#stg .dt{display:flex;gap:8px;align-items:baseline}#stg .dt .pgd{flex:none}#stg .dt .lb{margin:0}
+#stg .nx{margin:0 0 6px;padding:7px 12px 8px;border-radius:8px;background:#fffdf6;border:1px solid var(--sline);box-shadow:0 2px 0 var(--sline)}
+#stg .nxh{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+#stg .nxt{font:700 20px/1.1 var(--mono)}#stg .nxi{font-size:13px;color:var(--sdim)}
+#stg .nxl{font-size:15px;overflow-wrap:anywhere;margin:3px 0 5px}
+#stg .nxa{display:flex;gap:6px;margin-left:auto;align-self:center}#stg .nxa .sb{padding:2px 9px}
+#stg .rw{display:block;width:100%;text-align:left;margin:4px 0;padding:5px 10px 6px;border-radius:8px;background:transparent;border:1px solid var(--sline);color:var(--sfg);cursor:pointer;font:13px/1.35 "Inter",system-ui,sans-serif}
+#stg .rw:hover{background:var(--sline)}
+#stg .rwh{display:flex;gap:8px;align-items:baseline;font-weight:600;font-size:14px}#stg .rwh .rwc{margin-left:auto;font:600 12px var(--mono);color:var(--sdim)}
+#stg .rwl{color:var(--sdim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#stg .od{color:#b3261e}#stg .rwm{font-size:12px;color:var(--sdim)}#stg .rwm.od{color:#b3261e}
 #stg .sk{display:block;width:100%;height:auto}
 #stg .sk text{font:italic 14px MapInk,Georgia,serif;fill:var(--sfg)}
 #stg .sk .trail{fill:none;stroke:var(--acc);stroke-width:3;stroke-linecap:round;stroke-dasharray:.025 .02}
@@ -273,11 +287,14 @@ body.appr #stg{opacity:.35;pointer-events:none}
 #pop{position:absolute;left:196px;top:196px;width:34px;height:40px;opacity:0;pointer-events:none;z-index:5;transition:opacity .18s}
 #pop.l{left:100px}
 #pop.on{opacity:1}
+#wtc{position:absolute;left:196px;top:196px;width:34px;height:44px;opacity:0;pointer-events:none;z-index:5;transition:opacity .18s}
+#wtc.l{left:100px}
+#wtc.on{opacity:1}
 #chalk.pt{animation:stgChalk .3s ease-out}
 @keyframes stgChalk{50%{translate:10px -4px}}
 #chalk.l.pt{animation-name:stgChalkL}
 @keyframes stgChalkL{50%{translate:-10px -4px}}
-body.bar #stg,body.hover #stg,body.calm #stg,body.bar #stgTab,body.hover #stgTab,body.bar #chalk,body.hover #chalk,body.bar #hat,body.hover #hat,body.calm #hat,body.bar #pop,body.hover #pop,body.calm #pop{display:none}
+body.bar #stg,body.hover #stg,body.calm #stg,body.bar #stgTab,body.hover #stgTab,body.bar #chalk,body.hover #chalk,body.bar #hat,body.hover #hat,body.calm #hat,body.bar #pop,body.hover #pop,body.calm #pop,body.bar #wtc,body.hover #wtc,body.calm #wtc{display:none}
 @media (prefers-reduced-motion:reduce){#stg,#stg.l,#stg.on,#stgTab,#stgTab.l,#stgTab.on{transform:none;transition:opacity .18s}#stg.go .ul path,#stg.go .sk .tm,#stg.cinema.go::before,#stg.cinema.go::after,#stg.desk.go .pg{animation:none}#stg .it.pt .n{animation:none}#chalk{display:none}}
 #cap.ntf #plate{pointer-events:auto;cursor:pointer;border:1px solid var(--line)}   /* a notification row is up: click opens it */
 #wk{position:absolute;left:50%;translate:-50% 0;max-width:316px;width:fit-content;padding:2px 8px;border-radius:999px;background:var(--cap-bg,#0b0b0be6);top:404px;text-align:center;font:11.5px var(--mono);color:var(--cap-dim,var(--dim));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}   /* nixi mode: what the agent is doing */
@@ -692,7 +709,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 <div id="code"><div class="tb"><b></b><span></span></div><div class="lines"></div><i class="rootb" title="Root mode: Claude can run anything, incl. sudo">ROOT</i></div>
 <div id="chip"></div>
 <section id="stg" role="dialog" aria-labelledby="stgT" aria-hidden="true" inert><header><button class="hb" id="stgBack" aria-label="Previous answer" hidden>←</button><h2 id="stgT"></h2><button class="hb" id="stgX" aria-label="Close">✕</button></header><svg class="ul" viewBox="0 0 160 8" aria-hidden="true"><path pathLength="1" d="M2 5 C 40 1, 90 8, 158 3"/></svg><div class="bd" id="stgBd"></div><footer><div class="fn" id="stgFn"></div><div class="acts" id="stgActs"></div></footer></section>
-<button id="stgTab" aria-label="Show the answer again" inert></button><div id="chalk" aria-hidden="true"></div><svg id="pop" viewBox="0 0 34 40" aria-hidden="true"><path d="M5 14L8 38H26L29 14Z" fill="#fff" stroke="#b3261e" stroke-width="2"/><path d="M11 14L12 38M17 14V38M23 14L22 38" stroke="#b3261e" stroke-width="2.5"/><g fill="#fff6d8" stroke="#d9b45b"><circle cx="10" cy="11" r="5"/><circle cx="18" cy="8" r="6"/><circle cx="25" cy="12" r="5"/></g></svg><svg id="hat" viewBox="0 0 64 40" aria-hidden="true"><ellipse cx="32" cy="32" rx="30" ry="7" fill="#b98b4e" stroke="#6b4a2b" stroke-width="2"/><path d="M14 31C14 12 22 5 32 5S50 12 50 31Z" fill="#c99a5b" stroke="#6b4a2b" stroke-width="2"/><path d="M15 26Q32 31 49 26L50 31Q32 36 14 31Z" fill="#7a3b2a"/></svg>
+<button id="stgTab" aria-label="Show the answer again" inert></button><div id="chalk" aria-hidden="true"></div><svg id="pop" viewBox="0 0 34 40" aria-hidden="true"><path d="M5 14L8 38H26L29 14Z" fill="#fff" stroke="#b3261e" stroke-width="2"/><path d="M11 14L12 38M17 14V38M23 14L22 38" stroke="#b3261e" stroke-width="2.5"/><g fill="#fff6d8" stroke="#d9b45b"><circle cx="10" cy="11" r="5"/><circle cx="18" cy="8" r="6"/><circle cx="25" cy="12" r="5"/></g></svg><svg id="wtc" viewBox="0 0 34 44" aria-hidden="true"><path d="M17 6C9 -2 3 4 9 14" fill="none" stroke="#b98b4e" stroke-width="2"/><rect x="14" y="5" width="6" height="5" rx="1" fill="#c99a5b" stroke="#6b4a2b"/><circle cx="17" cy="27" r="14" fill="#fffdf6" stroke="#6b4a2b" stroke-width="2.5"/><path d="M17 27V18M17 27L24 31" stroke="#2a2824" stroke-width="2" stroke-linecap="round"/><circle cx="17" cy="27" r="1.6" fill="#b3261e"/></svg><svg id="hat" viewBox="0 0 64 40" aria-hidden="true"><ellipse cx="32" cy="32" rx="30" ry="7" fill="#b98b4e" stroke="#6b4a2b" stroke-width="2"/><path d="M14 31C14 12 22 5 32 5S50 12 50 31Z" fill="#c99a5b" stroke="#6b4a2b" stroke-width="2"/><path d="M15 26Q32 31 49 26L50 31Q32 36 14 31Z" fill="#7a3b2a"/></svg>
 <div id="mailPop" aria-hidden="true"><div class="env"><div class="bk"></div><div class="lt"><b></b><span></span></div><div class="fr"></div><div class="fl"></div></div></div>
 <div id="cap" class="off"><div id="plate"><div id="you"></div><div id="him"></div></div></div>
 <div id="wk"></div>
@@ -2185,7 +2202,7 @@ function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.c
   at(4300,()=>el.classList.remove('up')); at(4650,()=>el.classList.remove('open'));
   at(5000,()=>{ el.classList.remove('on'); sendRegion(true); }); at(5400,()=>{ popWant=[0,0]; sizeWindow(); }); }
 /* ================= answer stages (#144): the page only draws what the server sends, every field via textContent; Run, Copy and the rest go back as a token ================= */
-const stgEl=$('#stg'), stgTab=$('#stgTab'), chalkEl=$('#chalk'), hatEl=$('#hat'), popEl=$('#pop');
+const stgEl=$('#stg'), stgTab=$('#stgTab'), chalkEl=$('#chalk'), hatEl=$('#hat'), popEl=$('#pop'), wtcEl=$('#wtc');
 let stgPosted=false, stg=null, stgState='closed', stgSide='r', stgUse=0, stgQuiet=0, stgTimer=null, stgOffT=null, stgRunTok=null, stgTm=[];
 const hx=(tag,cls,txt)=>{ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; };
 const stgOpen=()=>stgState==='open';
@@ -2195,14 +2212,15 @@ function stageVisSync(){ const B=document.body.classList; stagePost(stgState==='
 function stagePlace(){ if(stgState==='closed') return;
   const right=innerWidth/fitK-layoutX-340, left=layoutX/fitK, need=stgState==='open'?400:160;
   stgSide=right>=need?'r':left>=need?'l':right>=left?'r':'l';
-  for(const e of [stgEl,stgTab,chalkEl,popEl]) e.classList.toggle('l',stgSide==='l'); }
+  for(const e of [stgEl,stgTab,chalkEl,popEl,wtcEl]) e.classList.toggle('l',stgSide==='l'); }
 function stageBtn(label,fn,dis){ const b=hx('button','sb',label); b.type='button'; b.disabled=!!dis; b.addEventListener('click',e=>{ e.stopPropagation(); stgUse=performance.now(); fn(b); }); return b; }
 function stageBuild(ev){
   const bd=$('#stgBd'), acts=$('#stgActs'), fn=$('#stgFn'); bd.textContent=''; acts.textContent=''; fn.textContent='';
-  const board=ev.kind==='commands', map=ev.kind==='place', film=ev.kind==='video', sky=ev.kind==='weather', cal=ev.kind==='calendar', stat=ev.kind==='status', tr=ev.trust, guide=tr==='guide';
-  $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':film?'Now showing':sky?'Sky':cal?'Coming up':stat?'Sessions':''));
-  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat?'desk':'notebook')+(stgEl.classList.contains('l')?' l':'');
+  const board=ev.kind==='commands', map=ev.kind==='place', film=ev.kind==='video', sky=ev.kind==='weather', cal=ev.kind==='calendar', stat=ev.kind==='status', dy=ev.kind==='day', tr=ev.trust, guide=tr==='guide';
+  $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':film?'Now showing':sky?'Sky':cal?'Coming up':stat?'Sessions':dy?'Your day':''));
+  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat||dy?'desk':'notebook')+(stgEl.classList.contains('l')?' l':'');
   if(sky) stageSky(ev,bd,fn);
+  else if(dy) stageDay(ev,bd,acts,fn);
   else if(cal) stageCal(ev,bd,acts,fn);
   else if(stat) stageStat(ev,bd,acts,fn);
   else if(film) stageFilm(ev,bd,acts,fn);
@@ -2277,6 +2295,34 @@ function stageCal(ev,bd,acts,fn){
   pg.appendChild(hx('div','pgd',E[0].when)); pg.appendChild(hx('div','lb',E[0].title)); if(E[0].join) pg.appendChild(join(E[0])); bd.appendChild(pg);
   E.slice(1,4).forEach(e=>{ const t=hx('div','tk'); t.appendChild(hx('span','tw',e.when)); t.appendChild(hx('span','tt',e.title)); if(e.join) t.appendChild(join(e)); bd.appendChild(t); });
 }
+function dayState(s){ s=String(s||'ok'); return s==='off'?'not set up':s.startsWith('stale@')?'couldn\u2019t refresh \u00b7 '+s.slice(6):''; }
+function stageDay(ev,bd,acts,fn){
+  const R=ev.rows||[], nx=ev.next, pg=hx('div','pg dt');
+  pg.appendChild(hx('div','pgd',ev.wd)); pg.appendChild(hx('div','lb',ev.md));
+  const line=r=>[r.when,r.title].filter(Boolean).join(' ');
+  const draw=key=>{ bd.textContent=''; acts.textContent='';
+    const r=key&&R.find(x=>x.key===key);
+    if(r){ pg.classList.add('seen'); const why=dayState(r.st), I=r.items||[];   /* a return from a detail view is not a second flip */
+      bd.appendChild(hx('div','lb',r.label+' \u00b7 '+r.n)); if(why) bd.appendChild(hx('div','src bad',why));
+      if(!I.length) bd.appendChild(hx('div','pt1',r.st==='off'?'Not set up':'Nothing here'));
+      I.forEach(i=>{ const t=hx('div','tk'); t.appendChild(hx('span','tw',i.when)); t.appendChild(hx('span',i.bad?'tt od':'tt',i.title));
+        if(i.open) t.appendChild(stageBtn('Open',b=>stageOpen(b,fn,i.open,'open'))); bd.appendChild(t); });
+      if(r.n>I.length) bd.appendChild(hx('div','src','+ '+(r.n-I.length)+' more'));
+      acts.appendChild(stageBtn('\u2190 Day',()=>draw(null))); return; }
+    bd.appendChild(pg);
+    const cd=hx('div','nx'), h=hx('div','nxh');
+    if(nx){ h.appendChild(hx('span','nxt',nx.when)); if(nx.in!==nx.when) h.appendChild(hx('span','nxi',nx.in)); cd.appendChild(h); cd.appendChild(hx('div','nxl',nx.title));
+      const a=hx('div','nxa'); if(nx.join) a.appendChild(stageBtn('Join',b=>stageOpen(b,fn,nx.join,'open',"Couldn't open the link")));
+      if(nx.open) a.appendChild(stageBtn('Open',b=>stageOpen(b,fn,nx.open,'open'))); if(a.firstChild) h.appendChild(a); }
+    else { h.appendChild(hx('span','nxi','Next')); cd.appendChild(h); cd.appendChild(hx('div','nxl',ev.cal==='off'?'Calendar not set up':'Nothing else timed today')); }
+    bd.appendChild(cd);
+    R.forEach(r=>{ const b=hx('button','rw'), h=hx('div','rwh'), why=dayState(r.st), I=r.items||[]; b.type='button';
+      h.appendChild(hx('span',null,r.label)); h.appendChild(hx('span','rwc',r.st==='off'?'':String(r.n))); b.appendChild(h);
+      if(why) b.appendChild(hx('div','rwm od',why));
+      if(r.st!=='off'){ if(!I.length&&!why) b.appendChild(hx('div','rwl','Nothing')); I.slice(0,2).forEach(i=>b.appendChild(hx('div',i.bad?'rwl od':'rwl',line(i)))); }
+      b.addEventListener('click',e=>{ e.stopPropagation(); stgUse=performance.now(); draw(r.key); }); bd.appendChild(b); }); };
+  draw(null); fn.textContent=ev.at?'From your calendar, tasks and GitHub \u00b7 as of '+ev.at:'';
+}
 function stageStat(ev,bd,acts,fn){
   const S=ev.sessions||[]; if(!S.length) bd.appendChild(hx('div','pt1','No herdr sessions running'));
   S.forEach(x=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab'); tx.appendChild(hx('div','lb',x.title)); tx.appendChild(hx('div','vm',x.status));
@@ -2285,7 +2331,7 @@ function stageStat(ev,bd,acts,fn){
   bd.appendChild(hx('div',F.length?'src bad':'src',!ev.sys_on?'Services not checked (Ambient system is off)':F.length?'Failed services: '+F.join(', ')+(more>0?' +'+more+' more':''):'No failed services'));
   acts.appendChild(stageBtn('Open terminal',b=>stageOpen(b,fn,ev.term,'terminal')));
 }
-function stageText(ev){ if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
+function stageText(ev){ if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
   stgPosted=false;
@@ -2293,16 +2339,16 @@ function stageShow(ev){
   stgTm.forEach(clearTimeout); stgTm=[]; clearTimeout(stgOffT);
   stg=ev; stageBuild(ev); stgState='open'; stgRunTok=null; stgUse=stgQuiet=performance.now();
   stgTab.classList.remove('on'); stgTab.inert=true; stgEl.inert=false; stgEl.setAttribute('aria-hidden','false');
-  stgSize(800); stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on'); popEl.classList.remove('on');
+  stgSize(800); stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on'); popEl.classList.remove('on'); wtcEl.classList.remove('on');
   const at=(ms,f)=>stgTm.push(setTimeout(f,ms));
-  at(90,()=>{ if(!stgOpen()) return; stagePlace(); void stgEl.offsetWidth; stgEl.classList.add('on'); if(!REDUCED.matches) stgEl.classList.add('go'); sendRegion(true); stagePost(true); hatEl.classList.toggle('on',ev.kind==='place'); popEl.classList.toggle('on',ev.kind==='video');
+  at(90,()=>{ if(!stgOpen()) return; stagePlace(); void stgEl.offsetWidth; stgEl.classList.add('on'); if(!REDUCED.matches) stgEl.classList.add('go'); sendRegion(true); stagePost(true); hatEl.classList.toggle('on',ev.kind==='place'); popEl.classList.toggle('on',ev.kind==='video'); wtcEl.classList.toggle('on',ev.kind==='day');
     if(ev.kind==='commands'&&!REDUCED.matches){ chalkEl.classList.add('on'); at(250,()=>{ chalkEl.classList.add('pt'); const r=stgEl.querySelector('.it'); if(r) r.classList.add('pt'); }); } });
   at(500,()=>sendRegion(true));
   clearInterval(stgTimer); stgTimer=setInterval(stageTick,1000);
 }
 function stageHide(toTab){
   stgTm.forEach(clearTimeout); stgTm=[]; clearInterval(stgTimer); stgTimer=null;
-  stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on'); popEl.classList.remove('on'); stgEl.setAttribute('aria-hidden','true'); stgEl.inert=true; stgTab.inert=!toTab;
+  stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on'); popEl.classList.remove('on'); wtcEl.classList.remove('on'); stgEl.setAttribute('aria-hidden','true'); stgEl.inert=true; stgTab.inert=!toTab;
   if(!toTab) stgPosted=false;
   if(toTab){ stagePost(false); stgState='tab'; stgTab.textContent=$('#stgT').textContent; stagePlace(); stgSize(300); void stgTab.offsetWidth; stgTab.classList.add('on'); }
   else { stgState='closed'; stgTab.classList.remove('on'); stgOffT=setTimeout(()=>{ if(stgState==='closed') stgSize(0); sendRegion(true); },200); }
