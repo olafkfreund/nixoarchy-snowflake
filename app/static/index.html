@@ -121,6 +121,10 @@ body.bar #cap{height:auto;max-height:150px;padding:0 12px;justify-content:flex-s
 body.bar #cap.off,body.bar.pnl #cap,body.bar.appr #cap,body.bar #code:not(.on){opacity:0;filter:blur(6px);scale:.96;
   transition:opacity .15s linear,filter .15s linear,scale .15s linear,top .5s var(--apple),left .5s var(--apple)}
 body.bar.e-left #cap,body.bar.e-right #cap{max-height:200px}
+body.bar #plate{background:none;border:0;padding:0;min-width:0!important;border-radius:0}
+body.bar #cap.ntf #plate{border:0}
+body.bar #wk{display:none}
+body.bar #cap{--cap-text:var(--text);--cap-dim:var(--dim);--cap-err:#ff8a8a;--cap-code:var(--tint)}
 body.bar #code{height:auto;padding:0 12px;font:12.5px/1.45 system-ui,"Inter",sans-serif;color:var(--text);filter:none}
 body.bar #code .tb{height:auto;padding:0 0 3px;border:0;color:var(--dim);font:12px "Inter",system-ui,sans-serif;justify-content:center}
 body.bar #code .tb b{flex:0 1 auto;font-weight:400} body.bar #code .tb span{margin-left:6px}
@@ -164,9 +168,13 @@ body.bar #code .l.out{color:var(--dim)}
 body.bar #mailPop,body.hover #mailPop,body.calm #mailPop{display:none}
 #cap{position:absolute;left:12px;right:12px;top:296px;height:100px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;
   gap:3px;text-align:center;pointer-events:none;transition:opacity 1.1s var(--ease),transform 1.1s var(--ease),top .7s var(--ease);
-  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 34%);mask-image:linear-gradient(to bottom,transparent 0,#000 34%);
-  text-shadow:0 1px 2px #000,0 0 8px #000,0 0 16px #000a}
+  }
 #cap.off,body.appr #cap,body.pnl #cap{opacity:0;transform:translateY(6px)}
+#plate{display:flex;flex-direction:column;align-items:center;gap:3px;width:fit-content;max-width:100%;padding:5px 11px;border-radius:12px;background:var(--cap-bg,#0b0b0be6);color:var(--cap-text,var(--text));transition:min-width .15s var(--ease)}
+#plate:has(#you:empty):not(:has(#him .w,#him>span)){display:none}
+#you:empty{display:none}
+#him:not(:has(.w,span)){display:none}
+@media (prefers-reduced-motion:reduce){#plate{transition:none}}
 .nicon{width:22px;height:22px;border-radius:50%;box-shadow:0 0 0 1px #ffffff55;vertical-align:middle;margin-right:6px;animation:nipop .2s var(--ease)}
 @keyframes nipop{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
 #mailPop .lt b img{width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:5px}
@@ -253,13 +261,14 @@ body.appr #stg{opacity:.35;pointer-events:none}
 @keyframes stgChalkL{50%{translate:-10px -4px}}
 body.bar #stg,body.hover #stg,body.calm #stg,body.bar #stgTab,body.hover #stgTab,body.bar #chalk,body.hover #chalk,body.bar #hat,body.hover #hat,body.calm #hat,body.bar #pop,body.hover #pop,body.calm #pop{display:none}
 @media (prefers-reduced-motion:reduce){#stg,#stg.l,#stg.on,#stgTab,#stgTab.l,#stgTab.on{transform:none;transition:opacity .18s}#stg.go .ul path,#stg.go .sk .tm,#stg.cinema.go::before,#stg.cinema.go::after{animation:none}#stg .it.pt .n{animation:none}#chalk{display:none}}
-#cap.note{pointer-events:auto;cursor:pointer}   /* a notification row is up: click opens it */
-#wk{position:absolute;left:12px;right:12px;top:404px;text-align:center;font:11px var(--mono);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}   /* nixi mode: what the agent is doing */
-#you{font-size:12px;color:var(--dim);text-shadow:0 1px 2px #000,0 0 5px #0009;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#cap.ntf #plate{pointer-events:auto;cursor:pointer;border:1px solid var(--line)}   /* a notification row is up: click opens it */
+#wk{position:absolute;left:50%;translate:-50% 0;max-width:316px;width:fit-content;padding:2px 8px;border-radius:999px;background:var(--cap-bg,#0b0b0be6);top:404px;text-align:center;font:11.5px var(--mono);color:var(--cap-dim,var(--dim));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}   /* nixi mode: what the agent is doing */
+#wk:empty{display:none}
+#you{font-size:12.5px;color:var(--cap-dim,var(--dim));max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 #you.pop{animation:wIn .7s var(--ease) both}
 /* "Show everything I said": the last few lines of it, wrapped, instead of one cut-off line */
 body.fulltext #cap{top:248px;height:148px}      /* same bottom edge as before; it grows up into the gap under his body, not down */
-body.fulltext #you{white-space:normal;max-height:4.3em;line-height:1.4;font-size:12.5px;color:var(--dim);display:flex;flex-direction:column;justify-content:flex-end;text-overflow:clip;margin-bottom:2px}
+body.fulltext #you{white-space:normal;max-height:4.3em;line-height:1.4;font-size:12.5px;color:var(--cap-dim,var(--dim));display:flex;flex-direction:column;justify-content:flex-end;text-overflow:clip;margin-bottom:2px}
 .row .t.sub{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
 .row .t .pct{margin-left:auto;font:600 11.5px var(--mono);color:var(--dim)}
 .ctxbar{height:14px;border-radius:7px;background:#ffffff1a;overflow:hidden;margin:8px 0 8px}
@@ -267,11 +276,11 @@ body.fulltext #you{white-space:normal;max-height:4.3em;line-height:1.4;font-size
 .ctxbar.warn i{background:#e89a2c} .ctxbar.full i{background:#d8453a}
 input[type=range]{accent-color:var(--acc)}
 #ctxTxt{font-size:13px;font-weight:600;color:var(--text)} #ctxTxt.warn{color:#e89a2c} #ctxTxt.full{color:#ef6a60}
-#him{font-size:14.5px;font-weight:500;max-height:4.5em;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;width:100%}
-#him.err{color:#ff8a8a}
+#him{font-size:14.5px;font-weight:500;max-height:4.5em;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
+#him.err{color:var(--cap-err,#ff8a8a)}
 #him .ln{display:block}
 #him .w{display:inline-block;animation:wIn .6s var(--ease) both}
-#him .w.c{font-family:var(--mono);font-size:.86em;color:var(--tint)}
+#him .w.c{font-family:var(--mono);font-size:.86em;color:var(--cap-code,var(--tint))}
 @keyframes wIn{from{opacity:0;transform:translateY(.5em);filter:blur(5px)}to{opacity:1;transform:none;filter:none}}
 
 #chip{position:absolute;top:10px;left:50%;max-width:92%;padding:3px 11px;border-radius:999px;font:11px var(--mono);color:var(--tint);
@@ -651,7 +660,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 <section id="stg" role="dialog" aria-labelledby="stgT" aria-hidden="true" inert><header><button class="hb" id="stgBack" aria-label="Previous answer" hidden>←</button><h2 id="stgT"></h2><button class="hb" id="stgX" aria-label="Close">✕</button></header><svg class="ul" viewBox="0 0 160 8" aria-hidden="true"><path pathLength="1" d="M2 5 C 40 1, 90 8, 158 3"/></svg><div class="bd" id="stgBd"></div><footer><div class="fn" id="stgFn"></div><div class="acts" id="stgActs"></div></footer></section>
 <button id="stgTab" aria-label="Show the answer again" inert></button><div id="chalk" aria-hidden="true"></div><svg id="pop" viewBox="0 0 34 40" aria-hidden="true"><path d="M5 14L8 38H26L29 14Z" fill="#fff" stroke="#b3261e" stroke-width="2"/><path d="M11 14L12 38M17 14V38M23 14L22 38" stroke="#b3261e" stroke-width="2.5"/><g fill="#fff6d8" stroke="#d9b45b"><circle cx="10" cy="11" r="5"/><circle cx="18" cy="8" r="6"/><circle cx="25" cy="12" r="5"/></g></svg><svg id="hat" viewBox="0 0 64 40" aria-hidden="true"><ellipse cx="32" cy="32" rx="30" ry="7" fill="#b98b4e" stroke="#6b4a2b" stroke-width="2"/><path d="M14 31C14 12 22 5 32 5S50 12 50 31Z" fill="#c99a5b" stroke="#6b4a2b" stroke-width="2"/><path d="M15 26Q32 31 49 26L50 31Q32 36 14 31Z" fill="#7a3b2a"/></svg>
 <div id="mailPop" aria-hidden="true"><div class="env"><div class="bk"></div><div class="lt"><b></b><span></span></div><div class="fr"></div><div class="fl"></div></div></div>
-<div id="cap" class="off"><div id="you"></div><div id="him"></div></div>
+<div id="cap" class="off"><div id="plate"><div id="you"></div><div id="him"></div></div></div>
 <div id="wk"></div>
 <div id="atts"></div>
 <button id="moreB" type="button" title="read the whole answer">↗ full answer</button>
