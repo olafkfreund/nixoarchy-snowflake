@@ -831,7 +831,7 @@ const tokenReady=(async()=>{
 })();
 const NATIVE=document.documentElement.classList.contains('native');
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const input=$('#input'), youEl=$('#you'), himEl=$('#him'), cap=$('#cap'), chip=$('#chip'), ask=$('#ask'), menuEl=$('#menu');
+const input=$('#input'), youEl=$('#you'), himEl=$('#him'), cap=$('#cap'), plate=$('#plate'), chip=$('#chip'), ask=$('#ask'), menuEl=$('#menu');
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), lerp=(a,b,k)=>a+(b-a)*k;
 const approach=(a,b,dt,rate)=>a+(b-a)*(1-Math.exp(-rate*dt));      // frame-rate independent smoothing
 const hdr=x=>Object.assign({'X-Nixi-Token':TOKEN},x||{});
@@ -1678,11 +1678,11 @@ function talkGaze(ts){
   return [talk.micro[0],talk.micro[1]+dip];
 }
 function karaPut(k,quiet){ if(!k.reset&&!quiet&&playing){ if(k.face) talkFace(k.face); else if(k.sent) talkSentence(k.sent); talkWord(k.w); }
-  if(k.reset){ talk.newPhrase=true; himEl.classList.remove('err'); himEl.innerHTML=''; shownTxt=''; return; }
-  let ln=himEl.querySelector('.ln'); if(!ln){ himEl.innerHTML='<div class="ln"></div>'; ln=himEl.firstChild; }
+  if(k.reset){ talk.newPhrase=true; himEl.classList.remove('err'); himEl.innerHTML=''; plateReset(); ntfDrop(); shownTxt=''; return; }
+  let ln=himEl.querySelector('.ln'); if(!ln){ himEl.innerHTML='<div class="ln"></div>'; plateReset(); ntfDrop(); ln=himEl.firstChild; }
   if(ln.childNodes.length) ln.appendChild(document.createTextNode(' '));
   const w=document.createElement('span'); w.className='w k'+(/^`.*`[.,!?:;]?$/.test(k.w)?' c':''); w.textContent=k.w.replace(/`/g,''); ln.appendChild(w);
-  while(ln.childNodes.length>320) ln.removeChild(ln.firstChild); }
+  while(ln.childNodes.length>320) ln.removeChild(ln.firstChild); plateGrow(); }
 function karaTick(n){ while(kara.length&&kara[0].at<=n){ const k=kara.shift(); if(!capOn) capShow(); karaPut(k); } }
 function karaFlush(){ while(kara.length) karaPut(kara.shift(),true); }
 function karaDrop(){ kara.length=0; }
@@ -1928,7 +1928,7 @@ function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts-e.rt>600000) nudgeQ.de
   else if(kind==='coding') poke('wink',900);
   const txt=String(ev.text||'').slice(0,200);
   if(ev.speak&&!muted&&ts-lastSpokeAt>=600000){ lastSpokeAt=ts; sayAside(txt); }                      // (the words show as he says them)
-  else { karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; setYou('');
+  else { karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; plateReset(); ntfDrop(); setYou('');
     const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); shownTxt=''; capShow(); sendRegion(true); dropSync();
     setTimeout(()=>{ if(sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } },6000); } }
 let SIT={meeting:false,music:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false};   // situation signals, as the server sends them
@@ -1952,8 +1952,8 @@ const iconUrl=ev=>/^[0-9a-f]{16}$/.test(ev.icon||'')?'/api/icon/'+ev.icon:'';   
 function noteIcon(row,ev){ const u=iconUrl(ev); if(row.img&&row.img.isConnected&&row.img.getAttribute('src')===u) return; if(row.img){ row.img.remove(); row.img=null; }   // (a text update wipes it: put it back)
   if(!u||!row.span||!row.span.isConnected) return; const im=document.createElement('img'); im.className='nicon'; im.alt=''; im.src=u; im.onerror=()=>im.remove(); row.span.prepend(im); row.img=im; }   // (inside the line, so it sits before the words)
 function propIcon(P,ev){ const u=iconUrl(ev); if(!P||!P.img) return; P.img.onerror=()=>P.img.setAttribute('display','none'); if(u) P.img.setAttribute('href',u); P.img.setAttribute('display',u?'':'none'); }
-function notifyShow(row,txt,ev){ karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; setYou('');
-  const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); row.span=sp; noteIcon(row,ev); shownTxt=''; capShow(); cap.classList.add('note'); sendRegion(true); dropSync(); }
+function notifyShow(row,txt,ev){ karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; plateReset(); setYou('');
+  const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); row.span=sp; noteIcon(row,ev); shownTxt=''; capShow(); cap.classList.add('ntf'); sendRegion(true); dropSync(); }
 function notifySeen(key){ post('/api/notify/seen',{key}).catch(()=>{}); }
 function notifyIdle(){ return !(SIT.fullscreen||busy||playing||rec||transcribing||pendingAppr||follow||hiddenNow||info.hover); }
 function notifyIn(ev){
@@ -2107,16 +2107,19 @@ stgTab.addEventListener('click',e=>{ e.stopPropagation(); stageRestore(); });
 stgEl.addEventListener('mousedown',e=>e.stopPropagation());
 for(const el of [stgEl,stgTab]) for(const k of ['keydown','keyup']) el.addEventListener(k,e=>{ if(e.key==='Enter'||e.key===' ') e.stopPropagation(); });   /* a focused button keeps its own Enter/Space; the window's shortcuts (ask box, recording) must not see them */
 stgEl.addEventListener('transitionend',e=>{ if(e.target===stgEl) sendRegion(true); });
-function notifyClear(){ const sp=notifyRow&&notifyRow.span; notifyRow=null; cap.classList.remove('note');
+function notifyClear(){ const sp=notifyRow&&notifyRow.span; notifyRow=null; cap.classList.remove('ntf');
   if(sp&&sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } sendRegion(true); }
 function notifyAct(how){ const r=notifyRow; if(!r||!r.span.isConnected) return; post('/api/notify/act',{key:r.key,how}).catch(()=>{}); notifyClear(); }
-cap.addEventListener('click',()=>notifyAct('open'));
+plate.addEventListener('click',()=>notifyAct('open'));
 $('#mailPop').addEventListener('click',e=>{ e.stopPropagation(); const k=e.currentTarget.dataset.key;   // the mail it shows, even if the caption has moved on
   if(/^[A-Za-z0-9:_-]{1,64}$/.test(k||'')) post('/api/notify/act',{key:k,how:'open'}).catch(()=>{}); e.currentTarget.classList.remove('on','open','up'); });   // (the envelope opens the mail, like the caption)
-function himSet(t,bad){ karaDrop(); himEl.classList.toggle('err',!!bad); himEl.textContent=''; shownTxt=''; if(t) showHim(t,true); }
+function plateGrow(){ plate.style.minWidth=plate.getBoundingClientRect().width+'px'; }
+function plateReset(){ plate.style.transition='none'; plate.style.minWidth=''; void plate.offsetWidth; plate.style.transition=''; }
+function ntfDrop(){ if(notifyRow&&notifyRow.span&&!notifyRow.span.isConnected) notifyClear(); }
+function himSet(t,bad){ karaDrop(); himEl.classList.toggle('err',!!bad); himEl.textContent=''; plateReset(); ntfDrop(); shownTxt=''; if(t) showHim(t,true); }
 function showHim(s,end){
   const p=untag(plain(s)).trim(); let ln=himEl.querySelector('.ln'), fresh=false;
-  if(!ln||!p.startsWith(shownTxt)){ himEl.innerHTML='<div class="ln"></div>'; ln=himEl.firstChild; shownTxt=''; fresh=true; }
+  if(!ln||!p.startsWith(shownTxt)){ himEl.innerHTML='<div class="ln"></div>'; plateReset(); ntfDrop(); ln=himEl.firstChild; shownTxt=''; fresh=true; }
   const upto=end?p.length:Math.max(p.lastIndexOf(' '),p.lastIndexOf('\n'))+1;
   if(upto<=shownTxt.length) return;
   const add=p.slice(shownTxt.length,upto); shownTxt=p.slice(0,upto);
@@ -2127,6 +2130,7 @@ function showHim(s,end){
     const idx=i++; if(fresh&&idx<words-14) w.style.animation='none'; else w.style.animationDelay=Math.min(idx*40,420)+'ms';
     ln.appendChild(w); }
   while(ln.childNodes.length>320) ln.removeChild(ln.firstChild);
+  plateGrow();
 }
 chip.addEventListener('click',()=>{ if(!chip.classList.contains('act')) return; attnPend={from:chip.dataset.from,at:performance.now()}; attnJump(); });
 let chipT=null; function tick(t,bad){ chip.textContent=t; chip.dataset.w=''; chip.className='on'+(bad?' bad':''); clearTimeout(chipT);
@@ -3038,7 +3042,7 @@ function sendRegion(force){
   if(menuOn) $$('.mb').forEach(b=>add(b,2));
   if(ask.classList.contains('on')) add(ask,4);
   if(chip.classList.contains('act')&&chip.classList.contains('on')) add(chip,4);
-  if(cap.classList.contains('note')) add(cap,4);
+  if(cap.classList.contains('ntf')) add(plate,4);
   if($('#mailPop').classList.contains('on')){ add($('#mailPop'),4); add($('#mailPop .lt'),2); }
   if(stgEl.classList.contains('on')) add(stgEl,4);
   if(stgTab.classList.contains('on')) add(stgTab,2);
