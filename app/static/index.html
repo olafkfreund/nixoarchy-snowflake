@@ -721,7 +721,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="reactWelcomeSw"><span class="sw"></span><span class="l">Welcome me back<small>After half an hour away: how many notifications came in, and your next meeting if the calendar is on.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="lookCodingSw"><span class="sw"></span><span class="l">Glasses while coding<small>After a minute in a terminal or editor. Only the kind of window is checked, never its title.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="lookNightSw"><span class="sw"></span><span class="l">Nightcap at night<small>Between 23:00 and 05:00.</small></span></label></div>
-      <div class="row"><label class="tg"><input type="checkbox" id="lookWeatherSw"><span class="sw"></span><span class="l">Dress for the weather<small>An umbrella in the rain, and he loves snow. Needs the weather look on.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="lookWeatherSw"><span class="sw"></span><span class="l">Dress for the weather<small>Weather above his head: a rain or snow cloud, sun, moon and clouds, and (with a place set) a scarf and beanie when it's cold.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="lookPartySw"><span class="sw"></span><span class="l">Party hat on special days<small>New Year, Christmas, and birthdays in your calendar (needs the calendar on).</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="reactQuipsSw"><span class="sw"></span><span class="l">Little jokes<small>Now and then a short line about the weather, the hour or a long session. Never spoken.</small></span></label></div>
       <div class="row"><div class="t">Say out loud</div><div class="h">Notifications he speaks. In a meeting he stays silent.</div><div class="seg" id="nsChips"></div></div>
@@ -1367,10 +1367,10 @@ function drawMarks(){ const W={}, d=sv('defs',{},wxEl), R=at=>({...at,'stroke-li
   const snow=white(null,0,-108,.92);
   W.snow={g:snow,flakes:[...Array(7)].map((_,i)=>{ const f=sv('g',{transform:`translate(${-40+i*13} ${30+i%3*16})`},snow);
     for(const a of [0,60,120]) sv('path',R({d:'M0 -4.5V4.5',stroke:'#ffffff','stroke-width':1.8,transform:`rotate(${a})`}),f); return f; })};
-  W.sun=sunAt(null,98,-104,21,26,34);
-  const mg=grp(null); moonAt(mg,98,-104,1);
+  W.sun=sunAt(null,98,-96,21,26,34);
+  const mg=grp(null); moonAt(mg,98,-96,1);
   W.moon={g:mg,stars:[[-60,-128],[-100,-100],[40,-140],[-20,-138]].map(([x,y])=>sv('path',{d:`M${x} ${y-5}L${x+1.5} ${y-1.5}L${x+5} ${y}L${x+1.5} ${y+1.5}L${x} ${y+5}L${x-1.5} ${y+1.5}L${x-5} ${y}L${x-1.5} ${y-1.5}Z`,fill:'#fff6c8'},mg))};
-  const pg=grp(null); W.partly={g:pg,sun:sunAt(pg,30,-110,18,22,30),moon:moonAt(pg,30,-110,.8),cloud:white(pg,-12,-104,.85)}; W.partly.moon.setAttribute('display','none');   // (sun by day, moon by night: wxStep picks)
+  const pg=grp(null); W.partly={g:pg,sun:sunAt(pg,30,-100,18,22,30),moon:moonAt(pg,30,-100,.8),cloud:white(pg,-12,-104,.85)}; W.partly.moon.setAttribute('display','none');   // (sun by day, moon by night: wxStep picks)
   const cg=grp(null); W.cloudy={g:cg,c1:white(cg,0,-108,.92),c2:white(cg,70,-118,.55)};
   const wg=grp(null); W.wind={g:wg,sw:[0,1,2].map(i=>sv('path',R({d:`M${-70+i*20} ${-118+i*16}q22 -8 44 0t44 0q10 3 10 -6q0 -7 -7 -5`,fill:'none',stroke:'#dfe8f5','stroke-width':3}),wg)),
     leaf:sv('path',R({d:'M0 0Q6 -7 13 0Q6 7 0 0Z',fill:'#7fd6ae',stroke:'#2f8f66','stroke-width':1.4,transform:'translate(20 -98)'}),wg)};

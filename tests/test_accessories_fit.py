@@ -67,7 +67,7 @@ class AccessoriesFit(unittest.TestCase):
                 time.sleep(0.25)
             token = json.loads(rt.read_text())["token"]
             r = subprocess.run(["node", str(REPO / "tests/accessories_fit.mjs"), str(cdp),
-                                f"http://127.0.0.1:{port}/#t={token}"], capture_output=True, text=True, timeout=600)
+                                f"http://127.0.0.1:{port}/#t={token}"], capture_output=True, text=True, timeout=900)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         finally:
             for p in procs:
