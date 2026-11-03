@@ -72,7 +72,7 @@ const WORDS = "The quick brown fox jumps over the lazy dog and then runs far awa
 const widths = await ev(`himSet(''); const W=${JSON.stringify(WORDS)}, out=[];
   for(let i=1;i<=12;i++){ showHim(W.slice(0,i).join(' ')+(i<12?' ':''),i===12); out.push(parseFloat(plate.style.minWidth)); await new Promise(r=>setTimeout(r,40)); }
   return out`);
-const wd = widths.filter(w => w != null);   // (the first prefix has no finished word yet: nothing is shown)
+const wd = widths.filter(Number.isFinite);   // (the first prefix has no finished word yet: nothing is shown)
 check(wd.length >= 10 && wd.every((w, i) => w > 0 && (i === 0 || w >= wd[i - 1])), "streaming min-width shrinks or is unset", widths.join());
 
 // three lines stay inside the plate; a short caption after a long one shrinks back
@@ -93,8 +93,8 @@ check(wk[0] === "none" && wk[1] !== "rgba(0, 0, 0, 0)", "#wk pill", wk.join(" | 
 
 // the notch stays one black shape
 const bar = await ev(`document.body.classList.add('bar'); himSet('hi'); const cs=getComputedStyle(plate), w=document.getElementById('wk'); w.textContent='x';
-  const r={bg:cs.backgroundColor, pad:cs.paddingLeft+cs.paddingTop, wk:getComputedStyle(w).display}; w.textContent=''; document.body.classList.remove('bar'); himSet(''); return r`);
-check(bar.bg === "rgba(0, 0, 0, 0)" && parseFloat(bar.pad) === 0 && bar.wk === "none", "notch plate/#wk", JSON.stringify(bar));
+  const r={bg:cs.backgroundColor, pad:parseFloat(cs.paddingLeft)+parseFloat(cs.paddingTop), bd:(cap.classList.add('ntf'),parseFloat(getComputedStyle(plate).borderTopWidth)||0), wk:getComputedStyle(w).display}; cap.classList.remove('ntf'); w.textContent=''; document.body.classList.remove('bar'); himSet(''); return r`);
+check(bar.bg === "rgba(0, 0, 0, 0)" && bar.pad === 0 && bar.bd === 0 && bar.wk === "none", "notch plate/#wk", JSON.stringify(bar));
 
 // the region: only the card (not the 316 px caption) takes clicks. NATIVE is a const set on load: navigate again with ?native=1
 const [base, hash = ""] = url.split("#");
