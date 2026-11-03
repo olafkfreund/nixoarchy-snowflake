@@ -604,6 +604,8 @@ class Mirror:
                         raise ValueError("bad state")
                 except (OSError, ValueError):
                     data = None
+            if data is None:                                 # neither answered: keep the last state, ask again in 5 s, not 30
+                cls.last_status, cls.stamp = mono - 25, None
             if data is not None:
                 owner = data.get("owner")
                 request = data.get("request")
@@ -638,7 +640,7 @@ class Mirror:
             except ValueError:
                 data = None
             if r.returncode == 0 and isinstance(data, dict) and data.get("owner") == "off":
-                cls.publish("off", False)
+                cls.publish("off", cls.snapshot()["watching"])      # (a recent read stays a recent read)
                 return {"ok": True}
             msg = data.get("error", {}).get("message") if isinstance(data, dict) and isinstance(data.get("error"), dict) else None
             error = msg or ((r.stderr or "").strip().splitlines() or ["ai-mirror could not release control"])[-1]
@@ -5241,7 +5243,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"handled": True, "say": mem, "mood": "happy", "state": state_info()})
                 r = quick.handle(said)
                 if r and r.get("mirror") == "off":
-                    if Mirror.snapshot()["owner"] in ("off", None):          # (None: ai-mirror isn't here, so nothing holds control through it)
+                    # (always revoke when ai-mirror is here: the cached owner can lag a grant by a few seconds)
+                    if not shutil.which("ai-mirror"):
                         r = {"say": "No agent is controlling the mouse and keyboard through ai-mirror.", "mood": "curious"}
                     elif Mirror.revoke()["ok"]:
                         r = {"say": "Control is back with you.", "mood": "happy", "sfx": "ok"}

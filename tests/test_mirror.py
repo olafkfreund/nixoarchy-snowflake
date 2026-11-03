@@ -255,7 +255,7 @@ class MirrorTest(unittest.TestCase):
         for s in ('"say": "Control is back with you.", "mood": "happy", "sfx": "ok"',
                   '"say": "I couldn\'t take it back — press Super, Shift and Escape.", "mood": "sad", "sfx": "error"',
                   '"say": "No agent is controlling the mouse and keyboard through ai-mirror.", "mood": "curious"',
-                  'Mirror.snapshot()["owner"] in ("off", None)', "Mirror.revoke()[\"ok\"]"):
+                  'not shutil.which("ai-mirror")', "Mirror.revoke()[\"ok\"]"):
             self.assertIn(s, src)
 
     def test_state_info_carries_mirror(self):

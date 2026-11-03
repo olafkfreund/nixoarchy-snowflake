@@ -3191,7 +3191,9 @@ window.nixiCmd=async c=>{ hiddenNow=false; restore(15000,true);
 let lastRegion='';
 function calmCheck(){ document.body.classList.toggle('calm', setEl.classList.contains('on')||panelEl.classList.contains('on')||apEl.classList.contains('on'));
   const el=document.body.classList.contains('calm')&&MIR.owner==='agent'&&[setEl,panelEl,apEl].find(e=>e.classList.contains('on'));     // the red bar sits on top of whichever is open
-  if(el){ const r=el.getBoundingClientRect(), b=$('#mirBar').style; b.left=r.left+'px'; b.width=r.width+'px'; b.top=(r.top>=30?r.top-30:r.top)+'px'; } }
+  if(el){ const v=el.getBoundingClientRect(), B=document.body.getBoundingClientRect(), k=fitK||1, b=$('#mirBar').style;   /* scaled page: the body is the bar's containing block, so use its own units */
+    const r=k===1?v:{left:(v.left-B.left)/k, top:(v.top-B.top)/k, width:v.width/k};
+    b.left=r.left+'px'; b.width=r.width+'px'; b.top=(r.top>=30?r.top-30:r.top)+'px'; } }
 // the page is laid out for 340×460: if the window ends up a different size, scale/centre it instead of cutting things off
 let fitK=1, layoutX=0, layoutY=0;
 // room for a long approval card / terminal sheet: ask the window for extra width and height (it shrinks back at [0,0])
