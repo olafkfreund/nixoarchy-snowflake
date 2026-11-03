@@ -85,5 +85,17 @@ class DragScreensTest(unittest.TestCase):
         self.assertLess(source.index("self.hypr = Hypr()"), source.index("self._load_pos()"))
 
 
+class RelativeDragBy(unittest.TestCase):
+    """drag_by's deltas are relative to the window's current spot: at an outer edge they never pile up (Codex, PR review)."""
+    def test_back_inside_after_pushing_an_outer_edge(self):
+        geoms = [(0, 0, 2560, 1440)]
+        x = 0                                   # the window's left margin; the page sends -20, -10, then +5 from it
+        for dx in (-20, -10, 5):
+            gx, _, ox, _ = screens.outer_clamp(geoms, 0, x + dx, 500, 340, 460, (170, 165))
+            x = gx
+        self.assertEqual(x, 5)
+        self.assertEqual(ox, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

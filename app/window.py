@@ -1057,10 +1057,9 @@ class NixiWindow:
             if self.bar and not self.pmoving:
                 self.set_bar(None, to="here")             # pulling the notch away: the blob pops out right there
             geoms = self._geoms()
-            if self.dpos is None:
-                self.dpos = [geoms[self.mon_i][0] + self.mx, geoms[self.mon_i][1] + self.my]
-            self.dpos[0] += dx
-            self.dpos[1] += dy
+            # (dx,dy) is relative to where the window is now (the page measures from its own grab point), so the wanted
+            # spot is today's spot plus it, never a running sum: held at an outer edge, it doesn't pile up overflow
+            self.dpos = [geoms[self.mon_i][0] + self.mx + dx, geoms[self.mon_i][1] + self.my + dy]
             ball = (self.wide_shift + BALL[0], self.top_shift + BALL[1])
             i = screens.mon_strict(geoms, self.dpos[0] + ball[0], self.dpos[1] + ball[1])
             i = self.mon_i if i is None else i
