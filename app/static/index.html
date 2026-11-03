@@ -948,12 +948,12 @@ const syncEye=syncLook;
 const SVGNS='http://www.w3.org/2000/svg';
 const sv=(tag,at,par)=>{ const e=document.createElementNS(SVGNS,tag); for(const k in at) e.setAttribute(k,at[k]); if(par) par.appendChild(e); return e; };
 const SKIN_LABELS={none:'none',halo:'halo',crown:'crown',sprout:'sprout',bow:'bow'};
-let SKIN_PARTS={}, SIT_P=null, sitSettled=false;
+let SKIN_PARTS={}, SIT_P=null, sitSettled=false, shivAt=0, shivT0=0;
 // situational looks (#133): a tie in meetings, headphones for music. Their own groups, so a skin change never erases one
 // and the skin picker never shows one. Flat paths only; frame() fades and scales them with springs.
 function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) return null; bk.innerHTML=''; fr.innerHTML='';
   const acc=L.skinColor||L.pupL, R=at=>({...at,'stroke-linejoin':'round','stroke-linecap':'round'});
-  const nc=sv('g',{opacity:0},fr), ph=sv('g',{opacity:0},fr);   // top zone, drawn first: the headphone band passes in front
+  const nc=sv('g',{opacity:0},fr), ph=sv('g',{opacity:0},fr), bn=sv('g',{opacity:0},fr), sc=sv('g',{opacity:0},fr);   // top zone, drawn first: the headphone band passes in front
   const hb=sv('g',{opacity:0},bk), bd=sv('g',{},hb), tie=sv('g',{opacity:0},fr), hf=sv('g',{opacity:0},fr), gl=sv('g',{opacity:0},fr), sh=sv('g',{opacity:0},fr);
   const wh=L.whiteL, pc=L.pupL, pd=shade(pc,-.3);
   // nightcap: a soft cone drooping to one side, a pom-pom, a pale brim
@@ -961,6 +961,18 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   sv('path',R({d:'M-34 -84Q-30 -140 6 -158Q40 -168 64 -124Q30 -140 34 -84Z',fill:pc,stroke:pd,'stroke-width':2.5}),nci);
   sv('rect',R({x:-38,y:-90,width:76,height:10,rx:5,fill:wh,stroke:pd,'stroke-width':2}),nci);
   sv('circle',{cx:64,cy:-120,r:9,fill:wh,stroke:pd,'stroke-width':2},nci);
+  // beanie: a ribbed cuff, a dome and a pom-pom in the accent colour, sized like the nightcap
+  const bni=sv('g',{transform:'translate(0 -62) scale(.6) translate(0 84)'},bn), bw=shade(acc,.45);
+  sv('path',R({d:'M-36 -88Q-36 -150 0 -150Q36 -150 36 -88Z',fill:acc,stroke:shade(acc,-.3),'stroke-width':2.5}),bni);
+  sv('rect',R({x:-40,y:-92,width:80,height:16,rx:6,fill:bw,stroke:shade(acc,-.3),'stroke-width':2}),bni);
+  for(const x of [-26,-13,0,13,26]) sv('path',{d:`M${x} -91L${x} -77`,stroke:shade(acc,-.3),'stroke-width':1.5,'stroke-linecap':'round'},bni);
+  sv('circle',{cx:0,cy:-155,r:10,fill:bw,stroke:shade(acc,-.3),'stroke-width':2},bni);
+  // scarf: a striped band across the lower ball and a tail hanging at the right (frame() swings scT about (40,50))
+  sv('path',R({d:'M-62 42Q0 62 62 42L64 56Q0 76 -64 56Z',fill:acc,stroke:shade(acc,-.3),'stroke-width':2.5}),sc);
+  for(const x of [-36,-12,12,36]){ const k=10*(1-(x/62)**2); sv('path',{d:`M${x} ${43+k}L${x+2} ${58+k}`,stroke:'#fff','stroke-width':4,'stroke-linecap':'round'},sc); }
+  const scT=sv('g',{},sc);
+  sv('path',R({d:'M32 52L52 50L58 82L38 84Z',fill:acc,stroke:shade(acc,-.3),'stroke-width':2.5}),scT);
+  sv('path',{d:'M36 70L56 68M37 77L57 75',stroke:'#fff','stroke-width':3,'stroke-linecap':'round'},scT);
   // party hat: a striped cone with a pom-pom, in party colours (his own blue would vanish against his arms)
   const pk='#e0569a', pkd=shade(pk,-.3), yl='#f2c94c';
   const phi=sv('g',{transform:'translate(0 -62) scale(.7) translate(0 84)'},ph);   // (frame() owns ph's own transform)
@@ -1000,7 +1012,7 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   const scr=sv('rect',{x:61,y:-60,width:22,height:16,rx:3,fill:'#1d2026'},feed); sv('path',R({d:'M68 -57L68 -47L77 -52Z',fill:'#fff'}),feed);
   sv('circle',{cx:87,cy:-56,r:1.6,fill:'#fff'},feed); sv('circle',{cx:87,cy:-50,r:1.6,fill:'#fff'},feed);
   const ic=(x,y,g)=>sv('image',{x,y,width:14,height:14,display:'none'},g);   // the sending app's icon, set when the prop starts
-  return {chat:{g:chat,dots,badge,bt,n:0,img:ic(-99,-80,chat)},feed:{g:feed,scr,ant:tvA,img:ic(48,-70,feed)},tie,hb,bd,hf,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,lensL,lensR,brg,glintL,glintR}; }
+  return {chat:{g:chat,dots,badge,bt,n:0,img:ic(-99,-80,chat)},feed:{g:feed,scr,ant:tvA,img:ic(48,-70,feed)},tie,hb,bd,hf,bn,sc,scT,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,lensL,lensR,brg,glintL,glintR}; }
 // a plugin's prop (#149): the server already sanitised it to a node list; only createElementNS + setAttribute here, no ids, no markup
 const PROP_BOX={head:[-30,-112,60,54],left:[-98,-34,40,40],right:[58,-34,40,40],base:[-36,68,72,26]}, PROP_COL={acc:'var(--acc)',text:'var(--text)',dim:'var(--dim)'};
 function drawProp(par,P){   // a nested <svg> at the anchor box: it scales the prop and clips it to the box
@@ -1012,7 +1024,7 @@ function drawProp(par,P){   // a nested <svg> at the anchor box: it scales the p
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
 function drawSkin(back,front,L,bodyFill='url(#ballG)'){
   back.innerHTML=''; front.innerHTML='';
-  const F=L.skinColor||bodyFill, acc=L.skinColor||L.pupL, soft=L.skinColor||L.whiteL, parts={pivots:{}};
+  const F=L.skinColor||bodyFill, acc=L.skinColor||L.pupL, soft=L.skinColor||L.whiteL, parts={pivots:{},baseProp:false};
   const R=(at)=>({...at,'stroke-linejoin':'round','stroke-linecap':'round'});
   switch(L.skin){
     case 'halo': { const g=sv('g',{},front);
@@ -1028,7 +1040,7 @@ function drawSkin(back,front,L,bodyFill='url(#ballG)'){
         sv('path',{d:'M0 0C-8 -13 -24 -12 -24 0C-24 12 -8 13 0 0Z',fill:soft},g);
         sv('path',{d:'M0 0C8 -13 24 -12 24 0C24 12 8 13 0 0Z',fill:soft},g);
         sv('circle',{r:5,fill:shade(soft,-.15)},g); break; }
-    default: if(String(L.skin).startsWith('plug:')){ const P=((info&&info.plugin_props)||[]).find(p=>'plug:'+p.id===L.skin); if(P) drawProp(P.layer==='back'?back:front,P); }
+    default: if(String(L.skin).startsWith('plug:')){ const P=((info&&info.plugin_props)||[]).find(p=>'plug:'+p.id===L.skin); if(P){ parts.baseProp=P.anchor==='base'; drawProp(P.layer==='back'?back:front,P); } }
   }
   return parts;
 }
@@ -1228,7 +1240,7 @@ const S={L:{},R:{}}; for(const k of EYE_KEYS){ S.L[k]=new Spring(val(MOODS.idle[
 const SP={L:{},R:{}}; for(const k of PUP_KEYS){ SP.L[k]=new Spring(val(PUP.slit[k],0),2.3,.78); SP.R[k]=new Spring(val(PUP.slit[k],1),2.3,.78); }
 const G={ sz:new Spring(1,2,.75), tilt:new Spring(0,.8,.85), dx:new Spring(0,2.4,.55),
   wob:new Spring(0,1.7,.22),
-  gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), sit:new Spring(0,2.4,.55), sitShade:new Spring(0,2.4,.55), sitGl:new Spring(0,2.4,.55), sitP:new Spring(0,2.4,.55), sitN:new Spring(0,2.4,.55), sitLift:new Spring(0,3,.8), sitMusic:new Spring(0,2.4,.55), sitW:new Spring(0,1.7,.22), zoom:new Spring(1,1.6,.7),
+  gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), sit:new Spring(0,2.4,.55), sitShade:new Spring(0,2.4,.55), sitGl:new Spring(0,2.4,.55), sitP:new Spring(0,2.4,.55), sitN:new Spring(0,2.4,.55), sitBn:new Spring(0,2.4,.55), sitSc:new Spring(0,2.4,.55), wind:new Spring(0,1.2,.8), sitLift:new Spring(0,3,.8), sitMusic:new Spring(0,2.4,.55), sitW:new Spring(0,1.7,.22), zoom:new Spring(1,1.6,.7),
   appear:new Spring(.2,1.5,.55), open:new Spring(0,1.8,.55), think:new Spring(0,1.6,.6), anger:new Spring(0,1.8,.55), qm:new Spring(0,1.8,.55),
   agent:new Spring(0,2.6,.5), sitChat:new Spring(0,2.6,.5), sitFeed:new Spring(0,2.6,.5), mic:new Spring(0,2.6,.7), rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
 let idlePu=null, idleSwapAt=performance.now()+15000;
@@ -1459,7 +1471,8 @@ function frame(ts){
   const fe=fx.eye||{};
   const hot=m==='idle'&&SIT.cpu_hot?.1:0;           // a busy machine: a slight squint
   for(const key of EYE_KEYS){ const b=key==='top'?hot:0; S.L[key].to(val(T[key],0)+(fe[key]||0)+b,dt); S.R[key].to(val(T[key],1)+(fe[key]||0)+b,dt); }
-  G.sz.to(T.sz*(SIT.ram_low&&m==='idle'?1.06+Math.sin(t*1.1)*.015:1),dt); G.tilt.to(T.tilt+(fx.tilt||0)+(isTalk(m)?talk.tiltT:0),dt);
+  const wn=REDUCED.matches?(G.wind.x=G.wind.v=0):G.wind.to(SIT.windy?SIT.lean:0,dt);   // wind: +1 from screen right
+  G.sz.to(T.sz*(SIT.ram_low&&m==='idle'?1.06+Math.sin(t*1.1)*.015:1),dt); G.tilt.to(T.tilt+(fx.tilt||0)+(isTalk(m)?talk.tiltT:0)+4*wn,dt);
   // idle: now and then a little change of look — a blank dot stare, curious round eyes, a big-eyed "ooh", a head-tilt
   if(m==='idle' && !FID && ts>idleSwapAt){
     if(idlePu){ idlePu=null; idleSwapAt=ts+9000+Math.random()*13000; }
@@ -1485,7 +1498,9 @@ function frame(ts){
   const pump=1+micLvl*.04+Math.sin(t*1.3)*.004;
   lift=0;
   const rot=G.tilt.x+Math.sin(t*.5)*.5+G.gx.v*.012+(fx.rot||0);
-  const dxp=G.dx.to(0,dt);
+  if(SIT.cold>=1&&m==='idle'&&!REDUCED.matches){ if(!shivAt) shivAt=ts+25000; if(ts>=shivAt){ shivT0=ts; shivAt=ts+(20+Math.random()*10)*1000; } } else { shivAt=0; shivT0=0; }
+  const sp6=(ts-shivT0)/600, shiv=shivT0&&sp6>=0&&sp6<1?Math.sin(t*60)*1.5*Math.sin(Math.PI*sp6):0;   // 0.6 s, ~25 s apart, straight into dxp (a spring would filter 9 Hz away)
+  const dxp=G.dx.to(0,dt)+shiv;
   const bodyTr=`translate(${dxp.toFixed(2)},${(76*(1-sy*pump)).toFixed(2)}) rotate(${rot.toFixed(2)})`;
   E.body.setAttribute('transform',`${bodyTr} scale(${(sx*pump).toFixed(4)},${(sy*pump).toFixed(4)})`);
   E.shadow.setAttribute('transform',`scale(${sx.toFixed(3)},1)`);
@@ -1630,14 +1645,16 @@ function frame(ts){
   if(SP2.halo) SP2.halo.setAttribute('transform',`translate(0,${(Math.sin(t*1.6)*2.2).toFixed(2)})`);
   if(SIT_P){ sitStep(ts);       // looks: spring in/out about their anchors; the tie sways like the other hanging skins
     const w=G.sitW.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)*.6, sp=(S_,on)=>S_.to(on?1:0,dt), skinless=LOOK.skin==='none';
-    const tp=skinless&&sitOn.party, tn=skinless&&!tp&&sitOn.night;     // top zone: party hat > nightcap (the beanie comes later), and only with no skin
+    const tp=skinless&&sitOn.party, tb=skinless&&!tp&&sitOn.cold2, tn=skinless&&!tp&&!tb&&sitOn.night, ts6=sitOn.cold1&&!sitOn.meeting&&!SKIN_PARTS.baseProp;     // top zone: party hat > beanie > nightcap, only with no skin; the scarf yields to the tie and a base prop
+    const ww=REDUCED.matches?0:w;
     const a=sp(G.sit,sitOn.meeting), b=sp(G.sitMusic,sitOn.music), c=sp(G.sitShade,sitOn.fullscreen), g=sp(G.sitGl,sitOn.coding&&!sitOn.fullscreen),   // eyes: shades > glasses
-      pa=sp(G.sitP,tp), ni=sp(G.sitN,tn), pch=sp(G.sitChat,propOn&&propOn.cat==='chat'&&ts<propOn.until), pf=sp(G.sitFeed,propOn&&propOn.cat==='video'&&ts<propOn.until), L=G.sitLift.to(isTalk(m)||m==='listening'||['reading','editing','running','searching','looking','thinking'].includes(m)?1:0,dt);
+      pa=sp(G.sitP,tp), ni=sp(G.sitN,tn), bnn=sp(G.sitBn,tb), scc=sp(G.sitSc,ts6), pch=sp(G.sitChat,propOn&&propOn.cat==='chat'&&ts<propOn.until), pf=sp(G.sitFeed,propOn&&propOn.cat==='video'&&ts<propOn.until), L=G.sitLift.to(isTalk(m)||m==='listening'||['reading','editing','running','searching','looking','thinking'].includes(m)?1:0,dt);
     const put=(el,x,ax,ay,rot)=>{ el.setAttribute('opacity',clamp(x,0,1).toFixed(2)); el.setAttribute('transform',`translate(${ax} ${ay})${rot?` rotate(${rot.toFixed(2)})`:''} scale(${(.7+.3*x).toFixed(3)}) translate(${-ax} ${-ay})`); };
     const lift=(el,x)=>{ put(el,x,0,-4); el.setAttribute('transform',`translate(0 ${(-32*L).toFixed(1)}) scale(${(1-.08*L).toFixed(3)}) `+el.getAttribute('transform')); };   // (lifted onto the forehead while he talks, so his eyes stay visible)
-    const off=!(sitOn.meeting||sitOn.music||sitOn.fullscreen||sitOn.coding||tp||tn)&&Math.max(a,b,c,g,pa,ni,pch,pf)<.002;
+    const off=!(sitOn.meeting||sitOn.music||sitOn.fullscreen||sitOn.coding||tp||tn||tb||ts6)&&Math.max(a,b,c,g,pa,ni,bnn,scc,pch,pf)<.002;
     if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,b,0,-4,G.sitW.x*.25); put(SIT_P.hf,b,0,-4,G.sitW.x*.25); sitSettled=off;
-      lift(SIT_P.sh,c); put(SIT_P.gl,g,0,-4); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3);;
+      lift(SIT_P.sh,c); put(SIT_P.gl,g,0,-4); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3);
+      put(SIT_P.bn,bnn,0,-84,ww*.5-8*wn); put(SIT_P.sc,scc,0,50); SIT_P.scT.setAttribute('transform',`rotate(${(-(ww*.6)+8*wn).toFixed(2)} 40 50)`);
       const el=propOn?ts-propOn.t0:0, prop=(Q,x,ax,ay,f)=>{ if(x>.002){ put(Q.g,x,ax,ay); Q.on=true; f(Q); } else if(Q.on){ Q.g.setAttribute('opacity','0'); Q.on=false; } };   // (a prop writes only while it shows)
       prop(SIT_P.chat,pch,-74,-60,Q=>{ Q.dots.forEach((d,i)=>d.setAttribute('transform',`translate(0 ${(Math.sin(t*9-i*1.1)*3).toFixed(2)})`));
         const n=propOn&&propOn.cat==='chat'?propOn.n||1:1; if(n!==Q.n){ Q.n=n; Q.badge.setAttribute('display',n>1?'':'none'); Q.bt.textContent='×'+n; } });

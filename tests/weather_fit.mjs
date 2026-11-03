@@ -96,6 +96,19 @@ for (const [name, o] of [["rain", { kind: "rain" }], ["heavy rain", { kind: "rai
   check(`reduced motion holds still: ${name}`, a === b && n === 3, `${a.length} chars, ${n} particles`);
 }
 
+// wind and shiver (#157 slice 2): under reduced motion nothing leans, shivers or shifts; with motion the wind spring moves towards +1
+const bodyX = () => ev("return parseFloat(document.getElementById('body').getAttribute('transform').match(/translate\\(([-\\d.]+)/)[1])");
+await ev(`await wxSet({cold:1,windy:true,lean:1}); return 1`); await sleep(1500);
+check("reduced motion: wind spring stays 0", (await ev("return [G.wind.x,G.wind.v]")).every(v => v === 0));
+const bx = []; for (let i = 0; i < 8; i++) { bx.push(await bodyX()); await sleep(100); }
+check("reduced motion: #body translate x stays 0.00", bx.every(v => v === 0), bx.join());
+await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "no-preference" }] });
+await send("Page.reload"); await sleep(4500); await ev(INIT);
+check("reduced motion is off", !(await ev("return REDUCED.matches")));
+await ev(`await wxSet({cold:1,windy:true,lean:1},false); return 1`); await sleep(2500);
+const wx = await ev("return G.wind.x");
+check("wind spring moves towards 1", wx > .5 && wx <= 1.05, wx.toFixed(2));
+
 await ev("clearInterval(__hold); WXT=null; lowFx=false; return 1");
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
 console.log(fails.length ? `\n${fails.length} failed: ${fails.join(", ")}` : "\nall good");
