@@ -4846,14 +4846,16 @@ class Handler(BaseHTTPRequestHandler):
             cur = STAGES.current()
             vis = cur if STAGES.visible() else None            # only what is really on screen can be run or copied by voice
             fp = stages.fast_path(said, vis)                   # ("run the first one", "copy that", "close"...): no agent turn
-            if fp and fp[0] == "run" and vis and fp[1] < len(vis.get("items") or []):
+            if fp and fp[0] == "run" and vis and vis.get("kind") == "commands" and fp[1] < len(vis.get("items") or []):
                 body["stage"], body["act"] = vis["items"][fp[1]]["token"], "run"
             elif fp and fp[0] == "ask" and vis:
                 return self._said("Which one? Say the first, second or third.")
             elif fp and fp[0] in ("copy", "open", "play") and vis:
-                tk = (vis.get("items") or [vis])[fp[1]].get("token")
-                r = stage_act(tk, fp[0])
-                return self._said({"copy": "Copied."}.get(fp[0], "I can't do that yet.") if r["ok"] or r.get("error") == "not yet" else "I couldn't do that.")
+                it = (vis.get("items") or [vis])[fp[1]]         # each set names its tokens per action (map: open/copy, cinema: play)
+                tk = {"copy": it.get("token") or vis.get("copy"), "open": vis.get("open") or it.get("play"), "play": it.get("play")}[fp[0]]
+                r = stage_act(tk or "", fp[0])
+                return self._said({"copy": "Copied.", "open": "Opening it.", "play": "Playing it."}[fp[0]] if r["ok"]
+                                  else "I can't do that yet." if r.get("error") == "not yet" else "I couldn't do that.")
             elif fp and fp[0] in ("close", "back", "show") and (cur or fp[0] != "close"):
                 if stage_act("", fp[0])["ok"]:
                     return self._said("Done.")

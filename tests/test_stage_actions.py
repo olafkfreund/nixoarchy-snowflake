@@ -226,6 +226,18 @@ class StageActionsTest(unittest.TestCase):
         self.assertEqual(prompts, [])
         self.assertIsNone(self.s.STAGES.current())
 
+    def test_fast_path_reaches_map_and_cinema_tokens(self):           # Codex review: voice used .token, which these sets lack
+        page = self.s.STAGES.put(self.stages.validate({"v": 1, "kind": "place", "dest": "Oslo S"})); self.s.STAGES.set_visible(True)
+        with mock.patch.object(self.s.subprocess, "Popen") as po:
+            evs, prompts, _ = self.ask({"prompt": "open it"})
+        self.assertEqual((prompts, evs[0]["text"], po.call_args[0][0][0]), ([], "Opening it.", "xdg-open"))
+        self.video_page(); self.s.STAGES.set_visible(True)
+        with mock.patch.object(self.s.subprocess, "Popen") as po, mock.patch.object(self.s.shutil, "which", return_value="/bin/mpv"):
+            evs, prompts, _ = self.ask({"prompt": "play the first one"})
+        self.assertEqual((prompts, evs[0]["text"], po.call_args[0][0]), ([], "Playing it.", ["mpv", "https://www.youtube.com/watch?v=abcdefghijk"]))
+        evs, prompts, _ = self.ask({"prompt": "run the first one"})     # no KeyError: Run is only for commands, so it is an ordinary turn
+        self.assertEqual((len(prompts), prompts[0][1]), (1, None))
+
     # ---- review fixes
     def test_acts_shown_and_hidden_drive_visibility(self):
         self.s.STAGES.put(self.stages.validate({"v": 1, "kind": "facts", "title": "t", "points": ["p"]}))
