@@ -3828,7 +3828,7 @@ def run_bridge(prompt, emit):
         note = note[:-3] + (" When the answer is commands to run, or 2-5 facts, do not speak them: say what they are in a sentence, then "
                             "end the reply with ONE last line, <<stage>> followed by JSON on that line: "
                             '{"v":1,"kind":"commands","title":"optional plaque, 1-4 words","items":[{"label":"what it does","cmd":"the command"}]} or '
-                            '{"v":1,"kind":"facts","title":"...","points":["..."],"source":"optional"} or, for directions or a place, '
+                            '{"v":1,"kind":"facts","title":"...","points":["..."],"source":"optional"} or, to find videos, {"v":1,"kind":"video","query":"search words"} (the server searches) or, for directions or a place, '
                             "{\"v\":1,\"kind\":\"place\",\"dest\":\"address or name\",\"mode\":\"driving|walking|bicycling|transit, omit for a plain place\"}; "
                             "at most 5 items, labels and points under 120 characters, commands under 500, no line breaks inside.)\n\n")
     BRIDGE.send({"type": "prompt", "text": note + prompt})
@@ -3873,7 +3873,8 @@ def run_bridge(prompt, emit):
     return "done"
 
 
-STAGES = stages.Store()                                  # the stage on screen and the one before it (#144)
+THUMBS = {}                                              # posters of the stage on screen, by token (dropped with the stage)
+STAGES = stages.Store(on_new=THUMBS.clear)                                  # the stage on screen and the one before it (#144)
 
 
 def stages_on():
@@ -3931,6 +3932,13 @@ def stage_act(token, act):
             return {"ok": True}
         except OSError:
             return {"ok": False, "error": "couldn't open it"}
+    if act == "play" and got and got[0] == "video":      # mpv if it is installed, otherwise the browser
+        try:
+            argv = ["mpv", got[1]["url"]] if shutil.which("mpv") else ["xdg-open", got[1]["url"]]
+            subprocess.Popen(argv, start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return {"ok": True}
+        except OSError:
+            return {"ok": False, "error": "couldn't play it"}
     if act in ("open", "play") and got:
         return {"ok": False, "error": "not yet"}
     return {"ok": False, "error": "gone" if act in ("copy", "open", "play") else "unknown"}
@@ -4354,6 +4362,19 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "max-age=86400")
             self.end_headers()
             return self.wfile.write(data)
+        if p.startswith("/api/stage/thumb/"):      # a poster for the current stage: only a token the store handed out, only i.ytimg.com
+            got = STAGES.get(p[17:]) if stages_on() else None
+            hit = got and got[0] == "thumb" and (THUMBS.get(p[17:]) or stages.fetch_thumb(got[1]["id"]))
+            if hit:
+                THUMBS[p[17:]] = hit
+            if not hit:
+                return self._json({"error": "not found"}, 404)
+            self.send_response(200)
+            self.send_header("Content-Type", hit[1])
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Length", str(len(hit[0])))
+            self.end_headers()
+            return self.wfile.write(hit[0])
         if p == "/":
             p = "/index.html"
         f = (STATIC / p.lstrip("/")).resolve()
@@ -4944,6 +4965,8 @@ class Handler(BaseHTTPRequestHandler):
                     if tail:
                         out(t="delta", text=tail)
                     st = stages.validate(blk) if t == "result" and blk and run_cmd is None and stages_on() else None    # (a Run never replaces the board)
+                    if st and st["kind"] == "video":
+                        st = {**st, "items": stages.video_search(st["query"])}         # (the agent only said what to look for)
                     if st:
                         out(t="stage", **stage_event(STAGES.put(st)))
                 out(**kw)

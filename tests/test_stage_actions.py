@@ -6,6 +6,7 @@ import sys
 import tempfile
 import time
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -118,6 +119,44 @@ class StageActionsTest(unittest.TestCase):
             po.reset_mock()
             self.assertFalse(self.s.stage_act(page["copy"], "open")["ok"])   # the copy token has no URL
             self.assertFalse(po.called)
+
+    def video_page(self):
+        v = self.stages.validate({"v": 1, "kind": "video", "query": "cats"})
+        return self.s.STAGES.put({**v, "items": [{"id": "abcdefghijk", "title": "t", "channel": "c", "duration": "1:00"}]})
+
+    def test_play_uses_mpv_else_browser_and_search_opens(self):
+        page = self.video_page(); url = "https://www.youtube.com/watch?v=abcdefghijk"
+        with mock.patch.object(self.s.subprocess, "Popen") as po:
+            with mock.patch.object(self.s.shutil, "which", return_value="/bin/mpv"):
+                self.assertTrue(self.s.stage_act(page["items"][0]["play"], "play")["ok"])
+                self.assertEqual(po.call_args[0][0], ["mpv", url])
+            with mock.patch.object(self.s.shutil, "which", return_value=None):
+                self.s.stage_act(page["items"][0]["play"], "play")
+                self.assertEqual(po.call_args[0][0], ["xdg-open", url])
+            self.s.stage_act(page["search"], "open")
+            self.assertEqual(po.call_args[0][0], ["xdg-open", "https://www.youtube.com/results?search_query=cats"])
+
+    def test_play_refused_for_a_command_token(self):
+        with mock.patch.object(self.s.subprocess, "Popen") as po:
+            self.assertFalse(self.s.stage_act(self.tok, "play")["ok"])
+        self.assertFalse(po.called)
+
+    def test_thumb_route_serves_only_ytimg_posters_of_the_stage(self):
+        import urllib.request
+        page = self.video_page(); s = self.s
+        with mock.patch.object(s.stages, "fetch_thumb", return_value=(b"JPG", "image/jpeg")) as ft:
+            srv = s.ThreadingHTTPServer(("127.0.0.1", 0), s.Handler)
+            threading_t = s.threading.Thread(target=srv.serve_forever, daemon=True); threading_t.start()
+            try:
+                base = "http://127.0.0.1:%d/api/stage/thumb/" % srv.server_address[1]
+                self.assertEqual(urllib.request.urlopen(base + page["items"][0]["thumb"]).read(), b"JPG")
+                urllib.request.urlopen(base + page["items"][0]["thumb"]).read()
+                self.assertEqual(ft.call_count, 1)               # cached
+                for bad in (page["items"][0]["play"], "nope"):   # a non-poster token, an unknown one
+                    with self.assertRaises(urllib.error.HTTPError):
+                        urllib.request.urlopen(base + bad)
+            finally:
+                srv.shutdown(); srv.server_close()
 
     def test_close_and_back(self):
         self.s.STAGES.put(self.stages.validate({"v": 1, "kind": "facts", "title": "t", "points": ["p"]}))

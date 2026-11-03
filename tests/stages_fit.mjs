@@ -29,6 +29,8 @@ const FIX = {
   "commands (yolo)": { t: "stage", v: 1, kind: "commands", trust: "yolo", items: [{ label: "List", cmd: "ls -la", token: "t1" }] },
   "commands (5 long)": { t: "stage", v: 1, kind: "commands", trust: "mechanic", title: long, items: Array.from({ length: 5 }, (_, i) => ({ label: long, cmd: "c".repeat(500), token: "t" + i })) },
   "place": { t: "stage", v: 1, kind: "place", trust: "mechanic", dest: long + long, mode: "walking", open: "o1", copy: "c1" },
+  "video": { t: "stage", v: 1, kind: "video", trust: "mechanic", query: "<b>cats</b>", search: "s1", items: [1, 2, 3].map(i => ({ title: long, channel: "Chan", duration: "3:0" + i, play: "p" + i, thumb: "h" + i })) },
+  "video (failed)": { t: "stage", v: 1, kind: "video", trust: "mechanic", query: "cats", search: "s1", items: [] },
   "facts": { t: "stage", v: 1, kind: "facts", trust: "mechanic", title: "Tides", token: "f1", points: ["Two highs a day", "Two lows a day", "Springs at new moon"], source: "NOAA" },
   "facts (5 long)": { t: "stage", v: 1, kind: "facts", trust: "mechanic", title: long, token: "f1", points: Array.from({ length: 5 }, () => long), source: long },
 };
@@ -65,6 +67,21 @@ for (const [pn, ox] of Object.entries(POS)) for (const [fn, fx] of Object.entrie
   await show(FIX.place, w => 0);
   const r2 = await ev(`return getComputedStyle(document.querySelector('#stg .tm')).animationName`);
   check(r2 === "none", "map: trail still under reduced motion", r2);
+  await send("Emulation.setEmulatedMedia", { features: [] }); }
+
+// the cinema: numbered posters with Play, the search in the footer as text, popcorn; or the failure with a browser search
+{ await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "no-preference" }] });
+  await show(FIX.video, w => 0);
+  const c = await ev(`const f=document.getElementById('stg'); return [f.classList.contains('cinema'), f.querySelectorAll('b').length, document.getElementById('stgFn').textContent, [...f.querySelectorAll('.sb')].map(b=>b.textContent).join(), f.querySelectorAll('.pw').length, document.getElementById('pop').classList.contains('on'), getComputedStyle(f,'::before').animationName, getComputedStyle(f.querySelector('.pw'),'::before').content]`);
+  check(c[0] && c[1] === 0 && c[2] === "Searched YouTube for: <b>cats</b>" && c[3] === "Play,Play,Play" && c[4] === 3 && c[5] && c[6] === "stgCurL" && c[7].includes("▶"), "cinema set", JSON.stringify(c));
+  await show(FIX["video (failed)"], w => 0);
+  check(await ev("return document.getElementById('stg').classList.contains('bare') && document.getElementById('stg').getBoundingClientRect().height < 250"), "cinema: empty state shrinks to its content");
+  const e = await ev(`return [document.getElementById('stg').textContent.includes("Couldn't search right now"), [...document.querySelectorAll('#stg .sb')].map(b=>b.textContent).join()]`);
+  check(e[0] && e[1] === "Search in browser", "cinema: failure offers a browser search", JSON.stringify(e));
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }); await sleep(200);
+  await show(FIX.video, w => 0);
+  const r3 = await ev(`return getComputedStyle(document.getElementById('stg'),'::before').animationName`);
+  check(r3 === "none", "cinema: curtains still under reduced motion", r3);
   await send("Emulation.setEmulatedMedia", { features: [] }); }
 
 // trust notes and Run

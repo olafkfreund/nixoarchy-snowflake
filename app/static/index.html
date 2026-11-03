@@ -191,6 +191,19 @@ body.bar #mailPop,body.hover #mailPop,body.calm #mailPop{display:none}
 #stg .sk .rose{fill:none;stroke:var(--sfg);stroke-width:1.4}
 #stg .dst{font-size:19px;margin-top:4px;overflow-wrap:anywhere}
 #stg .md{font:italic 13px MapInk,Georgia,serif;color:var(--sdim)}
+#stg.cinema{--sbg:#1a0f12;--sfg:#f3e9d8;--sdim:#b9a58e;--sline:#ffffff22;background:radial-gradient(ellipse at 50% 0,#4a1620,transparent 70%),#1a0f12;border:4px solid #5a1a24}
+#stg.cinema::before,#stg.cinema::after{content:"";position:absolute;top:0;bottom:0;width:51%;z-index:3;pointer-events:none;background:repeating-linear-gradient(90deg,#8e1f33 0 14px,#741527 14px 26px)}
+#stg.cinema::before{left:0;transform:translateX(-100%)}
+#stg.cinema::after{right:0;transform:translateX(100%)}
+#stg.cinema.go::before{animation:stgCurL .4s ease-out both}
+#stg.cinema.go::after{animation:stgCurR .4s ease-out both}
+@keyframes stgCurL{from{transform:none}to{transform:translateX(-100%)}}
+@keyframes stgCurR{from{transform:none}to{transform:translateX(100%)}}
+#stg .pw{flex:none;position:relative;width:96px;aspect-ratio:16/9;border-radius:5px;overflow:hidden;background:#0008;border:1px solid var(--sline)}
+#stg .pw::before{content:'▶';position:absolute;inset:0;display:grid;place-items:center;color:#ffffff33;font-size:20px}
+#stg .po{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#stg.bare{min-height:0}
+#stg .vm{font-size:12px;color:var(--sdim)}
 body.appr #stg{opacity:.35;pointer-events:none}
 #stg header{display:flex;align-items:center;gap:8px;padding:8px 10px 2px}
 #stg h2{flex:1;margin:0;font:600 25px/1.1 Chalk,"Segoe Print",cursive;letter-spacing:.01em;position:relative;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -231,12 +244,15 @@ body.appr #stg{opacity:.35;pointer-events:none}
 #chalk.on{opacity:1}
 #hat{position:absolute;left:138px;top:34px;width:64px;height:40px;opacity:0;pointer-events:none;z-index:5;transition:opacity .18s}
 #hat.on{opacity:1}
+#pop{position:absolute;left:196px;top:196px;width:34px;height:40px;opacity:0;pointer-events:none;z-index:5;transition:opacity .18s}
+#pop.l{left:100px}
+#pop.on{opacity:1}
 #chalk.pt{animation:stgChalk .3s ease-out}
 @keyframes stgChalk{50%{translate:10px -4px}}
 #chalk.l.pt{animation-name:stgChalkL}
 @keyframes stgChalkL{50%{translate:-10px -4px}}
-body.bar #stg,body.hover #stg,body.calm #stg,body.bar #stgTab,body.hover #stgTab,body.bar #chalk,body.hover #chalk,body.bar #hat,body.hover #hat,body.calm #hat{display:none}
-@media (prefers-reduced-motion:reduce){#stg,#stg.l,#stg.on,#stgTab,#stgTab.l,#stgTab.on{transform:none;transition:opacity .18s}#stg.go .ul path,#stg.go .sk .tm{animation:none}#stg .it.pt .n{animation:none}#chalk{display:none}}
+body.bar #stg,body.hover #stg,body.calm #stg,body.bar #stgTab,body.hover #stgTab,body.bar #chalk,body.hover #chalk,body.bar #hat,body.hover #hat,body.calm #hat,body.bar #pop,body.hover #pop,body.calm #pop{display:none}
+@media (prefers-reduced-motion:reduce){#stg,#stg.l,#stg.on,#stgTab,#stgTab.l,#stgTab.on{transform:none;transition:opacity .18s}#stg.go .ul path,#stg.go .sk .tm,#stg.cinema.go::before,#stg.cinema.go::after{animation:none}#stg .it.pt .n{animation:none}#chalk{display:none}}
 #cap.note{pointer-events:auto;cursor:pointer}   /* a notification row is up: click opens it */
 #wk{position:absolute;left:12px;right:12px;top:404px;text-align:center;font:11px var(--mono);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}   /* nixi mode: what the agent is doing */
 #you{font-size:12px;color:var(--dim);text-shadow:0 1px 2px #000,0 0 5px #0009;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
@@ -629,7 +645,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 <div id="code"><div class="tb"><b></b><span></span></div><div class="lines"></div><i class="rootb" title="Root mode: Claude can run anything, incl. sudo">ROOT</i></div>
 <div id="chip"></div>
 <section id="stg" role="dialog" aria-labelledby="stgT" aria-hidden="true" inert><header><button class="hb" id="stgBack" aria-label="Previous answer" hidden>←</button><h2 id="stgT"></h2><button class="hb" id="stgX" aria-label="Close">✕</button></header><svg class="ul" viewBox="0 0 160 8" aria-hidden="true"><path pathLength="1" d="M2 5 C 40 1, 90 8, 158 3"/></svg><div class="bd" id="stgBd"></div><footer><div class="fn" id="stgFn"></div><div class="acts" id="stgActs"></div></footer></section>
-<button id="stgTab" aria-label="Show the answer again" inert></button><div id="chalk" aria-hidden="true"></div><svg id="hat" viewBox="0 0 64 40" aria-hidden="true"><ellipse cx="32" cy="32" rx="30" ry="7" fill="#b98b4e" stroke="#6b4a2b" stroke-width="2"/><path d="M14 31C14 12 22 5 32 5S50 12 50 31Z" fill="#c99a5b" stroke="#6b4a2b" stroke-width="2"/><path d="M15 26Q32 31 49 26L50 31Q32 36 14 31Z" fill="#7a3b2a"/></svg>
+<button id="stgTab" aria-label="Show the answer again" inert></button><div id="chalk" aria-hidden="true"></div><svg id="pop" viewBox="0 0 34 40" aria-hidden="true"><path d="M5 14L8 38H26L29 14Z" fill="#fff" stroke="#b3261e" stroke-width="2"/><path d="M11 14L12 38M17 14V38M23 14L22 38" stroke="#b3261e" stroke-width="2.5"/><g fill="#fff6d8" stroke="#d9b45b"><circle cx="10" cy="11" r="5"/><circle cx="18" cy="8" r="6"/><circle cx="25" cy="12" r="5"/></g></svg><svg id="hat" viewBox="0 0 64 40" aria-hidden="true"><ellipse cx="32" cy="32" rx="30" ry="7" fill="#b98b4e" stroke="#6b4a2b" stroke-width="2"/><path d="M14 31C14 12 22 5 32 5S50 12 50 31Z" fill="#c99a5b" stroke="#6b4a2b" stroke-width="2"/><path d="M15 26Q32 31 49 26L50 31Q32 36 14 31Z" fill="#7a3b2a"/></svg>
 <div id="mailPop" aria-hidden="true"><div class="env"><div class="bk"></div><div class="lt"><b></b><span></span></div><div class="fr"></div><div class="fl"></div></div></div>
 <div id="cap" class="off"><div id="you"></div><div id="him"></div></div>
 <div id="wk"></div>
@@ -1932,7 +1948,7 @@ function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.c
   at(4300,()=>el.classList.remove('up')); at(4650,()=>el.classList.remove('open'));
   at(5000,()=>{ el.classList.remove('on'); sendRegion(true); }); at(5400,()=>{ popWant=[0,0]; sizeWindow(); }); }
 /* ================= answer stages (#144): the page only draws what the server sends, every field via textContent; Run, Copy and the rest go back as a token ================= */
-const stgEl=$('#stg'), stgTab=$('#stgTab'), chalkEl=$('#chalk'), hatEl=$('#hat'), REDUCED=matchMedia('(prefers-reduced-motion: reduce)');
+const stgEl=$('#stg'), stgTab=$('#stgTab'), chalkEl=$('#chalk'), hatEl=$('#hat'), popEl=$('#pop'), REDUCED=matchMedia('(prefers-reduced-motion: reduce)');
 let stgPosted=false, stg=null, stgState='closed', stgSide='r', stgUse=0, stgQuiet=0, stgTimer=null, stgOffT=null, stgRunTok=null, stgTm=[];
 const hx=(tag,cls,txt)=>{ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; };
 const stgOpen=()=>stgState==='open';
@@ -1942,14 +1958,15 @@ function stageVisSync(){ const B=document.body.classList; stagePost(stgState==='
 function stagePlace(){ if(stgState==='closed') return;
   const right=innerWidth/fitK-layoutX-340, left=layoutX/fitK, need=stgState==='open'?400:160;
   stgSide=right>=need?'r':left>=need?'l':right>=left?'r':'l';
-  for(const e of [stgEl,stgTab,chalkEl]) e.classList.toggle('l',stgSide==='l'); }
+  for(const e of [stgEl,stgTab,chalkEl,popEl]) e.classList.toggle('l',stgSide==='l'); }
 function stageBtn(label,fn,dis){ const b=hx('button','sb',label); b.type='button'; b.disabled=!!dis; b.addEventListener('click',e=>{ e.stopPropagation(); stgUse=performance.now(); fn(b); }); return b; }
 function stageBuild(ev){
   const bd=$('#stgBd'), acts=$('#stgActs'), fn=$('#stgFn'); bd.textContent=''; acts.textContent=''; fn.textContent='';
-  const board=ev.kind==='commands', map=ev.kind==='place', tr=ev.trust, guide=tr==='guide';
-  $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':''));
-  stgEl.className=(board?'board':map?'map':'notebook')+(stgEl.classList.contains('l')?' l':'');
-  if(map) stageMap(ev,bd,acts,fn);
+  const board=ev.kind==='commands', map=ev.kind==='place', film=ev.kind==='video', tr=ev.trust, guide=tr==='guide';
+  $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':film?'Now showing':''));
+  stgEl.className=(board?'board':map?'map':film?'cinema':'notebook')+(stgEl.classList.contains('l')?' l':'');
+  if(film) stageFilm(ev,bd,acts,fn);
+  else if(map) stageMap(ev,bd,acts,fn);
   else if(board){
     (ev.items||[]).forEach((it,i)=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab');
       row.dataset.token=it.token; row.appendChild(hx('div','n',String(i+1)));
@@ -1979,7 +1996,18 @@ function stageMap(ev,bd,acts,fn){
   acts.appendChild(stageBtn('Open in Google Maps',b=>post('/api/stage/act',{token:ev.open,act:'open'}).then(r=>r.json()).then(j=>{ if(!j.ok) fn.textContent=j.error||"Couldn't open it"; }).catch(()=>{})));
   acts.appendChild(stageBtn('Copy address',b=>stageAct('copy',ev.copy,b)));
 }
-function stageText(ev){ if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+ev.dest; const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
+function stageFilm(ev,bd,acts,fn){
+  const webSearch=()=>acts.appendChild(stageBtn('Search in browser',()=>post('/api/stage/act',{token:ev.search,act:'open'}).catch(()=>{})));
+  if(!(ev.items||[]).length){ bd.appendChild(hx('div','pt1',"Couldn't search right now")); webSearch(); stgEl.classList.add('bare'); }
+  else (ev.items).forEach((it,i)=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab'), pw=hx('div','pw'), im=hx('img','po');
+    im.alt=''; im.src='/api/stage/thumb/'+encodeURIComponent(it.thumb); im.addEventListener('error',()=>im.remove()); pw.appendChild(im);
+    row.appendChild(hx('div','n',String(i+1))); row.appendChild(pw);
+    tx.appendChild(hx('div','lb',it.title)); tx.appendChild(hx('div','vm',[it.channel,it.duration].filter(Boolean).join(' · ')));
+    ab.appendChild(stageBtn('Play',()=>post('/api/stage/act',{token:it.play,act:'play'}).then(r=>r.json()).then(j=>{ if(!j.ok) fn.textContent=j.error||"Couldn't play it"; }).catch(()=>{})));
+    row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
+  fn.textContent='Searched YouTube for: '+ev.query;
+}
+function stageText(ev){ if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+ev.dest; const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
   stgPosted=false;
@@ -1987,16 +2015,16 @@ function stageShow(ev){
   stgTm.forEach(clearTimeout); stgTm=[]; clearTimeout(stgOffT);
   stg=ev; stageBuild(ev); stgState='open'; stgRunTok=null; stgUse=stgQuiet=performance.now();
   stgTab.classList.remove('on'); stgTab.inert=true; stgEl.inert=false; stgEl.setAttribute('aria-hidden','false');
-  stgSize(800); stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on');
+  stgSize(800); stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on'); popEl.classList.remove('on');
   const at=(ms,f)=>stgTm.push(setTimeout(f,ms));
-  at(90,()=>{ if(!stgOpen()) return; stagePlace(); void stgEl.offsetWidth; stgEl.classList.add('on'); if(!REDUCED.matches) stgEl.classList.add('go'); sendRegion(true); stagePost(true); hatEl.classList.toggle('on',ev.kind==='place');
+  at(90,()=>{ if(!stgOpen()) return; stagePlace(); void stgEl.offsetWidth; stgEl.classList.add('on'); if(!REDUCED.matches) stgEl.classList.add('go'); sendRegion(true); stagePost(true); hatEl.classList.toggle('on',ev.kind==='place'); popEl.classList.toggle('on',ev.kind==='video');
     if(ev.kind==='commands'&&!REDUCED.matches){ chalkEl.classList.add('on'); at(250,()=>{ chalkEl.classList.add('pt'); const r=stgEl.querySelector('.it'); if(r) r.classList.add('pt'); }); } });
   at(500,()=>sendRegion(true));
   clearInterval(stgTimer); stgTimer=setInterval(stageTick,1000);
 }
 function stageHide(toTab){
   stgTm.forEach(clearTimeout); stgTm=[]; clearInterval(stgTimer); stgTimer=null;
-  stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on'); stgEl.setAttribute('aria-hidden','true'); stgEl.inert=true; stgTab.inert=!toTab;
+  stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on'); popEl.classList.remove('on'); stgEl.setAttribute('aria-hidden','true'); stgEl.inert=true; stgTab.inert=!toTab;
   if(!toTab) stgPosted=false;
   if(toTab){ stagePost(false); stgState='tab'; stgTab.textContent=$('#stgT').textContent; stagePlace(); stgSize(300); void stgTab.offsetWidth; stgTab.classList.add('on'); }
   else { stgState='closed'; stgTab.classList.remove('on'); stgOffT=setTimeout(()=>{ if(stgState==='closed') stgSize(0); sendRegion(true); },200); }
@@ -2008,7 +2036,7 @@ function stageRestore(){ if(stgState!=='tab'||!stg) return; stgState='open'; stg
 function stageTick(){ const now=performance.now(), hov=stgEl.matches(':hover');
   if(hov) stgUse=now;
   if(playing||busy||hov||pendingAppr) stgQuiet=now;
-  if(stg&&(stg.kind==='facts'||stg.kind==='place')&&now-stgQuiet>20000) return stageClose();
+  if(stg&&(stg.kind==='facts'||stg.kind==='place'||stg.kind==='video')&&now-stgQuiet>20000) return stageClose();
   if(stg&&stg.kind==='commands'&&now-stgUse>30000&&!busy) stageHide(true); }
 function stageAct(act,token,btn){ post('/api/stage/act',{token,act}).then(r=>r.json()).then(j=>{ if(btn&&act==='copy'){ const t=btn.textContent; btn.textContent=j.ok?'Copied ✓':"Couldn't copy"; setTimeout(()=>{ btn.textContent=t; },1400); } }).catch(()=>{}); }
 function stageRun(it){ stgRunTok=it.token; send(it.label,{stage:it.token,claude:true}); }
