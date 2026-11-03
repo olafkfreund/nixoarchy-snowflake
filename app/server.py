@@ -5246,7 +5246,7 @@ class Handler(BaseHTTPRequestHandler):
                     elif Mirror.revoke()["ok"]:
                         r = {"say": "Control is back with you.", "mood": "happy", "sfx": "ok"}
                     else:
-                        r = {"say": "I couldn't take it back — press Super, Shift and Escape.", "mood": "sorry", "sfx": "error"}
+                        r = {"say": "I couldn't take it back — press Super, Shift and Escape.", "mood": "sad", "sfx": "error"}
                 if r and ("session_status" in r or "session_send" in r):    # nixi's agent does the work, as an ordinary ask (#95)
                     say, ask = session_send(*r["session_send"]) if "session_send" in r else session_status(r["session_status"], r.get("loose"))
                     if ask:
