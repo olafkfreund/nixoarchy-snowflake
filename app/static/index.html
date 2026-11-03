@@ -965,11 +965,16 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   sv('path',R({d:'M-26 -84L26 -84L2 -160Z',fill:pk,stroke:pkd,'stroke-width':2.5}),phi);
   for(const [y0,y1] of [[-104,-114],[-128,-138]]){ const hw=y=>26*(y+160)/76; sv('path',{d:`M${-hw(y0)} ${y0}L${hw(y0)} ${y0}L${hw(y1)} ${y1}L${-hw(y1)} ${y1}Z`,fill:wh},phi); }
   sv('circle',{cx:2,cy:-162,r:7,fill:yl,stroke:shade(yl,-.3),'stroke-width':2},phi);
-  // umbrella: a scalloped canopy over his head, a hooked handle; a few drops fall past it (moved from frame())
-  const umi=sv('g',{transform:'translate(0 -118) scale(.75) translate(0 162)'},um);   // (canopy well inside the window, handle on his head)
-  sv('path',R({d:'M-54 -112Q-52 -158 0 -162Q52 -158 54 -112Q38 -122 27 -112Q13.5 -122 0 -112Q-13.5 -122 -27 -112Q-38 -122 -54 -112Z',fill:'#f2c94c',stroke:shade('#f2c94c',-.35),'stroke-width':2.5}),umi);   // rain-coat yellow
-  sv('path',R({d:'M0 -112L0 -90Q0 -82 -9 -83',fill:'none',stroke:wh,'stroke-width':3.5}),umi);
-  const drops=[-70,-42,44,72].map(x=>sv('path',R({d:`M${x} -118L${x-2} -110`,fill:'none',stroke:'#9fd3ff','stroke-width':2.6}),umi));
+  // umbrella: a domed canopy tilted over his head, held by a J-hook round the right foot of his top lambda (64,-118)
+  // (the tilt is baked into the points, not a rotate(): a rotated group's box is looser, and the window-fit check measures boxes)
+  const ub='#f2c94c', ud=shade(ub,-.35), umi=sv('g',{},um), sk='#3a3f4b';
+  const rp=(x,y)=>`${(-6+x*.966+y*.259).toFixed(1)} ${(-91-x*.259+y*.966).toFixed(1)}`;   // canopy-local point -> page, tilted 15° to the left about (-6,-91)
+  sv('path',R({d:`M64 -118L${rp(0,-1)}`,fill:'none',stroke:sk,'stroke-width':3.5,'stroke-linecap':'round'}),umi);   // shaft
+  sv('path',R({d:'M64 -118Q71 -118 71 -111Q71 -105 65 -106',fill:'none',stroke:sk,'stroke-width':3.5,'stroke-linecap':'round'}),umi);   // J-hook
+  sv('path',R({d:`M${rp(-55,0)}C${rp(-55,-19)} ${rp(-30,-26)} ${rp(0,-26)}C${rp(30,-26)} ${rp(55,-19)} ${rp(55,0)}Q${rp(27,-9)} ${rp(0,0)}Q${rp(-27,-9)} ${rp(-55,0)}Z`,fill:ub,stroke:ud,'stroke-width':2.5,'stroke-linejoin':'round'}),umi);
+  sv('path',R({d:`M${rp(-55,0)}Q${rp(-27,-9)} ${rp(0,0)}Q${rp(27,-9)} ${rp(55,0)}`,fill:'none',stroke:ud,'stroke-width':2}),umi);   // underside arc
+  sv('path',R({d:`M${rp(0,-26)}L${rp(-38,-3)}M${rp(0,-26)}L${rp(0,-2)}M${rp(0,-26)}L${rp(38,-3)}`,fill:'none',stroke:ud,'stroke-width':1.6}),umi);   // three ribs
+  sv('path',R({d:`M${rp(0,-26)}L${rp(0,-30)}`,fill:'none',stroke:sk,'stroke-width':3,'stroke-linecap':'round'}),umi);   // ferrule
   // tie: a red one under the bottom corner, big enough to read at his size
   const red='#d8453a', dk=shade(red,-.35);
   sv('path',R({d:'M-11 58L11 58L7 70L-7 70Z',fill:shade(red,-.12),stroke:dk,'stroke-width':2.5}),tie);
@@ -1003,7 +1008,7 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   const scr=sv('rect',{x:61,y:-60,width:22,height:16,rx:3,fill:'#1d2026'},feed); sv('path',R({d:'M68 -57L68 -47L77 -52Z',fill:'#fff'}),feed);
   sv('circle',{cx:87,cy:-56,r:1.6,fill:'#fff'},feed); sv('circle',{cx:87,cy:-50,r:1.6,fill:'#fff'},feed);
   const ic=(x,y,g)=>sv('image',{x,y,width:14,height:14,display:'none'},g);   // the sending app's icon, set when the prop starts
-  return {chat:{g:chat,dots,badge,bt,n:0,img:ic(-99,-80,chat)},feed:{g:feed,scr,ant:tvA,img:ic(48,-70,feed)},tie,hb,bd,hf,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,um,drops,lensL,lensR,brg,glintL,glintR}; }
+  return {chat:{g:chat,dots,badge,bt,n:0,img:ic(-99,-80,chat)},feed:{g:feed,scr,ant:tvA,img:ic(48,-70,feed)},tie,hb,bd,hf,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,um,lensL,lensR,brg,glintL,glintR}; }
 // a plugin's prop (#149): the server already sanitised it to a node list; only createElementNS + setAttribute here, no ids, no markup
 const PROP_BOX={head:[-30,-112,60,54],left:[-98,-34,40,40],right:[58,-34,40,40],base:[-36,68,72,26]}, PROP_COL={acc:'var(--acc)',text:'var(--text)',dim:'var(--dim)'};
 function drawProp(par,P){   // a nested <svg> at the anchor box: it scales the prop and clips it to the box
@@ -1536,8 +1541,7 @@ function frame(ts){
     const lift=(el,x)=>{ put(el,x,0,-4); el.setAttribute('transform',`translate(0 ${(-32*L).toFixed(1)}) scale(${(1-.08*L).toFixed(3)}) `+el.getAttribute('transform')); };   // (lifted onto the forehead while he talks, so his eyes stay visible)
     const off=!(sitOn.meeting||sitOn.music||sitOn.fullscreen||sitOn.coding||tp||tr||tn)&&Math.max(a,b,c,g,pa,um,ni,pch,pf)<.002;
     if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,b,0,-4,G.sitW.x*.25); put(SIT_P.hf,b,0,-4,G.sitW.x*.25); sitSettled=off;
-      lift(SIT_P.sh,c); put(SIT_P.gl,g,0,-4); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3); put(SIT_P.um,um,0,-84);
-      if(um>.002) SIT_P.drops.forEach((d,i)=>d.setAttribute('transform',`translate(0 ${((t*55+i*23)%58).toFixed(1)})`));
+      lift(SIT_P.sh,c); put(SIT_P.gl,g,0,-4); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3); put(SIT_P.um,um,64,-118,clamp(w*.45,-6,6));
       const el=propOn?ts-propOn.t0:0, prop=(Q,x,ax,ay,f)=>{ if(x>.002){ put(Q.g,x,ax,ay); Q.on=true; f(Q); } else if(Q.on){ Q.g.setAttribute('opacity','0'); Q.on=false; } };   // (a prop writes only while it shows)
       prop(SIT_P.chat,pch,-74,-60,Q=>{ Q.dots.forEach((d,i)=>d.setAttribute('transform',`translate(0 ${(Math.sin(t*9-i*1.1)*3).toFixed(2)})`));
         const n=propOn&&propOn.cat==='chat'?propOn.n||1:1; if(n!==Q.n){ Q.n=n; Q.badge.setAttribute('display',n>1?'':'none'); Q.bt.textContent='×'+n; } });
