@@ -204,7 +204,7 @@ class Store:
         return page
 
     def _place(self, stage, page, toks):
-        """@home / @work become the stored place (the agent never sees the address); a place he chose is where
+        """@home / @work become the stored place (the agent never sees the address); a place the user chose is where
         directions start. An unset Home or Work gets no token at all: there is nothing to open or copy."""
         try:
             loc = (self.where() if self.where else None) or {}

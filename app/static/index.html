@@ -510,6 +510,10 @@ body.calm #agentMark,body.calm #micBars,body.calm #orbBack,body.calm #orbFront,b
 .skins button:hover{border-color:var(--edge2);color:#fff}
 .skins button.on{border-color:var(--hot);background:var(--deep);color:#fff;box-shadow:0 0 12px var(--accA)}
 /* projects */
+.loc{position:relative} .loc input{width:100%;box-sizing:border-box}
+.sug{position:absolute;left:0;right:0;top:100%;z-index:5;background:var(--panel2);border:1px solid var(--line);border-radius:10px;overflow:hidden} .sug:empty{display:none}
+.sug button{display:block;width:100%;text-align:left;padding:6px 9px;border:0;background:none;color:inherit;font-size:12px;cursor:pointer} .sug button.on,.sug button:hover{background:var(--acc);color:#fff}
+.seg button:disabled{opacity:.4;cursor:default}
 .proj{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);margin-bottom:5px}
 .proj b{font-size:12px} .proj span{flex:1;font:11px var(--mono);color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .proj button{background:none;border:0;color:var(--dim);cursor:pointer} .proj button:hover{color:#ff9b9b}
@@ -726,6 +730,12 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <label class="tg"><input type="checkbox" id="stagesSw"><span class="sw"></span><span class="l">Answer stages<small>Commands and facts appear on a board beside him instead of being read out. Off: everything stays a caption.</small></span></label>
         <label class="tg"><input type="checkbox" id="sfxSw"><span class="sw"></span><span class="l">Sound effects<small>Little blips when he wakes, opens his menu or finishes.</small></span></label>
       </div>
+      <div class="row" id="locRow"><div class="t">Location</div><div class="h" id="locNow">Loading…</div>
+        <div class="seg" id="locChips"></div>
+        <div class="h" style="margin:9px 0 3px">Home</div><div class="loc"><input type="text" id="locHome" placeholder="a city" autocomplete="off"><div class="sug" id="locHomeSug"></div></div>
+        <div class="h" style="margin:9px 0 3px">Work</div><div class="loc"><input type="text" id="locWork" placeholder="a city" autocomplete="off"><div class="sug" id="locWorkSug"></div></div>
+        <div id="locWifi" style="display:none;margin-top:9px"><div class="h" id="locWifiTxt"></div><div class="seg" id="locLink"></div><div id="locLinks"></div></div>
+        <div class="h" id="locErr" style="margin:7px 0 0;color:#e8836f"></div></div>
       <div class="row"><div class="t">Push-to-talk hotkey</div><div class="h" id="pttHelp">Hold it anywhere, even in another app, to talk. Let go to send.</div>
         <div class="bar" id="pttBar"><button class="btn" id="pttSet"></button><button class="btn" id="pttOff">Turn off</button></div></div>
       <div class="row"><div class="t">Microphone</div><select id="micSel"></select></div>
@@ -1991,8 +2001,11 @@ function stageMap(ev,bd,acts,fn){
   sv('path',{d:'M298 32l16 16M314 32l-16 16',stroke:'#b3261e','stroke-width':4,'stroke-linecap':'round'},g);
   const rose=sv('g',{transform:'translate(330 26)'},g); sv('circle',{r:13,class:'rose'},rose); sv('path',{d:'M0-12L3 0 0 12-3 0Z',fill:'var(--acc)'},rose); sv('path',{d:'M-12 0L0-3 12 0 0 3Z',class:'rose'},rose); sv('text',{x:-4,y:-16,style:'font-size:10px'},rose).textContent='N';
   bd.appendChild(g);
-  const row=hx('div','tx'); row.appendChild(hx('div','lb dst',ev.dest)); if(ev.mode) row.appendChild(hx('div','md',ev.mode)); bd.appendChild(row);
-  fn.textContent='A sketch, not the route: Google Maps picks the way and the start';
+  const row=hx('div','tx');
+  if(ev.unset){ row.appendChild(hx('div','lb dst','Set '+(ev.unset==='work'?'Work':'Home')+' in Nixi\u2019s settings')); bd.appendChild(row);
+    acts.appendChild(stageBtn('Settings',()=>{ stageClose(); settings(true,'voice'); setTimeout(()=>{ const r=$('#locRow'); if(r) r.scrollIntoView({block:'center'}); },60); })); return; }
+  row.appendChild(hx('div','lb dst',ev.dest)); if(ev.mode) row.appendChild(hx('div','md',ev.mode)); bd.appendChild(row);
+  fn.textContent=ev.from?'From '+ev.from+' \u00b7 a sketch, not the route':'A sketch, not the route: Google Maps picks the way and the start';
   acts.appendChild(stageBtn('Open in Google Maps',b=>post('/api/stage/act',{token:ev.open,act:'open'}).then(r=>r.json()).then(j=>stageOpened(b,fn,j,"Couldn't open it")).catch(()=>{})));
   acts.appendChild(stageBtn('Copy address',b=>stageAct('copy',ev.copy,b)));
 }
@@ -2008,7 +2021,7 @@ function stageFilm(ev,bd,acts,fn){
     row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
   fn.textContent='Searched YouTube for: '+ev.query;
 }
-function stageText(ev){ if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+ev.dest; const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
+function stageText(ev){ if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
   stgPosted=false;
@@ -2605,7 +2618,7 @@ const TRUST=[['ask','✋','Ask me first','Edits files on his own; asks you (out 
 const setEl=$('#set');
 function settings(on,tab){ setEl.classList.toggle('on',on); document.body.classList.toggle('pnl',on); if(!panelEl.classList.contains('on')) native(on?'wide:on':'wide:off');
   if(!on&&!panelEl.classList.contains('on')) reDock();
-  if(on){ menu(false); hideAsk(); panelEl.classList.remove('on'); panelKind=null; if(tab) showTab(tab); renderSettings(); loadMics(); requestAnimationFrame(moveInd);
+  if(on){ menu(false); hideAsk(); panelEl.classList.remove('on'); panelKind=null; if(tab) showTab(tab); renderSettings(); loadMics(); locLoad(); requestAnimationFrame(moveInd);
     if(info.update_check!==false) post('/api/update/check',{stale:1800}).then(r=>r.json()).then(u=>{ info.update=u; renderUpdate(); }).catch(()=>{}); }   // fresh "latest" when you look
   sendRegion(true); }
 function moveInd(){ const b=$('#tabs button.on'), ind=$('#tabInd'); if(!b||!ind) return; ind.style.width=b.offsetWidth+'px'; ind.style.transform=`translateX(${b.offsetLeft-3}px)`; }
@@ -2765,6 +2778,39 @@ async function loadMics(){
   try{ const j=await (await post('/api/devices')).json(), cur=info.mic_device||'';
     $('#micSel').innerHTML=`<option value="">System default</option>`+(j.mics||[]).map(m=>`<option value="${esc(m.id)}"${m.id===cur?' selected':''}>${esc(m.label)}</option>`).join('');
   }catch(e){} }
+// ---- Location (nixarchy-location does the writing; the page only asks)
+let loc=null, locAt=0, locTm={}, locSug={home:[],work:[]}, locIdx={home:-1,work:-1};
+async function locLoad(){ try{ await tokenReady; loc=await (await fetch('/api/location',{headers:hdr()})).json(); locAt=Date.now(); locRender(); }catch(e){} }
+function locAct(b){ $('#locErr').textContent=''; return post('/api/location',b).then(r=>r.json()).then(j=>{ if(j.ok){ loc=j; locAt=Date.now(); } else $('#locErr').textContent=j.error||'That didn\u2019t work'; locRender(); }).catch(()=>{ $('#locErr').textContent='Couldn\u2019t reach Nixi'; }); }
+function locRender(){
+  if(!loc||loc.error) return;
+  const cur=!loc.chosen?'auto':loc.home&&loc.now.name===loc.home.name?'home':loc.work&&loc.now.name===loc.work.name?'work':'';
+  $('#locNow').textContent=loc.chosen?'Now: '+loc.now.name+(loc.how==='wifi'?' (set by Wi-Fi)':''):'Now: Auto (approximate, from your network)';
+  const ch=$('#locChips'); ch.textContent='';
+  for(const [id,l] of [['home','Home'],['work','Work'],['auto','Auto']]){ const b=hx('button',id===cur?'on':'',l); b.dataset.lnow=id; b.disabled=id!=='auto'&&!loc[id]; ch.appendChild(b); }
+  for(const k of ['home','work']){ const i=$('#loc'+(k==='home'?'Home':'Work')); if(document.activeElement!==i) i.value=loc[k]?loc[k].name:''; }
+  const w=loc.wifi||{}; $('#locWifi').style.display=w.device?'':'none';
+  if(w.device){ $('#locWifiTxt').textContent=w.network?'Wi-Fi: '+w.network+'. Link it, and Nixi picks the place when you join.':'Not on Wi-Fi right now.';
+    const lk=$('#locLink'); lk.textContent=''; for(const k of ['home','work']){ const b=hx('button','','Link to '+(k==='home'?'Home':'Work')); b.dataset.llink=k; b.disabled=!w.network||!loc[k]; lk.appendChild(b); }
+    const ls=$('#locLinks'); ls.textContent=''; for(const [n,k] of Object.entries(w.links||{})){ const r=hx('div','proj'); r.appendChild(hx('b','',n)); r.appendChild(hx('span','','\u2192 '+(k==='home'?'Home':'Work'))); const x=hx('button','','\u2715'); x.dataset.lun=n; x.title='unlink'; r.appendChild(x); ls.appendChild(r); } }
+}
+function locSugShow(k){ const box=$('#loc'+(k==='home'?'Home':'Work')+'Sug'); box.textContent='';
+  locSug[k].forEach((p,i)=>{ const b=hx('button',i===locIdx[k]?'on':'',[p.name,p.admin,p.country].filter(Boolean).join(', ')); b.dataset.lpick=k+':'+i; box.appendChild(b); }); }
+function locPick(k,i){ const p=locSug[k][i]; locSug[k]=[]; locIdx[k]=-1; locSugShow(k); if(p) locAct({act:'set',place:k,name:p.name,latitude:p.latitude,longitude:p.longitude}); }
+function locAsk(k,q){ clearTimeout(locTm[k]); if(q.trim().length<2){ locSug[k]=[]; locSugShow(k); return; }
+  locTm[k]=setTimeout(()=>{ tokenReady.then(()=>fetch('/api/location/suggest?q='+encodeURIComponent(q.trim()),{headers:hdr()})).then(r=>r.json()).then(a=>{ locSug[k]=Array.isArray(a)?a:[]; locIdx[k]=-1; if(!Array.isArray(a)) $('#locErr').textContent='Couldn\u2019t search for places right now'; locSugShow(k); }).catch(()=>{}); },250); }
+{ const row=$('#locRow');
+  row.addEventListener('click',e=>{ const t=e.target.closest('button'); if(!t) return;
+    if(t.dataset.lnow) locAct({act:'now',value:t.dataset.lnow});
+    else if(t.dataset.llink) locAct({act:'link',place:t.dataset.llink});
+    else if(t.dataset.lun) locAct({act:'unlink',network:t.dataset.lun});
+    else if(t.dataset.lpick){ const [k,i]=t.dataset.lpick.split(':'); locPick(k,+i); } });
+  for(const k of ['home','work']){ const i=$('#loc'+(k==='home'?'Home':'Work'));
+    i.addEventListener('input',()=>locAsk(k,i.value));
+    i.addEventListener('keydown',e=>{ const n=locSug[k].length;
+      if(e.key==='ArrowDown'||e.key==='ArrowUp'){ if(!n) return; e.preventDefault(); locIdx[k]=(locIdx[k]+(e.key==='ArrowDown'?1:-1)+n)%n; locSugShow(k); }
+      else if(e.key==='Enter'){ e.preventDefault(); if(locIdx[k]>=0) locPick(k,locIdx[k]); else if(i.value.trim()){ locSug[k]=[]; locSugShow(k); locAct({act:'set',place:k,name:i.value.trim()}); } }
+      else if(e.key==='Escape'&&n){ e.stopPropagation(); locSug[k]=[]; locSugShow(k); } }); } }
 async function setSetting(b){ try{ info=await (await post('/api/settings',b)).json(); showInfo(); if(setEl.classList.contains('on')) renderSettings(); }catch(e){ tick('settings: '+e.message,true); } }
 function setLook(patch){ clearTimeout(saveT); const L={...curLook(),...patch}; info.look=L; applyLook(L); lookShown=JSON.stringify([L,info.theme]); return setSetting({look:L}); }
 setEl.addEventListener('click',e=>{
