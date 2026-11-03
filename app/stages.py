@@ -4,6 +4,7 @@ The agent ends a reply with one line `<<stage>>{"v":1,"kind":...}`. Nothing here
 unknown kinds, long fields and control characters drop the whole block (the answer stays a
 caption). The page only ever sees tokens; the server alone builds URLs and looks up commands.
 """
+import datetime
 import json
 import re
 import secrets
@@ -17,6 +18,8 @@ from urllib.parse import quote_plus
 MARK = "<<stage"
 MODES = ("driving", "walking", "bicycling", "transit")
 _CTRL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+SERVER_KINDS = ("weather", "calendar", "status")
+CAL_URL = "https://calendar.google.com"
 
 
 class Cutter:
@@ -109,6 +112,8 @@ def validate(obj):
         if dest is None or (mode is not None and mode not in MODES):
             return None
         return {"v": 1, "kind": "place", "dest": dest, **({"mode": mode} if mode else {})}
+    if kind in SERVER_KINDS:  # the agent only asks; desk_stage() fills them from what the server already has cached
+        return {"v": 1, "kind": kind}
     if kind == "video":  # server-made: the agent says only what to look for; results are added by video_stage()
         q = _str(obj.get("query"), 120)
         return None if q is None else {"v": 1, "kind": "video", "query": q}
@@ -140,6 +145,52 @@ def video_search(query, run=subprocess.run):
         out.append({"id": e["id"], "title": title or "Untitled", "channel": chan,
                     "duration": "" if d is None else "%d:%02d" % divmod(d, 60) if d < 3600 else "%d:%02d:%02d" % (d // 3600, d % 3600 // 60, d % 60)})
     return out
+
+
+_DIRS = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
+
+
+def sky_stage(source, sky, heavy, feel, temp, wind, deg, at, day):
+    """The weather stage from a cached reading (Ambient.reading()); at = 'HH:MM' of that reading. No source: nothing cached.
+    There is no forecast: neither source returns one, so the stage never shows one."""
+    if source is None:
+        return {"v": 1, "kind": "weather", "empty": True}
+    r = lambda v: None if v is None else round(v)
+    return {"v": 1, "kind": "weather", "source": source, "sky": sky, "heavy": bool(heavy), "temp": r(temp), "feel": r(feel),
+            "wind": r(wind), "dir": None if deg is None else _DIRS[round(deg / 45) % 8], "at": at, "day": bool(day)}
+
+
+def meeting_link(event):
+    """A calendar event's join link: hangoutLink or a conferenceData entry point only, https only. Never from the title or notes."""
+    cands = [event.get("hangoutLink")]
+    cd = event.get("conferenceData")
+    if isinstance(cd, dict):
+        cands += [ep.get("uri") for ep in cd.get("entryPoints") or [] if isinstance(ep, dict)]
+    return next((u for u in cands if isinstance(u, str) and u.startswith("https://") and len(u) <= 300 and not re.search(r"[\s\x00-\x1f\x7f-\x9f]", u)), None)
+
+
+def calendar_rows(items, now, n=4):
+    """The next n events from [{start (aware datetime or None for all-day), day 'YYYY-MM-DD', title, link}] -> [{when,title,link}]."""
+    today = now.date().isoformat()
+    rows = []
+    for e in items:
+        st = e["start"].astimezone(now.tzinfo) if e["start"] else None
+        if (st and st >= now) or (not st and e["day"] >= today):
+            d = st.date().isoformat() if st else e["day"]
+            hm = st.strftime("%H:%M") if st else ""
+            rows.append(((d, hm), {"when": (hm or "all day") if d == today else datetime.date.fromisoformat(d).strftime("%a") + (" " + hm if hm else ""),
+                                   "title": e["title"], "link": e.get("link")}))
+    return [r for _, r in sorted(rows, key=lambda x: x[0])[:n]]
+
+
+def calendar_stage(events, at):
+    """events None = the calendar cue is off (nothing cached); at = 'HH:MM' of the fetch, or None."""
+    return {"v": 1, "kind": "calendar", "events": events or [], "off": events is None, "at": at}
+
+
+def status_stage(sessions, failed, sys_on):
+    """sessions [{title,status,pane}], failed = unit names, sys_on = the system list is being kept (else 'not checked')."""
+    return {"v": 1, "kind": "status", "sessions": sessions[:5], "failed": failed[:5], "failed_n": len(failed), "sys_on": bool(sys_on)}
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -193,6 +244,24 @@ class Store:
             toks[page["search"]] = ("link", {"url": search_url(stage["query"])})
         elif stage["kind"] == "place":  # the page gets two tokens, never the URL
             self._place(stage, page, toks)
+        elif stage["kind"] == "weather":    # read-only: nothing to press
+            pass
+        elif stage["kind"] == "calendar":   # Join per event with a link, and Open calendar; URLs held here, the page gets tokens
+            page["events"], page["open"] = [], secrets.token_urlsafe(12)
+            toks[page["open"]] = ("link", {"url": CAL_URL})
+            for e in stage["events"]:
+                d = {"when": e["when"], "title": e["title"]}
+                if e.get("link"):
+                    d["join"] = secrets.token_urlsafe(12)
+                    toks[d["join"]] = ("link", {"url": e["link"]})
+                page["events"].append(d)
+        elif stage["kind"] == "status":     # Open session by pane id (so two sessions with one name stay apart) and Open terminal
+            page["sessions"], page["term"] = [], secrets.token_urlsafe(12)
+            toks[page["term"]] = ("terminal", {})
+            for x in stage["sessions"]:
+                t = secrets.token_urlsafe(12)
+                toks[t] = ("session", {"pane": x["pane"]})
+                page["sessions"].append({"title": x["title"], "status": x["status"], "open": t})
         else:  # facts: one token, Copy takes the whole text
             t = secrets.token_urlsafe(12)
             toks[t] = ("facts", {"text": "\n".join([stage["title"], *stage["points"]])})
