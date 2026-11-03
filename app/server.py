@@ -29,6 +29,7 @@ import sys
 import tempfile
 import threading
 import time
+import unicodedata
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -36,6 +37,7 @@ from urllib.parse import parse_qs, urlparse
 
 APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
+import plugins  # noqa: E402
 import quick  # noqa: E402
 import recall  # noqa: E402
 import stages  # noqa: E402
@@ -263,7 +265,7 @@ def look():
     for k, v in lk.items():
         if k in ("body", "pupL", "pupR", "whiteL", "whiteR", "skinColor") and isinstance(v, str) and (HEX.fullmatch(v.lower()) or (k == "skinColor" and v == "")):
             out[k] = v.lower()
-        elif k == "skin" and v in SKINS:
+        elif k == "skin" and (v in SKINS or (isinstance(v, str) and v.startswith("plug:") and Plug.has_prop(v[5:]))):
             out[k] = v
         elif k in ("link", "random", "follow_theme"):
             out[k] = bool(v)
@@ -1419,6 +1421,119 @@ QUIP_FALLBACK = {
     "coding": ("{n} hours of code. Water?",), "done": ("All done!",)}
 
 
+class Plug:
+    """Enabled companion plugins (#149), scanned once and again on reload(): their quip lines and notification rules."""
+    loaded = None
+    quips = {}                                                  # event -> lines from enabled packs
+    rules = []                                                  # (kind "app"|"host", value, category)
+    props = []                                                  # [{id, name, anchor, layer, nodes}] of enabled, sanitised props
+    prop_errors = {}                                            # id -> why a prop was dropped (A4 shows it)
+    SLOT = re.compile(r"\{[a-z_]+\}")
+
+    @classmethod
+    def clean(cls, d):
+        """Lines of a pack: at most 120 chars, no control characters, only plain {slot} braces; 200 lines in all."""
+        out, n = {}, 0
+        for ev, lines in d.items() if isinstance(d, dict) else ():
+            for x in lines if isinstance(lines, list) else ():
+                if n >= 200:
+                    return out
+                if isinstance(x, str) and x.strip() and len(x) <= 120 and not any(unicodedata.category(c) == "Cc" for c in x) \
+                        and not cls.SLOT.sub("", x).count("{") + cls.SLOT.sub("", x).count("}"):
+                    out.setdefault(ev, []).append(x)
+                    n += 1
+        return out
+
+    @classmethod
+    def reload(cls):
+        st = plugins.State()
+        loaded = [p for p in plugins.scan(plugins.plugin_dirs()) if not p.error and st.get(p.id)["enabled"]]
+        quips, rules, props, errors = {}, [], [], {}               # built aside, then swapped in at once: no half-loaded state
+        for p in loaded:
+            m = p.manifest
+            if "quips" in m:
+                try:
+                    for ev, ls in cls.clean(json.loads((p.dir / m["quips"]).read_text(encoding="utf-8"))).items():
+                        quips.setdefault(ev, []).extend(ls)
+                except (OSError, ValueError):
+                    pass                                        # an unreadable pack adds nothing
+            if "prop" in m:
+                try:
+                    nodes = plugins.sanitize_svg((p.dir / m["prop"]["file"]).read_bytes())
+                    props.append({"id": p.id, "name": m["name"], "anchor": m["prop"]["anchor"], "layer": m["prop"].get("layer", "front"), "nodes": nodes})
+                except (OSError, ValueError) as e:
+                    errors[p.id] = str(e)                       # the whole prop is dropped; the plugin's other parts stay
+            rules += [(k, n[k], n["category"]) for n in m.get("notifications", []) for k in ("app", "host") if k in n]
+        cls.loaded, cls.quips, cls.rules, cls.props, cls.prop_errors = loaded, quips, rules, props, errors
+        Quips.bags.clear()
+
+    @classmethod
+    def has_prop(cls, pid):
+        cls.ensure()
+        return any(p["id"] == pid for p in cls.props)
+
+    @classmethod
+    def ensure(cls):
+        if cls.loaded is None:
+            cls.reload()
+
+    @classmethod
+    def category(cls, app, source):
+        """The plugin map's category for a notification the built-in rules left in "other", or "other"."""
+        cls.ensure()
+        app = app.strip().lower()
+        host = re.sub(r"^[a-z][a-z0-9+.-]*://", "", source.strip().lower()).split("/")[0].split(":")[0]
+        for kind, v, cat in cls.rules:
+            if (kind == "app" and v == app) or (kind == "host" and host and (host == v or (v.startswith("*.") and host.endswith(v[1:])))):
+                return "video" if cat == "feed" else cat
+        return "other"
+
+
+def plugin_caps(m):
+    """One plain line per thing a plugin does."""
+    out = []
+    if "quips" in m:
+        out.append("Adds lines to what he says")
+    if "prop" in m:
+        out.append(f"Adds a prop for his {m['prop']['anchor']} (pick it in Look)")
+    if m.get("notifications"):
+        out.append("Sorts notifications from some apps or sites into mail, chat or feed")
+    if "stage" in m:
+        out.append("Runs a program when you ask for it" + (" and uses the network" if m["stage"].get("network") else ""))
+    return out
+
+
+def plugins_api(error=None):
+    """Settings → Plugins: every plugin found, working or broken."""
+    st = plugins.State()
+    items = []
+    for p in plugins.scan(plugins.plugin_dirs()):
+        m = p.manifest or {}
+        on = bool(st.get(p.id)["enabled"]) and not p.error
+        items.append({"id": p.id, "name": str(m.get("name") or p.dir.name), "version": str(m.get("version") or ""),
+                      "source": "Nix" if p.source == "nix" else "Folder", "enabled": on, "caps": plugin_caps(m) if not p.error else [],
+                      "error": p.error or (Plug.prop_errors.get(p.id) if on else None) or "", "stage": "stage" in m})
+    return {"items": items, **({"error": error} if error else {})}
+
+
+def plugins_act(b):
+    """POST /api/companion-plugins: {id, enabled} or {reload: true}. Stage plugins can't be switched on yet (slice B)."""
+    if b.get("reload"):
+        Plug.reload()
+        return plugins_api()
+    pid, on = str(b.get("id") or ""), b.get("enabled")
+    p = min((x for x in plugins.scan(plugins.plugin_dirs()) if x.id == pid), key=lambda x: bool(x.error), default=None)
+    if p is None or not isinstance(on, bool):
+        return plugins_api("no such plugin")
+    if p.error and on:                                         # (a broken plugin can still be switched off)
+        return plugins_api("it is broken: " + p.error)
+    if on and "stage" in (p.manifest or {}):
+        return plugins_api("plugins that run programs can't be switched on yet")
+    plugins.State().set(pid, on)
+    Plug.reload()
+    return plugins_api()
+
+
 class Quips:
     """A shuffled bag per event: no line repeats until the list is used up. The file is re-read when it changes."""
     path = APP_DIR / "quips.json"
@@ -1439,7 +1554,9 @@ class Quips:
                 cls.data = {k: [x for x in v if isinstance(x, str) and x.strip()] for k, v in d.items() if isinstance(v, list)}
             except (OSError, ValueError, AttributeError):
                 cls.data = {}                                   # broken or missing: the built-in lines
-        return cls.data.get(event) or list(QUIP_FALLBACK.get(event, ()))
+        Plug.ensure()
+        extra = Plug.quips.get(event, []) if event in cls.data or event in QUIP_FALLBACK else []   # unknown events are ignored
+        return (cls.data.get(event) or list(QUIP_FALLBACK.get(event, ()))) + extra
 
 
 def quip(event, **slots):
@@ -1652,7 +1769,7 @@ class Inbox:
         for x in data if isinstance(data, list) else []:
             if isinstance(x, dict) and x.get("category") == "other":     # the shell's own sorting misses these: put them right
                 who = str(x.get("source") or "") + " " + str(x.get("app") or "")
-                x["category"] = "mail" if cls.MAIL.search(who) else "chat" if cls.CHAT.search(who) else "video" if cls.FEED.search(who) else "other"
+                x["category"] = "mail" if cls.MAIL.search(who) else "chat" if cls.CHAT.search(who) else "video" if cls.FEED.search(who) else Plug.category(str(x.get("app") or ""), str(x.get("source") or ""))
             if not isinstance(x, dict) or not isinstance(x.get("key"), str) or not cls.KEY.fullmatch(x["key"]) or x.get("category") not in cls.CATS:
                 continue
             summary, body = str(x.get("summary") or "")[:120], str(x.get("body") or "")[:120]
@@ -4451,7 +4568,7 @@ def state_info():
         "popup_done": bool(CFG.get("popup_done")), "hover": bool(CFG.get("hover")), "code_panel": CFG.get("code_panel", True) is not False, "live_minutes": int(CFG.get("live_minutes") or 10), "voice_native": Speaker.available(), "code_face": "you" if CFG.get("code_face") == "you" else "him",
         "click_through": bool(CFG.get("click_through")),
         "autostart": bool(CFG.get("autostart")), "listen_on_show": bool(CFG.get("listen_on_show")),
-        "barge_in": bool(CFG.get("barge_in")), "sfx": bool(CFG.get("sfx")), "look": look(), "skins": SKINS, "ambient": Ambient.snapshot(),
+        "barge_in": bool(CFG.get("barge_in")), "sfx": bool(CFG.get("sfx")), "look": look(), "skins": SKINS, "plugin_props": (Plug.ensure(), Plug.props)[1], "ambient": Ambient.snapshot(),
         "follow_focus": bool(CFG.get("follow_focus")), "step_aside": CFG.get("step_aside", True) is not False, "answer_stages": CFG.get("answer_stages", True) is not False,
         **{k: bool(CFG.get(k, k == "ambient_system")) for k in Ambient.FLAG.values()},
         "projects": quick.projects(),
@@ -4544,6 +4661,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(hit[0])))
             self.end_headers()
             return self.wfile.write(hit[0])
+        if p == "/api/companion-plugins":                        # Settings → Plugins; the window's token only
+            if not secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
+                return self._json({"error": "forbidden"}, 403)
+            return self._json(plugins_api())
         if p in ("/api/location", "/api/location/suggest"):      # the Location settings; the window's token only
             if not secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
                 return self._json({"error": "forbidden"}, 403)
@@ -4588,6 +4709,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"theme": THEME})
             if p == "/api/ask":
                 return self.ask()
+            if p in ("/api/companion-plugins", "/api/companion-plugins/reload"):      # (window token only: not in TOOL_PATHS)
+                b = json.loads(self._body() or b"{}")
+                return self._json(plugins_act({"reload": True} if p.endswith("/reload") else b if isinstance(b, dict) else {}))
             if p == "/api/location":
                 return self._json(location_act(json.loads(self._body() or b"{}")))
             if p == "/api/stage/act":

@@ -1,0 +1,8 @@
+{
+  "api": 1,
+  "id": "party-hat-plus",
+  "name": "Party hat plus",
+  "version": "1.0.0",
+  "description": "A striped party hat with a pom-pom.",
+  "prop": {"file": "prop.svg", "anchor": "head", "layer": "front"}
+}

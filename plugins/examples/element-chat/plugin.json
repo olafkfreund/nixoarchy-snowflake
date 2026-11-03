@@ -1,0 +1,21 @@
+{
+  "api": 1,
+  "id": "element-chat",
+  "name": "Element chat",
+  "version": "1.0.0",
+  "description": "Element notifications count as chat.",
+  "notifications": [
+    {
+      "app": "element",
+      "category": "chat"
+    },
+    {
+      "app": "element-desktop",
+      "category": "chat"
+    },
+    {
+      "host": "app.element.io",
+      "category": "chat"
+    }
+  ]
+}

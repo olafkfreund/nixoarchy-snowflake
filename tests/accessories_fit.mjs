@@ -20,6 +20,13 @@ await send("Emulation.setDeviceMetricsOverride", { width: 340, height: 460, devi
 await send("Page.navigate", { url }); await sleep(4500);
 await ev("setInterval(()=>{ nextFidAt=1e15; },50); window.__hold=null; await post('/api/settings',{idle_mode:'off'}).then(r=>r.json()).then(j=>{info=j;}); if(window.setIdle) setIdle('full'); return 1");   // (measure him full size: no idle peek)
 
+// Settings → Plugins draws a hostile name and error as text, never as markup (#149)
+if ((await ev(`plugRender({items:[{id:'x-1',name:'<b>x</b>',version:'<i>1</i>',source:'Folder',enabled:false,caps:['<u>caps</u>'],error:'<img src=x onerror=1>'}],error:'<s>e</s>'});
+  const l=document.getElementById('plugList'); return [l.querySelector('b,i,u,img,s')!==null||document.querySelector('#plugErr s')!==null, l.textContent.includes('<b>x</b>'), l.textContent.includes('<img src=x onerror=1>')];`)).join() !== "false,true,true") {
+  console.log("CUT  plugin names are not plain text"); process.exit(1);
+}
+await ev("plugRender({items:[]}); return 1");
+
 // one case = how to turn it on, and which element(s) to measure
 const LOOKS = { tie: "meeting", hb: "music", hf: "music", sh: "fullscreen", gl: "coding", nc: "night", ph: "party", um: "rain" };
 const cases = [];
@@ -31,6 +38,13 @@ for (const [part, sit] of Object.entries(LOOKS)) cases.push({ name: `look ${sit}
     info.look_beat=true; beat=1; beatAt=performance.now(); },60);`, wait: 5200, el: part === "gl" ? "SIT_P.lensL" : `SIT_P.${part}`, also: part === "gl" ? "SIT_P.lensR" : null });
 for (const skin of ["halo", "crown", "sprout", "bow"]) cases.push({ name: `skin ${skin}`, on: `
   clearInterval(__hold); for(const k of Object.keys(SIT)) if(typeof SIT[k]==='boolean') SIT[k]=false; applyLook({...LOOK, skin:'${skin}'});`,
+  wait: 1500, el: "document.getElementById('accFront')", also: "document.getElementById('accBack')", after: "applyLook({...LOOK, skin:'none'});" });
+// the example plugin hat (party-hat-plus) at each anchor, in front and behind; its colours must come from the page's variables
+for (const anchor of ["head", "left", "right", "base"]) for (const layer of ["front", "back"]) cases.push({ name: `plugin hat ${anchor}/${layer}`, on: `
+  clearInterval(__hold); for(const k of Object.keys(SIT)) if(typeof SIT[k]==='boolean') SIT[k]=false;
+  Object.assign(info.plugin_props[0],{anchor:'${anchor}',layer:'${layer}'}); applyLook({...LOOK, skin:'plug:party-hat-plus'});
+  if(!document.querySelector('#acc${layer === "front" ? "Front" : "Back"} path')) throw new Error('hat not drawn');
+  if(getComputedStyle(document.querySelector('#acc${layer === "front" ? "Front" : "Back"} path')).fill==='rgb(0, 0, 0)') throw new Error('acc colour did not resolve');`,
   wait: 1500, el: "document.getElementById('accFront')", also: "document.getElementById('accBack')", after: "applyLook({...LOOK, skin:'none'});" });
 for (const cat of ["chat", "video"]) cases.push({ name: `prop ${cat}`, on: `
   clearInterval(__hold); propOn={cat:'${cat}',t0:performance.now(),until:performance.now()+60000,n:3};`, wait: 1500,

@@ -770,6 +770,9 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <label class="tg"><input type="checkbox" id="popupSw"><span class="sw"></span><span class="l">Pop back up when it's done</span></label>
         <label class="tg nx"><input type="checkbox" id="updSw"><span class="sw"></span><span class="l">Check for updates<small>Asks GitHub for the latest version when he starts, every few hours and when you open Settings. Nothing about you is sent.</small></span></label>
       </div>
+      <div class="row"><div class="t">Plugins</div><div class="h">Things other people made for him. They never download anything; they only use what is on this computer.</div>
+        <div id="plugList"></div><div class="h" id="plugErr" style="color:#e8836f"></div>
+        <div class="bar"><button class="btn" id="plugReload">Reload</button></div></div>
       <div class="row"><div class="t">Memory &amp; history</div><div class="h">Say “remember …” and he keeps it for every future chat.</div>
         <div class="bar"><button class="btn nx" data-open="memory">🧠 Memory <i id="memCount"></i></button><button class="btn nx" data-open="history">🕘 History</button></div></div>
       <div class="row nx"><div class="t">Nixi <span id="verTxt"></span></div><div class="h" id="updTxt"></div>
@@ -973,6 +976,14 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   sv('circle',{cx:87,cy:-56,r:1.6,fill:'#fff'},feed); sv('circle',{cx:87,cy:-50,r:1.6,fill:'#fff'},feed);
   const ic=(x,y,g)=>sv('image',{x,y,width:14,height:14,display:'none'},g);   // the sending app's icon, set when the prop starts
   return {chat:{g:chat,dots,badge,bt,n:0,img:ic(-99,-80,chat)},feed:{g:feed,scr,ant:tvA,img:ic(48,-70,feed)},tie,hb,bd,hf,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,um,drops,lensL,lensR,brg,glintL,glintR}; }
+// a plugin's prop (#149): the server already sanitised it to a node list; only createElementNS + setAttribute here, no ids, no markup
+const PROP_BOX={head:[-30,-112,60,54],left:[-98,-34,40,40],right:[58,-34,40,40],base:[-36,68,72,26]}, PROP_COL={acc:'var(--acc)',text:'var(--text)',dim:'var(--dim)'};
+function drawProp(par,P){   // a nested <svg> at the anchor box: it scales the prop and clips it to the box
+  const [x,y,width,height]=PROP_BOX[P.anchor]||PROP_BOX.head, els=[sv('svg',{x,y,width,height,viewBox:P.nodes[0].a.viewBox.join(' ')},par)];
+  P.nodes.forEach((n,i)=>{ if(!i) return; const e=document.createElementNS(SVGNS,n.tag);
+    for(const a in n.a){ if((a==='fill'||a==='stroke')&&PROP_COL[n.a[a]]) e.style.setProperty(a,PROP_COL[n.a[a]]); else e.setAttribute(a,n.a[a]); }   // (WebKitGTK: var() only works as a style)
+    els[n.p].appendChild(e); els[i]=e; });
+}
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
 function drawSkin(back,front,L,bodyFill='url(#ballG)'){
   back.innerHTML=''; front.innerHTML='';
@@ -992,6 +1003,7 @@ function drawSkin(back,front,L,bodyFill='url(#ballG)'){
         sv('path',{d:'M0 0C-8 -13 -24 -12 -24 0C-24 12 -8 13 0 0Z',fill:soft},g);
         sv('path',{d:'M0 0C8 -13 24 -12 24 0C24 12 8 13 0 0Z',fill:soft},g);
         sv('circle',{r:5,fill:shade(soft,-.15)},g); break; }
+    default: if(String(L.skin).startsWith('plug:')){ const P=((info&&info.plugin_props)||[]).find(p=>'plug:'+p.id===L.skin); if(P) drawProp(P.layer==='back'?back:front,P); }
   }
   return parts;
 }
@@ -2618,7 +2630,7 @@ const TRUST=[['ask','✋','Ask me first','Edits files on his own; asks you (out 
 const setEl=$('#set');
 function settings(on,tab){ setEl.classList.toggle('on',on); document.body.classList.toggle('pnl',on); if(!panelEl.classList.contains('on')) native(on?'wide:on':'wide:off');
   if(!on&&!panelEl.classList.contains('on')) reDock();
-  if(on){ menu(false); hideAsk(); panelEl.classList.remove('on'); panelKind=null; if(tab) showTab(tab); renderSettings(); loadMics(); locLoad(); requestAnimationFrame(moveInd);
+  if(on){ menu(false); hideAsk(); panelEl.classList.remove('on'); panelKind=null; if(tab) showTab(tab); renderSettings(); loadMics(); locLoad(); plugLoad(); requestAnimationFrame(moveInd);
     if(info.update_check!==false) post('/api/update/check',{stale:1800}).then(r=>r.json()).then(u=>{ info.update=u; renderUpdate(); }).catch(()=>{}); }   // fresh "latest" when you look
   sendRegion(true); }
 function moveInd(){ const b=$('#tabs button.on'), ind=$('#tabInd'); if(!b||!ind) return; ind.style.width=b.offsetWidth+'px'; ind.style.transform=`translateX(${b.offsetLeft-3}px)`; }
@@ -2719,6 +2731,9 @@ function renderSettings(){
   // look
   const L=curLook();
   $('#skinGrid').innerHTML=(info.skins||Object.keys(SKIN_LABELS)).map(k=>`<button data-skin="${k}" class="${L.skin===k?'on':''}"><svg viewBox="-125 -150 250 250"></svg>${SKIN_LABELS[k]||k}</button>`).join('');
+  for(const P of info.plugin_props||[]){   // plugin props: built node by node, the name only ever as text
+    const b=document.createElement('button'), sk=document.createElementNS(SVGNS,'svg'); b.dataset.skin='plug:'+P.id; b.className=L.skin===b.dataset.skin?'on':'';
+    sk.setAttribute('viewBox','-125 -150 250 250'); b.append(sk,document.createTextNode(P.name)); $('#skinGrid').appendChild(b); }
   $$('#skinGrid button').forEach(b=>miniNixi(b.querySelector('svg'),{...L,skin:b.dataset.skin},false));
   selectPart(pkPart); renderRecent();
 }
@@ -2780,6 +2795,22 @@ async function loadMics(){
   }catch(e){} }
 // ---- Location (nixarchy-location does the writing; the page only asks)
 let loc=null, locAt=0, locTm={}, locSug={home:[],work:[]}, locIdx={home:-1,work:-1}, locGen={home:0,work:0};   // locGen: an answer only counts if nothing was typed, picked or dismissed since it was asked for
+// Settings → Plugins (#149): every field goes in as text; nothing from a plugin is ever parsed as markup
+function plugRender(j){
+  const box=$('#plugList'); box.replaceChildren(); $('#plugErr').textContent=j.error||'';
+  for(const p of j.items||[]){
+    const row=document.createElement('label'), cb=document.createElement('input'), sw=document.createElement('span'), l=document.createElement('span');
+    row.className='tg'; cb.type='checkbox'; cb.checked=!!p.enabled; cb.disabled=!!p.error&&!p.enabled;   // (one that is on can always be switched off) sw.className='sw'; l.className='l';
+    l.append(document.createTextNode(p.name+' '+p.version+' · '+p.source));
+    const lines=[...p.caps||[]]; if(p.error) lines.unshift("Doesn't load: "+p.error);
+    for(const t of lines){ const s=document.createElement('small'); s.textContent=t; if(p.error&&t===lines[0]) s.style.color='#e8836f'; l.appendChild(s); }
+    cb.addEventListener('change',()=>plugAct({id:p.id,enabled:cb.checked}));
+    row.append(cb,sw,l); box.appendChild(row); }
+  if(!(j.items||[]).length){ const h=document.createElement('div'); h.className='h'; h.textContent='No plugins installed.'; box.appendChild(h); }
+}
+async function plugLoad(){ try{ await tokenReady; plugRender(await (await fetch('/api/companion-plugins',{headers:hdr()})).json()); }catch(e){} }
+async function plugAct(b){ try{ plugRender(await (await post(b.reload?'/api/companion-plugins/reload':'/api/companion-plugins',b)).json()); await refresh(); lookShown=''; syncLook(); if(setEl.classList.contains('on')) renderSettings(); }catch(e){ $('#plugErr').textContent='Couldn\u2019t reach Nixi'; } }
+$('#plugReload').addEventListener('click',()=>plugAct({reload:true}));
 async function locLoad(){ try{ await tokenReady; loc=await (await fetch('/api/location',{headers:hdr()})).json(); locAt=Date.now(); locRender(); }catch(e){} }
 function locAct(b){ $('#locErr').textContent=''; return post('/api/location',b).then(r=>r.json()).then(j=>{ if(j.ok){ loc=j; locAt=Date.now(); } else $('#locErr').textContent=j.error||'That didn\u2019t work'; locRender(); }).catch(()=>{ $('#locErr').textContent='Couldn\u2019t reach Nixi'; }); }
 function locRender(){
