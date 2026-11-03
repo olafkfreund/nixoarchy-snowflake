@@ -866,6 +866,24 @@ function hsl2hex(h,s,l){ const k=n=>(n+h/30)%12, a=s*Math.min(l,1-l), f=n=>l-a*M
 const okHex=h=>/^#[0-9a-f]{6}$/i.test(h||'');
 const lum=hex=>rgb2hsl(hex2rgb(hex))[2];
 function shade(hex,dl,ds=0){ const [h,s,l]=rgb2hsl(hex2rgb(hex)); return hsl2hex(h,clamp(s+ds,0,1),clamp(l+dl,0,1)); }
+function relLum(hex){ const [r,g,b]=hex2rgb(hex).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4); return .2126*r+.7152*g+.0722*b; }
+function contrast(a,b){ const x=relLum(a), y=relLum(b); return (Math.max(x,y)+.05)/(Math.min(x,y)+.05); }
+function over(c,a,bg){ return rgb2hex(hex2rgb(c).map((v,i)=>v*a+hex2rgb(bg)[i]*(1-a))); }
+function lerpHex(c,d,t){ return rgb2hex(hex2rgb(c).map((v,i)=>lerp(v,hex2rgb(d)[i],t))); }
+function capColors(){
+  const cs=getComputedStyle(document.documentElement), st=document.documentElement.style;
+  const color=(name,fallback)=>{ let c=cs.getPropertyValue(name).trim(); if(/^#[0-9a-f]{3}$/i.test(c)) c='#'+[...c.slice(1)].map(v=>v+v).join(''); return okHex(c)?c:fallback; };
+  const panel=color('--panel','#0b0b0b'), text0=color('--text','#f3f3f3'), dim0=color('--dim','#a3a3a3'), code0=color('--tint','#d6ecff');
+  const best=contrast('#000000',panel)>contrast('#ffffff',panel)?'#000000':'#ffffff';
+  const ok=(c,a)=>contrast(c,over(panel,a,'#000000'))>=4.5&&contrast(c,over(panel,a,'#ffffff'))>=4.5;
+  let a;
+  for(let n=90;n<=100;n+=2){ a=n/100; if(ok(best,a)) break; }
+  const pick=c=>{ for(let n=0;n<=10;n++){ const v=lerpHex(c,best,n/10); if(ok(v,a)) return v; } return best; };
+  const text=pick(text0), dim=pick(dim0), err=pick('#ff8a8a'), code=pick(code0);
+  st.setProperty('--cap-bg',panel+Math.round(a*255).toString(16).padStart(2,'0'));
+  st.setProperty('--cap-text',text); st.setProperty('--cap-dim',dim); st.setProperty('--cap-err',err); st.setProperty('--cap-code',code);
+  return {a,text,dim,err,code};
+}
 // the ball's glassy gradient from one body colour: a soft highlight, the colour, a deep edge
 function bodyStops(c){ const l=lum(c); return l<.12?[shade(c,.07),c,shade(c,-.05)]:[shade(c,.1,-.05),c,shade(c,-Math.min(.3,l*.55))]; }
 function applyAccent(hex){
@@ -908,6 +926,7 @@ function applyLook(L){
   const bk=document.getElementById('accBack'), fr=document.getElementById('accFront');
   if(bk&&fr) SKIN_PARTS=drawSkin(bk,fr,LOOK);
   SIT_P=drawSit(LOOK);
+  capColors();
 }
 function randomLook(L){
   const hb=Math.random()*360, hp=Math.random()*360, hw=Math.random()*360, hp2=(hp+120+Math.random()*120)%360;
