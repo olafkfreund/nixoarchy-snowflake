@@ -1375,36 +1375,72 @@ function drawMarks(){ const W={}, d=sv('defs',{},wxEl), R=at=>({...at,'stroke-li
   const wg=grp(null); W.wind={g:wg,sw:[0,1,2].map(i=>sv('path',R({d:`M${-70+i*20} ${-118+i*16}q22 -8 44 0t44 0q10 3 10 -6q0 -7 -7 -5`,fill:'none',stroke:'#dfe8f5','stroke-width':3}),wg)),
     leaf:sv('path',R({d:'M0 0Q6 -7 13 0Q6 7 0 0Z',fill:'#7fd6ae',stroke:'#2f8f66','stroke-width':1.4,transform:'translate(20 -98)'}),wg)};
   return W; }
-const WX=drawMarks(), wxPG=sv('g',{},wxEl);   // wxPG: the old particles' own group, until wxStep is rewritten
-let wxKind='', wxCount=0, wxStill=false, wxParts=[];
+const WX=drawMarks();
+let WXT=null, wxReducedKey='', wxWasReduced=false, wxHeavy=null;
+const wxGroups=[WX.rain.g,WX.snow.g,WX.sun.g,WX.moon.g,WX.partly.g,WX.cloudy.g,WX.wind.g,...WX.ex];
+const wxOpacity=new Map(wxGroups.map(g=>[g,0]));
 function wxStep(t,dt){
   if(document.body.classList.contains('bar')||document.body.classList.contains('hover')||document.body.classList.contains('calm')||document.body.classList.contains('goohide')) return;
-  const kind=sitOn.snow?'snow':sitOn.rain?'rain':'', still=REDUCED.matches;
-  const count=kind?(still?3:Math.floor((kind==='rain'?(SIT.heavy?12:8):6)/(lowFx?2:1))):0;
-  if(kind!==wxKind||count!==wxCount||still!==wxStill){
-    wxKind=kind; wxCount=count; wxStill=still; wxParts=[]; wxPG.replaceChildren();
-    for(let i=0;i<count;i++){
-      const el=document.createElementNS(NS,kind==='rain'?'path':'circle');
-      const phase=(i+.5)*280/count, x=-135+270*((i*0.61803398875)%1);
-      if(kind==='rain'){ el.setAttribute('fill','none'); el.setAttribute('stroke','#9fd3ff'); el.setAttribute('stroke-width','2.4'); el.setAttribute('stroke-linecap','round'); }
-      else { el.setAttribute('r',(2+i%4*.5).toFixed(1)); el.setAttribute('fill','#e6f4ff'); el.setAttribute('opacity',(.55+(i%6)*.07).toFixed(2)); }
-      wxPG.appendChild(el); wxParts.push({el,phase,x});
+  const kind=['snow','rain','clear','partly','cloudy'].find(k=>sitOn[k])||'', still=REDUCED.matches;
+  const hat=LOOK.skin!=='none'||sitOn.party||sitOn.cold2||sitOn.night, slot=hat?'hat':'head', night=!SIT.day;
+  const key=[kind,slot,SIT.day,SIT.heavy,lowFx,sitOn.windy,SIT.lean].join(':');
+  if(still&&wxWasReduced&&key===wxReducedKey) return;
+  wxWasReduced=still; wxReducedKey=key; t=typeof WXT==='number'?WXT:t;
+  const windy=sitOn.windy, dir=windy&&SIT.lean?-SIT.lean:1, extra=kind==='rain'&&SIT.heavy&&!lowFx;
+  const scale=hat?.95:.92, cloudY=hat?-106:-108;
+  const cloudX=(phase=0,speed=1,L=63.5,R=56.5,s=scale)=>{
+    if(still) return {x:hat?-76:0,fade:1};
+    if(!windy) return {x:(hat?-76:0)+8*Math.sin(t*2*Math.PI/25+phase),fade:1};
+    const p=((t*speed/14+phase)%1+1)%1, lo=-147+L*s, hi=147-R*s;
+    return {x:dir>0?lo+(hi-lo)*p:hi-(hi-lo)*p,fade:Math.min(1,p/.15,(1-p)/.15)};
+  };
+  const pos=cloudX();
+  const targets=new Map([[WX.rain.g,kind==='rain'?pos.fade:0],[WX.snow.g,kind==='snow'?pos.fade:0],
+    [WX.sun.g,kind==='clear'&&!night?1:0],[WX.moon.g,kind==='clear'&&night?1:0],
+    [WX.partly.g,kind==='partly'?1:0],[WX.cloudy.g,kind==='cloudy'?1:0],
+    [WX.wind.g,windy&&kind!=='rain'&&kind!=='snow'?1:0]]);
+  WX.ex.forEach((g,i)=>{ const q=cloudX(i?.7:.35,i?1.2:.8,63.5,56.5,i?.7:.6); targets.set(g,extra?q.fade:0);
+    if(extra) g.setAttribute('transform',`translate(${(q.x+(windy?0:hat?(i?65:-20):(i?66:-62))).toFixed(2)} -112) scale(${i?.7:.6})`); });
+  for(const g of wxGroups){ const target=targets.get(g)||0, active=target>0||((g===WX.rain.g&&kind==='rain')||(g===WX.snow.g&&kind==='snow')||(WX.ex.includes(g)&&extra));
+    const old=wxOpacity.get(g), blend=still?(active?1:0):old+((active?1:0)-old)*(1-Math.exp(-dt/.13)), op=blend*(active?target:1);
+    wxOpacity.set(g,blend); if(op<.002&&(blend<.002||target===0)){ if(g.getAttribute('display')!=='none'){ g.setAttribute('opacity','0'); g.setAttribute('display','none'); } continue; }
+    if(g.getAttribute('display')==='none') g.removeAttribute('display'); g.setAttribute('opacity',op.toFixed(4)); }
+  if(kind==='rain'||kind==='snow'){
+    const g=kind==='rain'?WX.rain.g:WX.snow.g;
+    g.setAttribute('transform',`translate(${pos.x.toFixed(2)} ${cloudY}) scale(${scale})`);
+    const parts=kind==='rain'?WX.rain.drops:WX.snow.flakes;
+    const count=still?3:Math.floor((kind==='rain'?(SIT.heavy?12:8):7)/(lowFx?2:1));
+    const baseY=cloudY+22*scale, endY=hat?-20:kind==='snow'?-65:-60, travel=endY-baseY;
+    for(let i=0;i<parts.length;i++){ const el=parts[i]; if(i>=count){ el.setAttribute('display','none'); continue; } el.removeAttribute('display');
+      const p=still?(i+.5)/count:((t*(kind==='rain'?220*(SIT.heavy?1.4:1):22)/travel+(i+.5)/count)%1+1)%1;
+      const lane=hat?-116+46*((i*.61803398875)%1):pos.x+scale*(-37+74*((i*.61803398875)%1));
+      const x=lane+(kind==='snow'&&!still?Math.sin(t*1.2+i)*5:0);
+      const y=baseY+p*travel-(kind==='rain'?10:0), lx=(x-pos.x)/scale, ly=(y-cloudY)/scale;
+      if(kind==='rain'){ const dx=10*Math.tan((windy?22:12)*Math.PI/180)*dir/scale;
+        el.setAttribute('d',`M${lx.toFixed(2)} ${ly.toFixed(2)}l${dx.toFixed(2)} ${(10/scale).toFixed(2)}`);
+        el.setAttribute('opacity',wxAlpha(p).toFixed(4)); }
+      else el.setAttribute('transform',`translate(${lx.toFixed(2)} ${ly.toFixed(2)}) rotate(${still?0:(t*24+i*35)%360})`);
     }
   }
-  if(!kind||still&&wxParts[0]?.fixed) return;
-  const H=kind==='rain'?276:280, v=kind==='rain'?220*(SIT.heavy?1.4:1):22;
-  for(let i=0;i<wxParts.length;i++){
-    const q=wxParts[i], p=still?q.phase/280:((t*v+q.phase)%H)/H;
-    if(kind==='rain'){
-      const dx=14*Math.tan((SIT.windy?22:12)*Math.PI/180)*(SIT.windy&&SIT.lean?-SIT.lean:1);
-      const x=clamp(q.x,-145-Math.min(0,dx),145-Math.max(0,dx)), y=-145+p*H;
-      q.el.setAttribute('d',`M${x.toFixed(2)} ${y.toFixed(2)}l${dx.toFixed(2)} 14`);
-      q.el.setAttribute('opacity',wxAlpha(p).toFixed(4));
-    } else {
-      q.el.setAttribute('cx',(q.x+(still?0:Math.sin(t*.9+i)*6)).toFixed(2));
-      q.el.setAttribute('cy',(-140+p*H).toFixed(2));
-    }
-    if(still) q.fixed=true;
+  if(kind==='rain'&&wxHeavy!==SIT.heavy){ wxHeavy=SIT.heavy;
+    for(const el of WX.rain.fills) el.setAttribute('fill',el.tagName==='rect'?(wxHeavy?'#5d6a80':'#76839a'):(wxHeavy?'url(#wxCgH)':'url(#wxCgR)'));
+    for(const el of WX.rain.lines) el.setAttribute('fill',wxHeavy?'#3f4859':'#4b5566'); }
+  if(kind==='partly'){ if(night){ WX.partly.sun.g.setAttribute('display','none'); WX.partly.moon.removeAttribute('display'); }
+    else { WX.partly.sun.g.removeAttribute('display'); WX.partly.moon.setAttribute('display','none'); } }
+  if(still){ WX.sun.rays.setAttribute('transform','rotate(0)'); WX.partly.sun.rays.setAttribute('transform','rotate(0)');
+    WX.moon.stars.forEach(s=>s.setAttribute('opacity','1'));
+    WX.cloudy.c1.setAttribute('transform',`translate(${hat?-76:0} -108) scale(.92)`);
+    WX.cloudy.c2.setAttribute('transform',`translate(${hat?-6:70} -118) scale(.55)`);
+    WX.partly.cloud.setAttribute('transform',`translate(${hat?-88:-12} -104) scale(.85)`);
+    WX.wind.g.setAttribute('transform',`scale(${dir} 1)`); }
+  else { if(kind==='clear'&&!night) WX.sun.rays.setAttribute('transform',`rotate(${(t*12)%360})`);
+    if(kind==='partly'&&!night) WX.partly.sun.rays.setAttribute('transform',`rotate(${(t*12)%360})`);
+    if(kind==='clear'&&night) WX.moon.stars.forEach((s,i)=>s.setAttribute('opacity',(.55+.45*Math.sin(t*2+i*1.7)**2).toFixed(3)));
+    if(kind==='cloudy'){ const a=cloudX(), b=cloudX(.35,1.1,63.5,56.5,.55);
+      WX.cloudy.c1.setAttribute('transform',`translate(${a.x.toFixed(2)} -108) scale(.92)`);
+      WX.cloudy.c2.setAttribute('transform',`translate(${(b.x+(windy?0:70)).toFixed(2)} -118) scale(.55)`); }
+    if(kind==='partly'){ const q=cloudX(); WX.partly.cloud.setAttribute('transform',`translate(${(q.x+(windy?0:-12)).toFixed(2)} -104) scale(.85)`); }
+    if(windy){ WX.wind.g.setAttribute('transform',`translate(${(dir*(t*20%36)).toFixed(2)} 0) scale(${dir} 1)`); }
   }
 }
 function frame(ts){
@@ -2000,10 +2036,10 @@ function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts-e.rt>600000) nudgeQ.de
     setTimeout(()=>{ if(sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } },6000); } }
 let SIT={meeting:false,music:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false,heavy:false,windy:false,lean:0,cold:0,day:true};   // situation signals, as the server sends them
 // a look goes on after 3 s of signal and off after 8 s without it: timestamps, no timers
-const sitOn={meeting:false,music:false,fullscreen:false,coding:false,night:false,party:false,rain:false,snow:false,cold1:false,cold2:false}, sitSeen={...sitOn}, sitAt={meeting:0,music:0,fullscreen:0,coding:0,night:0,party:0,rain:0,snow:0,cold1:0,cold2:0};
-function sitStep(ts){ const weather={rain:SIT.weather==='rain',snow:SIT.weather==='snow',cold1:SIT.cold>=1,cold2:SIT.cold>=2};
+const sitOn={meeting:false,music:false,fullscreen:false,coding:false,night:false,party:false,rain:false,snow:false,clear:false,partly:false,cloudy:false,windy:false,cold1:false,cold2:false}, sitSeen={...sitOn}, sitAt=Object.fromEntries(Object.keys(sitOn).map(k=>[k,0]));
+function sitStep(ts){ const weather={rain:SIT.weather==='rain',snow:SIT.weather==='snow',clear:SIT.weather==='clear',partly:SIT.weather==='partly',cloudy:SIT.weather==='cloudy',windy:SIT.windy,cold1:SIT.cold>=1,cold2:SIT.cold>=2};
   for(const k in sitOn){ const raw=k in weather?weather[k]&&!!info.look_weather:!!SIT[k]&&!!info['look_'+k]; if(raw!==sitSeen[k]){ sitSeen[k]=raw; sitAt[k]=ts; }
-  if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(k==='rain') sitOn.snow=false; if(k==='snow') sitOn.rain=false; if(k==='meeting') G.jelly.kick(.35); if(k==='party'&&LOOK.skin==='none') confetti(18); }
+  if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(['rain','snow','clear','partly','cloudy'].includes(k)) for(const other of ['rain','snow','clear','partly','cloudy']) if(other!==k) sitOn[other]=false; if(k==='meeting') G.jelly.kick(.35); if(k==='party'&&LOOK.skin==='none') confetti(18); }
   else if(!raw&&sitOn[k]&&ts-sitAt[k]>=8000) sitOn[k]=false; } }
 const NOTE={mail:['✉','New mail','#4d6fb7','reading',2200,'pop'], chat:['💬','New message','#7fd6ae','curious',1800,'chat'],
   meeting:['📅','Meeting','#ffb02a','surprised',700,'remind'], video:['▶','New post','#e0569a','t_excited',1400,'ok'],
