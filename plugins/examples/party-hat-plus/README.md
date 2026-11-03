@@ -1,3 +1,3 @@
 # Party hat plus
-A data-only Nixi companion plugin: one SVG prop worn on his head.
-Pick it in Settings → Look → Skin once it is enabled under Settings → More → Plugins.
+A data-only Nixi companion plugin: a striped party hat with a pom-pom, drawn from a sanitised SVG.
+Turn it on in Settings → More → Plugins, then pick it in Settings → Look → Skin.

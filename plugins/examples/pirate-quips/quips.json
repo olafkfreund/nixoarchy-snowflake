@@ -1,0 +1,30 @@
+{
+  "break": [
+    "Avast! Time to stretch yer sea legs.",
+    "Ye've been at the helm a long while. Take a break, matey."
+  ],
+  "welcome": [
+    "Welcome aboard, captain!",
+    "Ahoy! Good to see ye again."
+  ],
+  "snow": [
+    "Snow on the deck! Arr!",
+    "Frozen seas ahead, matey."
+  ],
+  "rain": [
+    "Batten the hatches, it be rainin'!",
+    "Rain on the poop deck, arr."
+  ],
+  "night": [
+    "The moon be high, matey. Time to sleep?",
+    "Dark seas tonight. Rest, captain."
+  ],
+  "party": [
+    "Yo ho ho, a party!",
+    "Break out the rum! (The soft kind.)"
+  ],
+  "done": [
+    "Yer task be done, captain!",
+    "Land ho! That be finished."
+  ]
+}

@@ -99,6 +99,16 @@ class PluginMapsTest(_ServerEnv):
         self.assertIn("hat-one", S.Plug.prop_errors)
         S.CFG["look"] = {}
 
+    def test_the_examples_load_whole(self):
+        S = self.server
+        ex = Path(S.APP_DIR).parent / "plugins/examples"
+        pack = json.loads((ex / "pirate-quips/quips.json").read_text())
+        kept = S.Plug.clean(pack)
+        self.assertEqual(kept, pack)                                          # no line dropped
+        self.assertTrue(set(pack) <= set(S.QUIP_FALLBACK))                    # every event is a real one
+        for d in sorted(ex.iterdir()):
+            self.assertIsNone(S.plugins.check_dir(d), d.name)
+
 
 if __name__ == "__main__":
     unittest.main()

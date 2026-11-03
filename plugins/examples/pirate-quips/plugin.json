@@ -1,0 +1,8 @@
+{
+  "api": 1,
+  "id": "pirate-quips",
+  "name": "Pirate quips",
+  "version": "1.0.0",
+  "description": "He talks like a pirate.",
+  "quips": "quips.json"
+}
