@@ -132,6 +132,7 @@ body.bar #code .lines{height:auto;padding:0}
 body.bar #code .l{height:auto;white-space:pre-wrap;word-break:break-word;font:12.5px/1.45 var(--mono);text-align:left}
 body.bar #code .l.out{color:var(--dim)}
 #guy{width:330px;height:330px;overflow:visible;pointer-events:none}
+body.bar #wx,body.hover #wx,body.calm #wx,body.goohide #wx{display:none}
 #body{pointer-events:visiblePainted;cursor:pointer}
 #pL{fill:var(--whiteL);stroke:var(--lineL,none)} #pR{fill:var(--whiteR);stroke:var(--lineR,none)}
 .eye{stroke-width:1.6;transition:fill .6s,stroke .6s}
@@ -593,6 +594,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 </svg>
 <div id="stage">
   <svg id="guy" viewBox="-150 -150 300 300">
+    <g id="wx" pointer-events="none"></g>
     <defs>
       <radialGradient id="halo" cx="0" cy="0" r="150" gradientUnits="userSpaceOnUse">
         <stop offset=".46" class="hs" stop-opacity=".0"/><stop offset=".5" class="hs" stop-opacity=".55"/>
@@ -1347,6 +1349,40 @@ const FIDGETS={
 };
 let FID=null, nextFidAt=performance.now()+6000, lastFid='';
 const paintEl=document.getElementById('paint');
+const REDUCED=matchMedia('(prefers-reduced-motion: reduce)');
+const wxAlpha=p=>.85*Math.sin(Math.PI*p);
+const wxEl=$('#wx');
+let wxKind='', wxCount=0, wxStill=false, wxParts=[];
+function wxStep(t,dt){
+  if(document.body.classList.contains('bar')||document.body.classList.contains('hover')||document.body.classList.contains('calm')||document.body.classList.contains('goohide')) return;
+  const kind=sitOn.snow&&G.sitR.x<.05?'snow':sitOn.rain?'rain':'', still=REDUCED.matches;
+  const count=kind?(still?3:Math.floor((kind==='rain'?(SIT.heavy?12:8):6)/(lowFx?2:1))):0;
+  if(kind!==wxKind||count!==wxCount||still!==wxStill){
+    wxKind=kind; wxCount=count; wxStill=still; wxParts=[]; wxEl.replaceChildren();
+    for(let i=0;i<count;i++){
+      const el=document.createElementNS(NS,kind==='rain'?'path':'circle');
+      const phase=(i+.5)*280/count, x=-135+270*((i*0.61803398875)%1);
+      if(kind==='rain'){ el.setAttribute('fill','none'); el.setAttribute('stroke','#9fd3ff'); el.setAttribute('stroke-width','2.4'); el.setAttribute('stroke-linecap','round'); }
+      else { el.setAttribute('r',(2+i%4*.5).toFixed(1)); el.setAttribute('fill','#e6f4ff'); el.setAttribute('opacity',(.55+(i%6)*.07).toFixed(2)); }
+      wxEl.appendChild(el); wxParts.push({el,phase,x});
+    }
+  }
+  if(!kind||still&&wxParts[0]?.fixed) return;
+  const H=kind==='rain'?276:280, v=kind==='rain'?220*(SIT.heavy?1.4:1):22;
+  for(let i=0;i<wxParts.length;i++){
+    const q=wxParts[i], p=still?q.phase/280:((t*v+q.phase)%H)/H;
+    if(kind==='rain'){
+      const dx=14*Math.tan((SIT.windy?22:12)*Math.PI/180)*(SIT.windy&&SIT.lean?-SIT.lean:1);
+      const x=clamp(q.x,-145-Math.min(0,dx),145-Math.max(0,dx)), y=-145+p*H;
+      q.el.setAttribute('d',`M${x.toFixed(2)} ${y.toFixed(2)}l${dx.toFixed(2)} 14`);
+      q.el.setAttribute('opacity',wxAlpha(p).toFixed(4));
+    } else {
+      q.el.setAttribute('cx',(q.x+(still?0:Math.sin(t*.9+i)*6)).toFixed(2));
+      q.el.setAttribute('cy',(-140+p*H).toFixed(2));
+    }
+    if(still) q.fixed=true;
+  }
+}
 function frame(ts){
   const rawDt=(ts-(lastTs||ts))/1000, dt=clamp(rawDt,0,.05); lastTs=ts; const t=ts/1000;
   if(!lowFx && rawDt>0 && rawDt<.25 && document.visibilityState==='visible'){ perfAcc+=rawDt; perfN++;
@@ -1552,6 +1588,7 @@ function frame(ts){
         for(const [s,cu] of [[-1,SIT_P.cL],[1,SIT_P.cR]]) cu.setAttribute('transform',`translate(${(s*X-s*lx*.6).toFixed(2)} -8) rotate(${(s*8+(s<0?-12*L:0)).toFixed(2)}) scale(${(1+.07*k).toFixed(3)})`);
         SIT_P.bd.setAttribute('transform',`translate(0 ${(-1.5*k).toFixed(2)})`);
         if(k>.6&&ts-nodAt>=200){ nodAt=ts; G.jelly.kick(.015*k); } } } }   // (nothing to write while all are off)
+  wxStep(t,dt);
   if(AM||G.agent.x>.002){                 // the agent mark (nothing to write while it is gone)
     const v=G.agent.to(AM&&ts<AM.until&&!document.body.classList.contains('bar')?1:0,dt), ask=AM&&AM.kind==='ask', mk=AMX.mk, r=(t*.7)%1;
     mk.setAttribute('opacity',clamp(v,0,1).toFixed(2)); mk.setAttribute('transform',`translate(8 -90) scale(${(1.35*(.6+.4*v)*(ask?1+.12*Math.max(0,Math.sin(t*8.8)):1)).toFixed(3)})`);
@@ -1847,7 +1884,7 @@ function onEvent(ev){
     if(!muted) sayAside(head+(ev.project?', in '+ev.project:'')); }
   else if(ev.t==='notify') notifyIn(ev);
   else if(ev.t==='nudge') { if(!(SIT.fullscreen||SIT.meeting)) restore(11000,false); ev.rt=performance.now(); nudgeQ.set(ev.kind,ev); nudgeDrain(performance.now()); }
-  else if(ev.t==='situation'){ SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party;
+  else if(ev.t==='situation'){ SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party; SIT.heavy=!!ev.heavy; SIT.windy=!!ev.windy; SIT.lean=ev.lean||0; SIT.cold=ev.cold||0;
     if(ev.weather==='snow'&&SIT.weather!=='snow'&&info.look_weather) poke('excited',1800);      // he loves snow: once, when it starts
     SIT.weather=ev.weather||null; }
   else if(ev.t==='ambient'){ if(ev.alert) restore(12000,false); const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive) poke('confused',1500);
@@ -1937,11 +1974,12 @@ function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts-e.rt>600000) nudgeQ.de
   else { karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; plateReset(); ntfDrop(); setYou('');
     const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); shownTxt=''; capShow(); sendRegion(true); dropSync();
     setTimeout(()=>{ if(sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } },6000); } }
-let SIT={meeting:false,music:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false};   // situation signals, as the server sends them
+let SIT={meeting:false,music:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false,heavy:false,windy:false,lean:0,cold:0};   // situation signals, as the server sends them
 // a look goes on after 3 s of signal and off after 8 s without it: timestamps, no timers
-const sitOn={meeting:false,music:false,fullscreen:false,coding:false,night:false,party:false,rain:false}, sitSeen={...sitOn}, sitAt={meeting:0,music:0,fullscreen:0,coding:0,night:0,party:0,rain:0};
-function sitStep(ts){ for(const k in sitOn){ const raw=!!(k==='rain'?SIT.weather==='rain':SIT[k])&&!!info['look_'+(k==='rain'?'weather':k)]; if(raw!==sitSeen[k]){ sitSeen[k]=raw; sitAt[k]=ts; }
-  if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(k==='meeting') G.jelly.kick(.35); if(k==='party'&&LOOK.skin==='none') confetti(18); }
+const sitOn={meeting:false,music:false,fullscreen:false,coding:false,night:false,party:false,rain:false,snow:false,cold1:false,cold2:false}, sitSeen={...sitOn}, sitAt={meeting:0,music:0,fullscreen:0,coding:0,night:0,party:0,rain:0,snow:0,cold1:0,cold2:0};
+function sitStep(ts){ const weather={rain:SIT.weather==='rain',snow:SIT.weather==='snow',cold1:SIT.cold>=1,cold2:SIT.cold>=2};
+  for(const k in sitOn){ const raw=k in weather?weather[k]&&!!info.look_weather:!!SIT[k]&&!!info['look_'+k]; if(raw!==sitSeen[k]){ sitSeen[k]=raw; sitAt[k]=ts; }
+  if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(k==='rain') sitOn.snow=false; if(k==='snow') sitOn.rain=false; if(k==='meeting') G.jelly.kick(.35); if(k==='party'&&LOOK.skin==='none') confetti(18); }
   else if(!raw&&sitOn[k]&&ts-sitAt[k]>=8000) sitOn[k]=false; } }
 const NOTE={mail:['✉','New mail','#4d6fb7','reading',2200,'pop'], chat:['💬','New message','#7fd6ae','curious',1800,'chat'],
   meeting:['📅','Meeting','#ffb02a','surprised',700,'remind'], video:['▶','New post','#e0569a','t_excited',1400,'ok'],
@@ -2004,7 +2042,7 @@ function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.c
   at(4300,()=>el.classList.remove('up')); at(4650,()=>el.classList.remove('open'));
   at(5000,()=>{ el.classList.remove('on'); sendRegion(true); }); at(5400,()=>{ popWant=[0,0]; sizeWindow(); }); }
 /* ================= answer stages (#144): the page only draws what the server sends, every field via textContent; Run, Copy and the rest go back as a token ================= */
-const stgEl=$('#stg'), stgTab=$('#stgTab'), chalkEl=$('#chalk'), hatEl=$('#hat'), popEl=$('#pop'), REDUCED=matchMedia('(prefers-reduced-motion: reduce)');
+const stgEl=$('#stg'), stgTab=$('#stgTab'), chalkEl=$('#chalk'), hatEl=$('#hat'), popEl=$('#pop');
 let stgPosted=false, stg=null, stgState='closed', stgSide='r', stgUse=0, stgQuiet=0, stgTimer=null, stgOffT=null, stgRunTok=null, stgTm=[];
 const hx=(tag,cls,txt)=>{ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; };
 const stgOpen=()=>stgState==='open';
