@@ -1574,6 +1574,7 @@ let dozing=false, framePaused=false;
 requestAnimationFrame(frame);
 
 /* ================= voice out (sentence-streamed) ================= */
+let floorOn=false, floorReq=Promise.resolve(); function floorPage(on){ if(floorOn===on) return floorReq; floorOn=on; return floorReq=floorReq.then(()=>post('/api/floor',{hold:on})).catch(()=>{}); }   // in order: a late release must not undo the next hold   // the voice floor (one speaker at a time)
 let actx=null, spkAn=null, srcs=[], curIt=null, playing=false, gen=0, nextAt=0, pumpGen=-1; const q=[];
 function ac(){ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==='suspended') actx.resume(); return actx; }
 // enqueue(text, {cap:true}) also puts the words on screen, one by one, as he says them
@@ -1715,6 +1716,7 @@ function sfx(name){
 async function pump(){
   if(pumpGen===gen||!q.length) return; const g=pumpGen=gen;
   if(!playing){ playing=true; speaking(true); }
+  await floorPage(true); if(g!==gen) return;   // the server answers once the other voice is done
   while(q.length&&g===gen){
     const it=curIt=q[0], item=await it.p; if(g!==gen) break; q.shift(); curIt=null;
     if(!item){ if(it.cap) karaNow(it.cap,it.fresh); continue; }           // no audio for this one: just show it
@@ -1736,12 +1738,12 @@ function quietNative(){ if(!spkMap.size&&playing&&info.voice_native&&!q.length){
 function spkLevel(ts){ for(const L of spkLv){ if(ts>=L.t0&&ts<L.t0+L.level.length*L.step){ return L.level[((ts-L.t0)/L.step)|0]/100; } }
   if(spkLv.length&&ts>spkLv[spkLv.length-1].t0+spkLv[spkLv.length-1].level.length*spkLv[spkLv.length-1].step+2000) spkLv=[];
   return null; }
-function quietCheck(){ if(!srcs.length&&!q.length&&pumpGen!==gen&&playing){ playing=false; speaking(false); } }
+function quietCheck(){ if(!srcs.length&&!q.length&&pumpGen!==gen&&playing){ playing=false; speaking(false); floorPage(false); } }
 // shush: stop talking. Anything he hadn't said yet still lands on screen (mute mid-answer, or you cut in)
 function shush(){ gen++; sayEpoch++; const rest=q.splice(0), pend=curIt; curIt=null; karaFlush();
   if(info.voice_native&&(spkMap.size||playing)){ post('/api/say/stop',{epoch:sayEpoch}).catch(()=>{}); for(const it of spkMap.values()) if(it.cap) karaNow(it.cap,it.fresh,true); spkMap.clear(); spkLv=[]; }
   if(pend&&pend.cap) karaNow(pend.cap,pend.fresh,true); for(const it of rest) if(it.cap) karaNow(it.cap,it.fresh,true);
-  for(const x of srcs) try{ x.stop(); }catch(e){} srcs=[]; nextAt=0; pumpGen=-1; if(playing) speaking(false); playing=false; }
+  for(const x of srcs) try{ x.stop(); }catch(e){} srcs=[]; nextAt=0; pumpGen=-1; if(playing) speaking(false); playing=false; floorPage(false); }
 const untilQuiet=async()=>{ for(let i=0;i<400 && (playing||q.length);i++) await sleep(100); };
 
 /* ================= his memory of the chat (context) ================= */
