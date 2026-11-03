@@ -211,14 +211,14 @@ class Store:
         except Exception:                                  # (a broken lookup is "no location", never a lost card)
             loc = {}
         dest = stage["dest"]
-        if dest in ("@home", "@work"):
-            p = loc.get(dest[1:])
+        if dest.strip().lower() in ("@home", "@work"):
+            p = loc.get(dest.strip().lower()[1:])
             if not p:
-                page["unset"] = dest[1:]
+                page["unset"] = dest.strip().lower()[1:]
                 return
             page["dest"], dest = p["name"], _coords(p)
         origin = None
-        if loc.get("chosen") and loc.get("now"):
+        if stage.get("mode") and loc.get("chosen") and loc.get("now"):      # (a plain place search has no start)
             origin, page["from"] = _coords(loc["now"]), loc["now"]["name"]
         page["open"], page["copy"] = secrets.token_urlsafe(12), secrets.token_urlsafe(12)
         toks[page["open"]] = ("place", {"url": maps_url(dest, stage.get("mode"), origin)})

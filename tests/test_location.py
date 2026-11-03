@@ -20,7 +20,7 @@ class LocationTest(unittest.TestCase):
         for k, d in (("HOME", ""), ("XDG_CONFIG_HOME", ".config"), ("XDG_DATA_HOME", "data"), ("XDG_STATE_HOME", "state")):
             os.environ[k] = os.path.join(cls.tmp, d)
             os.makedirs(os.environ[k], exist_ok=True)
-        cls.dir = Path(cls.tmp, "state/omarchy/settings")
+        cls.dir = Path(cls.tmp, ".local/state/omarchy/settings")
         sys.path.insert(0, str(REPO_ROOT / "app"))
         import server
         cls.server = server
@@ -83,6 +83,13 @@ class LocationTest(unittest.TestCase):
             v = self.server.location()
         self.assertEqual((v["chosen"], v["how"], v["now"]), (True, "picked", {"name": "Oslo"}))
         self.assertEqual(v["home"], {"name": "Oslo"})          # (a picked file is Home until places.json exists)
+
+    def test_a_picked_work_is_not_home_once_places_exist(self):
+        self.write("weather.json", {"name": "Porto"})
+        self.write("places.json", {"work": {"name": "Porto"}})
+        with self.no_command():
+            v = self.server.location()
+        self.assertEqual((v["chosen"], v["home"], v["work"]), (True, None, {"name": "Porto"}))
 
     def test_no_files_is_not_chosen(self):
         with self.no_command():

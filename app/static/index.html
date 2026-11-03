@@ -2779,7 +2779,7 @@ async function loadMics(){
     $('#micSel').innerHTML=`<option value="">System default</option>`+(j.mics||[]).map(m=>`<option value="${esc(m.id)}"${m.id===cur?' selected':''}>${esc(m.label)}</option>`).join('');
   }catch(e){} }
 // ---- Location (nixarchy-location does the writing; the page only asks)
-let loc=null, locAt=0, locTm={}, locSug={home:[],work:[]}, locIdx={home:-1,work:-1};
+let loc=null, locAt=0, locTm={}, locSug={home:[],work:[]}, locIdx={home:-1,work:-1}, locGen={home:0,work:0};   // locGen: an answer only counts if nothing was typed, picked or dismissed since it was asked for
 async function locLoad(){ try{ await tokenReady; loc=await (await fetch('/api/location',{headers:hdr()})).json(); locAt=Date.now(); locRender(); }catch(e){} }
 function locAct(b){ $('#locErr').textContent=''; return post('/api/location',b).then(r=>r.json()).then(j=>{ if(j.ok){ loc=j; locAt=Date.now(); } else $('#locErr').textContent=j.error||'That didn\u2019t work'; locRender(); }).catch(()=>{ $('#locErr').textContent='Couldn\u2019t reach Nixi'; }); }
 function locRender(){
@@ -2796,9 +2796,10 @@ function locRender(){
 }
 function locSugShow(k){ const box=$('#loc'+(k==='home'?'Home':'Work')+'Sug'); box.textContent='';
   locSug[k].forEach((p,i)=>{ const b=hx('button',i===locIdx[k]?'on':'',[p.name,p.admin,p.country].filter(Boolean).join(', ')); b.dataset.lpick=k+':'+i; box.appendChild(b); }); }
-function locPick(k,i){ const p=locSug[k][i]; locSug[k]=[]; locIdx[k]=-1; locSugShow(k); if(p) locAct({act:'set',place:k,name:p.name,latitude:p.latitude,longitude:p.longitude}); }
-function locAsk(k,q){ clearTimeout(locTm[k]); if(q.trim().length<2){ locSug[k]=[]; locSugShow(k); return; }
-  locTm[k]=setTimeout(()=>{ tokenReady.then(()=>fetch('/api/location/suggest?q='+encodeURIComponent(q.trim()),{headers:hdr()})).then(r=>r.json()).then(a=>{ locSug[k]=Array.isArray(a)?a:[]; locIdx[k]=-1; if(!Array.isArray(a)) $('#locErr').textContent='Couldn\u2019t search for places right now'; locSugShow(k); }).catch(()=>{}); },250); }
+function locDrop(k){ locGen[k]++; clearTimeout(locTm[k]); locSug[k]=[]; locIdx[k]=-1; locSugShow(k); }
+function locPick(k,i){ const p=locSug[k][i]; locDrop(k); if(p) $('#loc'+(k==='home'?'Home':'Work')).value=p.name; if(p) locAct({act:'set',place:k,name:p.name,latitude:p.latitude,longitude:p.longitude}); }
+function locAsk(k,q){ const g=++locGen[k]; clearTimeout(locTm[k]); if(q.trim().length<2){ locSug[k]=[]; locSugShow(k); return; }
+  locTm[k]=setTimeout(()=>{ tokenReady.then(()=>fetch('/api/location/suggest?q='+encodeURIComponent(q.trim()),{headers:hdr()})).then(r=>r.json()).then(a=>{ if(g!==locGen[k]) return; locSug[k]=Array.isArray(a)?a:[]; locIdx[k]=-1; if(!Array.isArray(a)) $('#locErr').textContent='Couldn\u2019t search for places right now'; locSugShow(k); }).catch(()=>{}); },250); }
 { const row=$('#locRow');
   row.addEventListener('click',e=>{ const t=e.target.closest('button'); if(!t) return;
     if(t.dataset.lnow) locAct({act:'now',value:t.dataset.lnow});
@@ -2809,8 +2810,8 @@ function locAsk(k,q){ clearTimeout(locTm[k]); if(q.trim().length<2){ locSug[k]=[
     i.addEventListener('input',()=>locAsk(k,i.value));
     i.addEventListener('keydown',e=>{ const n=locSug[k].length;
       if(e.key==='ArrowDown'||e.key==='ArrowUp'){ if(!n) return; e.preventDefault(); locIdx[k]=(locIdx[k]+(e.key==='ArrowDown'?1:-1)+n)%n; locSugShow(k); }
-      else if(e.key==='Enter'){ e.preventDefault(); if(locIdx[k]>=0) locPick(k,locIdx[k]); else if(i.value.trim()){ locSug[k]=[]; locSugShow(k); locAct({act:'set',place:k,name:i.value.trim()}); } }
-      else if(e.key==='Escape'&&n){ e.stopPropagation(); locSug[k]=[]; locSugShow(k); } }); } }
+      else if(e.key==='Enter'){ e.preventDefault(); if(locIdx[k]>=0) locPick(k,locIdx[k]); else if(i.value.trim()){ locDrop(k); locAct({act:'set',place:k,name:i.value.trim()}); } }
+      else if(e.key==='Escape'&&n){ e.stopPropagation(); locDrop(k); } }); } }
 async function setSetting(b){ try{ info=await (await post('/api/settings',b)).json(); showInfo(); if(setEl.classList.contains('on')) renderSettings(); }catch(e){ tick('settings: '+e.message,true); } }
 function setLook(patch){ clearTimeout(saveT); const L={...curLook(),...patch}; info.look=L; applyLook(L); lookShown=JSON.stringify([L,info.theme]); return setSetting({look:L}); }
 setEl.addEventListener('click',e=>{

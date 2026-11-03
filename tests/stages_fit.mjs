@@ -173,7 +173,15 @@ const acts = () => ev("return __acts.slice()");
   check(/^Now: /.test(l[0]) && l[1] === "Home,Work,Auto" && l[2], "settings: Location section draws, Wi-Fi block follows the device", JSON.stringify(l));
   await ev(`await locAct({act:'set',place:'home',name:'<b>x</b>'}); return 1`);
   const w = await ev(`return [document.getElementById('locErr').textContent, document.getElementById('locHome').value, document.querySelectorAll('#locRow b').length]`);
-  check((w[0] === "needs nixarchy-location (update nixarchy)" || (w[0] === "" && w[1] === "<b>x</b>")) && w[2] === 0, "settings: a write says what it needs, names show as text", JSON.stringify(w));
+  check(w[0] === "needs nixarchy-location (update nixarchy)" && w[2] === 0, "settings: a write without the command says what to update", JSON.stringify(w));
+  // suggestions: an answer to an old question is dropped, and picking puts the name in the field
+  const sg = await ev(`const mk=(n)=>({name:n,admin:'',country:'',latitude:1,longitude:2}); const i=document.getElementById('locHome');
+    locSug.home=[mk('Oxford'),mk('Oslo')]; locIdx.home=-1; locSugShow('home');
+    const g0=locGen.home; locAsk('home','ox'); const stale=g0!==locGen.home;
+    locDrop('home'); const dropped=locGen.home>g0+1 && document.getElementById('locHomeSug').children.length===0;
+    locSug.home=[mk('Oxford'),mk('Oslo')]; locSugShow('home'); locPick('home',1);
+    return [stale, dropped, i.value, document.getElementById('locHomeSug').children.length]`);
+  check(sg[0] && sg[1] && sg[2] === "Oslo" && sg[3] === 0, "settings: stale suggestions are ignored, a pick fills the field", JSON.stringify(sg));
   await ev(`settings(false); return 1`); }
 
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});

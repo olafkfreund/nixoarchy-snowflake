@@ -1064,7 +1064,7 @@ def _place(v):
 
 def _location_files():
     """What `nixarchy-location --json` says, read from the two files when the command isn't installed."""
-    d = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "omarchy/settings"
+    d = Path.home() / ".local/state/omarchy/settings"        # (not XDG_STATE_HOME: upstream's weather panel reads this exact path)
 
     def load(n):
         try:
@@ -1074,7 +1074,8 @@ def _location_files():
             return None
     w, p = load("weather.json"), load("places.json") or {}
     now = _place(w)
-    home = _place(p.get("home")) or (now if w and w.get("source") != "wifi" else None)    # (a picked file is Home until places.json says)
+    # (a picked weather.json is Home only before places.json exists, as nixarchy-location migrates it)
+    home = _place(p.get("home")) or (now if w and w.get("source") != "wifi" and not (d / "places.json").exists() else None)
     return {"now": now, "chosen": now is not None, "how": "auto" if now is None else "wifi" if w.get("source") == "wifi" else "picked",
             "home": home, "work": _place(p.get("work"))}
 
@@ -1105,18 +1106,19 @@ _COORDS = re.compile(r"^(-?[0-9]+(\.[0-9]+)?),(-?[0-9]+(\.[0-9]+)?)$")
 def wifi_now():
     """-> (has a Wi-Fi device, the connected network's name or None), from nmcli."""
     try:
-        r = subprocess.run(["nmcli", "-t", "-f", "TYPE,STATE,CONNECTION", "device"], capture_output=True, text=True, timeout=2, stdin=subprocess.DEVNULL)
+        r = subprocess.run(["nmcli", "-t", "-f", "TYPE,STATE,CONNECTION", "device"], capture_output=True, text=True, timeout=2, stdin=subprocess.DEVNULL,
+                           env={**os.environ, "LC_ALL": "C"})
     except (OSError, subprocess.SubprocessError):
         return False, None
     rows = [ln for ln in r.stdout.splitlines() if ln.startswith("wifi:")] if r.returncode == 0 else []
-    net = next((ln[len("wifi:connected:"):].replace("\\:", ":") for ln in rows if ln.startswith("wifi:connected:")), None)
+    net = next((re.sub(r"\\(.)", r"\1", ln[len("wifi:connected:"):]) for ln in rows if ln.startswith("wifi:connected:")), None)
     return bool(rows), net or None
 
 
 def location_links():
     """{network: "home"|"work"}, read-only from places.json (writes go through nixarchy-location)."""
     try:
-        w = json.loads((Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "omarchy/settings/places.json").read_text()).get("wifi")
+        w = json.loads((Path.home() / ".local/state/omarchy/settings/places.json").read_text()).get("wifi")
     except (OSError, ValueError, AttributeError):
         return {}
     return {k: v for k, v in w.items() if v in ("home", "work")} if isinstance(w, dict) else {}

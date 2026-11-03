@@ -220,6 +220,18 @@ class MapsTest(unittest.TestCase):
         st, page = self.put({**loc, "now": self.HOME}, "Oxford station")
         self.assertIn("origin=38.72%2C-9.14", st.get(page["open"])[1]["url"])
 
+    def test_a_plain_place_search_has_no_start(self):
+        loc = {"now": {"name": "Porto"}, "chosen": True, "home": self.HOME, "work": None}
+        st, page = self.put(loc, "Oxford station", mode=None)
+        self.assertNotIn("from", page)
+        self.assertNotIn("origin", st.get(page["open"])[1]["url"])
+
+    def test_home_is_matched_loosely(self):
+        for d in ("@Home", "@HOME", "@home"):
+            st = S.Store(where=lambda: {"home": self.HOME})
+            page = st.put({"v": 1, "kind": "place", "dest": " " + d + " ", "mode": "driving"})
+            self.assertEqual(page["dest"], "Lisbon", d)
+
     def test_a_guess_is_never_an_origin(self):
         st, page = self.put({"now": {"name": "Guessville"}, "chosen": False, "home": None, "work": None}, "Oxford station")
         self.assertNotIn("from", page)

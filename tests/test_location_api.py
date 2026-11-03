@@ -20,7 +20,7 @@ class LocationApiTest(unittest.TestCase):
         for k, d in (("HOME", ""), ("XDG_CONFIG_HOME", ".config"), ("XDG_DATA_HOME", "data"), ("XDG_STATE_HOME", "state")):
             os.environ[k] = os.path.join(cls.tmp, d)
             os.makedirs(os.environ[k], exist_ok=True)
-        cls.dir = Path(cls.tmp, "state/omarchy/settings")
+        cls.dir = Path(cls.tmp, ".local/state/omarchy/settings")
         sys.path.insert(0, str(REPO_ROOT / "app"))
         import server
         cls.s = server
@@ -94,6 +94,8 @@ class LocationApiTest(unittest.TestCase):
         out = "ethernet:connected:Wired\nwifi:connected:Cafe\\: Main\n"
         with mock.patch.object(self.s.subprocess, "run", return_value=mock.Mock(returncode=0, stdout=out)):
             self.assertEqual(self.s.wifi_now(), (True, "Cafe: Main"))
+        with mock.patch.object(self.s.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="wifi:connected:A\\\\B\\:C\n")):
+            self.assertEqual(self.s.wifi_now(), (True, "A\\B:C"))
         with mock.patch.object(self.s.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="ethernet:connected:Wired\n")):
             self.assertEqual(self.s.wifi_now(), (False, None))
         with mock.patch.object(self.s.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="wifi:disconnected:\n")):
