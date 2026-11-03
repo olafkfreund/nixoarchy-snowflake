@@ -1,0 +1,28 @@
+{
+ "entries": [
+  {
+   "_type": "url",
+   "id": "bjTxiFLSNFA",
+   "url": "https://www.youtube.com/watch?v=bjTxiFLSNFA",
+   "title": "NixOS beginner guide",
+   "duration": 457,
+   "channel": "Vimjoyer"
+  },
+  {
+   "_type": "url",
+   "id": "FJVFXsNzYZQ",
+   "url": "https://www.youtube.com/watch?v=FJVFXsNzYZQ",
+   "title": "Nix in 100 Seconds",
+   "duration": 213,
+   "channel": "Fireship"
+  },
+  {
+   "_type": "url",
+   "id": "LGGWPbIdCdE",
+   "url": "https://www.youtube.com/watch?v=LGGWPbIdCdE",
+   "title": "Nix for Beginners - Introduction and First Steps with NixOS",
+   "duration": 1644,
+   "channel": "Linux Ort"
+  }
+ ]
+}

@@ -1,5 +1,7 @@
+import json
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
@@ -158,10 +160,98 @@ class MapsTest(unittest.TestCase):
         self.assertEqual(u, "https://www.google.com/maps/search/?api=1&query=Tate+Modern")
         self.assertNotIn("origin", u)
 
+    def test_place_stage(self):
+        self.assertEqual(S.validate({"v": 1, "kind": "place", "dest": " Oslo ", "mode": "walking"}), {"v": 1, "kind": "place", "dest": "Oslo", "mode": "walking"})
+        self.assertNotIn("mode", S.validate({"v": 1, "kind": "place", "dest": "Oslo"}))
+        for bad in ({"dest": "x" * 161}, {"dest": "a\nb"}, {"dest": ""}, {"dest": "x", "mode": "flying"}, {}):
+            self.assertIsNone(S.validate({"v": 1, "kind": "place", **bad}))
+
+    def test_place_tokens_hide_the_url(self):
+        st = S.Store()
+        page = st.put(S.validate({"v": 1, "kind": "place", "dest": "Tate Modern"}))
+        self.assertNotIn("http", json.dumps(page))
+        self.assertEqual(st.get(page["open"])[1]["url"], "https://www.google.com/maps/search/?api=1&query=Tate+Modern")
+        self.assertEqual(st.get(page["copy"])[1]["text"], "Tate Modern")
+
     def test_bad(self):
         for a in (("x", "flying"), ("", "driving"), ("a\nb", "driving")):
             with self.assertRaises(ValueError):
                 S.maps_url(*a)
+
+
+class VideoTest(unittest.TestCase):
+    FIX = Path(__file__).parent / "fixtures" / "ytdlp_search.json"
+
+    def run_fake(self, out, calls=None):
+        def run(argv, **kw):
+            if calls is not None:
+                calls.append((argv, kw))
+            return type("R", (), {"stdout": out})()
+        return run
+
+    def test_search_parses_three_and_passes_one_argv_arg(self):
+        calls = []
+        r = S.video_search("a; rm -rf ~ --x", self.run_fake(self.FIX.read_bytes(), calls))
+        self.assertEqual(len(r), 3)
+        self.assertEqual(set(r[0]), {"id", "title", "channel", "duration"})
+        self.assertEqual(calls[0][0], ["yt-dlp", "--ignore-config", "--flat-playlist", "-J", "ytsearch3:a; rm -rf ~ --x"])
+        self.assertEqual(calls[0][1]["timeout"], 8)
+        self.assertNotIn("shell", calls[0][1])
+
+    def test_search_failures_are_empty(self):
+        for out in (b"", b"{}", b"[1]", b'{"entries":[{"id":"bad id"}]}'):
+            self.assertEqual(S.video_search("x", self.run_fake(out)), [])
+
+        def boom(*a, **k):
+            raise S.subprocess.TimeoutExpired("yt-dlp", 8)
+        self.assertEqual(S.video_search("x", boom), [])
+
+    def test_agent_cannot_bring_items(self):
+        self.assertEqual(S.validate({"v": 1, "kind": "video", "query": "cats", "items": [{"id": "x"}]}), {"v": 1, "kind": "video", "query": "cats"})
+        self.assertIsNone(S.validate({"v": 1, "kind": "video", "query": ""}))
+
+    def test_tokens_hide_urls_and_search_url_encodes(self):
+        st = S.Store()
+        v = S.validate({"v": 1, "kind": "video", "query": "a&b c"})
+        page = st.put({**v, "items": S.video_search("x", self.run_fake(self.FIX.read_bytes()))})
+        self.assertNotIn("http", json.dumps(page))
+        self.assertTrue(st.get(page["items"][0]["play"])[1]["url"].startswith("https://www.youtube.com/watch?v="))
+        self.assertEqual(st.get(page["search"])[1]["url"], "https://www.youtube.com/results?search_query=a%26b+c")
+
+    def fetch(self, body=b"x", ct="image/jpeg", err=None):
+        urls = []
+
+        class R:
+            headers = {"Content-Type": ct}
+            def read(self, n): return body[:n]
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        class Op:
+            def open(self, req, timeout=None):
+                urls.append(req.full_url)
+                if err:
+                    raise err
+                return R()
+        with mock.patch.object(S.urllib.request, "build_opener", return_value=Op()):
+            return S.fetch_thumb("abcdefghijk"), urls
+
+    def test_thumb_fetch(self):
+        got, urls = self.fetch()
+        self.assertEqual(got, (b"x", "image/jpeg"))
+        self.assertEqual(urls, ["https://i.ytimg.com/vi/abcdefghijk/mqdefault.jpg"])
+        self.assertIsNotNone(self.fetch(b"x" * 200_000)[0])
+        self.assertIsNone(self.fetch(b"x" * 200_001)[0])
+        self.assertIsNone(self.fetch(ct="text/html")[0])
+        import urllib.error
+        self.assertIsNone(self.fetch(err=urllib.error.HTTPError("u", 302, "redirect", {}, None))[0])
+        self.assertIsNone(self.fetch(err=OSError())[0])
+
+    def test_thumb_bad_id_never_fetches(self):
+        with mock.patch.object(S.urllib.request, "build_opener") as bo:
+            self.assertIsNone(S.fetch_thumb("../evil"))
+            self.assertIsNone(S.fetch_thumb("x" * 11 + "/../.."))
+        self.assertFalse(bo.called)
 
 
 class FastPathTest(unittest.TestCase):

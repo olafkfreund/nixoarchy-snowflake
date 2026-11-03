@@ -3828,7 +3828,8 @@ def run_bridge(prompt, emit):
         note = note[:-3] + (" When the answer is commands to run, or 2-5 facts, do not speak them: say what they are in a sentence, then "
                             "end the reply with ONE last line, <<stage>> followed by JSON on that line: "
                             '{"v":1,"kind":"commands","title":"optional plaque, 1-4 words","items":[{"label":"what it does","cmd":"the command"}]} or '
-                            '{"v":1,"kind":"facts","title":"...","points":["..."],"source":"optional"}; '
+                            '{"v":1,"kind":"facts","title":"...","points":["..."],"source":"optional"} or, to find videos, {"v":1,"kind":"video","query":"search words"} (the server searches) or, for directions or a place, '
+                            "{\"v\":1,\"kind\":\"place\",\"dest\":\"address or name\",\"mode\":\"MODE\"}, where MODE is one of driving, walking, bicycling, transit (leave mode out for a plain place); "
                             "at most 5 items, labels and points under 120 characters, commands under 500, no line breaks inside.)\n\n")
     BRIDGE.send({"type": "prompt", "text": note + prompt})
     mid = None
@@ -3872,7 +3873,8 @@ def run_bridge(prompt, emit):
     return "done"
 
 
-STAGES = stages.Store()                                  # the stage on screen and the one before it (#144)
+THUMBS = {}                                              # posters of the stage on screen, by token (dropped with the stage)
+STAGES = stages.Store(on_new=THUMBS.clear)                                  # the stage on screen and the one before it (#144)
 
 
 def stages_on():
@@ -3901,6 +3903,13 @@ def stage_trust():
     return "yolo" if c.get("permissionMode") == "yolo" else c.get("trust") if c.get("trust") in ("guide", "mechanic") else "unknown"
 
 
+def video_stage(st, before):
+    """Search for a video stage off the turn, then show it, unless the stage on screen changed meanwhile."""
+    st = {**st, "items": stages.video_search(st["query"])}      # (the agent only said what to look for)
+    if stages_on() and STAGES.current() is before:
+        BUS.pub(t="stage", **stage_event(STAGES.put(st)))
+
+
 def stage_act(token, act):
     """A button on the stage (never Run: that is a turn, see ask). Only what the store holds is ever used, never page text."""
     if not stages_on() and act not in ("close", "shown", "hidden"):
@@ -3919,11 +3928,27 @@ def stage_act(token, act):
         return {"ok": bool(page)}
     got = STAGES.get(token) if act in ("copy", "open", "play") else None
     if act == "copy" and got:
+        text = got[1].get("cmd") or got[1].get("text")
+        if not text:
+            return {"ok": False, "error": "nothing to copy"}
         try:
-            r = subprocess.run(["wl-copy"], input=got[1].get("cmd", got[1].get("text", "")).encode(), timeout=5, check=False)
+            r = subprocess.run(["wl-copy"], input=text.encode(), timeout=5, check=False)
             return {"ok": r.returncode == 0}
         except (OSError, subprocess.SubprocessError):
             return {"ok": False, "error": "couldn't copy"}
+    if act == "open" and got and got[1].get("url"):      # a map link: the URL was built by the server from the validated stage
+        try:
+            subprocess.Popen(["xdg-open", got[1]["url"]], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return {"ok": True}
+        except OSError:
+            return {"ok": False, "error": "couldn't open it"}
+    if act == "play" and got and got[0] == "video":      # mpv if it is installed, otherwise the browser
+        try:
+            argv = ["mpv", got[1]["url"]] if shutil.which("mpv") else ["xdg-open", got[1]["url"]]
+            subprocess.Popen(argv, start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return {"ok": True}
+        except OSError:
+            return {"ok": False, "error": "couldn't play it"}
     if act in ("open", "play") and got:
         return {"ok": False, "error": "not yet"}
     return {"ok": False, "error": "gone" if act in ("copy", "open", "play") else "unknown"}
@@ -4347,6 +4372,21 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "max-age=86400")
             self.end_headers()
             return self.wfile.write(data)
+        if p.startswith("/api/stage/thumb/"):      # a poster for the current stage: only a token the store handed out, only i.ytimg.com
+            got = STAGES.get(p[17:]) if stages_on() else None
+            hit = got and got[0] == "thumb" and (THUMBS.get(p[17:]) or stages.fetch_thumb(got[1]["id"]))
+            if hit and STAGES.get(p[17:]):                   # (re-checked: the stage may have gone while we fetched)
+                THUMBS[p[17:]] = hit
+            else:
+                hit = None
+            if not hit:
+                return self._json({"error": "not found"}, 404)
+            self.send_response(200)
+            self.send_header("Content-Type", hit[1])
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Length", str(len(hit[0])))
+            self.end_headers()
+            return self.wfile.write(hit[0])
         if p == "/":
             p = "/index.html"
         f = (STATIC / p.lstrip("/")).resolve()
@@ -4818,14 +4858,16 @@ class Handler(BaseHTTPRequestHandler):
             cur = STAGES.current()
             vis = cur if STAGES.visible() else None            # only what is really on screen can be run or copied by voice
             fp = stages.fast_path(said, vis)                   # ("run the first one", "copy that", "close"...): no agent turn
-            if fp and fp[0] == "run" and vis and fp[1] < len(vis.get("items") or []):
+            if fp and fp[0] == "run" and vis and vis.get("kind") == "commands" and fp[1] < len(vis.get("items") or []):
                 body["stage"], body["act"] = vis["items"][fp[1]]["token"], "run"
             elif fp and fp[0] == "ask" and vis:
                 return self._said("Which one? Say the first, second or third.")
             elif fp and fp[0] in ("copy", "open", "play") and vis:
-                tk = (vis.get("items") or [vis])[fp[1]].get("token")
-                r = stage_act(tk, fp[0])
-                return self._said({"copy": "Copied."}.get(fp[0], "I can't do that yet.") if r["ok"] or r.get("error") == "not yet" else "I couldn't do that.")
+                it = (vis.get("items") or [vis])[fp[1]]         # each set names its tokens per action (map: open/copy, cinema: play)
+                tk = {"copy": it.get("token") or vis.get("copy"), "open": vis.get("open") or it.get("play"), "play": it.get("play")}[fp[0]]
+                r = stage_act(tk or "", fp[0])
+                return self._said({"copy": "Copied.", "open": "Opening it.", "play": "Playing it."}[fp[0]] if r["ok"]
+                                  else "I can't do that yet." if r.get("error") == "not yet" else "I couldn't do that.")
             elif fp and fp[0] in ("close", "back", "show") and (cur or fp[0] != "close"):
                 if stage_act("", fp[0])["ok"]:
                     return self._said("Done.")
@@ -4937,6 +4979,10 @@ class Handler(BaseHTTPRequestHandler):
                     if tail:
                         out(t="delta", text=tail)
                     st = stages.validate(blk) if t == "result" and blk and run_cmd is None and stages_on() else None    # (a Run never replaces the board)
+                    if st and st["kind"] == "video":
+                        out(**kw)                                                      # (the turn ends now; the search may take 8 s)
+                        threading.Thread(target=video_stage, args=(st, STAGES.current()), daemon=True).start()
+                        return
                     if st:
                         out(t="stage", **stage_event(STAGES.put(st)))
                 out(**kw)

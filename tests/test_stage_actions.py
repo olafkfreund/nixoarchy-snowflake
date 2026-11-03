@@ -6,6 +6,7 @@ import sys
 import tempfile
 import time
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -110,6 +111,83 @@ class StageActionsTest(unittest.TestCase):
         self.assertFalse(self.s.stage_act(self.tok, "run")["ok"])
         self.assertFalse(self.s.stage_act("nope", "open")["ok"])
 
+    def test_open_a_map_runs_xdg_open_with_the_server_url(self):
+        page = self.s.STAGES.put(self.stages.validate({"v": 1, "kind": "place", "dest": "Oslo S", "mode": "transit"}))
+        with mock.patch.object(self.s.subprocess, "Popen") as po:
+            self.assertTrue(self.s.stage_act(page["open"], "open")["ok"])
+            self.assertEqual(po.call_args[0][0], ["xdg-open", "https://www.google.com/maps/dir/?api=1&destination=Oslo+S&travelmode=transit"])
+            po.reset_mock()
+            self.assertFalse(self.s.stage_act(page["copy"], "open")["ok"])   # the copy token has no URL
+            self.assertFalse(po.called)
+
+    def video_page(self):
+        v = self.stages.validate({"v": 1, "kind": "video", "query": "cats"})
+        return self.s.STAGES.put({**v, "items": [{"id": "abcdefghijk", "title": "t", "channel": "c", "duration": "1:00"}]})
+
+    def test_play_uses_mpv_else_browser_and_search_opens(self):
+        page = self.video_page(); url = "https://www.youtube.com/watch?v=abcdefghijk"
+        with mock.patch.object(self.s.subprocess, "Popen") as po:
+            with mock.patch.object(self.s.shutil, "which", return_value="/bin/mpv"):
+                self.assertTrue(self.s.stage_act(page["items"][0]["play"], "play")["ok"])
+                self.assertEqual(po.call_args[0][0], ["mpv", url])
+            with mock.patch.object(self.s.shutil, "which", return_value=None):
+                self.s.stage_act(page["items"][0]["play"], "play")
+                self.assertEqual(po.call_args[0][0], ["xdg-open", url])
+            self.s.stage_act(page["search"], "open")
+            self.assertEqual(po.call_args[0][0], ["xdg-open", "https://www.youtube.com/results?search_query=cats"])
+
+    def test_play_refused_for_a_command_token(self):
+        with mock.patch.object(self.s.subprocess, "Popen") as po:
+            self.assertFalse(self.s.stage_act(self.tok, "play")["ok"])
+        self.assertFalse(po.called)
+
+    def test_thumb_route_serves_only_ytimg_posters_of_the_stage(self):
+        import urllib.request
+        page = self.video_page(); s = self.s
+        with mock.patch.object(s.stages, "fetch_thumb", return_value=(b"JPG", "image/jpeg")) as ft:
+            srv = s.ThreadingHTTPServer(("127.0.0.1", 0), s.Handler)
+            threading_t = s.threading.Thread(target=srv.serve_forever, daemon=True); threading_t.start()
+            try:
+                base = "http://127.0.0.1:%d/api/stage/thumb/" % srv.server_address[1]
+                self.assertEqual(urllib.request.urlopen(base + page["items"][0]["thumb"]).read(), b"JPG")
+                urllib.request.urlopen(base + page["items"][0]["thumb"]).read()
+                self.assertEqual(ft.call_count, 1)               # cached
+                for bad in (page["items"][0]["play"], "nope"):   # a non-poster token, an unknown one
+                    with self.assertRaises(urllib.error.HTTPError):
+                        urllib.request.urlopen(base + bad)
+            finally:
+                srv.shutdown(); srv.server_close()
+
+    def test_video_search_does_not_hold_the_turn(self):
+        gate, done = self.s.threading.Event(), self.s.threading.Event()
+
+        def slow(q):
+            gate.wait(5)
+            return [{"id": "abcdefghijk", "title": "t", "channel": "c", "duration": "1:00"}]
+        pub = mock.Mock(side_effect=lambda **kw: done.set())
+        with mock.patch.object(self.s.stages, "video_search", slow), mock.patch.object(self.s.BUS, "pub", pub):
+            evs, _, _ = self.ask({"prompt": "find me cat videos"}, tool=False, deltas=('ok. <<stage>>{"v":1,"kind":"video","query":"cats"}',))
+            self.assertIn("result", [e["t"] for e in evs])          # the turn ended while the search was still blocked
+            self.assertFalse(pub.called)
+            gate.set()
+            self.assertTrue(done.wait(5))
+        self.assertEqual(pub.call_args[1]["t"], "stage")
+        self.assertEqual(pub.call_args[1]["kind"], "video")
+
+    def test_video_result_dropped_if_the_stage_changed(self):
+        before = self.s.STAGES.current()
+        self.s.STAGES.put(self.stages.validate({"v": 1, "kind": "facts", "title": "t", "points": ["p"]}))
+        with mock.patch.object(self.s.stages, "video_search", return_value=[]), mock.patch.object(self.s.BUS, "pub") as pub:
+            self.s.video_stage({"v": 1, "kind": "video", "query": "q"}, before)
+        self.assertFalse(pub.called)
+
+    def test_copy_needs_text_and_search_token_cannot_play(self):
+        page = self.video_page()
+        with mock.patch.object(self.s.subprocess, "run") as run, mock.patch.object(self.s.subprocess, "Popen") as po:
+            self.assertFalse(self.s.stage_act(page["search"], "copy")["ok"])
+            self.assertFalse(self.s.stage_act(page["search"], "play")["ok"])
+        self.assertFalse(run.called or po.called)
+
     def test_close_and_back(self):
         self.s.STAGES.put(self.stages.validate({"v": 1, "kind": "facts", "title": "t", "points": ["p"]}))
         self.assertTrue(self.s.stage_act("", "back")["ok"])
@@ -177,6 +255,18 @@ class StageActionsTest(unittest.TestCase):
         evs, prompts, _ = self.ask({"prompt": "close"})
         self.assertEqual(prompts, [])
         self.assertIsNone(self.s.STAGES.current())
+
+    def test_fast_path_reaches_map_and_cinema_tokens(self):           # Codex review: voice used .token, which these sets lack
+        page = self.s.STAGES.put(self.stages.validate({"v": 1, "kind": "place", "dest": "Oslo S"})); self.s.STAGES.set_visible(True)
+        with mock.patch.object(self.s.subprocess, "Popen") as po:
+            evs, prompts, _ = self.ask({"prompt": "open it"})
+        self.assertEqual((prompts, evs[0]["text"], po.call_args[0][0][0]), ([], "Opening it.", "xdg-open"))
+        self.video_page(); self.s.STAGES.set_visible(True)
+        with mock.patch.object(self.s.subprocess, "Popen") as po, mock.patch.object(self.s.shutil, "which", return_value="/bin/mpv"):
+            evs, prompts, _ = self.ask({"prompt": "play the first one"})
+        self.assertEqual((prompts, evs[0]["text"], po.call_args[0][0]), ([], "Playing it.", ["mpv", "https://www.youtube.com/watch?v=abcdefghijk"]))
+        evs, prompts, _ = self.ask({"prompt": "run the first one"})     # no KeyError: Run is only for commands, so it is an ordinary turn
+        self.assertEqual((len(prompts), prompts[0][1]), (1, None))
 
     # ---- review fixes
     def test_acts_shown_and_hidden_drive_visibility(self):

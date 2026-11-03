@@ -7,8 +7,11 @@ caption). The page only ever sees tokens; the server alone builds URLs and looks
 import json
 import re
 import secrets
+import subprocess
 import threading
 import time
+import urllib.error
+import urllib.request
 from urllib.parse import quote_plus
 
 MARK = "<<stage"
@@ -101,14 +104,68 @@ def validate(obj):
         if src is not None:
             out["source"] = _str(src, 120)
         return out
+    if kind == "place":
+        dest, mode = _str(obj.get("dest"), 160), obj.get("mode")
+        if dest is None or (mode is not None and mode not in MODES):
+            return None
+        return {"v": 1, "kind": "place", "dest": dest, **({"mode": mode} if mode else {})}
+    if kind == "video":  # server-made: the agent says only what to look for; results are added by video_stage()
+        q = _str(obj.get("query"), 120)
+        return None if q is None else {"v": 1, "kind": "video", "query": q}
     return None
+
+
+_VID = re.compile(r"[A-Za-z0-9_-]{11}")
+
+
+def search_url(query):
+    return "https://www.youtube.com/results?search_query=" + quote_plus(query)
+
+
+def video_search(query, run=subprocess.run):
+    """-> up to 3 {id,title,channel,duration} from yt-dlp, or [] on any failure. argv list, one query argument, 8 s."""
+    try:
+        r = run(["yt-dlp", "--ignore-config", "--flat-playlist", "-J", "ytsearch3:" + query], capture_output=True, timeout=8, check=False)
+        entries = json.loads(r.stdout.decode("utf-8", "replace")).get("entries") or []
+    except (OSError, subprocess.SubprocessError, ValueError, AttributeError):
+        return []
+    out = []
+    for e in entries[:3]:
+        if not isinstance(e, dict) or not isinstance(e.get("id"), str) or not _VID.fullmatch(e["id"]):
+            continue
+        d = e.get("duration")
+        d = int(d) if isinstance(d, (int, float)) and not isinstance(d, bool) and d >= 0 else None
+        title = _CTRL.sub(" ", str(e.get("title") or "Untitled"))[:120].strip()
+        chan = _CTRL.sub(" ", str(e.get("channel") or e.get("uploader") or ""))[:80].strip()
+        out.append({"id": e["id"], "title": title or "Untitled", "channel": chan,
+                    "duration": "" if d is None else "%d:%02d" % divmod(d, 60) if d < 3600 else "%d:%02d:%02d" % (d // 3600, d % 3600 // 60, d % 60)})
+    return out
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+
+
+def fetch_thumb(vid, limit=200_000, timeout=5):
+    """-> (bytes, content-type) of a video's poster from i.ytimg.com only (no redirects, <= limit), else None."""
+    if not _VID.fullmatch(vid or ""):
+        return None
+    url = "https://i.ytimg.com/vi/%s/mqdefault.jpg" % vid
+    try:
+        with urllib.request.build_opener(_NoRedirect).open(urllib.request.Request(url, headers={"User-Agent": "nixi"}), timeout=timeout) as r:
+            ct = r.headers.get("Content-Type", "")
+            data = r.read(limit + 1)
+    except (OSError, urllib.error.URLError, ValueError):
+        return None
+    return (data, ct) if len(data) <= limit and ct in ("image/jpeg", "image/webp", "image/png") else None
 
 
 class Store:
     """The current stage and the one before it; tokens are only valid for the current one."""
 
-    def __init__(self, ttl=600, now=time.monotonic):
-        self.ttl, self.now, self.lock = ttl, now, threading.Lock()
+    def __init__(self, ttl=600, now=time.monotonic, on_new=None):
+        self.ttl, self.now, self.lock, self.on_new = ttl, now, threading.Lock(), on_new
         self.cur = self.prev = None  # (page_stage, {token: (kind, item)}, born)
         self.vis = False             # the page really drew the current stage (it may decline: fullscreen, dictation...)
 
@@ -124,12 +181,27 @@ class Store:
                 t = secrets.token_urlsafe(12)
                 toks[t] = ("command", it)
                 page["items"].append({**it, "token": t})
+        elif stage["kind"] == "video":  # play + poster tokens per result, and one to search in the browser
+            page["items"] = []
+            for it in stage.get("items", []):
+                pt, tt = secrets.token_urlsafe(12), secrets.token_urlsafe(12)
+                toks[pt] = ("video", {"url": "https://www.youtube.com/watch?v=" + it["id"]})
+                toks[tt] = ("thumb", {"id": it["id"]})
+                page["items"].append({"title": it["title"], "channel": it["channel"], "duration": it["duration"], "play": pt, "thumb": tt})
+            page["search"] = secrets.token_urlsafe(12)
+            toks[page["search"]] = ("link", {"url": search_url(stage["query"])})
+        elif stage["kind"] == "place":  # the page gets two tokens, never the URL
+            page["open"], page["copy"] = secrets.token_urlsafe(12), secrets.token_urlsafe(12)
+            toks[page["open"]] = ("place", {"url": maps_url(stage["dest"], stage.get("mode"))})
+            toks[page["copy"]] = ("place", {"text": stage["dest"]})
         else:  # facts: one token, Copy takes the whole text
             t = secrets.token_urlsafe(12)
             toks[t] = ("facts", {"text": "\n".join([stage["title"], *stage["points"]])})
             page["token"] = t
         with self.lock:
             self.prev, self.cur, self.vis = self.cur, (page, toks, self.now()), False
+        if self.on_new:
+            self.on_new()
         return page
 
     def get(self, token):
