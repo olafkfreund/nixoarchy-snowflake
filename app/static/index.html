@@ -180,6 +180,17 @@ body.bar #mailPop,body.hover #mailPop,body.calm #mailPop{display:none}
 #stg.on{opacity:1;transform:none;pointer-events:auto;transition-duration:.22s}
 #stg.board{background:repeating-linear-gradient(115deg,#ffffff06 0 2px,transparent 2px 7px),linear-gradient(160deg,#25352f,#1b2623);border:6px solid #6b4a2b}
 #stg.notebook{--sbg:#f6f0e0;--sfg:#2a2620;--sdim:#7a705e;--sline:#2a262026;background:repeating-linear-gradient(180deg,transparent 0 27px,#4d6fb71f 27px 28px),#f6f0e0;border-left:14px solid var(--acc)}
+#stg.map{--sbg:#efe1bb;--sfg:#3b2a14;--sdim:#7a6440;--sline:#3b2a1430;background:radial-gradient(ellipse at 30% 20%,#f7ecca,transparent 60%),radial-gradient(ellipse at 85% 90%,#d9c28c88,transparent 55%),#efe1bb;border:3px double #8a6a3a}
+#stg.map h2,#stg.map .lb{font-family:MapInk,Georgia,serif;font-weight:400}
+#stg .sk{display:block;width:100%;height:auto}
+#stg .sk text{font:italic 14px MapInk,Georgia,serif;fill:var(--sfg)}
+#stg .sk .trail{fill:none;stroke:var(--acc);stroke-width:3;stroke-linecap:round;stroke-dasharray:.025 .02}
+#stg .sk .tm{fill:none;stroke:#fff;stroke-width:8;stroke-dasharray:1;stroke-dashoffset:0}
+#stg.go .sk .tm{animation:stgTrail .65s ease-out both}
+@keyframes stgTrail{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+#stg .sk .rose{fill:none;stroke:var(--sfg);stroke-width:1.4}
+#stg .dst{font-size:19px;margin-top:4px;overflow-wrap:anywhere}
+#stg .md{font:italic 13px MapInk,Georgia,serif;color:var(--sdim)}
 body.appr #stg{opacity:.35;pointer-events:none}
 #stg header{display:flex;align-items:center;gap:8px;padding:8px 10px 2px}
 #stg h2{flex:1;margin:0;font:600 25px/1.1 Chalk,"Segoe Print",cursive;letter-spacing:.01em;position:relative;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -218,12 +229,14 @@ body.appr #stg{opacity:.35;pointer-events:none}
 #chalk{position:absolute;left:222px;top:190px;width:26px;height:7px;border-radius:3px;background:linear-gradient(90deg,#fff,#e8e4d8);box-shadow:0 0 0 1px #0003;transform:rotate(-24deg);opacity:0;pointer-events:none;z-index:5;transition:opacity .18s}
 #chalk.l{left:92px;transform:rotate(204deg)}
 #chalk.on{opacity:1}
+#hat{position:absolute;left:138px;top:34px;width:64px;height:40px;opacity:0;pointer-events:none;z-index:5;transition:opacity .18s}
+#hat.on{opacity:1}
 #chalk.pt{animation:stgChalk .3s ease-out}
 @keyframes stgChalk{50%{translate:10px -4px}}
 #chalk.l.pt{animation-name:stgChalkL}
 @keyframes stgChalkL{50%{translate:-10px -4px}}
-body.bar #stg,body.hover #stg,body.calm #stg,body.bar #stgTab,body.hover #stgTab,body.bar #chalk,body.hover #chalk{display:none}
-@media (prefers-reduced-motion:reduce){#stg,#stg.l,#stg.on,#stgTab,#stgTab.l,#stgTab.on{transform:none;transition:opacity .18s}#stg.go .ul path{animation:none}#stg .it.pt .n{animation:none}#chalk{display:none}}
+body.bar #stg,body.hover #stg,body.calm #stg,body.bar #stgTab,body.hover #stgTab,body.bar #chalk,body.hover #chalk,body.bar #hat,body.hover #hat,body.calm #hat{display:none}
+@media (prefers-reduced-motion:reduce){#stg,#stg.l,#stg.on,#stgTab,#stgTab.l,#stgTab.on{transform:none;transition:opacity .18s}#stg.go .ul path,#stg.go .sk .tm{animation:none}#stg .it.pt .n{animation:none}#chalk{display:none}}
 #cap.note{pointer-events:auto;cursor:pointer}   /* a notification row is up: click opens it */
 #wk{position:absolute;left:12px;right:12px;top:404px;text-align:center;font:11px var(--mono);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}   /* nixi mode: what the agent is doing */
 #you{font-size:12px;color:var(--dim);text-shadow:0 1px 2px #000,0 0 5px #0009;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
@@ -616,7 +629,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 <div id="code"><div class="tb"><b></b><span></span></div><div class="lines"></div><i class="rootb" title="Root mode: Claude can run anything, incl. sudo">ROOT</i></div>
 <div id="chip"></div>
 <section id="stg" role="dialog" aria-labelledby="stgT" aria-hidden="true" inert><header><button class="hb" id="stgBack" aria-label="Previous answer" hidden>←</button><h2 id="stgT"></h2><button class="hb" id="stgX" aria-label="Close">✕</button></header><svg class="ul" viewBox="0 0 160 8" aria-hidden="true"><path pathLength="1" d="M2 5 C 40 1, 90 8, 158 3"/></svg><div class="bd" id="stgBd"></div><footer><div class="fn" id="stgFn"></div><div class="acts" id="stgActs"></div></footer></section>
-<button id="stgTab" aria-label="Show the answer again" inert></button><div id="chalk" aria-hidden="true"></div>
+<button id="stgTab" aria-label="Show the answer again" inert></button><div id="chalk" aria-hidden="true"></div><svg id="hat" viewBox="0 0 64 40" aria-hidden="true"><ellipse cx="32" cy="32" rx="30" ry="7" fill="#b98b4e" stroke="#6b4a2b" stroke-width="2"/><path d="M14 31C14 12 22 5 32 5S50 12 50 31Z" fill="#c99a5b" stroke="#6b4a2b" stroke-width="2"/><path d="M15 26Q32 31 49 26L50 31Q32 36 14 31Z" fill="#7a3b2a"/></svg>
 <div id="mailPop" aria-hidden="true"><div class="env"><div class="bk"></div><div class="lt"><b></b><span></span></div><div class="fr"></div><div class="fl"></div></div></div>
 <div id="cap" class="off"><div id="you"></div><div id="him"></div></div>
 <div id="wk"></div>
@@ -1919,7 +1932,7 @@ function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.c
   at(4300,()=>el.classList.remove('up')); at(4650,()=>el.classList.remove('open'));
   at(5000,()=>{ el.classList.remove('on'); sendRegion(true); }); at(5400,()=>{ popWant=[0,0]; sizeWindow(); }); }
 /* ================= answer stages (#144): the page only draws what the server sends, every field via textContent; Run, Copy and the rest go back as a token ================= */
-const stgEl=$('#stg'), stgTab=$('#stgTab'), chalkEl=$('#chalk'), REDUCED=matchMedia('(prefers-reduced-motion: reduce)');
+const stgEl=$('#stg'), stgTab=$('#stgTab'), chalkEl=$('#chalk'), hatEl=$('#hat'), REDUCED=matchMedia('(prefers-reduced-motion: reduce)');
 let stgPosted=false, stg=null, stgState='closed', stgSide='r', stgUse=0, stgQuiet=0, stgTimer=null, stgOffT=null, stgRunTok=null, stgTm=[];
 const hx=(tag,cls,txt)=>{ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; };
 const stgOpen=()=>stgState==='open';
@@ -1933,10 +1946,11 @@ function stagePlace(){ if(stgState==='closed') return;
 function stageBtn(label,fn,dis){ const b=hx('button','sb',label); b.type='button'; b.disabled=!!dis; b.addEventListener('click',e=>{ e.stopPropagation(); stgUse=performance.now(); fn(b); }); return b; }
 function stageBuild(ev){
   const bd=$('#stgBd'), acts=$('#stgActs'), fn=$('#stgFn'); bd.textContent=''; acts.textContent=''; fn.textContent='';
-  const board=ev.kind==='commands', tr=ev.trust, guide=tr==='guide';
-  $('#stgT').textContent=String(ev.title||(board?'On the board':''));
-  stgEl.className=(board?'board':'notebook')+(stgEl.classList.contains('l')?' l':'');
-  if(board){
+  const board=ev.kind==='commands', map=ev.kind==='place', tr=ev.trust, guide=tr==='guide';
+  $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':''));
+  stgEl.className=(board?'board':map?'map':'notebook')+(stgEl.classList.contains('l')?' l':'');
+  if(map) stageMap(ev,bd,acts,fn);
+  else if(board){
     (ev.items||[]).forEach((it,i)=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab');
       row.dataset.token=it.token; row.appendChild(hx('div','n',String(i+1)));
       tx.appendChild(hx('div','lb',it.label)); tx.appendChild(hx('code',null,it.cmd)); tx.appendChild(hx('div','st'));
@@ -1951,7 +1965,21 @@ function stageBuild(ev){
   }
   $('#stgBack').hidden=!ev.has_prev;
 }
-function stageText(ev){ const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
+function stageMap(ev,bd,acts,fn){
+  const N='http://www.w3.org/2000/svg', sv=(t,a,p)=>{ const e=document.createElementNS(N,t); for(const k in a) e.setAttribute(k,a[k]); if(p) p.appendChild(e); return e; };
+  const g=sv('svg',{class:'sk',viewBox:'0 0 360 120','aria-hidden':'true'}), mk=sv('mask',{id:'stgTm'},sv('defs',{},g));
+  const d='M52 88C110 20 190 120 306 40';
+  sv('path',{class:'tm',d,pathLength:1},mk); sv('path',{class:'trail',d,pathLength:1,mask:'url(#stgTm)'},g);
+  sv('circle',{cx:44,cy:92,r:5,fill:'var(--sfg)'},g); sv('text',{x:30,y:112},g).textContent='You';
+  sv('path',{d:'M298 32l16 16M314 32l-16 16',stroke:'#b3261e','stroke-width':4,'stroke-linecap':'round'},g);
+  const rose=sv('g',{transform:'translate(330 26)'},g); sv('circle',{r:13,class:'rose'},rose); sv('path',{d:'M0-12L3 0 0 12-3 0Z',fill:'var(--acc)'},rose); sv('path',{d:'M-12 0L0-3 12 0 0 3Z',class:'rose'},rose); sv('text',{x:-4,y:-16,style:'font-size:10px'},rose).textContent='N';
+  bd.appendChild(g);
+  const row=hx('div','tx'); row.appendChild(hx('div','lb dst',ev.dest)); if(ev.mode) row.appendChild(hx('div','md',ev.mode)); bd.appendChild(row);
+  fn.textContent='A sketch, not the route: Google Maps picks the way and the start';
+  acts.appendChild(stageBtn('Open in Google Maps',b=>post('/api/stage/act',{token:ev.open,act:'open'}).then(r=>r.json()).then(j=>{ if(!j.ok) fn.textContent=j.error||"Couldn't open it"; }).catch(()=>{})));
+  acts.appendChild(stageBtn('Copy address',b=>stageAct('copy',ev.copy,b)));
+}
+function stageText(ev){ if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+ev.dest; const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
   stgPosted=false;
@@ -1959,16 +1987,16 @@ function stageShow(ev){
   stgTm.forEach(clearTimeout); stgTm=[]; clearTimeout(stgOffT);
   stg=ev; stageBuild(ev); stgState='open'; stgRunTok=null; stgUse=stgQuiet=performance.now();
   stgTab.classList.remove('on'); stgTab.inert=true; stgEl.inert=false; stgEl.setAttribute('aria-hidden','false');
-  stgSize(800); stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt');
+  stgSize(800); stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on');
   const at=(ms,f)=>stgTm.push(setTimeout(f,ms));
-  at(90,()=>{ if(!stgOpen()) return; stagePlace(); void stgEl.offsetWidth; stgEl.classList.add('on'); if(!REDUCED.matches) stgEl.classList.add('go'); sendRegion(true); stagePost(true);
+  at(90,()=>{ if(!stgOpen()) return; stagePlace(); void stgEl.offsetWidth; stgEl.classList.add('on'); if(!REDUCED.matches) stgEl.classList.add('go'); sendRegion(true); stagePost(true); hatEl.classList.toggle('on',ev.kind==='place');
     if(ev.kind==='commands'&&!REDUCED.matches){ chalkEl.classList.add('on'); at(250,()=>{ chalkEl.classList.add('pt'); const r=stgEl.querySelector('.it'); if(r) r.classList.add('pt'); }); } });
   at(500,()=>sendRegion(true));
   clearInterval(stgTimer); stgTimer=setInterval(stageTick,1000);
 }
 function stageHide(toTab){
   stgTm.forEach(clearTimeout); stgTm=[]; clearInterval(stgTimer); stgTimer=null;
-  stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); stgEl.setAttribute('aria-hidden','true'); stgEl.inert=true; stgTab.inert=!toTab;
+  stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on'); stgEl.setAttribute('aria-hidden','true'); stgEl.inert=true; stgTab.inert=!toTab;
   if(!toTab) stgPosted=false;
   if(toTab){ stagePost(false); stgState='tab'; stgTab.textContent=$('#stgT').textContent; stagePlace(); stgSize(300); void stgTab.offsetWidth; stgTab.classList.add('on'); }
   else { stgState='closed'; stgTab.classList.remove('on'); stgOffT=setTimeout(()=>{ if(stgState==='closed') stgSize(0); sendRegion(true); },200); }
@@ -1980,7 +2008,7 @@ function stageRestore(){ if(stgState!=='tab'||!stg) return; stgState='open'; stg
 function stageTick(){ const now=performance.now(), hov=stgEl.matches(':hover');
   if(hov) stgUse=now;
   if(playing||busy||hov||pendingAppr) stgQuiet=now;
-  if(stg&&stg.kind==='facts'&&now-stgQuiet>20000) return stageClose();
+  if(stg&&(stg.kind==='facts'||stg.kind==='place')&&now-stgQuiet>20000) return stageClose();
   if(stg&&stg.kind==='commands'&&now-stgUse>30000&&!busy) stageHide(true); }
 function stageAct(act,token,btn){ post('/api/stage/act',{token,act}).then(r=>r.json()).then(j=>{ if(btn&&act==='copy'){ const t=btn.textContent; btn.textContent=j.ok?'Copied ✓':"Couldn't copy"; setTimeout(()=>{ btn.textContent=t; },1400); } }).catch(()=>{}); }
 function stageRun(it){ stgRunTok=it.token; send(it.label,{stage:it.token,claude:true}); }

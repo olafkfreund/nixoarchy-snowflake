@@ -1,3 +1,4 @@
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -157,6 +158,19 @@ class MapsTest(unittest.TestCase):
         u = S.maps_url("Tate Modern")
         self.assertEqual(u, "https://www.google.com/maps/search/?api=1&query=Tate+Modern")
         self.assertNotIn("origin", u)
+
+    def test_place_stage(self):
+        self.assertEqual(S.validate({"v": 1, "kind": "place", "dest": " Oslo ", "mode": "walking"}), {"v": 1, "kind": "place", "dest": "Oslo", "mode": "walking"})
+        self.assertNotIn("mode", S.validate({"v": 1, "kind": "place", "dest": "Oslo"}))
+        for bad in ({"dest": "x" * 161}, {"dest": "a\nb"}, {"dest": ""}, {"dest": "x", "mode": "flying"}, {}):
+            self.assertIsNone(S.validate({"v": 1, "kind": "place", **bad}))
+
+    def test_place_tokens_hide_the_url(self):
+        st = S.Store()
+        page = st.put(S.validate({"v": 1, "kind": "place", "dest": "Tate Modern"}))
+        self.assertNotIn("http", json.dumps(page))
+        self.assertEqual(st.get(page["open"])[1]["url"], "https://www.google.com/maps/search/?api=1&query=Tate+Modern")
+        self.assertEqual(st.get(page["copy"])[1]["text"], "Tate Modern")
 
     def test_bad(self):
         for a in (("x", "flying"), ("", "driving"), ("a\nb", "driving")):

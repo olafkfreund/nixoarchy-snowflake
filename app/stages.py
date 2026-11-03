@@ -101,6 +101,11 @@ def validate(obj):
         if src is not None:
             out["source"] = _str(src, 120)
         return out
+    if kind == "place":
+        dest, mode = _str(obj.get("dest"), 160), obj.get("mode")
+        if dest is None or (mode is not None and mode not in MODES):
+            return None
+        return {"v": 1, "kind": "place", "dest": dest, **({"mode": mode} if mode else {})}
     return None
 
 
@@ -124,6 +129,10 @@ class Store:
                 t = secrets.token_urlsafe(12)
                 toks[t] = ("command", it)
                 page["items"].append({**it, "token": t})
+        elif stage["kind"] == "place":  # the page gets two tokens, never the URL
+            page["open"], page["copy"] = secrets.token_urlsafe(12), secrets.token_urlsafe(12)
+            toks[page["open"]] = ("place", {"url": maps_url(stage["dest"], stage.get("mode"))})
+            toks[page["copy"]] = ("place", {"text": stage["dest"]})
         else:  # facts: one token, Copy takes the whole text
             t = secrets.token_urlsafe(12)
             toks[t] = ("facts", {"text": "\n".join([stage["title"], *stage["points"]])})

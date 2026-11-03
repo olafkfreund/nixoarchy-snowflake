@@ -3828,7 +3828,8 @@ def run_bridge(prompt, emit):
         note = note[:-3] + (" When the answer is commands to run, or 2-5 facts, do not speak them: say what they are in a sentence, then "
                             "end the reply with ONE last line, <<stage>> followed by JSON on that line: "
                             '{"v":1,"kind":"commands","title":"optional plaque, 1-4 words","items":[{"label":"what it does","cmd":"the command"}]} or '
-                            '{"v":1,"kind":"facts","title":"...","points":["..."],"source":"optional"}; '
+                            '{"v":1,"kind":"facts","title":"...","points":["..."],"source":"optional"} or, for directions or a place, '
+                            "{\"v\":1,\"kind\":\"place\",\"dest\":\"address or name\",\"mode\":\"driving|walking|bicycling|transit, omit for a plain place\"}; "
                             "at most 5 items, labels and points under 120 characters, commands under 500, no line breaks inside.)\n\n")
     BRIDGE.send({"type": "prompt", "text": note + prompt})
     mid = None
@@ -3924,6 +3925,12 @@ def stage_act(token, act):
             return {"ok": r.returncode == 0}
         except (OSError, subprocess.SubprocessError):
             return {"ok": False, "error": "couldn't copy"}
+    if act == "open" and got and got[1].get("url"):      # a map link: the URL was built by the server from the validated stage
+        try:
+            subprocess.Popen(["xdg-open", got[1]["url"]], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return {"ok": True}
+        except OSError:
+            return {"ok": False, "error": "couldn't open it"}
     if act in ("open", "play") and got:
         return {"ok": False, "error": "not yet"}
     return {"ok": False, "error": "gone" if act in ("copy", "open", "play") else "unknown"}

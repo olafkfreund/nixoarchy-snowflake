@@ -110,6 +110,15 @@ class StageActionsTest(unittest.TestCase):
         self.assertFalse(self.s.stage_act(self.tok, "run")["ok"])
         self.assertFalse(self.s.stage_act("nope", "open")["ok"])
 
+    def test_open_a_map_runs_xdg_open_with_the_server_url(self):
+        page = self.s.STAGES.put(self.stages.validate({"v": 1, "kind": "place", "dest": "Oslo S", "mode": "transit"}))
+        with mock.patch.object(self.s.subprocess, "Popen") as po:
+            self.assertTrue(self.s.stage_act(page["open"], "open")["ok"])
+            self.assertEqual(po.call_args[0][0], ["xdg-open", "https://www.google.com/maps/dir/?api=1&destination=Oslo+S&travelmode=transit"])
+            po.reset_mock()
+            self.assertFalse(self.s.stage_act(page["copy"], "open")["ok"])   # the copy token has no URL
+            self.assertFalse(po.called)
+
     def test_close_and_back(self):
         self.s.STAGES.put(self.stages.validate({"v": 1, "kind": "facts", "title": "t", "points": ["p"]}))
         self.assertTrue(self.s.stage_act("", "back")["ok"])
