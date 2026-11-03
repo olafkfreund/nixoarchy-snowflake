@@ -153,6 +153,7 @@ for (const [pn, ox] of Object.entries(POS)) for (const [fn, fx] of Object.entrie
   await show(FIX["day (empty)"], w => 0);
   check(await ev("const x=document.getElementById('stg').textContent; return x.includes('Nothing else timed today') && x.includes('Nothing')"), "day desk: empty day");
   check(await ev("const t=stageText(" + JSON.stringify(FIX["day (stale and off)"]) + "); return t.includes('GitHub: not set up') && t.includes('Next: 10:40 Stand-up') && t.includes('Release day')"), "day desk: text fallback");
+  check(await ev("const t=stageText({kind:'day',wd:'Wed',md:'4 Nov',next:{when:'now',title:'Stand-up',in:'now'},rows:[]}); return t.includes('Next: now Stand-up') && !t.includes('now)')"), "day desk: an event under way says now once");
   await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }); await sleep(200);
   await show(D, w => 0);
   check(await ev("return getComputedStyle(document.querySelector('#stg .pg')).animationName") === "none", "day desk: flip still under reduced motion");

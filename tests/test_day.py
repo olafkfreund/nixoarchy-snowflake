@@ -6,6 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "app"))
@@ -98,7 +99,7 @@ class DayTest(unittest.TestCase):
         s = snap()
         self.assertEqual((s["next"]["when"], s["next"]["title"], s["next"]["in"]), ("09:40", "Team stand-up", "in 40 min"))
         self.assertEqual(s["next"]["link"], "https://meet.google.com/abc-defg-hij")
-        self.assertEqual(s["next"]["url"], stages.CAL_URL)                        # (a google.com/calendar link is not on the list)
+        self.assertEqual(s["next"]["url"], "https://www.google.com/calendar/event?eid=e1")   # (Google's own event link)
 
     def test_today_has_all_day_events_and_no_finished_ones(self):
         s = snap()
@@ -147,15 +148,15 @@ class DayTest(unittest.TestCase):
         n = len(r.calls)
         snap(r)
         self.assertEqual(len(r.calls), n)
-        for k, (t, items, hm) in list(day._cache.items()):
-            day._cache[k] = (t - 301, items, hm)
+        for k, (t, *rest) in list(day._cache.items()):
+            day._cache[k] = (t - 301, *rest)
         snap(r)
         self.assertGreater(len(r.calls), n)
 
     def test_failure_after_success_keeps_the_old_data_as_stale(self):
         snap()
-        for k, (t, items, hm) in list(day._cache.items()):
-            day._cache[k] = (t - 301, items, "09:00")
+        for k, (t, items, hm, st) in list(day._cache.items()):
+            day._cache[k] = (t - 301, items, "09:00", st)
         s = snap(Runner(fail=("cal", "gh")), now=NOW.replace(minute=30))
         self.assertEqual((s["status"]["cal"], s["status"]["gh"], s["status"]["tasks"]), ("stale@09:00", "stale@09:00", "ok"))
         self.assertEqual(s["next"]["title"], "Team stand-up")
@@ -251,6 +252,130 @@ class DayTest(unittest.TestCase):
         self.assertIsNone(stages.fast_path("open it", page))
         self.assertIsNone(stages.fast_path("open the second one", page))
         self.assertEqual(stages.fast_path("close", page), ("close", None))
+
+    # ---- review fixes
+    def cal_run(self, events, **kw):
+        """A Runner whose calendar answers with the given events."""
+        r = Runner(**kw)
+        base = r.__call__
+
+        def run(argv, **k):
+            if argv[0] == "gog" and argv[3] == "calendar":
+                r.calls.append((argv, k))
+                return SimpleNamespace(returncode=0, stdout=json.dumps({"events": events}).encode(), stderr=b"")
+            return base(argv, **k)
+        run.calls, run.of = r.calls, r.of
+        return run
+
+    def test_whats_next_needs_only_a_warm_calendar(self):
+        snap(Runner())
+        for k in [k for k in day._cache if k[0] != "cal"]:
+            del day._cache[k]
+        r = Runner()
+        s = snap(r, cache_only=True)
+        self.assertEqual(day.whats_next(s), "Team stand-up in 40 minutes.")
+        self.assertEqual(r.calls, [])
+
+    def test_a_signed_out_gh_does_not_cool_the_calendar(self):
+        snap(Runner(gh_signed_in=False))
+        s = snap(Runner(), cache_only=True)
+        self.assertEqual(day.whats_next(s), "Team stand-up in 40 minutes.")
+
+    def test_calendar_off_is_cached_and_reachable(self):
+        snap(ids=())
+        s = snap(Runner(), ids=(), cache_only=True)
+        self.assertEqual(day.whats_next(s), "Your calendar isn't set up.")
+
+    def test_failures_are_cached_too(self):
+        r = Runner(fail=("tasks",))
+        snap(r)
+        n = len(r.calls)
+        s = snap(r)
+        self.assertEqual(len(r.calls), n)
+        self.assertEqual(s["status"]["tasks"][:5], "stale")
+
+    def test_calendar_config_is_part_of_the_cache_key(self):
+        snap(Runner(), ids=("a@x", "b@x"))
+        r = Runner()
+        snap(r, ids=("b@x", "a@x"))
+        self.assertEqual(r.of("gog", "calendar"), [])                              # (same calendars, any order: cached)
+        snap(r, ids=("a@x",))
+        self.assertEqual(len(r.of("gog", "calendar")), 1)
+        self.assertIsNone(snap(Runner(), ids=("c@x",), cache_only=True))
+        self.assertIsNone(snap(Runner(), ids=(), cache_only=True))                 # (calendar turned off: no old events)
+        self.assertEqual(day.whats_next(snap(Runner(), ids=())), "Your calendar isn't set up.")
+
+    def test_birthdays_are_never_shown_or_summarised(self):
+        ev = [{"id": "b", "summary": "Anna's Birthday", "start": {"date": D.isoformat()}, "end": {"date": (D + datetime.timedelta(days=1)).isoformat()}},
+              {"id": "c", "summary": "Bursdag for Ola", "start": {"dateTime": D.isoformat() + "T11:00:00" + NOW.strftime("%z")}},
+              {"id": "d", "summary": "Standup", "start": {"dateTime": D.isoformat() + "T12:00:00" + NOW.strftime("%z")}}]
+        s = snap(self.cal_run(ev))
+        self.assertEqual([x["title"] for x in s["today"]] + [s["next"]["title"]], ["Standup"][:0] + ["Standup"])
+        self.assertNotIn("irthday", json.dumps(s, default=str) + day.summary(s))
+        self.assertNotIn("Bursdag", json.dumps(s, default=str))
+
+    def test_timed_day_is_the_local_day(self):
+        local_late = datetime.datetime.combine(D, datetime.time(23, 30)).astimezone()
+        z = local_late.astimezone(datetime.timezone.utc)
+        ev = [{"id": "x", "summary": "Late", "start": {"dateTime": z.strftime("%Y-%m-%dT%H:%M:%SZ")}}]
+        with mock.patch.object(day, "_loc", lambda v: datetime.datetime.fromisoformat(v.replace("Z", "+00:00")).astimezone()):
+            items = day._cal(["a"], *day.window(NOW), day.time.monotonic() + 8, self.cal_run(ev))
+        self.assertEqual(items[0]["day"], D.isoformat())                           # (not the UTC string's date, when they differ)
+        z2 = datetime.datetime(2026, 1, 1, 23, 30, tzinfo=datetime.timezone.utc)
+        fixed = datetime.timezone(datetime.timedelta(hours=2))
+        with mock.patch.object(day, "_loc", lambda v: z2.astimezone(fixed)):
+            items = day._cal(["a"], *day.window(NOW), day.time.monotonic() + 8, self.cal_run([{"id": "y", "summary": "L", "start": {"dateTime": "2026-01-01T23:30:00Z"}}]))
+        self.assertEqual(items[0]["day"], "2026-01-02")
+
+    def test_all_day_events_keep_their_date(self):
+        ev = [{"id": "a", "summary": "Trip", "start": {"date": D.isoformat()}, "end": {"date": (D + datetime.timedelta(days=2)).isoformat()}}]
+        (it,) = day._cal(["a"], *day.window(NOW), day.time.monotonic() + 8, self.cal_run(ev))
+        self.assertEqual((it["day"], it["end_day"]), (D.isoformat(), (D + datetime.timedelta(days=2)).isoformat()))
+
+    def test_gh_auth_exit_is_off_but_timeout_is_a_failure(self):
+        self.assertEqual(snap(Runner(gh_signed_in=False))["status"]["gh"], "off")
+        day._cache.clear()
+        snap()
+        for k, (t, *rest) in list(day._cache.items()):
+            day._cache[k] = (t - 301, *rest)
+        base = Runner()
+
+        def run(argv, **kw):
+            if argv[:3] == ["gh", "auth", "status"]:
+                raise subprocess.TimeoutExpired(argv, 8)
+            return base(argv, **kw)
+        s = snap(run)
+        self.assertEqual(s["status"]["gh"][:5], "stale")
+        self.assertEqual(len(s["github"]), 3)                                      # (today's last good data stays)
+        day._cache.clear()
+
+        def oserr(argv, **kw):
+            if argv[0] == "gh":
+                raise PermissionError(argv[0])
+            return base(argv, **kw)
+        self.assertEqual(snap(oserr)["status"]["gh"][:5], "stale")
+
+    def test_spoken_hours_are_words(self):
+        nx = lambda t: day.whats_next({"status": {"cal": "ok"}, "next": {"title": "Call", "in": t}})
+        self.assertEqual(nx(day._in(60 * 60)), "Call in 1 hour.")
+        self.assertEqual(nx(day._in(125 * 60)), "Call in 2 hours 5 minutes.")
+        self.assertEqual(nx(day._in(61 * 60)), "Call in 1 hour 1 minute.")
+        self.assertEqual(nx(day._in(30)), "Call in 1 minute.")
+        self.assertEqual(nx(day._in(40 * 60)), "Call in 40 minutes.")
+
+    def test_under_way_says_now_once(self):
+        s = snap(now=NOW.replace(minute=50))
+        self.assertNotIn("(now)", day.summary(s))
+        self.assertIn("Next: now Team stand-up.", day.summary(s))
+        self.assertEqual(day.whats_next(s), "Team stand-up is on now.")
+
+    def test_google_event_link_is_allowed_on_its_own_path_only(self):
+        ok = stages.item_url_ok
+        self.assertTrue(ok("https://www.google.com/calendar/event?eid=e1") and ok("https://www.google.com/calendar/u/0/r"))
+        for bad in ("https://www.google.com/search?q=x", "https://www.google.com/", "https://www.google.com/calendarx/e", "http://www.google.com/calendar/e",
+                    "https://u@www.google.com/calendar/e", "https://www.google.com/calendar/e\n", "https://google.com/calendar/e", "https://www.google.com.evil.example/calendar/e"):
+            self.assertFalse(ok(bad), bad)
+        self.assertEqual(snap()["next"]["url"], "https://www.google.com/calendar/event?eid=e1")
 
 
 if __name__ == "__main__":

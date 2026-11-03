@@ -400,6 +400,34 @@ class StageActionsTest(unittest.TestCase):
         self.assertIs(th.call_args[1]["target"], self.s.day_stage)
         th.return_value.start.assert_called_once()
 
+    def test_cold_whats_next_fetches_once_at_a_time(self):
+        self.assertTrue(self.s.day._busy.acquire(blocking=False))   # (a fetch is running)
+        try:
+            with mock.patch.object(self.s, "BRIDGED", True), mock.patch.object(self.s.threading, "Thread") as th, \
+                    mock.patch.object(self.s.day, "snapshot", return_value=None):
+                r = self.s.day_next()
+            self.assertEqual(r["say"], "Let me look at your day.")
+            th.assert_not_called()
+        finally:
+            self.s.day._busy.release()
+        with mock.patch.object(self.s, "BRIDGED", True), mock.patch.object(self.s.threading, "Thread") as th, \
+                mock.patch.object(self.s.day, "snapshot", return_value=None):
+            self.s.day_next()
+            th.return_value.start.assert_called_once()
+            self.assertFalse(self.s.day._busy.acquire(blocking=False))     # (held until the thread's day_stage lets go)
+        with mock.patch.object(self.s.day, "snapshot", return_value=self.snap()):
+            self.s.day_stage(None, self.s.STAGES.current(), True)
+        self.assertTrue(self.s.day._busy.acquire(blocking=False))
+        self.s.day._busy.release()
+
+    def test_day_snapshot_is_kept_only_when_it_is_shown(self):
+        before = self.s.STAGES.current()
+        self.s.DAY["snap"] = None
+        self.s.STAGES.put(self.stages.validate({"v": 1, "kind": "facts", "title": "t", "points": ["p"]}))
+        with mock.patch.object(self.s.day, "snapshot", return_value=self.snap()), mock.patch.object(self.s.BUS, "pub"):
+            self.s.day_stage(None, before)
+        self.assertIsNone(self.s.DAY["snap"])
+
     def test_whats_next_phrase_reaches_the_server_and_not_the_agent(self):
         import quick
         for t in ("what's next?", "Nixi, what's next", "whats next please"):

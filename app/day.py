@@ -6,6 +6,7 @@ never logs. Standard library only; nothing here uses a shell.
 """
 import datetime
 import json
+import re
 import subprocess
 import threading
 import time
@@ -16,7 +17,8 @@ import stages
 TTL = 300
 BUDGET = 8
 TASKS_URL = "https://calendar.google.com/calendar/u/0/r/tasks"
-_cache = {}                 # (source, 'YYYY-MM-DD') -> (monotonic, items, 'HH:MM')
+_cache = {}                 # (source, 'YYYY-MM-DD', config) -> (monotonic, items, 'HH:MM' of the last good fetch, status); ok, off and failed alike
+_busy = threading.Lock()    # held while a cold 'what's next?' fetch runs (see server.day_next)
 _lock = threading.Lock()
 
 
@@ -71,13 +73,16 @@ def _cal(ids, start, end, deadline, run):
     for e in (out.get("events") if isinstance(out, dict) else None) or []:
         try:
             s, f = e.get("start") or {}, e.get("end") or {}
+            if stages.BIRTHDAY.search(str(e.get("summary") or "")):
+                continue                                   # a birthday is never shown or summarised
             st = _loc(s["dateTime"]) if s.get("dateTime") else None
-            day = str(s.get("dateTime") or s.get("date") or "")[:10]
+            en = _loc(f["dateTime"]) if f.get("dateTime") else None
+            day = st.date().isoformat() if st else str(s.get("date") or "")[:10]      # (timed: the local date, not the string's)
             if not day:
                 continue
             url = e.get("htmlLink")
-            items.append({"allDay": st is None, "start": st, "end": _loc(f["dateTime"]) if f.get("dateTime") else None, "day": day,
-                          "end_day": str(f.get("date") or "")[:10] or None, "title": _txt(e.get("summary")) or "(busy)",
+            items.append({"allDay": st is None, "start": st, "end": en, "day": day,
+                          "end_day": en.date().isoformat() if en else str(f.get("date") or "")[:10] or None, "title": _txt(e.get("summary")) or "(busy)",
                           "link": stages.meeting_link(e), "url": url if stages.item_url_ok(url) else stages.CAL_URL})
         except (ValueError, AttributeError, TypeError, KeyError):
             continue                                       # one bad event never drops the day
@@ -97,10 +102,7 @@ def _tasks(due_max, deadline, run):
 
 
 def _github(deadline, run):
-    try:                                                     # (signed out is "off", not "failed")
-        _json_rc(["gh", "auth", "status"], deadline, run)
-    except _Fail:
-        raise _Off()
+    _json_rc(["gh", "auth", "status"], deadline, run)       # (signed out is "off"; a timeout is a failure)
     items = []
     for kind, flag, pr in (("prs", "--review-requested=@me", True), ("issues", "--assignee=@me", False)):
         for x in _json(["gh", "search", kind, flag, "--state=open", "--json", "repository,number,title,url", "-L", "8"], deadline, run) or []:
@@ -123,34 +125,41 @@ def _json_rc(argv, deadline, run):
     except (OSError, subprocess.SubprocessError):
         raise _Fail()
     if r.returncode != 0:
-        raise _Fail()
+        raise _Off()
 
 
-def _source(name, date, now, fetch, cache_only=False):
-    """-> (items, status): 'ok', 'off' or 'stale@HH:MM'. Fresh cache first; a failed fetch falls back to the same day's last good data."""
-    key, hm = (name, date), now.strftime("%H:%M")
+def _source(name, date, now, fetch, cache_only=False, conf=()):
+    """-> (items, status): 'ok', 'off' or 'stale@HH:MM'. Every outcome is cached for the TTL under the date and the config;
+    a failed fetch falls back to the same day's last good data."""
+    key, hm = (name, date, conf), now.strftime("%H:%M")
     with _lock:
         for k in [k for k in _cache if k[1] != date]:      # (yesterday's entries are dropped, not kept for a fallback)
             del _cache[k]
         e = _cache.get(key)
     if e and time.monotonic() - e[0] < TTL:
-        return e[1], "ok"
+        return e[1], e[3]
     if cache_only:
         return None, "none"
     try:
-        items = fetch(time.monotonic() + BUDGET)
+        items, st, hm = fetch(time.monotonic() + BUDGET), "ok", hm
     except _Off:
-        return [], "off"
+        items, st = [], "off"
     except _Fail:
-        return (e[1], "stale@" + e[2]) if e else ([], "stale@" + hm)
+        items, hm = (e[1], e[2]) if e and e[3] != "off" else ([], hm)
+        st = "stale@" + hm
     with _lock:
-        _cache[key] = (time.monotonic(), items, hm)
-    return items, "ok"
+        _cache[key] = (time.monotonic(), items, hm, st)
+    return items, st
 
 
 def _in(secs):
     m = max(1, -(-int(secs) // 60))
     return "in %d min" % m if m < 60 else "in %d h" % (m // 60) + (" %d min" % (m % 60) if m % 60 else "")
+
+
+def _say(t):
+    """'in 2 h 5 min' -> 'in 2 hours 5 minutes' (for speech)."""
+    return re.sub(r"(\d+) (h|min)\b", lambda m: "%s %s%s" % (m[1], "hour" if m[2] == "h" else "minute", "" if m[1] == "1" else "s"), t)
 
 
 def build(now, cal, tasks, gh, status):
@@ -175,15 +184,20 @@ def build(now, cal, tasks, gh, status):
 
 
 def snapshot(now, cal_ids, run=subprocess.run, cache_only=False):
-    """-> the day's snapshot, fetching the three sources at once (or, with cache_only, None unless all three are cached for today)."""
+    """-> the day's snapshot, fetching the three sources at once. With cache_only: None unless today's calendar is cached, and
+    then only the calendar is read (tasks and GitHub are left empty: the snapshot serves 'what's next?' alone)."""
     now = now.astimezone()
     date = now.date().isoformat()
     start, end = window(now)
+    conf = {"cal": tuple(sorted(cal_ids))}
     fetch = {"cal": lambda d: _cal(cal_ids, start, end, d, run), "tasks": lambda d: _tasks(end, d, run), "gh": lambda d: _github(d, run)}
+    if cache_only:
+        fetch = {"cal": fetch["cal"]}
     with ThreadPoolExecutor(3) as ex:
-        got = dict(zip(fetch, ex.map(lambda k: _source(k, date, now, fetch[k], cache_only), fetch)))
-    if cache_only and any(s == "none" for _, s in got.values()):
+        got = dict(zip(fetch, ex.map(lambda k: _source(k, date, now, fetch[k], cache_only, conf.get(k, ())), fetch)))
+    if cache_only and got["cal"][1] == "none":
         return None
+    got = {"tasks": ([], "off"), "gh": ([], "off"), **got}
     return build(now, got["cal"][0], got["tasks"][0], got["gh"][0], {k: v[1] for k, v in got.items()})
 
 
@@ -208,7 +222,7 @@ def whats_next(snap):
         return "Nothing else timed today." + stale
     if n["in"] == "now":
         return "%s is on now.%s" % (n["title"], stale)
-    return "%s %s.%s" % (n["title"], n["in"].replace(" min", " minutes", 1), stale)
+    return "%s %s.%s" % (n["title"], _say(n["in"]), stale)
 
 
 def summary(snap):
@@ -219,5 +233,5 @@ def summary(snap):
     top = lambda k, xs: "%d%s%s" % (c[k], why(k), " \u2014 " + "; ".join(_txt(x["title"], 60) for x in xs[:2]) if xs else "")
     n = snap["next"]
     return ("(today, from Nixi's desk, at %s) Next: %s. Today: %s. Tasks: %s. GitHub: %s."
-            % (snap["at"], "%s %s (%s)" % (n["when"], _txt(n["title"], 60), n["in"]) if n else "nothing timed",
+            % (snap["at"], "%s %s%s" % (n["when"], _txt(n["title"], 60), "" if n["in"] == n["when"] else " (%s)" % n["in"]) if n else "nothing timed",
                top("today", snap["today"]), top("tasks", snap["tasks"]) + (" (%d overdue)" % sum(1 for t in snap["tasks"] if t["overdue"]) if snap["tasks"] else ""), top("github", snap["github"])))

@@ -179,15 +179,17 @@ def _meeting_ok(u):
 
 
 _ITEM_HOSTS = ("github.com", "calendar.google.com", "meet.google.com")
+BIRTHDAY = re.compile(r"birthday|bursdag", re.I)         # a calendar item that is a birthday: never shown, never summarised
 
 
 def item_url_ok(u):
-    """A day-desk item URL: https, no user-info, and exactly github.com, calendar.google.com or meet.google.com."""
+    """A day-desk item URL: https, no user-info, and exactly github.com, calendar.google.com, meet.google.com, or www.google.com/calendar/."""
     if not isinstance(u, str) or len(u) > 300 or re.search(r"[\s\x00-\x1f\x7f-\x9f]", u):
         return False
     try:
         p = urllib.parse.urlsplit(u)
-        return p.scheme == "https" and not p.username and (p.hostname or "").lower() in _ITEM_HOSTS
+        host = (p.hostname or "").lower()
+        return p.scheme == "https" and not p.username and (host in _ITEM_HOSTS or (host == "www.google.com" and p.path.startswith("/calendar/")))   # (Google's own event link)
     except ValueError:
         return False
 

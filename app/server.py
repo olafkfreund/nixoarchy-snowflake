@@ -1421,7 +1421,7 @@ class Ambient:
                             if s_dt:
                                 ev.append((s_dt, title, str(e.get("id"))))
                             day = str(st or start.get("date") or "")[:10]            # a birthday today: only that fact is kept
-                            if day and re.search(r"birthday|bursdag", str(e.get("summary") or ""), re.I):
+                            if day and stages.BIRTHDAY.search(str(e.get("summary") or "")):
                                 bd.add(day)
                             elif day:                                                # (a birthday's title is never kept, so the desk never shows it)
                                 items.append({"start": s_dt, "end": loc(en) if en else None, "day": day, "end_day": None if st else str(end.get("date") or "")[:10] or None,
@@ -4571,6 +4571,7 @@ def video_stage(st, before):
         BUS.pub(t="stage", **stage_event(STAGES.put(st)))
 
 
+DAY_LOCK = threading.Lock()
 DAY = {"snap": None}                                    # the snapshot behind the day stage on screen (memory only; titles are never logged)
 
 
@@ -4579,12 +4580,17 @@ def day_snapshot(cache_only=False):
     return day.snapshot(datetime.datetime.now().astimezone(), Ambient.cal_ids() if CFG.get("ambient_calendar") else [], cache_only=cache_only)
 
 
-def day_stage(st, before):
+def day_stage(st, before, release=False):
     """Fetch the day off the turn (gog and gh take seconds), then show it, unless the stage on screen changed meanwhile."""
-    snap = day_snapshot()
-    DAY["snap"] = snap
-    if stages_on() and STAGES.current() is before:
-        BUS.pub(t="stage", **stage_event(STAGES.put(day.stage(snap))))
+    try:
+        snap = day_snapshot()
+    finally:
+        if release:
+            day._busy.release()
+    with DAY_LOCK:
+        if stages_on() and STAGES.current() is before:
+            DAY["snap"] = snap                          # (only the snapshot that is on screen)
+            BUS.pub(t="stage", **stage_event(STAGES.put(day.stage(snap))))
 
 
 def day_next():
@@ -4593,7 +4599,8 @@ def day_next():
         return None
     snap = day_snapshot(cache_only=True)
     if snap is None:
-        threading.Thread(target=day_stage, args=(None, STAGES.current()), daemon=True).start()
+        if day._busy.acquire(blocking=False):           # one cold fetch at a time; a second ask just waits with him
+            threading.Thread(target=day_stage, args=(None, STAGES.current(), True), daemon=True).start()
         return {"say": "Let me look at your day.", "mood": "curious"}
     return {"say": day.whats_next(snap), "mood": "happy"}
 
