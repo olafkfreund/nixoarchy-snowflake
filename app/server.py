@@ -543,6 +543,7 @@ class Mirror:
     last_status = 0.0
     expires = None
     revokes = 0                                      # bumped by revoke(): a status that started before it is stale
+    retry_at = None                                  # set when no source answered: ask again then, whatever the cached owner
 
     @classmethod
     def snapshot(cls):
@@ -591,7 +592,8 @@ class Mirror:
             cls.publish("off", watching)
             return
         expired = owner == "pending" and cls.expires is not None and cls.expires < now
-        if changed or expired or (owner != "off" and mono - cls.last_status >= 30):
+        due = cls.retry_at is not None and mono >= cls.retry_at
+        if changed or expired or due or (owner != "off" and mono - cls.last_status >= 30):
             cls.last_status, revokes = mono, cls.revokes
             try:
                 r = subprocess.run(MIRROR_STATUS, capture_output=True, text=True, timeout=3, stdin=subprocess.DEVNULL)
@@ -605,8 +607,7 @@ class Mirror:
                         raise ValueError("bad state")
                 except (OSError, ValueError):
                     data = None
-            if data is None:                                 # neither answered: keep the last state, ask again in 5 s, not 30
-                cls.last_status = mono - 25
+            cls.retry_at = mono + 5 if data is None else None    # neither answered: keep the last state, ask again in 5 s
             if data is not None and revokes != cls.revokes:  # a revoke landed while status ran: its answer is older than the revoke,
                 cls.stamp = None                             # so ask again next tick (the revoke may have failed: never lose a grant)
                 return

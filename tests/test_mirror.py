@@ -57,6 +57,7 @@ class MirrorTest(unittest.TestCase):
         os.environ["XDG_RUNTIME_DIR"] = str(self.run)
         M = self.s.Mirror
         M.state, M.installed, M.checked, M.stamp, M.last_status, M.expires = {"owner": None, "watching": False}, False, 0.0, None, 0.0, None
+        M.retry_at, M.revokes = None, 0
         bus = mock.patch.object(self.s, "BUS")
         self.bus = bus.start()
         self.addCleanup(bus.stop)
@@ -113,6 +114,22 @@ class MirrorTest(unittest.TestCase):
             self.tick()                                # this answer is discarded...
         self.t[0] += 1
         self.assertEqual(self.tick()["owner"], "agent")   # ...but the next tick asks again and shows the grant
+
+    def test_both_sources_failing_on_a_grant_retry_while_cached_off(self):
+        """Codex on PR #28: off → agent, but status and the file both fail once: it must ask again soon, though it shows off."""
+        self.state_file("off")
+        self.fakeout("status", '{"owner":"off"}')
+        self.assertEqual(self.tick()["owner"], "off")
+        f = self.state_file("agent")
+        self.fakeout("status", "", rc=1)              # status fails...
+        f.chmod(0)                                    # ...and the file can't be read either
+        try:
+            self.assertEqual(self.tick()["owner"], "off")
+        finally:
+            f.chmod(0o644)
+        self.fakeout("status", '{"owner":"agent"}', rc=0)
+        self.t[0] += 6                                # past the 5 s retry
+        self.assertEqual(self.tick()["owner"], "agent")
 
     # ---- tick: nothing to read
     def test_none_without_cli(self):
