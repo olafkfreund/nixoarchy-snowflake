@@ -436,7 +436,8 @@ class NixiWindow:
             p = json.load(open(POS_FILE))
             ok = self.hypr.ok()                              # a saved connector name only means something to Hyprland
             pairs = [(n, i) for n, i, _ in self._hmons()] if ok else []
-            i = screens.pick_monitor(p if ok else dict(p, name=None), pairs, len(self._monitors()))
+            # (an empty list is "Hyprland didn't answer", not "that screen is gone": fall back to the saved index)
+            i = screens.pick_monitor(p if pairs else dict(p, name=None), pairs, len(self._monitors()))
             if i is None:
                 raise ValueError
             self.mon_i, self.mx, self.my = i, int(p["x"]), int(p["y"])
@@ -1040,9 +1041,9 @@ class NixiWindow:
             self._dock_if_edge(edge)
         self.pmoving = False
         self._rewide()
+        if self.layer:
+            self._place(self.mx, self.my, True)          # the whole surface (cards, a panel moved while docked) inside its screen
         if not self.bar:                                 # docked: his blob spot (bar_home) stays where it was
-            if self.layer:
-                self._place(self.mx, self.my, True)      # the whole surface (cards too) inside its screen
             self._save_pos()
         return False
 
@@ -1073,6 +1074,8 @@ class NixiWindow:
             self.dragging = False
         elif self.layer:
             o, self.over = getattr(self, "over", None), None
+            if o is None and self.dpos is None:            # no drag of ours is running (it ended already, or hover): nothing to release
+                return
             edge = None
             if o and not self.pmoving:                     # pushed 40px+ past an edge: dock there
                 if abs(o[1]) >= 40 and abs(o[1]) >= abs(o[0]):
