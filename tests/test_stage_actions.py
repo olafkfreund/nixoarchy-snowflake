@@ -441,24 +441,42 @@ class StageActionsTest(unittest.TestCase):
             self.s.run_bridge("any other question", lambda **kw: None)
         return sent[-1]["text"]
 
+    def desk(self, snap):
+        st = day.stage(snap)
+        st["note"], st["date"] = day.summary(snap), snap["date"]       # (as day_stage stores it)
+        return self.s.STAGES.put(st)
+
     def test_summary_rides_along_only_while_the_day_desk_is_current(self):
         s = self.s
-        s.DAY["snap"] = self.snap()
-        self.assertNotIn("from Nixi's desk", self.prompt_sent())     # (a commands board is current)
-        s.STAGES.put(day.stage(self.snap()))
+        s.STAGES.close()
+        self.assertNotIn("from Nixi's desk", self.prompt_sent())     # (no desk is current)
+        self.desk(self.snap())
         self.assertIn("(today, from Nixi's desk", self.prompt_sent())
-        s.DAY["snap"] = self.snap(date="2000-01-01")
-        self.assertNotIn("from Nixi's desk", self.prompt_sent())     # (yesterday's snapshot is never passed off as today's)
-        s.DAY["snap"] = None
+        self.desk(self.snap(date="2000-01-01"))
+        self.assertNotIn("from Nixi's desk", self.prompt_sent())     # (yesterday's desk is never passed off as today's)
+        s.STAGES.close()
+
+    def test_previous_answer_brings_back_its_own_summary(self):
+        """Codex on PR #30: two desks, then Previous answer: the agent gets the summary of the desk on screen."""
+        s = self.s
+        one = [{"when": "all day", "title": "Alpha day", "url": None, "link": None}]
+        two = [{"when": "all day", "title": "Beta day", "url": None, "link": None}]
+        self.desk(self.snap(today=one, count={"today": 1, "tasks": 0, "github": 0}))
+        self.desk(self.snap(today=two, count={"today": 1, "tasks": 0, "github": 0}))
+        self.assertIn("Beta day", self.prompt_sent())
+        s.STAGES.back()
+        sent = self.prompt_sent()
+        self.assertIn("Alpha day", sent)
+        self.assertNotIn("Beta day", sent)
         s.STAGES.close()
 
     def test_a_run_never_gets_the_summary(self):
         s = self.s
-        s.DAY["snap"] = self.snap()
-        s.STAGES.put(day.stage(self.snap()))
+        self.desk(self.snap())
         s.ST.stage_run = "x"
         self.assertNotIn("from Nixi's desk", self.prompt_sent())
-        s.DAY["snap"] = None
+        s.ST.stage_run = None
+        s.STAGES.close()
 
     def test_day_item_opens_with_xdg_open_and_a_foreign_url_has_no_token(self):
         sn = self.snap(today=[{"when": "all day", "title": "A", "url": "https://calendar.google.com/x", "link": None},

@@ -4470,8 +4470,8 @@ def run_bridge(prompt, emit):
                             "for the user's own home or work, say dest \"@home\" or \"@work\": the server fills in the address, never ask for it or guess it; "
                             "at most 5 items, labels and points under 120 characters, commands under 500, no line breaks inside.)\n\n")
     cur = STAGES.current() if stages_on() and ST.stage_run is None else None
-    if cur and cur["kind"] == "day" and DAY["snap"] and DAY["snap"]["date"] == time.strftime("%Y-%m-%d"):        # a question while the desk is open: the agent gets the short summary, once, here only
-        note += day.summary(DAY["snap"]) + "\n\n"
+    if cur and cur["kind"] == "day" and cur.get("note") and cur.get("date") == time.strftime("%Y-%m-%d"):        # a question while the desk is open: the agent gets that desk's own summary, once, here only
+        note += cur["note"] + "\n\n"
     BRIDGE.send({"type": "prompt", "text": note + prompt})
     mid = None
     for line in p.stdout:
@@ -4590,7 +4590,9 @@ def day_stage(st, before, release=False):
     with DAY_LOCK:
         if stages_on() and STAGES.current() is before:
             DAY["snap"] = snap                          # (only the snapshot that is on screen)
-            BUS.pub(t="stage", **stage_event(STAGES.put(day.stage(snap))))
+            stg = day.stage(snap)
+            stg["note"], stg["date"] = day.summary(snap), snap["date"]   # (the summary rides with its own desk: Previous answer brings back the matching one)
+            BUS.pub(t="stage", **stage_event(STAGES.put(stg)))
 
 
 def day_next():
