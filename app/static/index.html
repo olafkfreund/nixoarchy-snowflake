@@ -1402,7 +1402,7 @@ function wxStep(t,dt){
   const scale=hat?.95:.92, cloudY=hat?-106:-108;
   const cloudX=(phase=0,speed=1,L=63.5,R=56.5,s=scale)=>{
     if(still) return {x:hat?-76:0,fade:1};
-    if(!windy) return {x:(hat?-76:0)+8*Math.sin(t*2*Math.PI/25+phase),fade:1};
+    if(!windy||hat) return {x:(hat?-76:0)+8*Math.sin(t*2*Math.PI/25+phase),fade:1};
     const p=((t*speed/14+phase)%1+1)%1, lo=-147+L*s, hi=147-R*s;
     return {x:dir>0?lo+(hi-lo)*p:hi-(hi-lo)*p,fade:Math.min(1,p/.15,(1-p)/.15)};
   };
@@ -1438,21 +1438,24 @@ function wxStep(t,dt){
     for(const el of WX.rain.fills) el.setAttribute('fill',el.tagName==='rect'?(wxHeavy?'#5d6a80':'#76839a'):(wxHeavy?'url(#wxCgH)':'url(#wxCgR)'));
     for(const el of WX.rain.lines) el.setAttribute('fill',wxHeavy?'#3f4859':'#4b5566'); }
   if(kind==='partly'){ if(night){ WX.partly.sun.g.setAttribute('display','none'); WX.partly.moon.removeAttribute('display'); }
-    else { WX.partly.sun.g.removeAttribute('display'); WX.partly.moon.setAttribute('display','none'); } }
+    else { WX.partly.sun.g.removeAttribute('display'); WX.partly.moon.setAttribute('display','none'); }
+    const px=hat?-70:30; WX.partly.sun.g.setAttribute('transform',`translate(${px} -100)`); WX.partly.moon.setAttribute('transform',`translate(${px} -100) scale(.8)`); }
   if(still){ WX.sun.rays.setAttribute('transform','rotate(0)'); WX.partly.sun.rays.setAttribute('transform','rotate(0)');
     WX.moon.stars.forEach(s=>s.setAttribute('opacity','1'));
     WX.cloudy.c1.setAttribute('transform',`translate(${hat?-76:0} -108) scale(.92)`);
     WX.cloudy.c2.setAttribute('transform',`translate(${hat?-6:70} -118) scale(.55)`);
-    WX.partly.cloud.setAttribute('transform',`translate(${hat?-88:-12} -104) scale(.85)`);
+    WX.partly.cloud.setAttribute('transform',`translate(${hat?-76:-12} -104) scale(.85)`);
+    for(const e of [WX.cloudy.c1,WX.cloudy.c2,WX.partly.cloud,...WX.wind.sw,WX.wind.leaf]) e.setAttribute('opacity','1');
     WX.wind.g.setAttribute('transform',`scale(${dir} 1)`); }
   else { if(kind==='clear'&&!night) WX.sun.rays.setAttribute('transform',`rotate(${(t*12)%360})`);
     if(kind==='partly'&&!night) WX.partly.sun.rays.setAttribute('transform',`rotate(${(t*12)%360})`);
     if(kind==='clear'&&night) WX.moon.stars.forEach((s,i)=>s.setAttribute('opacity',(.55+.45*Math.sin(t*2+i*1.7)**2).toFixed(3)));
     if(kind==='cloudy'){ const a=cloudX(), b=cloudX(.35,1.1,63.5,56.5,.55);
-      WX.cloudy.c1.setAttribute('transform',`translate(${a.x.toFixed(2)} -108) scale(.92)`);
-      WX.cloudy.c2.setAttribute('transform',`translate(${(b.x+(windy?0:70)).toFixed(2)} -118) scale(.55)`); }
-    if(kind==='partly'){ const q=cloudX(); WX.partly.cloud.setAttribute('transform',`translate(${(q.x+(windy?0:-12)).toFixed(2)} -104) scale(.85)`); }
-    if(windy){ WX.wind.g.setAttribute('transform',`translate(${(dir*(t*20%36)).toFixed(2)} 0) scale(${dir} 1)`); }
+      WX.cloudy.c1.setAttribute('transform',`translate(${a.x.toFixed(2)} -108) scale(.92)`); WX.cloudy.c1.setAttribute('opacity',a.fade.toFixed(3));
+      WX.cloudy.c2.setAttribute('transform',`translate(${(b.x+(windy&&!hat?0:70)).toFixed(2)} -118) scale(.55)`); WX.cloudy.c2.setAttribute('opacity',b.fade.toFixed(3)); }
+    if(kind==='partly'){ const q=cloudX(); WX.partly.cloud.setAttribute('transform',`translate(${(q.x+(windy||hat?0:-12)).toFixed(2)} -104) scale(.85)`); WX.partly.cloud.setAttribute('opacity',q.fade.toFixed(3)); }
+    if(windy){ const p=(t/3.5)%1, op=Math.sin(Math.PI*p).toFixed(3);   /* swooshes cross the top downwind, fading in and out; tx keeps every path inside ±147 */
+      WX.wind.g.setAttribute('transform',`scale(${dir} 1) translate(${(-77+126*p).toFixed(2)} 0)`); for(const e of [...WX.wind.sw,WX.wind.leaf]) e.setAttribute('opacity',op); }
   }
 }
 function frame(ts){
