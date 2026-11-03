@@ -607,7 +607,8 @@ class Mirror:
                     data = None
             if data is None:                                 # neither answered: keep the last state, ask again in 5 s, not 30
                 cls.last_status = mono - 25
-            if data is not None and revokes != cls.revokes:  # a revoke landed while status ran: its answer is older than the revoke
+            if data is not None and revokes != cls.revokes:  # a revoke landed while status ran: its answer is older than the revoke,
+                cls.stamp = None                             # so ask again next tick (the revoke may have failed: never lose a grant)
                 return
             if data is not None:
                 owner = data.get("owner")

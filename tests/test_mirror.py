@@ -96,6 +96,24 @@ class MirrorTest(unittest.TestCase):
         self.s.Mirror.tick()
         return self.s.Mirror.snapshot()
 
+    def test_grant_read_during_a_failed_revoke_is_not_lost(self):
+        """Codex on PR #28: a status answer discarded because a revoke landed (and failed) must be asked for again."""
+        self.state_file("off")
+        self.fakeout("status", '{"owner":"off"}')
+        self.assertEqual(self.tick()["owner"], "off")
+        self.state_file("agent")                       # a grant arrives...
+        self.fakeout("status", '{"owner":"agent"}')
+        orig_run = self.s.subprocess.run
+        def run(argv, *a, **k):                        # ...and a revoke lands (and fails) while that status runs
+            if argv == self.s.MIRROR_STATUS and not getattr(run, "done", False):
+                run.done = True
+                self.s.Mirror.revokes += 1
+            return orig_run(argv, *a, **k)
+        with mock.patch.object(self.s.subprocess, "run", run):
+            self.tick()                                # this answer is discarded...
+        self.t[0] += 1
+        self.assertEqual(self.tick()["owner"], "agent")   # ...but the next tick asks again and shows the grant
+
     # ---- tick: nothing to read
     def test_none_without_cli(self):
         os.environ["PATH"] = str(self.d / "empty")
