@@ -63,7 +63,7 @@ class ValidateTest(unittest.TestCase):
             self.assertIsNone(S.validate(o))
         bad(None)
         bad({"v": 2, "kind": "facts"})
-        bad({"v": 1, "kind": "weather"})
+        bad({"v": 1, "kind": "sundial"})
         bad({**CMDS, "items": []})
         bad({**CMDS, "items": [{"label": "a", "cmd": "b"}] * 6})
         bad({**CMDS, "items": [{"label": "x" * 121, "cmd": "b"}]})

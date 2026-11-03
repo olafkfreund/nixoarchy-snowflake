@@ -31,6 +31,13 @@ const FIX = {
   "place": { t: "stage", v: 1, kind: "place", trust: "mechanic", dest: long + long, mode: "walking", open: "o1", copy: "c1" },
   "video": { t: "stage", v: 1, kind: "video", trust: "mechanic", query: "<b>cats</b>", search: "s1", items: [1, 2, 3].map(i => ({ title: long, channel: "Chan", duration: "3:0" + i, play: "p" + i, thumb: "h" + i })) },
   "video (failed)": { t: "stage", v: 1, kind: "video", trust: "mechanic", query: "cats", search: "s1", items: [] },
+  "weather": { t: "stage", v: 1, kind: "weather", source: "open-meteo", sky: "rain", heavy: true, temp: 4, feel: 1, wind: 14, dir: "SW", at: "14:32", day: true },
+  "weather (empty)": { t: "stage", v: 1, kind: "weather", empty: true },
+  "calendar": { t: "stage", v: 1, kind: "calendar", open: "o1", at: "09:55", events: [{ when: "10:40", title: long, join: "j1" }, ...[1, 2, 3].map(i => ({ when: "Wed 1" + i + ":00", title: long, join: i === 2 ? undefined : "j" + (i + 1) }))] },
+  "calendar (off)": { t: "stage", v: 1, kind: "calendar", open: "o1", off: true, events: [] },
+  "calendar (empty)": { t: "stage", v: 1, kind: "calendar", open: "o1", at: "09:55", events: [] },
+  "status": { t: "stage", v: 1, kind: "status", term: "t0", sys_on: true, failed: Array.from({ length: 5 }, (_, i) => "unit-" + i + ".service"), failed_n: 7, sessions: Array.from({ length: 5 }, (_, i) => ({ title: long, status: "working", open: "s" + i })) },
+  "status (empty)": { t: "stage", v: 1, kind: "status", term: "t0", sys_on: false, failed: [], failed_n: 0, sessions: [] },
   "facts": { t: "stage", v: 1, kind: "facts", trust: "mechanic", title: "Tides", token: "f1", points: ["Two highs a day", "Two lows a day", "Springs at new moon"], source: "NOAA" },
   "facts (5 long)": { t: "stage", v: 1, kind: "facts", trust: "mechanic", title: long, token: "f1", points: Array.from({ length: 5 }, () => long), source: long },
 };
@@ -82,6 +89,41 @@ for (const [pn, ox] of Object.entries(POS)) for (const [fn, fx] of Object.entrie
   await show(FIX.video, w => 0);
   const r3 = await ev(`return getComputedStyle(document.getElementById('stg'),'::before').animationName`);
   check(r3 === "none", "cinema: curtains still under reduced motion", r3);
+  await send("Emulation.setEmulatedMedia", { features: [] }); }
+
+// the sky: day and night by SIT.day, the source and time as text, no buttons; the desk: a flip page, Join only with a link, markup as text
+{ await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "no-preference" }] });
+  await ev("SIT.day=true; return 1"); await show({ ...FIX.weather, source: "<b>x</b>" }, w => 0);
+  const d = await ev(`const f=document.getElementById('stg'); return [f.classList.contains('sky'), f.classList.contains('night'), f.querySelectorAll('b').length, document.getElementById('stgFn').textContent, f.querySelectorAll('.sb').length, f.querySelector('.tmp').textContent, f.textContent.includes('Wind 14 km/h SW')]`);
+  check(d[0] && !d[1] && d[2] === 0 && d[3] === "<b>x</b> \u00b7 as of 14:32" && d[4] === 0 && d[5] === "4\u00b0C" && d[6], "sky set (day)", JSON.stringify(d));
+  await ev("SIT.day=false; return 1"); await show(FIX.weather, w => 0);
+  const n = await ev(`const f=document.getElementById('stg'); return [f.classList.contains('night'), getComputedStyle(f).backgroundImage.includes('radial-gradient'), document.getElementById('stgFn').textContent]`);
+  check(n[0] && n[1] && n[2] === "Open-Meteo \u00b7 as of 14:32", "sky set (night)", JSON.stringify(n));
+  await ev("SIT.day=true; return 1");
+  await show(FIX["weather (empty)"], w => 0);
+  check(await ev("return document.getElementById('stg').textContent.includes('No weather reading yet')"), "sky: no reading says so");
+  await show({ ...FIX["weather (empty)"], off: true }, w => 0);
+  check(await ev("return document.getElementById('stg').textContent.includes('Weather is off')"), "sky: weather off says so");
+  await show({ ...FIX.weather, sky: null }, w => 0);
+  check(await ev("return ![...document.querySelectorAll('#stg svg circle')].some(c=>c.getAttribute('fill')==='#ffd23f')"), "sky: unknown sky draws no sun");
+  await show({ ...FIX.weather, sky: "clear" }, w => 0);
+  check(await ev("return [...document.querySelectorAll('#stg svg circle')].some(c=>c.getAttribute('fill')==='#ffd23f')"), "sky: clear draws a sun");
+  await show({ ...FIX["calendar (empty)"], unread: true, at: null }, w => 0);
+  check(await ev("return document.getElementById('stg').textContent.includes('couldn\\u2019t be read')"), "desk: calendar unread says so");
+  check(await ev("const t=stageText({kind:'status',sessions:[],sys_on:true,failed:['a.service'],failed_n:3}), u=stageText({kind:'status',sessions:[],sys_on:false,failed:[]}); return t.includes('Failed services: a.service +2 more') && u.includes('Services not checked')"), "desk: status text has services");
+  await show({ ...FIX.calendar, events: [{ when: "10:40", title: "<b>Stand-up</b>", join: "j1" }, { when: "Wed 11:00", title: "A" }, { when: "Wed 12:00", title: "B", join: "j3" }] }, w => 0);
+  const c = await ev(`const f=document.getElementById('stg'); return [f.classList.contains('desk'), f.querySelectorAll('b').length, f.querySelector('.pg .lb').textContent, [...f.querySelectorAll('.sb')].map(b=>b.textContent).join(), f.querySelectorAll('.tk').length, getComputedStyle(f.querySelector('.pg')).animationName]`);
+  check(c[0] && c[1] === 0 && c[2] === "<b>Stand-up</b>" && c[3] === "Join,Join,Open calendar" && c[4] === 2 && c[5] === "stgFlip", "desk: calendar", JSON.stringify(c));
+  await show(FIX["calendar (off)"], w => 0);
+  check(await ev("return document.getElementById('stg').textContent.includes('Calendar is off') && [...document.querySelectorAll('#stg .sb')].map(b=>b.textContent).join()==='Open calendar'"), "desk: calendar off says so");
+  await show(FIX.status, w => 0);
+  const t = await ev(`const f=document.getElementById('stg'); return [f.classList.contains('desk'), f.querySelectorAll('.it').length, [...f.querySelectorAll('.sb')].map(b=>b.textContent).filter((x,i,a)=>a.indexOf(x)===i).join(), f.querySelector('.src.bad').textContent]`);
+  check(t[0] && t[1] === 5 && t[2] === "Open session,Open terminal" && /\+2 more$/.test(t[3]), "desk: status", JSON.stringify(t));
+  await show(FIX["status (empty)"], w => 0);
+  check(await ev("const x=document.getElementById('stg').textContent; return x.includes('No herdr sessions running') && x.includes('Services not checked')"), "desk: empty status");
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }); await sleep(200);
+  await show(FIX.calendar, w => 0);
+  check(await ev("return getComputedStyle(document.querySelector('#stg .pg')).animationName") === "none", "desk: flip still under reduced motion");
   await send("Emulation.setEmulatedMedia", { features: [] }); }
 
 // trust notes and Run

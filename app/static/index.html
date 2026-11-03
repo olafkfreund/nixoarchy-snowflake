@@ -191,6 +191,23 @@ body.bar #mailPop,body.hover #mailPop,body.calm #mailPop{display:none}
 #stg.notebook{--sbg:#f6f0e0;--sfg:#2a2620;--sdim:#7a705e;--sline:#2a262026;background:repeating-linear-gradient(180deg,transparent 0 27px,#4d6fb71f 27px 28px),#f6f0e0;border-left:14px solid var(--acc)}
 #stg.map{--sbg:#efe1bb;--sfg:#3b2a14;--sdim:#7a6440;--sline:#3b2a1430;background:radial-gradient(ellipse at 30% 20%,#f7ecca,transparent 60%),radial-gradient(ellipse at 85% 90%,#d9c28c88,transparent 55%),#efe1bb;border:3px double #8a6a3a}
 #stg.map h2,#stg.map .lb{font-family:MapInk,Georgia,serif;font-weight:400}
+#stg.sky{--sbg:#6bb6ea;--sfg:#0f2f49;--sdim:#2d5a7c;--sline:#0f2f492e;background:linear-gradient(180deg,#4a9fe0,#c4e6f8);border:3px solid #ffffffaa}
+#stg.sky.night{--sbg:#16204a;--sfg:#e8ecff;--sdim:#9aa8d8;--sline:#ffffff26;background:radial-gradient(circle at 18% 14%,#fff8 0 1px,transparent 2px),radial-gradient(circle at 72% 26%,#fff6 0 1px,transparent 2px),radial-gradient(circle at 44% 40%,#fff5 0 1px,transparent 2px),linear-gradient(180deg,#0b1233,#2b3a6e);border-color:#4a5a99}
+#stg.sky h2,#stg.desk h2{text-shadow:none}
+#stg .skw{display:flex;align-items:center;gap:14px;padding:6px 4px}
+#stg .skw svg{flex:none;width:92px;height:auto}
+#stg .tmp{font:700 46px/1 "Inter",system-ui,sans-serif}
+#stg .skl{font-size:15px;margin-top:4px}#stg .skl::first-letter{text-transform:uppercase}
+#stg.desk{--sbg:#efe9dc;--sfg:#2a2824;--sdim:#6f695b;--sline:#2a282426;background:repeating-linear-gradient(90deg,#00000005 0 3px,transparent 3px 9px),#efe9dc;border:6px solid #7a5230}
+#stg .pg{margin:4px 0 8px;padding:8px 12px 10px;border-radius:8px;background:#fffdf6;border:1px solid var(--sline);border-top:8px solid #b3261e;box-shadow:0 2px 0 var(--sline);transform-origin:50% 0}
+#stg .pgd{font:600 13px/1.2 "Inter",system-ui,sans-serif;color:#b3261e;text-transform:uppercase;letter-spacing:.06em}
+#stg .pg .lb{font-size:22px;overflow-wrap:anywhere;margin:2px 0 6px}
+#stg.desk.go .pg{animation:stgFlip .5s ease-out both}
+@keyframes stgFlip{from{transform:perspective(500px) rotateX(-75deg);opacity:.2}to{transform:none;opacity:1}}
+#stg .tk{display:flex;gap:8px;align-items:center;padding:6px 8px;margin:4px 0;border-radius:6px;border:1px dashed var(--sline)}
+#stg .tw{flex:none;font:600 12px var(--mono);color:var(--sdim);min-width:62px}
+#stg .tt{flex:1;min-width:0;overflow-wrap:anywhere;font-size:14px}
+#stg .src.bad{color:#b3261e}
 #stg .sk{display:block;width:100%;height:auto}
 #stg .sk text{font:italic 14px MapInk,Georgia,serif;fill:var(--sfg)}
 #stg .sk .trail{fill:none;stroke:var(--acc);stroke-width:3;stroke-linecap:round;stroke-dasharray:.025 .02}
@@ -261,7 +278,7 @@ body.appr #stg{opacity:.35;pointer-events:none}
 #chalk.l.pt{animation-name:stgChalkL}
 @keyframes stgChalkL{50%{translate:-10px -4px}}
 body.bar #stg,body.hover #stg,body.calm #stg,body.bar #stgTab,body.hover #stgTab,body.bar #chalk,body.hover #chalk,body.bar #hat,body.hover #hat,body.calm #hat,body.bar #pop,body.hover #pop,body.calm #pop{display:none}
-@media (prefers-reduced-motion:reduce){#stg,#stg.l,#stg.on,#stgTab,#stgTab.l,#stgTab.on{transform:none;transition:opacity .18s}#stg.go .ul path,#stg.go .sk .tm,#stg.cinema.go::before,#stg.cinema.go::after{animation:none}#stg .it.pt .n{animation:none}#chalk{display:none}}
+@media (prefers-reduced-motion:reduce){#stg,#stg.l,#stg.on,#stgTab,#stgTab.l,#stgTab.on{transform:none;transition:opacity .18s}#stg.go .ul path,#stg.go .sk .tm,#stg.cinema.go::before,#stg.cinema.go::after,#stg.desk.go .pg{animation:none}#stg .it.pt .n{animation:none}#chalk{display:none}}
 #cap.ntf #plate{pointer-events:auto;cursor:pointer;border:1px solid var(--line)}   /* a notification row is up: click opens it */
 #wk{position:absolute;left:50%;translate:-50% 0;max-width:316px;width:fit-content;padding:2px 8px;border-radius:999px;background:var(--cap-bg,#0b0b0be6);top:404px;text-align:center;font:11.5px var(--mono);color:var(--cap-dim,var(--dim));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}   /* nixi mode: what the agent is doing */
 #wk:empty{display:none}
@@ -2182,10 +2199,13 @@ function stagePlace(){ if(stgState==='closed') return;
 function stageBtn(label,fn,dis){ const b=hx('button','sb',label); b.type='button'; b.disabled=!!dis; b.addEventListener('click',e=>{ e.stopPropagation(); stgUse=performance.now(); fn(b); }); return b; }
 function stageBuild(ev){
   const bd=$('#stgBd'), acts=$('#stgActs'), fn=$('#stgFn'); bd.textContent=''; acts.textContent=''; fn.textContent='';
-  const board=ev.kind==='commands', map=ev.kind==='place', film=ev.kind==='video', tr=ev.trust, guide=tr==='guide';
-  $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':film?'Now showing':''));
-  stgEl.className=(board?'board':map?'map':film?'cinema':'notebook')+(stgEl.classList.contains('l')?' l':'');
-  if(film) stageFilm(ev,bd,acts,fn);
+  const board=ev.kind==='commands', map=ev.kind==='place', film=ev.kind==='video', sky=ev.kind==='weather', cal=ev.kind==='calendar', stat=ev.kind==='status', tr=ev.trust, guide=tr==='guide';
+  $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':film?'Now showing':sky?'Sky':cal?'Coming up':stat?'Sessions':''));
+  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat?'desk':'notebook')+(stgEl.classList.contains('l')?' l':'');
+  if(sky) stageSky(ev,bd,fn);
+  else if(cal) stageCal(ev,bd,acts,fn);
+  else if(stat) stageStat(ev,bd,acts,fn);
+  else if(film) stageFilm(ev,bd,acts,fn);
   else if(map) stageMap(ev,bd,acts,fn);
   else if(board){
     (ev.items||[]).forEach((it,i)=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab');
@@ -2231,7 +2251,41 @@ function stageFilm(ev,bd,acts,fn){
     row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
   fn.textContent='Searched YouTube for: '+ev.query;
 }
-function stageText(ev){ if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
+const SKYW={partly:'partly cloudy'};   /* the sky kinds are single words; this one reads oddly alone */
+function skyWords(ev){ return [ev.temp==null?'':ev.temp+'\u00b0C', (ev.heavy?'heavy ':'')+(SKYW[ev.sky]||ev.sky||''), ev.feel!=null&&ev.feel!==ev.temp?'feels '+ev.feel+'\u00b0':'', ev.wind!=null?'wind '+ev.wind+' km/h'+(ev.dir?' '+ev.dir:''):''].filter(Boolean).join(', '); }
+function stageSky(ev,bd,fn){
+  if(ev.empty){ bd.appendChild(hx('div','pt1',ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet')); return; }
+  const N='http://www.w3.org/2000/svg', sv=(t,a,p)=>{ const e=document.createElementNS(N,t); for(const k in a) e.setAttribute(k,a[k]); if(p) p.appendChild(e); return e; };
+  const g=sv('svg',{viewBox:'0 0 92 64','aria-hidden':'true'}), cl=ev.sky!=='clear';   /* only clear draws a bare sun; an unknown sky is a neutral cloud */
+  if(ev.sky==='clear'||ev.sky==='partly') sv('circle',{cx:cl?34:46,cy:cl?24:30,r:cl?15:20,fill:SIT.day?'#ffd23f':'#f4f1de'},g);
+  if(cl){ for(const [x,y,r] of [[40,40,15],[56,36,18],[70,42,13]]) sv('circle',{cx:x,cy:y,r,fill:SIT.day?'#ffffff':'#b9c3e6'},g);
+    if(ev.sky==='rain') for(const x of [38,52,66]) sv('path',{d:'M'+x+' 56l-4 8',stroke:'#2a6fb0','stroke-width':3,'stroke-linecap':'round'},g);
+    if(ev.sky==='snow') for(const x of [38,52,66]) sv('circle',{cx:x,cy:60,r:2.5,fill:'#fff'},g); }
+  const row=hx('div','skw'), tx=hx('div','tx'); row.appendChild(g);
+  tx.appendChild(hx('div','tmp',ev.temp==null?'\u2014':ev.temp+'\u00b0C')); tx.appendChild(hx('div','skl',[(ev.heavy?'heavy ':'')+(SKYW[ev.sky]||ev.sky||'')].concat(ev.feel!=null&&ev.feel!==ev.temp?['feels '+ev.feel+'\u00b0']:[]).filter(Boolean).join(' \u00b7 ')));
+  if(ev.wind!=null) tx.appendChild(hx('div','skl','Wind '+ev.wind+' km/h'+(ev.dir?' '+ev.dir:'')));
+  row.appendChild(tx); bd.appendChild(row);
+  fn.textContent=({'open-meteo':'Open-Meteo','omarchy':'omarchy weather'}[ev.source]||ev.source)+' \u00b7 '+(ev.at?'as of '+ev.at:'time unknown');
+}
+function stageOpen(b,fn,token,act,bad){ post('/api/stage/act',{token,act}).then(r=>r.json()).then(j=>stageOpened(b,fn,j,bad||"Couldn't open it")).catch(()=>{}); }
+function stageCal(ev,bd,acts,fn){
+  acts.appendChild(stageBtn('Open calendar',b=>stageOpen(b,fn,ev.open,'open')));
+  if(ev.off||ev.unread){ bd.appendChild(hx('div','pt1',ev.off?'Calendar is off':'Calendar couldn\u2019t be read')); if(ev.off) bd.appendChild(hx('div','src','Turn on Ambient calendar in Settings.')); return; }
+  const E=ev.events||[]; fn.textContent=ev.at?'From your calendar \u00b7 as of '+ev.at:'';
+  if(!E.length){ bd.appendChild(hx('div','pt1','Nothing coming up')); return; }
+  const join=e=>stageBtn('Join',b=>stageOpen(b,fn,e.join,'open','Couldn\'t open the link')), pg=hx('div','pg');
+  pg.appendChild(hx('div','pgd',E[0].when)); pg.appendChild(hx('div','lb',E[0].title)); if(E[0].join) pg.appendChild(join(E[0])); bd.appendChild(pg);
+  E.slice(1,4).forEach(e=>{ const t=hx('div','tk'); t.appendChild(hx('span','tw',e.when)); t.appendChild(hx('span','tt',e.title)); if(e.join) t.appendChild(join(e)); bd.appendChild(t); });
+}
+function stageStat(ev,bd,acts,fn){
+  const S=ev.sessions||[]; if(!S.length) bd.appendChild(hx('div','pt1','No herdr sessions running'));
+  S.forEach(x=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab'); tx.appendChild(hx('div','lb',x.title)); tx.appendChild(hx('div','vm',x.status));
+    ab.appendChild(stageBtn('Open session',b=>stageOpen(b,fn,x.open,'session'))); row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
+  const F=ev.failed||[], more=(ev.failed_n||0)-F.length;
+  bd.appendChild(hx('div',F.length?'src bad':'src',!ev.sys_on?'Services not checked (Ambient system is off)':F.length?'Failed services: '+F.join(', ')+(more>0?' +'+more+' more':''):'No failed services'));
+  acts.appendChild(stageBtn('Open terminal',b=>stageOpen(b,fn,ev.term,'terminal')));
+}
+function stageText(ev){ if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
   stgPosted=false;
@@ -2260,8 +2314,9 @@ function stageRestore(){ if(stgState!=='tab'||!stg) return; stgState='open'; stg
 function stageTick(){ const now=performance.now(), hov=stgEl.matches(':hover');
   if(hov) stgUse=now;
   if(playing||busy||hov||pendingAppr) stgQuiet=now;
-  if(stg&&stg.kind==='facts'&&now-stgQuiet>20000) return stageClose();
-  if(stg&&stg.kind!=='facts'&&now-stgUse>30000&&!busy) stageHide(true); }
+  const ro=stg&&(stg.kind==='facts'||stg.kind==='weather');
+  if(ro&&now-stgQuiet>20000) return stageClose();
+  if(stg&&!ro&&now-stgUse>30000&&!busy) stageHide(true); }
 function stageAct(act,token,btn){ post('/api/stage/act',{token,act}).then(r=>r.json()).then(j=>{ if(btn&&act==='copy'){ const t=btn.textContent; btn.textContent=j.ok?'Copied ✓':"Couldn't copy"; setTimeout(()=>{ btn.textContent=t; },1400); } }).catch(()=>{}); }
 function stageRun(it){ stgRunTok=it.token; send(it.label,{stage:it.token,claude:true}); }
 function stageStatus(ev){ if(!stgOpen()&&stgState!=='tab') return;

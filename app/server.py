@@ -1349,6 +1349,8 @@ class Ambient:
     data = {"sys": [], "cal": None, "weather": None}           # what the page draws
     due = {"sys": 0.0, "cal": 0.0, "weather": 0.0}
     events = []                                                # [(start datetime, title, id)] from the last gog fetch
+    cal_items = []                                             # [{start, day, title, link}] from the same fetch: the desk's calendar (#144)
+    cal_at = None                                              # monotonic time of that fetch
     alerted = set()                                            # calendar items already announced
     thread = None
     meeting = music = False                                    # what the look layer wears, and what quiets him (#133)
@@ -1398,21 +1400,30 @@ class Ambient:
                        if isinstance(c, dict) and c.get("enabled") and isinstance(c.get("googleCalendarId"), str)]
             except (OSError, ValueError, KeyError, TypeError):
                 ids = []
-            out = ids and cls.run(["gog", "--readonly", "--json", "calendar", "events", *ids, "--from", "now", "--days", "1",
+            out = ids and cls.run(["gog", "--readonly", "--json", "calendar", "events", *ids, "--from", "now", "--days", "2",
                                    "--sort", "start", "--max", "20"], timeout=10)
             if out:
                 try:
                     import datetime
-                    ev, bd = [], set()
+                    ev, bd, items = [], set(), []
+                    loc = lambda v: datetime.datetime.fromisoformat(v).astimezone()     # (a naive time is local time)
                     for e in json.loads(out).get("events") or []:
-                        start = e.get("start") or {}
-                        st = start.get("dateTime")                           # (all-day items have only "date": no cue)
-                        if st:
-                            ev.append((datetime.datetime.fromisoformat(st), str(e.get("summary") or "(busy)")[:60], str(e.get("id"))))
-                        day = str(st or start.get("date") or "")[:10]        # a birthday today: only that fact is kept
-                        if day and re.search(r"birthday|bursdag", str(e.get("summary") or ""), re.I):
-                            bd.add(day)
-                    cls.events, cls.birthdays = ev, bd
+                        try:
+                            start, end = e.get("start") or {}, e.get("end") or {}
+                            st, en = start.get("dateTime"), end.get("dateTime")          # (all-day items have only "date": no cue)
+                            title = str(e.get("summary") or "(busy)")[:60]
+                            s_dt = loc(st) if st else None
+                            if s_dt:
+                                ev.append((s_dt, title, str(e.get("id"))))
+                            day = str(st or start.get("date") or "")[:10]            # a birthday today: only that fact is kept
+                            if day and re.search(r"birthday|bursdag", str(e.get("summary") or ""), re.I):
+                                bd.add(day)
+                            elif day:                                                # (a birthday's title is never kept, so the desk never shows it)
+                                items.append({"start": s_dt, "end": loc(en) if en else None, "day": day, "end_day": None if st else str(end.get("date") or "")[:10] or None,
+                                              "title": title, "link": stages.meeting_link(e)})
+                        except (ValueError, AttributeError, TypeError):
+                            continue                                                 # one bad event never drops the batch
+                    cls.events, cls.birthdays, cls.cal_items, cls.cal_at = ev, bd, items, time.monotonic()
                 except (ValueError, AttributeError, TypeError):
                     pass
             return False
@@ -1484,9 +1495,10 @@ class Ambient:
         return bool(CFG.get("proactive") and CFG.get("ambient_weather") and CFG.get("look_weather"))
 
     @classmethod
-    def reading(cls):
+    def reading(cls, cached=False):
+        """cached=True: trust the place key the situation loop last saw, so the answer stream never runs location()."""
         wx, t = cls.wx, time.monotonic()
-        if wx and cls.gated() and 0 <= t - wx["at"] < 7200 and wx["key"] == cls.place_key():
+        if wx and cls.gated() and 0 <= t - wx["at"] < 7200 and wx["key"] == (cls.wkey if cached else cls.place_key()):
             return "open-meteo", *(wx[k] for k in ("sky", "heavy", "feel", "temp", "wind", "dir"))
         omx = cls.omx
         if omx and 0 <= t - omx["at"] < 7200:
@@ -1863,7 +1875,7 @@ class Nudge:
         if CFG.get("ambient_calendar"):
             import datetime
             now = now or datetime.datetime.now().astimezone()
-            nxt = min(((st, ti) for st, ti, _ in Ambient.events if st > now), default=None)
+            nxt = min(((st, ti) for st, ti, _ in Ambient.events if st > now and st.astimezone().date() == now.astimezone().date()), default=None)
             if nxt:
                 text += f" Next: {nxt[1]} at {nxt[0].astimezone().strftime('%H:%M')}."
         return text
@@ -4448,6 +4460,7 @@ def run_bridge(prompt, emit):
                             '{"v":1,"kind":"commands","title":"optional plaque, 1-4 words","items":[{"label":"what it does","cmd":"the command"}]} or '
                             '{"v":1,"kind":"facts","title":"...","points":["..."],"source":"optional"} or, to find videos, {"v":1,"kind":"video","query":"search words"} (the server searches) or, for directions or a place, '
                             "{\"v\":1,\"kind\":\"place\",\"dest\":\"address or name\",\"mode\":\"MODE\"}, where MODE is one of driving, walking, bicycling, transit (leave mode out for a plain place); "
+                            "for the weather, the calendar or the user's herdr sessions and failed services, {\"v\":1,\"kind\":\"weather\"}, {\"v\":1,\"kind\":\"calendar\"} or {\"v\":1,\"kind\":\"status\"} (the server fills them in: say only a sentence); "
                             "for the user's own home or work, say dest \"@home\" or \"@work\": the server fills in the address, never ask for it or guess it; "
                             "at most 5 items, labels and points under 120 characters, commands under 500, no line breaks inside.)\n\n")
     BRIDGE.send({"type": "prompt", "text": note + prompt})
@@ -4522,6 +4535,26 @@ def stage_trust():
     return "yolo" if c.get("permissionMode") == "yolo" else c.get("trust") if c.get("trust") in ("guide", "mechanic") else "unknown"
 
 
+def desk_stage(st):
+    """weather / calendar / status: built from what the server already holds (no network here); other kinds pass through."""
+    import datetime
+    k, now = st["kind"], datetime.datetime.now().astimezone()
+    label = lambda mono: None if mono is None else (now - datetime.timedelta(seconds=time.monotonic() - mono)).strftime("%H:%M")
+    if k == "weather":
+        src, sky, heavy, feel, temp, wind, deg = Ambient.reading(cached=True)
+        w = {"open-meteo": Ambient.wx, "omarchy": Ambient.omx}.get(src)
+        return stages.sky_stage(src, sky, heavy, feel, temp, wind, deg, label(w["at"]) if w else None, Ambient.day, not CFG.get("ambient_weather"))
+    if k == "calendar":
+        on = CFG.get("ambient_calendar")
+        return stages.calendar_stage(stages.calendar_rows(Ambient.cal_items, now) if on else None, label(Ambient.cal_at))
+    if k == "status":
+        sessions = [{"title": _title(a), "status": _clean(a.get("agent_status"), 30) or "unknown", "pane": a["pane_id"]}
+                    for a in herdr_agents() if isinstance(a.get("pane_id"), str) and PANE_RE.fullmatch(a["pane_id"])]
+        on = CFG.get("ambient_system", True)
+        return stages.status_stage(sessions, [str(u)[:60] for u in Ambient.data["sys"]] if on else [], on)
+    return st
+
+
 def video_stage(st, before):
     """Search for a video stage off the turn, then show it, unless the stage on screen changed meanwhile."""
     st = {**st, "items": stages.video_search(st["query"])}      # (the agent only said what to look for)
@@ -4545,7 +4578,14 @@ def stage_act(token, act):
         if page:
             BUS.pub(t="stage", **stage_event(page))
         return {"ok": bool(page)}
-    got = STAGES.get(token) if act in ("copy", "open", "play") else None
+    got = STAGES.get(token) if act in ("copy", "open", "play", "session", "terminal") else None
+    if act in ("session", "terminal") and got and got[0] == act:    # the desk: a herdr session's window, or a fresh terminal
+        try:
+            argv = attach_argv(got[1]["pane"]) if act == "session" else ["xdg-terminal-exec"]
+            subprocess.Popen(argv, start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return {"ok": True}
+        except (OSError, ValueError):
+            return {"ok": False, "error": "couldn't open it"}
     if act == "copy" and got:
         text = got[1].get("cmd") or got[1].get("text")
         if not text:
@@ -4570,7 +4610,7 @@ def stage_act(token, act):
             return {"ok": False, "error": "couldn't play it"}
     if act in ("open", "play") and got:
         return {"ok": False, "error": "not yet"}
-    return {"ok": False, "error": "gone" if act in ("copy", "open", "play") else "unknown"}
+    return {"ok": False, "error": "gone" if act in ("copy", "open", "play", "session", "terminal") else "unknown"}
 
 
 def bridge_trust(level):
@@ -5522,9 +5562,9 @@ class Handler(BaseHTTPRequestHandler):
             elif fp and fp[0] == "ask" and vis:
                 return self._said("Which one? Say the first, second or third.")
             elif fp and fp[0] in ("copy", "open", "play") and vis:
-                it = (vis.get("items") or [vis])[fp[1]]         # each set names its tokens per action (map: open/copy, cinema: play)
-                tk = {"copy": it.get("token") or vis.get("copy"), "open": vis.get("open") or it.get("play"), "play": it.get("play")}[fp[0]]
-                r = stage_act(tk or "", fp[0])
+                it = (vis.get("items") or vis.get("sessions") or [vis])[fp[1]]         # each set names its tokens per action (map: open/copy, cinema: play, desk: a session)
+                tk = {"copy": it.get("token") or vis.get("copy"), "open": vis.get("open") or it.get("play") or it.get("open"), "play": it.get("play")}[fp[0]]
+                r = stage_act(tk or "", "session" if vis.get("kind") == "status" and fp[0] == "open" else fp[0])
                 return self._said({"copy": "Copied.", "open": "Opening it.", "play": "Playing it."}[fp[0]] if r["ok"]
                                   else "I can't do that yet." if r.get("error") == "not yet" else "I couldn't do that.")
             elif fp and fp[0] in ("close", "back", "show") and (cur or fp[0] != "close"):
@@ -5643,7 +5683,7 @@ class Handler(BaseHTTPRequestHandler):
                         threading.Thread(target=video_stage, args=(st, STAGES.current()), daemon=True).start()
                         return
                     if st:
-                        out(t="stage", **stage_event(STAGES.put(st)))
+                        out(t="stage", **stage_event(STAGES.put(desk_stage(st) if st["kind"] in stages.SERVER_KINDS else st)))
                 out(**kw)
 
             def out(**kw):

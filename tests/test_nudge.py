@@ -151,12 +151,14 @@ class NudgeTest(_ServerEnv):
     def test_welcome_names_the_next_meeting_and_survives_a_bad_file(self):
         import datetime
         N, A, S = self.server.Nudge, self.server.Ambient, self.server
-        now = datetime.datetime.now().astimezone()
-        A.events = [(now + datetime.timedelta(hours=1), "Standup", "e")]
+        now = datetime.datetime.now().astimezone().replace(hour=10, minute=0, second=0, microsecond=0)   # (a fixed daytime: after 23:00, "in an hour" is tomorrow)
+        A.events = [(now + datetime.timedelta(hours=1), "Standup", "e"),
+                    (now + datetime.timedelta(days=1), "Tomorrow's thing", "t")]           # (never named: the welcome is about today)
         S.CFG["ambient_calendar"] = True
         self.hist.write_text("{not json")
         text = N.welcome(10_000, self.hist, now)
         self.assertTrue(text.startswith("Welcome back! Next: Standup at "), text)
+        self.assertNotIn("Tomorrow", text)
         self.assertNotIn("notification", text)
 
     def test_load_nudges_fire_once_on_the_edge(self):
