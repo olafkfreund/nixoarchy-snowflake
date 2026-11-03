@@ -91,6 +91,11 @@ await ev(`himSet(''); return 1`);
 const wk = await ev(`const w=document.getElementById('wk'); w.textContent=''; const e=getComputedStyle(w).display; w.textContent='working: Read'; const b=getComputedStyle(w).backgroundColor; w.textContent=''; return [e,b]`);
 check(wk[0] === "none" && wk[1] !== "rgba(0, 0, 0, 0)", "#wk pill", wk.join(" | "));
 
+// a long unbroken word (a URL) wraps inside the plate, never past it (Codex on PR #24)
+const longWord = await ev(`himSet('see https://example.com/'+'a'.repeat(120)+'/path'); capShow(); await new Promise(r=>setTimeout(r,1200));
+  const p=plate.getBoundingClientRect(), h=himEl.getBoundingClientRect(), c=cap.getBoundingClientRect(); himSet(''); return [h.left>=p.left-.5&&h.right<=p.right+.5, p.right<=c.right+.5]`);
+check(longWord.join() === "true,true", "long word stays in the plate", longWord.join());
+
 // the notch stays one black shape
 const bar = await ev(`document.body.classList.add('bar'); himSet('hi'); const cs=getComputedStyle(plate), w=document.getElementById('wk'); w.textContent='x';
   const r={bg:cs.backgroundColor, pad:parseFloat(cs.paddingLeft)+parseFloat(cs.paddingTop), bd:(cap.classList.add('ntf'),parseFloat(getComputedStyle(plate).borderTopWidth)||0), wk:getComputedStyle(w).display}; cap.classList.remove('ntf'); w.textContent=''; document.body.classList.remove('bar'); himSet(''); return r`);
