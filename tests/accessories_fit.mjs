@@ -20,6 +20,18 @@ await send("Emulation.setDeviceMetricsOverride", { width: 340, height: 460, devi
 await send("Page.navigate", { url }); await sleep(4500);
 await ev("setInterval(()=>{ nextFidAt=1e15; },50); window.__hold=null; await post('/api/settings',{idle_mode:'off'}).then(r=>r.json()).then(j=>{info=j;}); if(window.setIdle) setIdle('full'); return 1");   // (measure him full size: no idle peek)
 
+// weather helpers (#157): hold one sky/state, wait until his looks have switched, then sweep the #wx test clock
+await ev(`window.wxSleep=ms=>new Promise(r=>setTimeout(r,ms)); window.raf2=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  window.wxSet=async o=>{ clearInterval(window.__hold);
+    const hold=()=>{ for(const k of Object.keys(SIT)) if(typeof SIT[k]==='boolean') SIT[k]=false;   // (SIT.day is a boolean too: set it after)
+      Object.assign(SIT,{day:o.day!==false,weather:o.kind||null,heavy:!!o.heavy,windy:!!o.windy,lean:o.lean||0,party:!!o.party,meeting:!!o.meeting,cold:o.cold||0});
+      Object.assign(info,{look_weather:true,look_party:true,look_meeting:true}); lowFx=!!o.lowFx; nextFidAt=1e15; };
+    hold(); window.__hold=setInterval(hold,50);
+    const want={rain:0,snow:0,clear:0,partly:0,cloudy:0,windy:!!o.windy,party:!!o.party,meeting:!!o.meeting,night:0,cold2:(o.cold||0)>=2}; if(o.kind) want[o.kind]=true;
+    for(let i=0;i<400;i++){ if(Object.keys(want).every(k=>sitOn[k]===!!want[k])){ await wxSleep(1200); return 1; } await wxSleep(50); }
+    throw new Error('looks did not settle '+JSON.stringify(sitOn)); };
+  return 1`);
+
 // Settings → Plugins draws a hostile name and error as text, never as markup (#149)
 if ((await ev(`plugRender({items:[{id:'x-1',name:'<b>x</b>',version:'<i>1</i>',source:'Folder',enabled:false,caps:['<u>caps</u>'],error:'<img src=x onerror=1>'}],error:'<s>e</s>'});
   const l=document.getElementById('plugList'); return [l.querySelector('b,i,u,img,s')!==null||document.querySelector('#plugErr s')!==null, l.textContent.includes('<b>x</b>'), l.textContent.includes('<img src=x onerror=1>')];`)).join() !== "false,true,true") {
@@ -33,7 +45,7 @@ if ((await ev(`plugRender({items:[{id:'a-1',name:'A',version:'1',source:'Nix',en
 await ev("plugRender({items:[]}); return 1");
 
 // one case = how to turn it on, and which element(s) to measure
-const LOOKS = { tie: "meeting", hb: "music", hf: "music", sh: "fullscreen", gl: "coding", nc: "night", ph: "party", um: "rain" };
+const LOOKS = { tie: "meeting", hb: "music", hf: "music", sh: "fullscreen", gl: "coding", nc: "night", ph: "party" };
 const cases = [];
 for (const [part, sit] of Object.entries(LOOKS)) cases.push({ name: `look ${sit} (${part})`, on: `
   clearInterval(__hold); for(const k of Object.keys(SIT)) if(typeof SIT[k]==='boolean') SIT[k]=false; SIT.weather='';
@@ -58,6 +70,20 @@ cases.push({ name: "agent mark (ask)", on: "clearInterval(__hold); agentMark('cl
 cases.push({ name: "cue dot (!)", on: "clearInterval(__hold); AM=null; attnPend={from:'x',at:performance.now()}; renderCue(); document.getElementById('cue').setAttribute('display','');", wait: 600, el: "document.getElementById('cue')", after: "attnPend=null; renderCue();" });
 cases.push({ name: "thinking bubble", on: "clearInterval(__hold); poke('thinking',6000);", wait: 1500, el: "document.getElementById('think')" });
 cases.push({ name: "question mark", on: "clearInterval(__hold); poke('confused',6000);", wait: 1500, el: "document.getElementById('qmark')" });
+// #157 the weather marks: for each sky, calm / with a party hat / windy both ways, the union of #wx's visible groups at five points of the test clock
+for (const [kn, ko] of [["rain", { kind: "rain" }], ["heavy rain", { kind: "rain", heavy: true }], ["snow", { kind: "snow" }], ["clear day", { kind: "clear" }],
+  ["clear night", { kind: "clear", day: false }], ["partly", { kind: "partly" }], ["cloudy", { kind: "cloudy" }]])
+  for (const [vn, vo] of [["calm", {}], ["party hat", { party: true }], ["windy lean -1", { windy: true, lean: -1 }], ["windy lean +1", { windy: true, lean: 1 }]])
+    cases.push({ name: `wx ${kn}, ${vn}`, noBounce: true, wait: 100, el: "({getBoundingClientRect:()=>window.__wxU})", after: "WXT=null;", on: `
+  await wxSet(${JSON.stringify({ ...ko, ...vo })}); let u=null;
+  for(const t of [0,3.5,7,10.5,13.9]){ WXT=t; await raf2(); await wxSleep(60);
+    for(const g of document.getElementById('wx').children){ if(g.tagName!=='g'||g.getAttribute('display')==='none') continue; const r=g.getBoundingClientRect(); if(!r.width||!r.height) continue;
+      u=u?{left:Math.min(u.left,r.left),top:Math.min(u.top,r.top),right:Math.max(u.right,r.right),bottom:Math.max(u.bottom,r.bottom)}:{left:r.left,top:r.top,right:r.right,bottom:r.bottom}; } }
+  window.__wxU=u?{...u,width:u.right-u.left,height:u.bottom-u.top}:{left:0,top:0,right:0,bottom:0,width:0,height:0};` });
+// #157 slice 2: the scarf and the beanie (they wait 3 s for the cold1 look), calm and in the wind both ways
+for (const [n, o] of [["scarf", { cold: 1 }], ["beanie + scarf", { cold: 2 }], ["beanie + scarf, windy lean -1", { cold: 2, windy: true, lean: -1 }], ["beanie + scarf, windy lean +1", { cold: 2, windy: true, lean: 1 }],
+  ["scarf, windy lean +1", { cold: 1, windy: true, lean: 1 }]])
+  cases.push({ name: `cold: ${n}`, wait: 4000, el: "SIT_P.sc", also: o.cold > 1 ? "SIT_P.bn" : null, on: `await wxSet(${JSON.stringify(o)});` });
 cases.push({ name: "mail pop-out", on: "clearInterval(__hold); mailPop({key:'k',app:'thunderbird',summary:'Invoice 42 is due Friday',category:'mail'});", wait: 1600,
   el: "document.getElementById('mailPop')", also: "document.querySelector('#mailPop .lt')", grow: 130, noBounce: true });   // (HTML, outside the bouncing SVG)   // (the window grows 130 px each side for it)
 
@@ -84,7 +110,16 @@ for (const c of cases) {
   if (!ok) fails.push(c.name);
   if (c.after) await ev(c.after + " return 1");
 }
-await ev("clearInterval(__hold); return 1");
+// #157 slice 2, who wins a slot: [what to hold, what to check once it settles]
+const op = g => `+${g}.getAttribute('opacity')`;
+for (const [n, hold, chk, after] of [
+  ["rain + cold 2: beanie on, rain cloud to his left", { kind: "rain", cold: 2 }, `return [${op("SIT_P.bn")}>.9, cloudX(WX.rain.g)<-40]`],
+  ["meeting + cold 1: tie on, no scarf", { meeting: true, cold: 1 }, `await wxSleep(3500); return [${op("SIT_P.tie")}>.9, ${op("SIT_P.sc")}<.05]`],
+  ["base plugin prop + cold 1: no scarf", { cold: 1 }, `Object.assign(info.plugin_props[0],{anchor:'base',layer:'front'}); applyLook({...LOOK, skin:'plug:party-hat-plus'}); await wxSleep(2500); return [SKIN_PARTS.baseProp===true, ${op("SIT_P.sc")}<.05]`, "applyLook({...LOOK, skin:'none'});"]]) {
+  await ev(`window.cloudX=g=>g.transform.baseVal[0].matrix.e; await wxSet(${JSON.stringify(hold)}); await wxSleep(3500); ${chk.startsWith("return") ? chk : chk}`).then(async r => {
+    const ok = r.every(Boolean); console.log(`${ok ? "ok  " : "FAIL"} ${n.padEnd(46)} ${r.join()}`); if (!ok) fails.push(n); if (after) await ev(after + " return 1"); });
+}
+await ev("clearInterval(__hold); WXT=null; lowFx=false; return 1");
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
 console.log(fails.length ? `\n${fails.length} cut off: ${fails.join(", ")}` : "\nall fit");
 process.exit(fails.length ? 1 : 0);
