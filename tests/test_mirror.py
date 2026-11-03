@@ -120,13 +120,15 @@ class MirrorTest(unittest.TestCase):
         self.state_file("off")
         self.fakeout("status", '{"owner":"off"}')
         self.assertEqual(self.tick()["owner"], "off")
-        f = self.state_file("agent")
+        self.state_file("agent")
         self.fakeout("status", "", rc=1)              # status fails...
-        f.chmod(0)                                    # ...and the file can't be read either
-        try:
+        real = Path.read_text
+        def deny(p, *a, **k):                         # ...and the file can't be read either (mocked: chmod means nothing to root)
+            if p.name == "state.json":
+                raise PermissionError(p)
+            return real(p, *a, **k)
+        with mock.patch.object(Path, "read_text", deny):
             self.assertEqual(self.tick()["owner"], "off")
-        finally:
-            f.chmod(0o644)
         self.fakeout("status", '{"owner":"agent"}', rc=0)
         self.t[0] += 6                                # past the 5 s retry
         self.assertEqual(self.tick()["owner"], "agent")
