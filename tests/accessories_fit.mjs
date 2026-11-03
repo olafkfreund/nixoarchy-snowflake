@@ -33,7 +33,7 @@ if ((await ev(`plugRender({items:[{id:'a-1',name:'A',version:'1',source:'Nix',en
 await ev("plugRender({items:[]}); return 1");
 
 // one case = how to turn it on, and which element(s) to measure
-const LOOKS = { tie: "meeting", hb: "music", hf: "music", sh: "fullscreen", gl: "coding", nc: "night", ph: "party", um: "rain" };
+const LOOKS = { tie: "meeting", hb: "music", hf: "music", sh: "fullscreen", gl: "coding", nc: "night", ph: "party" };
 const cases = [];
 for (const [part, sit] of Object.entries(LOOKS)) cases.push({ name: `look ${sit} (${part})`, on: `
   clearInterval(__hold); for(const k of Object.keys(SIT)) if(typeof SIT[k]==='boolean') SIT[k]=false; SIT.weather='';

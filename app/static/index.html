@@ -594,7 +594,6 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 </svg>
 <div id="stage">
   <svg id="guy" viewBox="-150 -150 300 300">
-    <g id="wx" pointer-events="none"></g>
     <defs>
       <radialGradient id="halo" cx="0" cy="0" r="150" gradientUnits="userSpaceOnUse">
         <stop offset=".46" class="hs" stop-opacity=".0"/><stop offset=".5" class="hs" stop-opacity=".55"/>
@@ -654,6 +653,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <g id="fx"></g>
       <g id="micBars" opacity="0" pointer-events="none"><rect x="-29.5" y="129" width="7" height="2" rx="3.5" style="fill:var(--acc)" opacity=".7"/><rect x="-16.5" y="129" width="7" height="2" rx="3.5" style="fill:var(--acc)"/><rect x="-3.5" y="129" width="7" height="2" rx="3.5" style="fill:var(--hot)"/><rect x="9.5" y="129" width="7" height="2" rx="3.5" style="fill:var(--acc)"/><rect x="22.5" y="129" width="7" height="2" rx="3.5" style="fill:var(--acc)" opacity=".7"/></g>
     </g>
+    <g id="wx" pointer-events="none"></g>
   </svg>
 </div>
 
@@ -953,7 +953,7 @@ let SKIN_PARTS={}, SIT_P=null, sitSettled=false;
 // and the skin picker never shows one. Flat paths only; frame() fades and scales them with springs.
 function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) return null; bk.innerHTML=''; fr.innerHTML='';
   const acc=L.skinColor||L.pupL, R=at=>({...at,'stroke-linejoin':'round','stroke-linecap':'round'});
-  const nc=sv('g',{opacity:0},fr), um=sv('g',{opacity:0},fr), ph=sv('g',{opacity:0},fr);   // top zone, drawn first: the headphone band passes in front
+  const nc=sv('g',{opacity:0},fr), ph=sv('g',{opacity:0},fr);   // top zone, drawn first: the headphone band passes in front
   const hb=sv('g',{opacity:0},bk), bd=sv('g',{},hb), tie=sv('g',{opacity:0},fr), hf=sv('g',{opacity:0},fr), gl=sv('g',{opacity:0},fr), sh=sv('g',{opacity:0},fr);
   const wh=L.whiteL, pc=L.pupL, pd=shade(pc,-.3);
   // nightcap: a soft cone drooping to one side, a pom-pom, a pale brim
@@ -967,16 +967,6 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   sv('path',R({d:'M-26 -84L26 -84L2 -160Z',fill:pk,stroke:pkd,'stroke-width':2.5}),phi);
   for(const [y0,y1] of [[-104,-114],[-128,-138]]){ const hw=y=>26*(y+160)/76; sv('path',{d:`M${-hw(y0)} ${y0}L${hw(y0)} ${y0}L${hw(y1)} ${y1}L${-hw(y1)} ${y1}Z`,fill:wh},phi); }
   sv('circle',{cx:2,cy:-162,r:7,fill:yl,stroke:shade(yl,-.3),'stroke-width':2},phi);
-  // umbrella: a domed canopy tilted over his head, held by a J-hook round the right foot of his top lambda (64,-118)
-  // (the tilt is baked into the points, not a rotate(): a rotated group's box is looser, and the window-fit check measures boxes)
-  const ub='#f2c94c', ud=shade(ub,-.35), umi=sv('g',{},um), sk='#3a3f4b';
-  const rp=(x,y)=>`${(-6+x*.966+y*.259).toFixed(1)} ${(-91-x*.259+y*.966).toFixed(1)}`;   // canopy-local point -> page, tilted 15° to the left about (-6,-91)
-  sv('path',R({d:`M64 -118L${rp(0,-1)}`,fill:'none',stroke:sk,'stroke-width':3.5,'stroke-linecap':'round'}),umi);   // shaft
-  sv('path',R({d:'M64 -118Q71 -118 71 -111Q71 -105 65 -106',fill:'none',stroke:sk,'stroke-width':3.5,'stroke-linecap':'round'}),umi);   // J-hook
-  sv('path',R({d:`M${rp(-55,0)}C${rp(-55,-19)} ${rp(-30,-26)} ${rp(0,-26)}C${rp(30,-26)} ${rp(55,-19)} ${rp(55,0)}Q${rp(27,-9)} ${rp(0,0)}Q${rp(-27,-9)} ${rp(-55,0)}Z`,fill:ub,stroke:ud,'stroke-width':2.5,'stroke-linejoin':'round'}),umi);
-  sv('path',R({d:`M${rp(-55,0)}Q${rp(-27,-9)} ${rp(0,0)}Q${rp(27,-9)} ${rp(55,0)}`,fill:'none',stroke:ud,'stroke-width':2}),umi);   // underside arc
-  sv('path',R({d:`M${rp(0,-26)}L${rp(-38,-3)}M${rp(0,-26)}L${rp(0,-2)}M${rp(0,-26)}L${rp(38,-3)}`,fill:'none',stroke:ud,'stroke-width':1.6}),umi);   // three ribs
-  sv('path',R({d:`M${rp(0,-26)}L${rp(0,-30)}`,fill:'none',stroke:sk,'stroke-width':3,'stroke-linecap':'round'}),umi);   // ferrule
   // tie: a red one under the bottom corner, big enough to read at his size
   const red='#d8453a', dk=shade(red,-.35);
   sv('path',R({d:'M-11 58L11 58L7 70L-7 70Z',fill:shade(red,-.12),stroke:dk,'stroke-width':2.5}),tie);
@@ -1010,7 +1000,7 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   const scr=sv('rect',{x:61,y:-60,width:22,height:16,rx:3,fill:'#1d2026'},feed); sv('path',R({d:'M68 -57L68 -47L77 -52Z',fill:'#fff'}),feed);
   sv('circle',{cx:87,cy:-56,r:1.6,fill:'#fff'},feed); sv('circle',{cx:87,cy:-50,r:1.6,fill:'#fff'},feed);
   const ic=(x,y,g)=>sv('image',{x,y,width:14,height:14,display:'none'},g);   // the sending app's icon, set when the prop starts
-  return {chat:{g:chat,dots,badge,bt,n:0,img:ic(-99,-80,chat)},feed:{g:feed,scr,ant:tvA,img:ic(48,-70,feed)},tie,hb,bd,hf,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,um,lensL,lensR,brg,glintL,glintR}; }
+  return {chat:{g:chat,dots,badge,bt,n:0,img:ic(-99,-80,chat)},feed:{g:feed,scr,ant:tvA,img:ic(48,-70,feed)},tie,hb,bd,hf,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,lensL,lensR,brg,glintL,glintR}; }
 // a plugin's prop (#149): the server already sanitised it to a node list; only createElementNS + setAttribute here, no ids, no markup
 const PROP_BOX={head:[-30,-112,60,54],left:[-98,-34,40,40],right:[58,-34,40,40],base:[-36,68,72,26]}, PROP_COL={acc:'var(--acc)',text:'var(--text)',dim:'var(--dim)'};
 function drawProp(par,P){   // a nested <svg> at the anchor box: it scales the prop and clips it to the box
@@ -1238,7 +1228,7 @@ const S={L:{},R:{}}; for(const k of EYE_KEYS){ S.L[k]=new Spring(val(MOODS.idle[
 const SP={L:{},R:{}}; for(const k of PUP_KEYS){ SP.L[k]=new Spring(val(PUP.slit[k],0),2.3,.78); SP.R[k]=new Spring(val(PUP.slit[k],1),2.3,.78); }
 const G={ sz:new Spring(1,2,.75), tilt:new Spring(0,.8,.85), dx:new Spring(0,2.4,.55),
   wob:new Spring(0,1.7,.22),
-  gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), sit:new Spring(0,2.4,.55), sitShade:new Spring(0,2.4,.55), sitGl:new Spring(0,2.4,.55), sitP:new Spring(0,2.4,.55), sitR:new Spring(0,2.4,.55), sitN:new Spring(0,2.4,.55), sitLift:new Spring(0,3,.8), sitMusic:new Spring(0,2.4,.55), sitW:new Spring(0,1.7,.22), zoom:new Spring(1,1.6,.7),
+  gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), sit:new Spring(0,2.4,.55), sitShade:new Spring(0,2.4,.55), sitGl:new Spring(0,2.4,.55), sitP:new Spring(0,2.4,.55), sitN:new Spring(0,2.4,.55), sitLift:new Spring(0,3,.8), sitMusic:new Spring(0,2.4,.55), sitW:new Spring(0,1.7,.22), zoom:new Spring(1,1.6,.7),
   appear:new Spring(.2,1.5,.55), open:new Spring(0,1.8,.55), think:new Spring(0,1.6,.6), anger:new Spring(0,1.8,.55), qm:new Spring(0,1.8,.55),
   agent:new Spring(0,2.6,.5), sitChat:new Spring(0,2.6,.5), sitFeed:new Spring(0,2.6,.5), mic:new Spring(0,2.6,.7), rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
 let idlePu=null, idleSwapAt=performance.now()+15000;
@@ -1352,19 +1342,53 @@ const paintEl=document.getElementById('paint');
 const REDUCED=matchMedia('(prefers-reduced-motion: reduce)');
 const wxAlpha=p=>.85*Math.sin(Math.PI*p);
 const wxEl=$('#wx');
+// the weather marks (#157): built once, every group display="none" until wxStep shows it; flat colours only. Particles are children of their cloud's group.
+function drawMarks(){ const W={}, d=sv('defs',{},wxEl), R=at=>({...at,'stroke-linecap':'round','stroke-linejoin':'round'});
+  const grad=(id,a,b)=>{ const lg=sv('linearGradient',{id,x1:0,y1:0,x2:0,y2:1},d); sv('stop',{offset:0,'stop-color':a},lg); sv('stop',{offset:1,'stop-color':b},lg); };
+  grad('wxCgR','#b9c3d3','#76839a'); grad('wxCgH','#8e99ab','#5d6a80'); grad('wxCgW','#ffffff','#d5dde9'); grad('wxSunG','#ffe680','#ffb52e');
+  const grp=(par,at)=>sv('g',{...(par?{}:{display:'none'}),...at},par||wxEl);   // (only the top-level groups start hidden)
+  const cloud=(par,x,y,k,fill,line,lower)=>{ const c=grp(par,{transform:`translate(${x} ${y}) scale(${k})`}), P=[[-44,6,17],[-20,-8,24],[10,-12,22],[36,0,18],[0,8,22]];
+    for(const [px,py,r] of P) sv('circle',{cx:px,cy:py,r:r+2.5,fill:line},c);
+    for(const [px,py,r] of P) sv('circle',{cx:px,cy:py,r,fill},c);
+    sv('rect',{x:-48,y:6,width:90,height:16,rx:8,fill:lower},c);
+    sv('path',R({d:'M-30 -14Q-22 -24 -10 -22',fill:'none',stroke:'#ffffff80','stroke-width':3}),c); return c; };
+  const white=(par,x,y,k)=>cloud(par,x,y,k,'url(#wxCgW)','#8f9bb0','#d5dde9');
+  const sunAt=(par,x,y,r,r0,r1,k)=>{ const g=grp(par,{transform:`translate(${x} ${y})${k?` scale(${k})`:''}`}), rays=sv('g',{},g);
+    for(let i=0;i<10;i++) sv('path',R({d:`M0 -${r0}L0 -${r1}`,stroke:'#ffc83d','stroke-width':r>19?4:3.5,transform:`rotate(${i*36})`}),rays);
+    sv('circle',{r,fill:'#e59b1a'},g); sv('circle',{r:r-2,fill:'url(#wxSunG)'},g); sv('path',R({d:`M${-r*.5} ${-r*.4}Q${-r*.25} ${-r*.65} ${r*.15} ${-r*.6}`,fill:'none',stroke:'#ffffff60','stroke-width':3}),g);
+    return {g,rays}; };
+  const moonAt=(par,x,y,k)=>{ const g=grp(par,{transform:`translate(${x} ${y}) scale(${k})`});
+    sv('path',R({d:'M8 -22A23 23 0 1 0 8 22A17 17 0 1 1 8 -22Z',fill:'#f4efd0',stroke:'#c9bf8a','stroke-width':2.4}),g); return g; };
+  // heavy rain's extra clouds sit behind the main one (they come first)
+  W.ex=[cloud(null,-62,-112,.6,'url(#wxCgH)','#3f4859','#5d6a80'),cloud(null,66,-112,.7,'url(#wxCgH)','#3f4859','#5d6a80')];
+  const rain=cloud(null,0,-108,.92,'url(#wxCgR)','#4b5566','#76839a');
+  W.rain={g:rain,drops:[...Array(12)].map((_,i)=>sv('path',R({d:`M${-42+i*7.6} ${24+i%4*12}l-2.5 10`,stroke:'#bfe6ff','stroke-width':2.8,fill:'none'}),rain)),
+    fills:[...rain.querySelectorAll('circle:nth-child(n+6),rect')], lines:[...rain.querySelectorAll('circle:nth-child(-n+5)')]};   // (wxStep recolours these for heavy rain)
+  const snow=white(null,0,-108,.92);
+  W.snow={g:snow,flakes:[...Array(7)].map((_,i)=>{ const f=sv('g',{transform:`translate(${-40+i*13} ${30+i%3*16})`},snow);
+    for(const a of [0,60,120]) sv('path',R({d:'M0 -4.5V4.5',stroke:'#ffffff','stroke-width':1.8,transform:`rotate(${a})`}),f); return f; })};
+  W.sun=sunAt(null,98,-104,21,26,34);
+  const mg=grp(null); moonAt(mg,98,-104,1);
+  W.moon={g:mg,stars:[[-60,-128],[-100,-100],[40,-140],[-20,-138]].map(([x,y])=>sv('path',{d:`M${x} ${y-5}L${x+1.5} ${y-1.5}L${x+5} ${y}L${x+1.5} ${y+1.5}L${x} ${y+5}L${x-1.5} ${y+1.5}L${x-5} ${y}L${x-1.5} ${y-1.5}Z`,fill:'#fff6c8'},mg))};
+  const pg=grp(null); W.partly={g:pg,sun:sunAt(pg,30,-110,18,22,30),moon:moonAt(pg,30,-110,.8),cloud:white(pg,-12,-104,.85)}; W.partly.moon.setAttribute('display','none');   // (sun by day, moon by night: wxStep picks)
+  const cg=grp(null); W.cloudy={g:cg,c1:white(cg,0,-108,.92),c2:white(cg,70,-118,.55)};
+  const wg=grp(null); W.wind={g:wg,sw:[0,1,2].map(i=>sv('path',R({d:`M${-70+i*20} ${-118+i*16}q22 -8 44 0t44 0q10 3 10 -6q0 -7 -7 -5`,fill:'none',stroke:'#dfe8f5','stroke-width':3}),wg)),
+    leaf:sv('path',R({d:'M0 0Q6 -7 13 0Q6 7 0 0Z',fill:'#7fd6ae',stroke:'#2f8f66','stroke-width':1.4,transform:'translate(20 -98)'}),wg)};
+  return W; }
+const WX=drawMarks(), wxPG=sv('g',{},wxEl);   // wxPG: the old particles' own group, until wxStep is rewritten
 let wxKind='', wxCount=0, wxStill=false, wxParts=[];
 function wxStep(t,dt){
   if(document.body.classList.contains('bar')||document.body.classList.contains('hover')||document.body.classList.contains('calm')||document.body.classList.contains('goohide')) return;
-  const kind=sitOn.snow&&G.sitR.x<.05?'snow':sitOn.rain?'rain':'', still=REDUCED.matches;
+  const kind=sitOn.snow?'snow':sitOn.rain?'rain':'', still=REDUCED.matches;
   const count=kind?(still?3:Math.floor((kind==='rain'?(SIT.heavy?12:8):6)/(lowFx?2:1))):0;
   if(kind!==wxKind||count!==wxCount||still!==wxStill){
-    wxKind=kind; wxCount=count; wxStill=still; wxParts=[]; wxEl.replaceChildren();
+    wxKind=kind; wxCount=count; wxStill=still; wxParts=[]; wxPG.replaceChildren();
     for(let i=0;i<count;i++){
       const el=document.createElementNS(NS,kind==='rain'?'path':'circle');
       const phase=(i+.5)*280/count, x=-135+270*((i*0.61803398875)%1);
       if(kind==='rain'){ el.setAttribute('fill','none'); el.setAttribute('stroke','#9fd3ff'); el.setAttribute('stroke-width','2.4'); el.setAttribute('stroke-linecap','round'); }
       else { el.setAttribute('r',(2+i%4*.5).toFixed(1)); el.setAttribute('fill','#e6f4ff'); el.setAttribute('opacity',(.55+(i%6)*.07).toFixed(2)); }
-      wxEl.appendChild(el); wxParts.push({el,phase,x});
+      wxPG.appendChild(el); wxParts.push({el,phase,x});
     }
   }
   if(!kind||still&&wxParts[0]?.fixed) return;
@@ -1570,14 +1594,14 @@ function frame(ts){
   if(SP2.halo) SP2.halo.setAttribute('transform',`translate(0,${(Math.sin(t*1.6)*2.2).toFixed(2)})`);
   if(SIT_P){ sitStep(ts);       // looks: spring in/out about their anchors; the tie sways like the other hanging skins
     const w=G.sitW.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)*.6, sp=(S_,on)=>S_.to(on?1:0,dt), skinless=LOOK.skin==='none';
-    const tp=skinless&&sitOn.party, tr=skinless&&!tp&&sitOn.rain, tn=skinless&&!tp&&!tr&&sitOn.night;     // top zone: party hat > umbrella > nightcap, and only with no skin
+    const tp=skinless&&sitOn.party, tn=skinless&&!tp&&sitOn.night;     // top zone: party hat > nightcap (the beanie comes later), and only with no skin
     const a=sp(G.sit,sitOn.meeting), b=sp(G.sitMusic,sitOn.music), c=sp(G.sitShade,sitOn.fullscreen), g=sp(G.sitGl,sitOn.coding&&!sitOn.fullscreen),   // eyes: shades > glasses
-      pa=sp(G.sitP,tp), um=sp(G.sitR,tr), ni=sp(G.sitN,tn), pch=sp(G.sitChat,propOn&&propOn.cat==='chat'&&ts<propOn.until), pf=sp(G.sitFeed,propOn&&propOn.cat==='video'&&ts<propOn.until), L=G.sitLift.to(isTalk(m)||m==='listening'||['reading','editing','running','searching','looking','thinking'].includes(m)?1:0,dt);
+      pa=sp(G.sitP,tp), ni=sp(G.sitN,tn), pch=sp(G.sitChat,propOn&&propOn.cat==='chat'&&ts<propOn.until), pf=sp(G.sitFeed,propOn&&propOn.cat==='video'&&ts<propOn.until), L=G.sitLift.to(isTalk(m)||m==='listening'||['reading','editing','running','searching','looking','thinking'].includes(m)?1:0,dt);
     const put=(el,x,ax,ay,rot)=>{ el.setAttribute('opacity',clamp(x,0,1).toFixed(2)); el.setAttribute('transform',`translate(${ax} ${ay})${rot?` rotate(${rot.toFixed(2)})`:''} scale(${(.7+.3*x).toFixed(3)}) translate(${-ax} ${-ay})`); };
     const lift=(el,x)=>{ put(el,x,0,-4); el.setAttribute('transform',`translate(0 ${(-32*L).toFixed(1)}) scale(${(1-.08*L).toFixed(3)}) `+el.getAttribute('transform')); };   // (lifted onto the forehead while he talks, so his eyes stay visible)
-    const off=!(sitOn.meeting||sitOn.music||sitOn.fullscreen||sitOn.coding||tp||tr||tn)&&Math.max(a,b,c,g,pa,um,ni,pch,pf)<.002;
+    const off=!(sitOn.meeting||sitOn.music||sitOn.fullscreen||sitOn.coding||tp||tn)&&Math.max(a,b,c,g,pa,ni,pch,pf)<.002;
     if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,b,0,-4,G.sitW.x*.25); put(SIT_P.hf,b,0,-4,G.sitW.x*.25); sitSettled=off;
-      lift(SIT_P.sh,c); put(SIT_P.gl,g,0,-4); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3); put(SIT_P.um,um,64,-118,clamp(w*.45,-6,6));
+      lift(SIT_P.sh,c); put(SIT_P.gl,g,0,-4); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3);;
       const el=propOn?ts-propOn.t0:0, prop=(Q,x,ax,ay,f)=>{ if(x>.002){ put(Q.g,x,ax,ay); Q.on=true; f(Q); } else if(Q.on){ Q.g.setAttribute('opacity','0'); Q.on=false; } };   // (a prop writes only while it shows)
       prop(SIT_P.chat,pch,-74,-60,Q=>{ Q.dots.forEach((d,i)=>d.setAttribute('transform',`translate(0 ${(Math.sin(t*9-i*1.1)*3).toFixed(2)})`));
         const n=propOn&&propOn.cat==='chat'?propOn.n||1:1; if(n!==Q.n){ Q.n=n; Q.badge.setAttribute('display',n>1?'':'none'); Q.bt.textContent='×'+n; } });
@@ -1884,7 +1908,7 @@ function onEvent(ev){
     if(!muted) sayAside(head+(ev.project?', in '+ev.project:'')); }
   else if(ev.t==='notify') notifyIn(ev);
   else if(ev.t==='nudge') { if(!(SIT.fullscreen||SIT.meeting)) restore(11000,false); ev.rt=performance.now(); nudgeQ.set(ev.kind,ev); nudgeDrain(performance.now()); }
-  else if(ev.t==='situation'){ SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party; SIT.heavy=!!ev.heavy; SIT.windy=!!ev.windy; SIT.lean=ev.lean||0; SIT.cold=ev.cold||0;
+  else if(ev.t==='situation'){ SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party; SIT.heavy=!!ev.heavy; SIT.windy=!!ev.windy; SIT.lean=ev.lean||0; SIT.cold=ev.cold||0; SIT.day=ev.day!==false;
     if(ev.weather==='snow'&&SIT.weather!=='snow'&&info.look_weather) poke('excited',1800);      // he loves snow: once, when it starts
     SIT.weather=ev.weather||null; }
   else if(ev.t==='ambient'){ if(ev.alert) restore(12000,false); const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive) poke('confused',1500);
@@ -1974,7 +1998,7 @@ function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts-e.rt>600000) nudgeQ.de
   else { karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; plateReset(); ntfDrop(); setYou('');
     const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); shownTxt=''; capShow(); sendRegion(true); dropSync();
     setTimeout(()=>{ if(sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } },6000); } }
-let SIT={meeting:false,music:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false,heavy:false,windy:false,lean:0,cold:0};   // situation signals, as the server sends them
+let SIT={meeting:false,music:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false,heavy:false,windy:false,lean:0,cold:0,day:true};   // situation signals, as the server sends them
 // a look goes on after 3 s of signal and off after 8 s without it: timestamps, no timers
 const sitOn={meeting:false,music:false,fullscreen:false,coding:false,night:false,party:false,rain:false,snow:false,cold1:false,cold2:false}, sitSeen={...sitOn}, sitAt={meeting:0,music:0,fullscreen:0,coding:0,night:0,party:0,rain:0,snow:0,cold1:0,cold2:0};
 function sitStep(ts){ const weather={rain:SIT.weather==='rain',snow:SIT.weather==='snow',cold1:SIT.cold>=1,cold2:SIT.cold>=2};
