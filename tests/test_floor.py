@@ -92,6 +92,16 @@ class FloorTest(unittest.TestCase):
         self.assertEqual(len(fields), 3)
         self.assertFalse(self.floor.floor_overlaps(float(fields[2]) + 0.001))
 
+    def test_overlap_survives_us_taking_the_floor_afterwards(self):
+        start = time.monotonic()
+        child = self.child()
+        child.communicate("\n", timeout=2)
+        self.assertTrue(self.floor.hold("a"))
+        self.assertTrue(self.floor.floor_overlaps(start))
+        self.floor.release("a", 0)
+        self.assertTrue(self.floor.floor_overlaps(start))
+        self.assertFalse(self.floor.floor_overlaps(time.monotonic()))
+
     def test_tail_reacquire_keeps_same_lock(self):
         self.assertTrue(self.floor.hold("speaker"))
         taken = Path(self.path).read_text()

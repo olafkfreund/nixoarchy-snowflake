@@ -38,6 +38,7 @@ from urllib.parse import parse_qs, urlparse
 APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 import plugins  # noqa: E402
+from floor import FLOOR, pdeathsig_preexec  # noqa: E402
 import quick  # noqa: E402
 import recall  # noqa: E402
 import stages  # noqa: E402
@@ -2633,6 +2634,8 @@ class Wake:
     def should_run(cls):
         if cls.asleep or Ambient.meeting or Listen.lock.locked():      # (in a meeting the wake word is paused)
             return False
+        if FLOOR.floor_overlaps(time.monotonic()):      # another voice has the floor: keep the mic closed
+            return False
         if cls.speaking():                       # while he talks: only to catch "stop" / "hey Nixi" (barge-in)
             return bool(CFG.get("barge_in"))
         return bool(CFG.get("wake_word")) or time.monotonic() < cls.follow_until
@@ -2720,6 +2723,8 @@ class Wake:
     def check(cls, pcm, started):
         # started after he finished talking, inside the follow-up window → it's a request, no "hey Nixi" needed
         follow = not cls.speaking() and cls.follow_from <= started < cls.follow_until and not ST.lock.locked()
+        if FLOOR.floor_overlaps(started):        # the other voice spoke while this was recorded: not yours, not worth learning
+            return
         if not cls.speaking():                   # (while he talks the mic also hears him: don't tune to his voice)
             MicAuto.learn(pcm)
         try:
@@ -2823,6 +2828,11 @@ def doctor():
         print("  MIC FAILED:", e)
     print("\nvoice:", tts_engine() or "none (install espeak-ng / piper)")
     print("claude:", claude_bin() or "NOT FOUND")
+    try:
+        line = Path(FLOOR.path).read_text().strip()
+    except OSError:
+        line = ""
+    print(f"floor: {FLOOR.path}\n  {line or '(no holder yet)'}")
 
 
 # ---------------------------------------------------------------- text to speech
@@ -3175,7 +3185,7 @@ def audio_player_cmd(rate):
 def make_player(rate):
     """Something that takes raw 16-bit mono on .stdin: paplay/aplay on Linux."""
     return subprocess.Popen(audio_player_cmd(rate), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL)
+                            stderr=subprocess.DEVNULL, preexec_fn=pdeathsig_preexec)
 
 
 class Speaker:
@@ -3247,6 +3257,7 @@ class Speaker:
             p, cls.proc = cls.proc, None
             cls.written, cls.t0 = 0, 0.0
             cls.cv.notify_all()
+        FLOOR.drop()
         if p:
             try:
                 p.kill()
@@ -3338,6 +3349,14 @@ class Speaker:
         return True
 
     @classmethod
+    def _release_if_idle(cls):
+        """An early exit from the player loop: nothing left to say means no reason to keep the floor."""
+        with cls.cv:
+            idle = not cls.ready and not cls.todo and not cls.making
+        if idle:
+            FLOOR.release("speaker", 0)
+
+    @classmethod
     def _player_loop(cls):
         while True:
             with cls.cv:
@@ -3348,18 +3367,24 @@ class Speaker:
                         cls.cv.wait(timeout=max(0.0, end - time.monotonic()))
                         if not cls.ready and not cls.todo and not cls.making and g == cls.gen and time.monotonic() >= end - 0.01:
                             BUS.pub(t="spk_done")
+                            FLOOR.release("speaker", float(CFG.get("follow_up") or 0))
                             cls.written, cls.t0 = 0, time.monotonic()
                         continue
                     cls.cv.wait()
                 g, sid, text, pcm, prate, words, level, lstep, follow = cls.ready.pop(0)
                 cls.cv.notify_all()
+            # The floor is taken before the player starts and the clock is read (the wait can be long).
+            if not FLOOR.hold("speaker", cancelled=lambda: g != cls.gen):
+                continue
             if g != cls.gen:
+                cls._release_if_idle()
                 continue
             try:
                 cls._player(prate)
             except Exception as e:  # noqa: BLE001
                 print(f"[nixi] audio player: {e}", file=sys.stderr)
                 BUS.pub(t="spk_skip", id=sid)
+                cls._release_if_idle()
                 continue
             now = time.monotonic()
             if cls.written / cls.prate < now - cls.t0:           # it had gone quiet: restart the clock
@@ -3373,9 +3398,68 @@ class Speaker:
             BUS.pub(t="spk", id=sid, at=round((start - now + cls.LAT) * 1000), dur=round(dur, 3), words=words,
                     level=level, step=lstep)
             if not cls._write(pcm, g):
+                cls._release_if_idle()
                 continue
             pause = 0.3 if re.search(r"[.!?]['\")]*$", text) else 0.14 if re.search(r"[,;:—–]$", text) else 0.06
             cls._write(b"\0\0" * int(prate * pause), g)
+
+
+class PageFloor:
+    """The floor while the page plays his voice itself (voice_out="page"). The page says when it starts and stops; if it
+    vanishes, the clips /api/tts served (including ones prefetched before its first hold) say when he must be done."""
+
+    def __init__(self, floor=None, clock=time.monotonic, tail=lambda: float(CFG.get("follow_up") or 0)):
+        self.floor, self.clock, self.tail = floor, clock, tail
+        self.lock = threading.Lock()
+        self.held, self.first, self.clips, self.timer = False, 0.0, 0.0, None
+
+    def served(self, dur):
+        with self.lock:
+            self.clips += dur
+        self._arm()
+
+    def hold(self):
+        with self.lock:
+            if self.held:
+                return
+            self.held = True
+        ok = (self.floor or FLOOR).hold("page", cancelled=lambda: not self.held)
+        with self.lock:
+            self.first = self.clock()       # the page plays from here, not from when it asked
+        if ok:
+            self._arm()
+
+    def release(self, tail=None):
+        with self.lock:
+            was, self.held, self.clips = self.held, False, 0.0
+            if self.timer:
+                self.timer.cancel()
+                self.timer = None
+        if was:
+            (self.floor or FLOOR).release("page", self.tail() if tail is None else tail)
+
+    def check(self):
+        """The fallback: the deadline already includes the tail, so the floor is let go at once."""
+        with self.lock:
+            due = self.held and self.clock() >= self.first + self.clips + self.tail()
+        if due:
+            self.release(0)
+        else:
+            self._arm()
+
+    def _arm(self):
+        with self.lock:
+            if self.timer:
+                self.timer.cancel()
+                self.timer = None
+            if self.held:
+                wait = max(0.05, self.first + self.clips + self.tail() - self.clock())
+                self.timer = threading.Timer(wait, self.check)
+                self.timer.daemon = True
+                self.timer.start()
+
+
+PAGE_FLOOR = PageFloor()
 
 
 STRESS_LINES = [
@@ -3405,7 +3489,7 @@ def stress_voice(silent=False):
         print("no voice engine installed — nothing to test"); return 1
     if silent:
         globals()["audio_player_cmd"] = lambda rate: [sys.executable, "-c", "import sys\nwhile sys.stdin.buffer.read(65536): pass"]
-        globals()["make_player"] = lambda rate: subprocess.Popen(audio_player_cmd(rate), stdin=subprocess.PIPE)
+        globals()["make_player"] = lambda rate: subprocess.Popen(audio_player_cmd(rate), stdin=subprocess.PIPE, preexec_fn=pdeathsig_preexec)
     else:
         cmd = audio_player_cmd(22050)
         if not cmd:
@@ -4726,6 +4810,11 @@ class Handler(BaseHTTPRequestHandler):
                 audio, rate = synth(text)
                 audio, words = tidy_and_time(audio, text)
                 pause = 0.3 if re.search(r"[.!?]['\")]*$", text) else 0.14 if re.search(r"[,;:—–]$", text) else 0.06
+                try:
+                    with wave.open(io.BytesIO(audio)) as w:
+                        PAGE_FLOOR.served(w.getnframes() / w.getframerate() / (rate or 1) + pause)
+                except Exception:  # noqa: BLE001
+                    pass
                 self.send_response(200)
                 self.send_header("Content-Type", "audio/wav")
                 self.send_header("X-Nixi-Rate", f"{rate:.3f}")
@@ -4737,6 +4826,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(audio)
                 return None
+            if p == "/api/floor":                     # the page plays his voice itself: it says when it starts and stops
+                if json.loads(self._body() or b"{}").get("hold"):
+                    PAGE_FLOOR.hold()
+                else:
+                    PAGE_FLOOR.release()
+                return self._json({"ok": True})
             if p == "/api/say":                       # speak this (played by the server, see Speaker)
                 b = json.loads(self._body() or b"{}")
                 text = speakable(b.get("text", ""), board_up())

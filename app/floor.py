@@ -22,6 +22,19 @@ class Floor:
         self._fd = None
         self._taken = None
         self._timer = None
+        # Latest end of another voice's turn seen: taking the floor overwrites its record,
+        # and a capture open across that turn must still be dropped.
+        self.foreign_release = 0.0
+
+    def _note_foreign(self, line):
+        fields = line.split()
+        if not line.endswith("\n") or len(fields) not in (2, 3) or fields[0] == str(os.getpid()):
+            return
+        try:
+            end = float(fields[2]) if len(fields) == 3 else self.clock()    # no end: a crashed holder, its turn ended now
+        except ValueError:
+            return
+        self.foreign_release = max(self.foreign_release, end)
 
     def _open(self):
         return os.open(self.path, os.O_CREAT | os.O_RDWR | os.O_CLOEXEC, 0o600)
@@ -54,6 +67,7 @@ class Floor:
                     except BlockingIOError:
                         pass
                     else:
+                        self._note_foreign(os.pread(fd, 256, 0).decode(errors="replace"))
                         self._taken = self.clock()
                         self._write(fd, f"{os.getpid()} {self._taken}\n")
                         self._fd, fd = fd, None
@@ -103,6 +117,8 @@ class Floor:
 
     def floor_overlaps(self, capture_start):
         with self._lock:
+            if self.foreign_release >= capture_start:
+                return True
             if self._fd is not None:
                 return False
             fd = self._open()
