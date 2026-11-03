@@ -1488,6 +1488,51 @@ class Plug:
         return "other"
 
 
+def plugin_caps(m):
+    """One plain line per thing a plugin does."""
+    out = []
+    if "quips" in m:
+        out.append("Adds lines to what he says")
+    if "prop" in m:
+        out.append(f"Adds a prop for his {m['prop']['anchor']} (pick it in Look)")
+    if m.get("notifications"):
+        out.append("Sorts notifications from some apps or sites into mail, chat or feed")
+    if "stage" in m:
+        out.append("Runs a program when you ask for it" + (" and uses the network" if m["stage"].get("network") else ""))
+    return out
+
+
+def plugins_api(error=None):
+    """Settings → Plugins: every plugin found, working or broken."""
+    st = plugins.State()
+    items = []
+    for p in plugins.scan(plugins.plugin_dirs()):
+        m = p.manifest or {}
+        on = bool(st.get(p.id)["enabled"]) and not p.error
+        items.append({"id": p.id, "name": str(m.get("name") or p.dir.name), "version": str(m.get("version") or ""),
+                      "source": "Nix" if p.source == "nix" else "Folder", "enabled": on, "caps": plugin_caps(m) if not p.error else [],
+                      "error": p.error or (Plug.prop_errors.get(p.id) if on else None) or "", "stage": "stage" in m})
+    return {"items": items, **({"error": error} if error else {})}
+
+
+def plugins_act(b):
+    """POST /api/companion-plugins: {id, enabled} or {reload: true}. Stage plugins can't be switched on yet (slice B)."""
+    if b.get("reload"):
+        Plug.reload()
+        return plugins_api()
+    pid, on = str(b.get("id") or ""), b.get("enabled")
+    p = next((x for x in plugins.scan(plugins.plugin_dirs()) if x.id == pid), None)
+    if p is None or not isinstance(on, bool):
+        return plugins_api("no such plugin")
+    if p.error:
+        return plugins_api("it is broken: " + p.error)
+    if on and "stage" in (p.manifest or {}):
+        return plugins_api("plugins that run programs can't be switched on yet")
+    plugins.State().set(pid, on)
+    Plug.reload()
+    return plugins_api()
+
+
 class Quips:
     """A shuffled bag per event: no line repeats until the list is used up. The file is re-read when it changes."""
     path = APP_DIR / "quips.json"
@@ -4615,6 +4660,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(hit[0])))
             self.end_headers()
             return self.wfile.write(hit[0])
+        if p == "/api/companion-plugins":                        # Settings → Plugins; the window's token only
+            if not secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
+                return self._json({"error": "forbidden"}, 403)
+            return self._json(plugins_api())
         if p in ("/api/location", "/api/location/suggest"):      # the Location settings; the window's token only
             if not secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
                 return self._json({"error": "forbidden"}, 403)
@@ -4659,6 +4708,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"theme": THEME})
             if p == "/api/ask":
                 return self.ask()
+            if p in ("/api/companion-plugins", "/api/companion-plugins/reload"):      # (window token only: not in TOOL_PATHS)
+                b = json.loads(self._body() or b"{}")
+                return self._json(plugins_act({"reload": True} if p.endswith("/reload") else b if isinstance(b, dict) else {}))
             if p == "/api/location":
                 return self._json(location_act(json.loads(self._body() or b"{}")))
             if p == "/api/stage/act":

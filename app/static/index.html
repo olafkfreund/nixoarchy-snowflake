@@ -770,6 +770,9 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <label class="tg"><input type="checkbox" id="popupSw"><span class="sw"></span><span class="l">Pop back up when it's done</span></label>
         <label class="tg nx"><input type="checkbox" id="updSw"><span class="sw"></span><span class="l">Check for updates<small>Asks GitHub for the latest version when he starts, every few hours and when you open Settings. Nothing about you is sent.</small></span></label>
       </div>
+      <div class="row"><div class="t">Plugins</div><div class="h">Things other people made for him. They never download anything; they only use what is on this computer.</div>
+        <div id="plugList"></div><div class="h" id="plugErr" style="color:#e8836f"></div>
+        <div class="bar"><button class="btn" id="plugReload">Reload</button></div></div>
       <div class="row"><div class="t">Memory &amp; history</div><div class="h">Say “remember …” and he keeps it for every future chat.</div>
         <div class="bar"><button class="btn nx" data-open="memory">🧠 Memory <i id="memCount"></i></button><button class="btn nx" data-open="history">🕘 History</button></div></div>
       <div class="row nx"><div class="t">Nixi <span id="verTxt"></span></div><div class="h" id="updTxt"></div>
@@ -2628,7 +2631,7 @@ const TRUST=[['ask','✋','Ask me first','Edits files on his own; asks you (out 
 const setEl=$('#set');
 function settings(on,tab){ setEl.classList.toggle('on',on); document.body.classList.toggle('pnl',on); if(!panelEl.classList.contains('on')) native(on?'wide:on':'wide:off');
   if(!on&&!panelEl.classList.contains('on')) reDock();
-  if(on){ menu(false); hideAsk(); panelEl.classList.remove('on'); panelKind=null; if(tab) showTab(tab); renderSettings(); loadMics(); locLoad(); requestAnimationFrame(moveInd);
+  if(on){ menu(false); hideAsk(); panelEl.classList.remove('on'); panelKind=null; if(tab) showTab(tab); renderSettings(); loadMics(); locLoad(); plugLoad(); requestAnimationFrame(moveInd);
     if(info.update_check!==false) post('/api/update/check',{stale:1800}).then(r=>r.json()).then(u=>{ info.update=u; renderUpdate(); }).catch(()=>{}); }   // fresh "latest" when you look
   sendRegion(true); }
 function moveInd(){ const b=$('#tabs button.on'), ind=$('#tabInd'); if(!b||!ind) return; ind.style.width=b.offsetWidth+'px'; ind.style.transform=`translateX(${b.offsetLeft-3}px)`; }
@@ -2793,6 +2796,22 @@ async function loadMics(){
   }catch(e){} }
 // ---- Location (nixarchy-location does the writing; the page only asks)
 let loc=null, locAt=0, locTm={}, locSug={home:[],work:[]}, locIdx={home:-1,work:-1}, locGen={home:0,work:0};   // locGen: an answer only counts if nothing was typed, picked or dismissed since it was asked for
+// Settings → Plugins (#149): every field goes in as text; nothing from a plugin is ever parsed as markup
+function plugRender(j){
+  const box=$('#plugList'); box.replaceChildren(); $('#plugErr').textContent=j.error||'';
+  for(const p of j.items||[]){
+    const row=document.createElement('label'), cb=document.createElement('input'), sw=document.createElement('span'), l=document.createElement('span');
+    row.className='tg'; cb.type='checkbox'; cb.checked=!!p.enabled; cb.disabled=!!p.error; sw.className='sw'; l.className='l';
+    l.append(document.createTextNode(p.name+' '+p.version+' · '+p.source));
+    const lines=[...p.caps||[]]; if(p.error) lines.unshift("Doesn't load: "+p.error);
+    for(const t of lines){ const s=document.createElement('small'); s.textContent=t; if(p.error&&t===lines[0]) s.style.color='#e8836f'; l.appendChild(s); }
+    cb.addEventListener('change',()=>plugAct({id:p.id,enabled:cb.checked}));
+    row.append(cb,sw,l); box.appendChild(row); }
+  if(!(j.items||[]).length){ const h=document.createElement('div'); h.className='h'; h.textContent='No plugins installed.'; box.appendChild(h); }
+}
+async function plugLoad(){ try{ await tokenReady; plugRender(await (await fetch('/api/companion-plugins',{headers:hdr()})).json()); }catch(e){} }
+async function plugAct(b){ try{ plugRender(await (await post(b.reload?'/api/companion-plugins/reload':'/api/companion-plugins',b)).json()); await refresh(); lookShown=''; syncLook(); if(setEl.classList.contains('on')) renderSettings(); }catch(e){ $('#plugErr').textContent='Couldn\u2019t reach Nixi'; } }
+$('#plugReload').addEventListener('click',()=>plugAct({reload:true}));
 async function locLoad(){ try{ await tokenReady; loc=await (await fetch('/api/location',{headers:hdr()})).json(); locAt=Date.now(); locRender(); }catch(e){} }
 function locAct(b){ $('#locErr').textContent=''; return post('/api/location',b).then(r=>r.json()).then(j=>{ if(j.ok){ loc=j; locAt=Date.now(); } else $('#locErr').textContent=j.error||'That didn\u2019t work'; locRender(); }).catch(()=>{ $('#locErr').textContent='Couldn\u2019t reach Nixi'; }); }
 function locRender(){

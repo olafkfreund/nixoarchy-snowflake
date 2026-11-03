@@ -20,6 +20,13 @@ await send("Emulation.setDeviceMetricsOverride", { width: 340, height: 460, devi
 await send("Page.navigate", { url }); await sleep(4500);
 await ev("setInterval(()=>{ nextFidAt=1e15; },50); window.__hold=null; await post('/api/settings',{idle_mode:'off'}).then(r=>r.json()).then(j=>{info=j;}); if(window.setIdle) setIdle('full'); return 1");   // (measure him full size: no idle peek)
 
+// Settings → Plugins draws a hostile name and error as text, never as markup (#149)
+if ((await ev(`plugRender({items:[{id:'x-1',name:'<b>x</b>',version:'<i>1</i>',source:'Folder',enabled:false,caps:['<u>caps</u>'],error:'<img src=x onerror=1>'}],error:'<s>e</s>'});
+  const l=document.getElementById('plugList'); return [l.querySelector('b,i,u,img,s')!==null||document.querySelector('#plugErr s')!==null, l.textContent.includes('<b>x</b>'), l.textContent.includes('<img src=x onerror=1>')];`)).join() !== "false,true,true") {
+  console.log("CUT  plugin names are not plain text"); process.exit(1);
+}
+await ev("plugRender({items:[]}); return 1");
+
 // one case = how to turn it on, and which element(s) to measure
 const LOOKS = { tie: "meeting", hb: "music", hf: "music", sh: "fullscreen", gl: "coding", nc: "night", ph: "party", um: "rain" };
 const cases = [];
