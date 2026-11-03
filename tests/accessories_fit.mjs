@@ -32,6 +32,13 @@ for (const [part, sit] of Object.entries(LOOKS)) cases.push({ name: `look ${sit}
 for (const skin of ["halo", "crown", "sprout", "bow"]) cases.push({ name: `skin ${skin}`, on: `
   clearInterval(__hold); for(const k of Object.keys(SIT)) if(typeof SIT[k]==='boolean') SIT[k]=false; applyLook({...LOOK, skin:'${skin}'});`,
   wait: 1500, el: "document.getElementById('accFront')", also: "document.getElementById('accBack')", after: "applyLook({...LOOK, skin:'none'});" });
+// the example plugin hat (party-hat-plus) at each anchor, in front and behind; its colours must come from the page's variables
+for (const anchor of ["head", "left", "right", "base"]) for (const layer of ["front", "back"]) cases.push({ name: `plugin hat ${anchor}/${layer}`, on: `
+  clearInterval(__hold); for(const k of Object.keys(SIT)) if(typeof SIT[k]==='boolean') SIT[k]=false;
+  Object.assign(info.plugin_props[0],{anchor:'${anchor}',layer:'${layer}'}); applyLook({...LOOK, skin:'plug:party-hat-plus'});
+  if(!document.querySelector('#acc${layer === "front" ? "Front" : "Back"} path')) throw new Error('hat not drawn');
+  if(getComputedStyle(document.querySelector('#acc${layer === "front" ? "Front" : "Back"} path')).fill==='rgb(0, 0, 0)') throw new Error('acc colour did not resolve');`,
+  wait: 1500, el: "document.getElementById('accFront')", also: "document.getElementById('accBack')", after: "applyLook({...LOOK, skin:'none'});" });
 for (const cat of ["chat", "video"]) cases.push({ name: `prop ${cat}`, on: `
   clearInterval(__hold); propOn={cat:'${cat}',t0:performance.now(),until:performance.now()+60000,n:3};`, wait: 1500,
   el: `SIT_P.${cat === "chat" ? "chat" : "feed"}.g`, after: "propOn=null;" });

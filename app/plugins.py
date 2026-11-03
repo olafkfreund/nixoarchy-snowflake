@@ -171,3 +171,99 @@ class State:
             except OSError:
                 pass
             raise
+
+
+# ---- props: one SVG, default-deny. Anything not listed here drops the whole prop. ----
+NUM = r"-?(?:\d+\.?\d*|\.\d+)"
+NUM_RE = re.compile(NUM)
+COLOR_RE = re.compile(r"^(none|acc|text|dim|#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})$")
+TRANSFORM_RE = re.compile(r"^\s*(?:(translate|scale|rotate)\(\s*(" + NUM + r"(?:\s*[, ]\s*" + NUM + r"){0,2})\s*\)\s*)+$")
+TRANSFORM_ONE = re.compile(r"(translate|scale|rotate)\(\s*([^)]*)\)")
+SVG_NS = "{http://www.w3.org/2000/svg}"
+GEOMETRY = {"svg": {"viewBox"}, "g": set(), "path": {"d"}, "circle": {"cx", "cy", "r"}, "ellipse": {"cx", "cy", "rx", "ry"},
+            "rect": {"x", "y", "width", "height", "rx", "ry"}, "line": {"x1", "y1", "x2", "y2"}, "polyline": {"points"}, "polygon": {"points"}}
+STYLE = {"fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "fill-opacity", "stroke-opacity", "opacity", "fill-rule", "transform"}
+ENUMS = {"stroke-linecap": {"butt", "round", "square"}, "stroke-linejoin": {"miter", "round", "bevel"}, "fill-rule": {"nonzero", "evenodd"}}
+MAX_BYTES, MAX_ELEMENTS, MAX_DEPTH, MAX_D, MAX_NUM = 16 * 1024, 200, 8, 4000, 1000
+
+
+def _nums(s):
+    ns = [float(x) for x in NUM_RE.findall(s)]
+    if any(abs(n) > MAX_NUM for n in ns):
+        raise ValueError("a number is outside ±1000")
+    return ns
+
+
+def _attr(tag, k, v):
+    if k in GEOMETRY[tag]:
+        if tag == "path":
+            if len(v) > MAX_D or not re.fullmatch(r"[MmLlHhVvCcSsQqTtAaZz0-9.,\s-]*", v):
+                raise ValueError("bad path data")
+            _nums(v)
+        elif k in ("points", "viewBox"):
+            if len(v) > MAX_D or not re.fullmatch(r"[0-9.,\s-]*", v):
+                raise ValueError(f"bad {k}")
+            ns = _nums(v)
+            if k == "viewBox" and (len(ns) != 4 or ns[2] <= 0 or ns[3] <= 0):
+                raise ValueError("bad viewBox")
+        elif not re.fullmatch(NUM, v) or abs(float(v)) > MAX_NUM:
+            raise ValueError(f"bad number in {k}")
+    elif k in STYLE and tag != "svg":
+        if k in ("fill", "stroke"):
+            ok = COLOR_RE.match(v)
+        elif k == "transform":
+            ok = TRANSFORM_RE.match(v) and all(
+                len(NUM_RE.findall(a)) in {"translate": (1, 2), "scale": (1, 2), "rotate": (1, 3)}[f] for f, a in TRANSFORM_ONE.findall(v))
+            ok = ok and _nums(v) is not None
+        elif k in ENUMS:
+            ok = v in ENUMS[k]
+        elif k.endswith("opacity") or k == "opacity":
+            ok = re.fullmatch(NUM, v) and 0 <= float(v) <= 1
+        else:  # stroke-width
+            ok = re.fullmatch(NUM, v) and 0 <= float(v) <= MAX_NUM
+        if not ok:
+            raise ValueError(f"bad {k}")
+    else:
+        raise ValueError(f"attribute not allowed: {k}")
+
+
+def sanitize_svg(data):
+    """Bytes of an SVG -> [{tag, a, p}]: node 0 is the root svg (its viewBox), p is the parent's index (-1 for the root).
+    Raises ValueError with the reason. The result is the only thing the page ever draws from."""
+    import xml.etree.ElementTree as ET
+    if len(data) > MAX_BYTES:
+        raise ValueError("over 16 KB")
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise ValueError("not UTF-8")
+    low = text.lower()
+    if "<!doctype" in low or "<!entity" in low or "<?" in text:
+        raise ValueError("DOCTYPE, ENTITY or <? not allowed")
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as e:
+        raise ValueError(f"not valid SVG: {e}")
+    nodes = []
+
+    def walk(e, parent, depth):
+        if depth > MAX_DEPTH:
+            raise ValueError("nested deeper than 8")
+        if len(nodes) >= MAX_ELEMENTS:
+            raise ValueError("more than 200 elements")
+        if not isinstance(e.tag, str):
+            raise ValueError("unexpected node")
+        tag = e.tag[len(SVG_NS):] if e.tag.startswith(SVG_NS) else e.tag
+        if tag not in GEOMETRY or "{" in tag or (tag == "svg") != (parent == -1):
+            raise ValueError(f"element not allowed: {tag}")
+        if (e.text or "").strip() or (e.tail or "").strip():
+            raise ValueError("text not allowed")
+        for k, v in e.attrib.items():
+            _attr(tag, k, v)
+        nodes.append({"tag": tag, "a": dict(e.attrib), "p": parent})
+        me = len(nodes) - 1
+        for c in e:
+            walk(c, me, depth + 1)
+
+    walk(root, -1, 1)
+    return nodes

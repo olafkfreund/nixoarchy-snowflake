@@ -44,6 +44,9 @@ class AccessoriesFit(unittest.TestCase):
                    XDG_DATA_HOME=str(home / "data"), XDG_STATE_HOME=str(home / "state"))
         for d in (".config/nixi-companion", "data", "state"):
             (home / d).mkdir(parents=True, exist_ok=True)
+        (home / "data/nixi-companion/plugins").mkdir(parents=True)               # the example hat, switched on (#149)
+        shutil.copytree(REPO / "plugins/examples/party-hat-plus", home / "data/nixi-companion/plugins/party-hat-plus")
+        (home / "data/nixi-companion/plugins-state.json").write_text(json.dumps({"party-hat-plus": {"enabled": True, "sha256": None}}))
         port, cdp = _free_port(), _free_port()
         (home / ".config/nixi-companion/config.json").write_text(json.dumps({"port": port}))
         procs = []

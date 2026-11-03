@@ -70,6 +70,35 @@ class PluginMapsTest(_ServerEnv):
         self.mk("element-map", notifications=[{"app": "whatsapp", "category": "feed"}])
         self.assertEqual(self.cats(("whatsapp", "")), ["chat"])
 
+    def mk_prop(self, pid, svg, on=True):
+        d = self.root / "pk" / pid
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "prop.svg").write_text(svg)
+        (d / "plugin.json").write_text(json.dumps({"api": 1, "id": pid, "name": "<b>hat</b>", "version": "1",
+                                                   "prop": {"file": "prop.svg", "anchor": "left", "layer": "back"}}))
+        self.state.set(pid, on)
+        self.server.Plug.loaded = None
+
+    def test_props(self):
+        S = self.server
+        mock.patch.object(S.quick, "projects", return_value={}).start()
+        self.addCleanup(mock.patch.stopall)
+        ok = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="3" fill="acc"/></svg>'
+        self.mk_prop("hat-one", ok, on=False)
+        self.assertEqual(S.state_info()["plugin_props"], [])
+        self.mk_prop("hat-one", ok)
+        (p,) = S.state_info()["plugin_props"]
+        self.assertEqual((p["id"], p["anchor"], p["layer"], p["name"]), ("hat-one", "left", "back", "<b>hat</b>"))
+        self.assertEqual([n["tag"] for n in p["nodes"]], ["svg", "circle"])
+        S.CFG["look"] = {"skin": "plug:hat-one"}
+        self.assertEqual(S.look()["skin"], "plug:hat-one")
+        S.CFG["look"] = {"skin": "plug:nope"}
+        self.assertEqual(S.look()["skin"], "none")
+        self.mk_prop("hat-one", ok.replace("<circle", "<script"))              # a bad prop is dropped whole
+        self.assertEqual(S.state_info()["plugin_props"], [])
+        self.assertIn("hat-one", S.Plug.prop_errors)
+        S.CFG["look"] = {}
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -265,7 +265,7 @@ def look():
     for k, v in lk.items():
         if k in ("body", "pupL", "pupR", "whiteL", "whiteR", "skinColor") and isinstance(v, str) and (HEX.fullmatch(v.lower()) or (k == "skinColor" and v == "")):
             out[k] = v.lower()
-        elif k == "skin" and v in SKINS:
+        elif k == "skin" and (v in SKINS or (isinstance(v, str) and v.startswith("plug:") and Plug.has_prop(v[5:]))):
             out[k] = v
         elif k in ("link", "random", "follow_theme"):
             out[k] = bool(v)
@@ -1426,6 +1426,8 @@ class Plug:
     loaded = None
     quips = {}                                                  # event -> lines from enabled packs
     rules = []                                                  # (kind "app"|"host", value, category)
+    props = []                                                  # [{id, name, anchor, layer, nodes}] of enabled, sanitised props
+    prop_errors = {}                                            # id -> why a prop was dropped (A4 shows it)
     SLOT = re.compile(r"\{[a-z_]+\}")
 
     @classmethod
@@ -1446,7 +1448,7 @@ class Plug:
     def reload(cls):
         st = plugins.State()
         cls.loaded = [p for p in plugins.scan(plugins.plugin_dirs()) if not p.error and st.get(p.id)["enabled"]]
-        cls.quips, cls.rules = {}, []
+        cls.quips, cls.rules, cls.props, cls.prop_errors = {}, [], [], {}
         for p in cls.loaded:
             m = p.manifest
             if "quips" in m:
@@ -1455,8 +1457,19 @@ class Plug:
                         cls.quips.setdefault(ev, []).extend(ls)
                 except (OSError, ValueError):
                     pass                                        # an unreadable pack adds nothing
+            if "prop" in m:
+                try:
+                    nodes = plugins.sanitize_svg((p.dir / m["prop"]["file"]).read_bytes())
+                    cls.props.append({"id": p.id, "name": m["name"], "anchor": m["prop"]["anchor"], "layer": m["prop"].get("layer", "front"), "nodes": nodes})
+                except (OSError, ValueError) as e:
+                    cls.prop_errors[p.id] = str(e)              # the whole prop is dropped; the plugin's other parts stay
             cls.rules += [(k, n[k], n["category"]) for n in m.get("notifications", []) for k in ("app", "host") if k in n]
         Quips.bags.clear()
+
+    @classmethod
+    def has_prop(cls, pid):
+        cls.ensure()
+        return any(p["id"] == pid for p in cls.props)
 
     @classmethod
     def ensure(cls):
@@ -4509,7 +4522,7 @@ def state_info():
         "popup_done": bool(CFG.get("popup_done")), "hover": bool(CFG.get("hover")), "code_panel": CFG.get("code_panel", True) is not False, "live_minutes": int(CFG.get("live_minutes") or 10), "voice_native": Speaker.available(), "code_face": "you" if CFG.get("code_face") == "you" else "him",
         "click_through": bool(CFG.get("click_through")),
         "autostart": bool(CFG.get("autostart")), "listen_on_show": bool(CFG.get("listen_on_show")),
-        "barge_in": bool(CFG.get("barge_in")), "sfx": bool(CFG.get("sfx")), "look": look(), "skins": SKINS, "ambient": Ambient.snapshot(),
+        "barge_in": bool(CFG.get("barge_in")), "sfx": bool(CFG.get("sfx")), "look": look(), "skins": SKINS, "plugin_props": (Plug.ensure(), Plug.props)[1], "ambient": Ambient.snapshot(),
         "follow_focus": bool(CFG.get("follow_focus")), "step_aside": CFG.get("step_aside", True) is not False, "answer_stages": CFG.get("answer_stages", True) is not False,
         **{k: bool(CFG.get(k, k == "ambient_system")) for k in Ambient.FLAG.values()},
         "projects": quick.projects(),

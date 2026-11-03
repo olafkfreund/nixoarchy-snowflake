@@ -123,5 +123,75 @@ class T(unittest.TestCase):
         self.assertEqual(d[1].name, "plugins")
 
 
+HAT = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g transform="translate(1 2) scale(1.5)"><path d="M50 8L88 92Z" fill="acc" stroke="#fff"/><circle cx="5" cy="5" r="2" fill="#abc" opacity=".5"/></g></svg>'
+
+
+class Sanitize(unittest.TestCase):
+    def bad(self, svg, why=""):
+        with self.assertRaises(ValueError, msg=svg) as c:
+            plugins.sanitize_svg(svg if isinstance(svg, bytes) else svg.encode())
+        self.assertIn(why, str(c.exception))
+
+    def wrap(self, inner, root_attrs='viewBox="0 0 10 10"'):
+        return f'<svg xmlns="http://www.w3.org/2000/svg" {root_attrs}>{inner}</svg>'
+
+    def test_a_hat_passes(self):
+        n = plugins.sanitize_svg(HAT)
+        self.assertEqual([x["tag"] for x in n], ["svg", "g", "path", "circle"])
+        self.assertEqual([x["p"] for x in n], [-1, 0, 1, 1])
+        self.assertEqual(n[0]["a"], {"viewBox": "0 0 100 100"})
+
+    def test_refused_elements(self):
+        for tag in ("script", "use", "image", "text", "foreignObject", "style", "animate", "linearGradient", "filter", "svg"):
+            self.bad(self.wrap(f"<{tag}/>"), "element not allowed")
+        self.bad(self.wrap('<x:path xmlns:x="urn:evil"/>'), "element not allowed")
+
+    def test_refused_attributes(self):
+        for a in ('style="x"', 'href="#a"', 'onload="x()"', 'id="a"', 'class="a"', 'filter="a"', 'xlink:href="a" xmlns:xlink="urn:x"'):
+            self.bad(self.wrap(f"<g {a}/>"), "not allowed")
+        self.bad(self.wrap('<path d="M0 0" fill="url(#a)"/>'), "bad fill")
+        self.bad(self.wrap('<path d="M0 0" fill="red"/>'), "bad fill")
+        self.bad(self.wrap('<path d="M0 0" fill="#12"/>'), "bad fill")
+        self.bad(self.wrap('<path d="M0 0" fill-opacity="2"/>'), "bad fill-opacity")
+        self.bad(self.wrap('<path d="M0 0" stroke-linecap="x"/>'), "bad stroke-linecap")
+        self.bad(self.wrap('<rect x="1e3" y="0" width="1" height="1"/>'), "bad number")
+        self.bad(self.wrap('<circle cx="0" cy="0" r="1" d="M0 0"/>'), "not allowed")
+
+    def test_transform_numeric_translate_scale_rotate_only(self):
+        for t in ("skewX(3)", "matrix(1 0 0 1 0 0)", "translate(url(#a))", "rotate(1 2)", "scale(1 2 3)", "translate()", "translate(1) foo"):
+            self.bad(self.wrap(f'<g transform="{t}"/>'), "bad transform")
+        plugins.sanitize_svg(self.wrap('<g transform="translate(1,2) rotate(30 5 5) scale(2)"/>').encode())
+
+    def test_dangerous_prologue(self):
+        self.bad(b'<!DOCTYPE svg><svg xmlns="http://www.w3.org/2000/svg"/>', "DOCTYPE")
+        self.bad(b'<!doctype svg><svg/>', "DOCTYPE")
+        self.bad(b'<!DOCTYPE svg [<!ENTITY a "b">]><svg/>', "DOCTYPE")
+        self.bad(b'<?xml version="1.0"?><svg/>', "<?")
+        self.bad(b'<svg/><?pi x?>', "<?")
+        self.bad("<svg/>".encode("utf-16"), "UTF-8")
+        self.bad(b"<svg", "not valid")
+
+    def test_limits(self):
+        self.bad(b"<svg>" + b" " * 17000 + b"</svg>", "16 KB")
+        self.bad(self.wrap("<g/>" * 200), "200 elements")   # root + 200 = 201
+        plugins.sanitize_svg(self.wrap("<g/>" * 198).encode())
+        deep = "<g>" * 7 + "</g>" * 7                      # root + 7 = depth 8
+        plugins.sanitize_svg(self.wrap(deep).encode())
+        self.bad(self.wrap("<g>" + deep + "</g>"), "deeper than 8")
+        self.bad(self.wrap(f'<path d="M0 0{" L1 1" * 800}"/>'), "path data")
+        self.bad(self.wrap('<path d="M0 1001"/>'), "±1000")
+        self.bad(self.wrap('<path d="M0 -1001.5"/>'), "±1000")
+        self.bad(self.wrap('<circle cx="1001" cy="0" r="1"/>'), "bad number")
+        self.bad(self.wrap('<path d="M0 0 alert(1)"/>'), "path data")
+        self.bad(self.wrap('<polygon points="0,0 1001,5"/>'), "±1000")
+        self.bad("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'>text</svg>", "text not allowed")
+
+    def test_the_example_hat(self):
+        d = Path(__file__).resolve().parent.parent / "plugins/examples/party-hat-plus"
+        plugins.sanitize_svg((d / "prop.svg").read_bytes())
+        m = json.loads((d / "plugin.json").read_text())
+        self.assertIsNone(plugins._check(m, d))
+
+
 if __name__ == "__main__":
     unittest.main()

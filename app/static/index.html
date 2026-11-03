@@ -973,6 +973,15 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   sv('circle',{cx:87,cy:-56,r:1.6,fill:'#fff'},feed); sv('circle',{cx:87,cy:-50,r:1.6,fill:'#fff'},feed);
   const ic=(x,y,g)=>sv('image',{x,y,width:14,height:14,display:'none'},g);   // the sending app's icon, set when the prop starts
   return {chat:{g:chat,dots,badge,bt,n:0,img:ic(-99,-80,chat)},feed:{g:feed,scr,ant:tvA,img:ic(48,-70,feed)},tie,hb,bd,hf,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,um,drops,lensL,lensR,brg,glintL,glintR}; }
+// a plugin's prop (#149): the server already sanitised it to a node list; only createElementNS + setAttribute here, no ids, no markup
+const PROP_BOX={head:[-30,-112,60,54],left:[-98,-34,40,40],right:[58,-34,40,40],base:[-36,68,72,26]}, PROP_COL={acc:'var(--acc)',text:'var(--text)',dim:'var(--dim)'};
+function drawProp(par,P){
+  const [bx,by,bw,bh]=PROP_BOX[P.anchor]||PROP_BOX.head, vb=(P.nodes[0].a.viewBox||'0 0 100 100').split(/[\s,]+/).map(Number), k=Math.min(bw/vb[2],bh/vb[3]);
+  const els=[sv('g',{transform:`translate(${bx+bw/2-(vb[0]+vb[2]/2)*k} ${by+bh/2-(vb[1]+vb[3]/2)*k}) scale(${k})`},par)];
+  P.nodes.forEach((n,i)=>{ if(!i) return; const e=document.createElementNS(SVGNS,n.tag);
+    for(const a in n.a) e.setAttribute(a,(a==='fill'||a==='stroke')&&PROP_COL[n.a[a]]||n.a[a]);
+    els[n.p].appendChild(e); els[i]=e; });
+}
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
 function drawSkin(back,front,L,bodyFill='url(#ballG)'){
   back.innerHTML=''; front.innerHTML='';
@@ -992,6 +1001,7 @@ function drawSkin(back,front,L,bodyFill='url(#ballG)'){
         sv('path',{d:'M0 0C-8 -13 -24 -12 -24 0C-24 12 -8 13 0 0Z',fill:soft},g);
         sv('path',{d:'M0 0C8 -13 24 -12 24 0C24 12 8 13 0 0Z',fill:soft},g);
         sv('circle',{r:5,fill:shade(soft,-.15)},g); break; }
+    default: if(String(L.skin).startsWith('plug:')){ const P=((info&&info.plugin_props)||[]).find(p=>'plug:'+p.id===L.skin); if(P) drawProp(P.layer==='back'?back:front,P); }
   }
   return parts;
 }
@@ -2719,6 +2729,9 @@ function renderSettings(){
   // look
   const L=curLook();
   $('#skinGrid').innerHTML=(info.skins||Object.keys(SKIN_LABELS)).map(k=>`<button data-skin="${k}" class="${L.skin===k?'on':''}"><svg viewBox="-125 -150 250 250"></svg>${SKIN_LABELS[k]||k}</button>`).join('');
+  for(const P of info.plugin_props||[]){   // plugin props: built node by node, the name only ever as text
+    const b=document.createElement('button'), sk=document.createElementNS(SVGNS,'svg'); b.dataset.skin='plug:'+P.id; b.className=L.skin===b.dataset.skin?'on':'';
+    sk.setAttribute('viewBox','-125 -150 250 250'); b.append(sk,document.createTextNode(P.name)); $('#skinGrid').appendChild(b); }
   $$('#skinGrid button').forEach(b=>miniNixi(b.querySelector('svg'),{...L,skin:b.dataset.skin},false));
   selectPart(pkPart); renderRecent();
 }
