@@ -2800,7 +2800,7 @@ function plugRender(j){
   const box=$('#plugList'); box.replaceChildren(); $('#plugErr').textContent=j.error||'';
   for(const p of j.items||[]){
     const row=document.createElement('label'), cb=document.createElement('input'), sw=document.createElement('span'), l=document.createElement('span');
-    row.className='tg'; cb.type='checkbox'; cb.checked=!!p.enabled; cb.disabled=!!p.error&&!p.enabled;   // (one that is on can always be switched off) sw.className='sw'; l.className='l';
+    row.className='tg'; cb.type='checkbox'; cb.checked=!!p.enabled; cb.disabled=!!p.error&&!p.enabled; sw.className='sw'; l.className='l';   // (one that is on can always be switched off)
     l.append(document.createTextNode(p.name+' '+p.version+' · '+p.source));
     const lines=[...p.caps||[]]; if(p.error) lines.unshift("Doesn't load: "+p.error);
     for(const t of lines){ const s=document.createElement('small'); s.textContent=t; if(p.error&&t===lines[0]) s.style.color='#e8836f'; l.appendChild(s); }
