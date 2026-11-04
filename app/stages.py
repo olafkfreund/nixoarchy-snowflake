@@ -10,11 +10,16 @@ import math
 import re
 import secrets
 import subprocess
+import sys
 import threading
 import time
+import unicodedata
+import lang as language
 import urllib.error
 import urllib.parse
 import urllib.request
+from functools import lru_cache
+from pathlib import Path
 from urllib.parse import quote_plus
 
 MARK = "<<stage"
@@ -626,40 +631,70 @@ def maps_url(dest, mode=None, origin=None):
         quote_plus(dest), mode, "&origin=" + quote_plus(origin.strip()) if origin else "")
 
 
-_ORD = {"first": 0, "second": 1, "third": 2, "fourth": 3, "fifth": 4,
-        "one": 0, "two": 1, "three": 2, "four": 3, "five": 4,
-        "1": 0, "2": 1, "3": 2, "4": 3, "5": 4}
-_N = "|".join(_ORD)
-_ACT = re.compile(r"(run|copy|play|open)\s+(?:(?:the|number|option|item)\s+)*(?:(%s)|(it|that|this))(?:\s+(one|video|clip))?" % _N)
-_PLAIN = {"close": "close", "go back": "back", "show it": "show"}
+_EN = {"verbs": {x: x for x in ("run", "copy", "play", "open")},
+       "ordinals": {x: i for i, x in enumerate(("first", "second", "third", "fourth", "fifth"))},
+       "cardinals": {x: i for i, x in enumerate(("one", "two", "three", "four", "five"), 0)},
+       "fillers": ["the", "number", "option", "item"], "it": ["it", "that", "this"],
+       "nouns": ["one", "video", "clip"],
+       "plain": {"close": "close", "go back": "back", "show it": "show"}}
 
 
-def fast_path(said, stage):
+def lang_active():
+    return language.active
+
+
+def normalize(said):
+    t = " ".join(re.sub(r"[^\w ]|_", " ", unicodedata.normalize("NFC", said or "").casefold()).split())
+    t = re.sub(r"^(?:(?:please|nixi|(?:hei|hej|cześć) nixi)\s+)+", "", t)
+    return re.sub(r"(?:\s+please)+$", "", t)
+
+
+def _pattern(words):
+    return "|".join(re.escape(x).replace(r"\ ", r"\s+") for x in sorted(words, key=len, reverse=True))
+
+
+@lru_cache(maxsize=3)
+def _words(lang):
+    words = {k: v.copy() for k, v in _EN.items()}
+    if lang in ("nb", "pl"):
+        extra = language.load(lang).get("words", {})
+        for k in ("verbs", "ordinals", "cardinals", "plain"):
+            words[k].update(extra.get(k, {}))
+        for k in ("fillers", "it", "nouns"):
+            words[k] += extra.get(k, [])
+    words["ordinals"].update(words["cardinals"])
+    words["ordinals"].update({str(i): i - 1 for i in range(1, 6)})
+    act = re.compile(rf"(?P<verb>{_pattern(words['verbs'])})\s+(?:(?:{_pattern(words['fillers'])})\s+)*(?:(?P<num>{_pattern(words['ordinals'])})|(?P<it>{_pattern(words['it'])}))(?:\s+(?P<noun>{_pattern(words['nouns'])}))?")
+    plain = re.compile(_pattern(words["plain"]))
+    return words, act, plain
+
+
+def fast_path(said, stage, lang=None):
     """-> (action, index) for a phrase the server can handle without an agent turn, else None.
 
     index is 0-based; None for close/back/show; ("ask", None) when "it" is ambiguous.
     """
-    t = re.sub(r"[^a-z0-9 ]", " ", (said or "").lower())
-    t = re.sub(r"^(?:please|nixi)\s+", "", " ".join(t.split()))
-    t = re.sub(r"\s+please$", "", t)
-    if t in _PLAIN:
-        return _PLAIN[t], None
-    m = _ACT.fullmatch(t)
+    t = normalize(said)
+    words, act, plain = _words(lang or lang_active())
+    if plain.fullmatch(t):
+        return words["plain"][t], None
+    m = act.fullmatch(t)
     if not m or not stage or stage.get("kind") == "day":  # (the day desk is clicked in v1: no voice-numbered opening)
         return None
-    if m.group(4) in ("video", "clip") and (stage.get("kind") not in ("headlines", "video") or m.group(1) != "play"):
+    action = words["verbs"][m.group("verb")]
+    if m.group("noun") in ("video", "clip", "klipp", "wideo", "klip", "film") and (stage.get("kind") not in ("headlines", "video") or action != "play"):
         return None
-    if stage.get("kind") == "headlines" and m.group(1) == "play":
+    if stage.get("kind") == "headlines" and action == "play":
         n = len(stage.get("clips") or [])
         if not n:
             return None
     else:
         n = len(stage.get("items") or stage.get("sessions") or [None])  # facts: one target; a status stage: its sessions
-    if stage.get("kind") == "headlines" and m.group(1) == "copy":
+    if stage.get("kind") == "headlines" and action == "copy":
         return "copy", 0
     if stage.get("kind") == "status" and not stage.get("sessions"):
         return None
-    if m.group(2):
-        i = _ORD[m.group(2)]
-        return (m.group(1), i) if i < n else None
-    return (m.group(1), 0) if n == 1 else ("ask", None)
+    if m.group("num"):
+        i = words["ordinals"][m.group("num")]
+        return (action, i) if i < n else None
+    return (action, 0) if n == 1 else ("ask", None)

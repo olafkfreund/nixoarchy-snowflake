@@ -106,7 +106,7 @@ class StageActionsTest(_ServerEnv):
                 mock.patch.object(self.s.plugins, "run_stage", return_value=stage) as run, \
                 mock.patch.object(self.s.BUS, "pub") as pub:
             self.assertEqual(self.s.stage_act(page["refresh"], "refresh"), {"ok": True})
-            run.assert_called_once_with(p, "system status", fresh=True)
+            run.assert_called_once_with(p, "system status", locale="en", fresh=True)   # (#177: plugins get the active locale)
             self.assertEqual(pub.call_args.kwargs["t"], "stage_update")
             pub.reset_mock()
             for token in (page["token"], self.tok, "forged"):

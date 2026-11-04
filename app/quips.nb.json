@@ -1,0 +1,54 @@
+{
+  "break": [
+    "Allerede en time! Reis deg og strekk deg?",
+    "På tide å strekke litt på seg. Ryggen din takker deg.",
+    "Du har jobbet lenge nå. Vann og en liten tur?",
+    "Løft blikket et øyeblikk? Se på noe langt unna."
+  ],
+  "welcome": [
+    "Velkommen tilbake!",
+    "Så fint å se deg igjen!",
+    "Der er du jo!"
+  ],
+  "ram": [
+    "Det begynner å bli trangt om minnet. Kanskje du kan lukke noe tungt?",
+    "Jeg går tom for plass. Kan noe stort lukkes?",
+    "Mye minne i bruk. Litt opprydding i fanene kan hjelpe."
+  ],
+  "cpu": [
+    "Maskinen jobber hardt.",
+    "Det går varmt for seg her inne.",
+    "Prosessoren har mye å gjøre. Jeg venter."
+  ],
+  "rain": [
+    "Regn ute. Koselig her inne!",
+    "Det regner. Bra vi er inne.",
+    "Det trommer på vinduet, tipper jeg."
+  ],
+  "snow": [
+    "Snø! Det beste jeg vet i hele verden.",
+    "Det snør! Her føler jeg meg hjemme.",
+    "Snø ute. Det er akkurat mitt vær.",
+    "Snøfnugg overalt. Hei, søskenbarn!"
+  ],
+  "night": [
+    "Det blir sent. Ikke glem å hvile.",
+    "Nå er vi i de små timer. Søvn er også en god idé.",
+    "Sent på kvelden. Jeg holder lyset lavt."
+  ],
+  "party": [
+    "Noe å feire i dag!",
+    "Festtid!",
+    "En spesiell dag. Hurra!"
+  ],
+  "coding": [
+    "{n} timer med kode. Litt vann?",
+    "{n} timer i strekk. Strekke på hendene?",
+    "En lang kodeøkt: {n} timer. Hvil øynene et øyeblikk?"
+  ],
+  "done": [
+    "Ferdig!",
+    "Det var det!",
+    "Det er gjort."
+  ]
+}

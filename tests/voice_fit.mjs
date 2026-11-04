@@ -283,7 +283,345 @@ const cutMap = await ev(`
 `);
 check(!cutMap.has42, "spk_done with id did not remove item from spkMap");
 
-// 9. Zero off-origin requests.
+// 9. Language (#177): first row of Voice tab, size/GPU hint, chips post language, status line while switching,
+//    <html lang> follows lang_active, dates use active date locale, and page-spoken lines come from state_info.lines with English fallback.
+const langTest = await ev(`
+  settings(true, 'voice');
+  await new Promise(r => setTimeout(r, 100));
+  const panelRows = [...document.querySelectorAll('#panel-voice > .row')];
+  const firstRowId = panelRows[0]?.id || '';
+  info.whisper_device = 'cpu'; info.stt = 'ready'; delete info.gpu; delete info.cuda;
+  showInfo();
+  const hintCpu = document.getElementById('langHint')?.textContent || '';
+  info.whisper_device = 'cuda';
+  showInfo();
+  const hintGpu = document.getElementById('langHint')?.textContent || '';
+  info.whisper_device = 'cpu';
+  showInfo();
+  const chipList = [...document.querySelectorAll('#langChips button')].map(b => ({
+    lang: b.dataset.lang, text: b.textContent, on: b.classList.contains('on')
+  }));
+  const initHtmlLang = document.documentElement.lang;
+
+  // Item 4: clicking the language already active does nothing visible (no request, no status)
+  const activeClicks = [];
+  const origFetch0 = window.fetch;
+  window.fetch = async (u, opts = {}) => {
+    if (u === '/api/settings') activeClicks.push(JSON.parse(opts.body || '{}'));
+    return origFetch0(u, opts);
+  };
+  let statusAfterActiveClick = '';
+  try {
+    document.querySelector('#langChips button[data-lang="en"]').click();
+    await new Promise(r => setTimeout(r, 80));
+    statusAfterActiveClick = document.getElementById('langStatus')?.textContent || '';
+  } finally {
+    window.fetch = origFetch0;
+  }
+
+  const posted = [];
+  const origFetch = window.fetch;
+  window.fetch = async (u, opts = {}) => {
+    if (u === '/api/settings') {
+      const body = JSON.parse(opts.body || '{}');
+      posted.push(body);
+      const r = await origFetch(u, opts);
+      const j = await r.clone().json().catch(() => ({}));
+      if (body.language === 'pl' && (!j.lang_status || !/Switching|Przełączam/i.test(j.lang_status))) {
+        j.language = 'pl';
+        j.lang_status = 'Switching to Polski: downloading the speech model and voice…';
+      }
+      j.lang_active = 'en';
+      return new Response(JSON.stringify(j), { status: r.status, headers: { 'Content-Type': 'application/json' } });
+    }
+    return origFetch(u, opts);
+  };
+  let statusDuring = '', htmlLangDuring = '', plOnDuring = false;
+  try {
+    document.querySelector('#langChips button[data-lang="pl"]').click();
+    await new Promise(r => setTimeout(r, 200));
+    statusDuring = document.getElementById('langStatus')?.textContent || '';
+    htmlLangDuring = document.documentElement.lang;
+    plOnDuring = document.querySelector('#langChips button[data-lang="pl"]')?.classList.contains('on') || false;
+  } finally {
+    window.fetch = origFetch;
+  }
+
+  // Item 2: on Best (medium.en), clicking Polski sends only {language: 'pl'}, and any refusal appears under #langRow (#langErr)
+  info.language = 'en'; info.lang_active = 'en'; info.lang_status = ''; info.whisper_model = 'medium.en';
+  showInfo(); renderSettings();
+  const bestLangPosted = [];
+  let langRefusalTxt = '', langRefusalInRow = false;
+  window.fetch = async (u, opts = {}) => {
+    if (u === '/api/settings') {
+      const b = JSON.parse(opts.body || '{}');
+      bestLangPosted.push(b);
+      return new Response(JSON.stringify({ error: 'medium.en cannot transcribe Polish' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (u === '/api/state') {
+      return new Response(JSON.stringify(info), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return origFetch(u, opts);
+  };
+  try {
+    document.querySelector('#langChips button[data-lang="pl"]').click();
+    await new Promise(r => setTimeout(r, 120));
+    const le = document.getElementById('langErr');
+    langRefusalTxt = le?.textContent || '';
+    langRefusalInRow = le?.closest('#langRow') !== null;
+  } finally {
+    window.fetch = origFetch;
+    const le = document.getElementById('langErr'); if (le) le.textContent = '';
+  }
+
+  // Item 1 (M2): STT chips map per lang_active (tiny.en->tiny, base.en->base, small.en->small, medium.en->medium for nb/pl; auto stays),
+  //              and a refusal on whisper_model shows under #sttErr without ticking 'speech recognition: … (loading…)'.
+  info.lang_active = 'en'; info.whisper_model = 'auto'; showInfo(); renderSettings();
+  const sttChipsEn = [...document.querySelectorAll('#sttChips button')].map(b => b.dataset.stt);
+  const sttSmallEn = sttId('small.en');
+  info.lang_active = 'pl'; info.whisper_model = 'medium'; showInfo(); renderSettings();
+  const sttChipsPl = [...document.querySelectorAll('#sttChips button')].map(b => b.dataset.stt);
+  const sttBestOnPl = document.querySelector('#sttChips button[data-stt="medium"]')?.classList.contains('on') || false;
+  const sttSmallPl = sttId('small.en');
+  info.lang_active = 'nb'; info.whisper_model = 'base'; showInfo(); renderSettings();
+  const sttChipsNb = [...document.querySelectorAll('#sttChips button')].map(b => b.dataset.stt);
+
+  let sttErrTxt = '', sttErrInRow = false, chipTxtOnRefusal = '', chipTxtOnOk = '';
+  window.fetch = async (u, opts = {}) => {
+    if (u === '/api/settings') {
+      return new Response(JSON.stringify({ error: 'tiny.en cannot transcribe Norwegian' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (u === '/api/state') {
+      return new Response(JSON.stringify(info), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return origFetch(u, opts);
+  };
+  try {
+    document.getElementById('chip').textContent = '';
+    document.querySelector('#sttChips button[data-stt="tiny"]').click();
+    await new Promise(r => setTimeout(r, 120));
+    const se = document.getElementById('sttErr');
+    sttErrTxt = se?.textContent || '';
+    sttErrInRow = se?.parentElement?.querySelector('#sttChips') !== null;
+    chipTxtOnRefusal = document.getElementById('chip')?.textContent || '';
+  } finally {
+    window.fetch = origFetch;
+  }
+  window.fetch = async (u, opts = {}) => {
+    if (u === '/api/settings') {
+      const b = JSON.parse(opts.body || '{}');
+      return new Response(JSON.stringify({ ...info, ...b }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return origFetch(u, opts);
+  };
+  try {
+    document.querySelector('#sttChips button[data-stt="tiny"]').click();
+    await new Promise(r => setTimeout(r, 120));
+    chipTxtOnOk = document.getElementById('chip')?.textContent || '';
+  } finally {
+    window.fetch = origFetch;
+    const se = document.getElementById('sttErr'); if (se) se.textContent = '';
+  }
+
+  // Simulate switch completion to pl, check <html lang> and Item 6 (state_info.date_locale + DATE_LOCALES fallback)
+  info.language = 'pl';
+  info.lang_active = 'pl';
+  info.lang_status = '';
+  info.date_locale = 'pl-PL';
+  showInfo();
+  renderSettings();
+  const htmlLangPl = document.documentElement.lang;
+  const statusAfter = document.getElementById('langStatus')?.textContent || '';
+  stageBuild({ t: 'stage', v: 1, kind: 'headlines', title: 'Wiadomości', items: [{ title: 'Test', source: 'PAP', at: Date.now() / 1000 }] });
+  const gotPlDate = document.getElementById('stgDt')?.textContent || '';
+  const expPlDate = new Date().toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short' });
+
+  // Custom state_info.date_locale overrides DATE_LOCALES[lang_active], and absent date_locale falls back to DATE_LOCALES
+  info.lang_active = 'en';
+  info.date_locale = 'de-DE';
+  stageBuild({ t: 'stage', v: 1, kind: 'headlines', title: 'News', items: [{ title: 'Test', source: 'DW', at: Date.now() / 1000 }] });
+  const gotCustomDate = document.getElementById('stgDt')?.textContent || '';
+  const expCustomDate = new Date().toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
+
+  delete info.date_locale;
+  info.lang_active = 'nb';
+  showInfo();
+  const htmlLangNb = document.documentElement.lang;
+  stageBuild({ t: 'stage', v: 1, kind: 'headlines', title: 'Nyheter', items: [{ title: 'Test', source: 'NRK', at: Date.now() / 1000 }] });
+  const gotNbDate = document.getElementById('stgDt')?.textContent || '';
+  const expNbDate = new Date().toLocaleDateString('nb-NO', { weekday: 'short', day: 'numeric', month: 'short' });
+
+  // Item 5: With Settings closed, bus event refreshes immediately, and polling runs every 2 s while lang_status is non-empty
+  settings(false);
+  info.language = 'pl'; info.lang_active = 'en'; info.lang_status = 'Switching to Polski…'; info.date_locale = 'en-GB';
+  showInfo();
+  stageBuild({ t: 'stage', v: 1, kind: 'headlines', title: 'News', items: [{ title: 'Test', source: 'PAP', at: Date.now() / 1000 }] });
+  let statePolls = 0;
+  window.fetch = async (u, opts = {}) => {
+    if (u === '/api/state') {
+      statePolls++;
+      return new Response(JSON.stringify({
+        ...info,
+        language: 'pl',
+        lang_active: 'pl',
+        lang_status: '',
+        date_locale: 'pl-PL',
+        lines: { 'page.tidy': 'Dobrze, porządkuję.' }
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return origFetch(u, opts);
+  };
+  let pollLangAfter = '', pollSttChipAfter = '', pollDateAfter = '', pollLineAfter = '', pollsAfterSettled = 0, busLangAfter = '';
+  try {
+    await new Promise(r => setTimeout(r, 2200));
+    pollLangAfter = document.documentElement.lang;
+    pollSttChipAfter = document.querySelector('#sttChips button')?.dataset.stt || '';
+    pollDateAfter = document.getElementById('stgDt')?.textContent || '';
+    pollLineAfter = pageLine('page.tidy', 'Okay, tidying up.');
+    const p0 = statePolls;
+    await new Promise(r => setTimeout(r, 2200));
+    pollsAfterSettled = statePolls - p0;
+
+    // Now test bus event refresh while Settings is closed
+    info.language = 'nb'; info.lang_active = 'en'; info.lang_status = 'Switching to Norsk…';
+    window.fetch = async (u, opts = {}) => {
+      if (u === '/api/state') {
+        return new Response(JSON.stringify({
+          ...info,
+          language: 'nb',
+          lang_active: 'nb',
+          lang_status: '',
+          date_locale: 'nb-NO'
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return origFetch(u, opts);
+    };
+    onEvent({ t: 'lang_status', lang_status: '' });
+    await new Promise(r => setTimeout(r, 100));
+    busLangAfter = document.documentElement.lang;
+  } finally {
+    window.fetch = origFetch;
+  }
+  settings(true, 'voice');
+
+  // Page-spoken lines from state_info.lines, with English fallback when lines are absent
+  const spokenFromState = [];
+  const spokenFallback = [];
+  const origSay = window.say;
+  const origFetch2 = window.fetch;
+  let curLines = {
+    'page.control_back': 'Sterowanie wróciło do Ciebie.',
+    'page.live_on': 'Dobrze, patrzę. Powiedz „stop watching”, kiedy skończysz.',
+    'page.live_off': 'Dobrze, już nie patrzę.',
+    'page.live_wasnt': 'Nie patrzyłem.',
+    'page.tidy': 'Dobrze, porządkuję.',
+    'page.voice_1': 'cześć! to mój nowy głos.',
+    'page.voice_2': 'jak brzmię?',
+    'page.voice_3': 'o, ten mi się podoba.'
+  };
+  window.say = (t, follow) => { spokenFromState.push(t); };
+  window.fetch = async (u, opts = {}) => {
+    if (u === '/api/mirror/off') return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (u === '/api/compact') return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (u === '/api/state') return new Response(JSON.stringify({ ...info, lines: curLines }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (u === '/api/settings') {
+      const b = JSON.parse(opts.body || '{}');
+      return new Response(JSON.stringify({ ...info, ...b, lines: curLines }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return origFetch2(u, opts);
+  };
+  try {
+    info.lines = curLines;
+    await mirRevoke();
+    setLive(false);
+    toggleLive();
+    toggleLive();
+    await send('stop watching');
+    await send('tidy up');
+    document.querySelector('#voiceChips button:not(:disabled)')?.click();
+    await new Promise(r => setTimeout(r, 80));
+
+    curLines = {};
+    info.lines = curLines;
+    window.say = (t, follow) => { spokenFallback.push(t); };
+    await mirRevoke();
+    setLive(false);
+    toggleLive();
+    toggleLive();
+    await send('stop watching');
+    await send('tidy up');
+    document.querySelector('#voiceChips button:not(:disabled)')?.click();
+    await new Promise(r => setTimeout(r, 80));
+  } finally {
+    window.say = origSay;
+    window.fetch = origFetch2;
+  }
+
+  info.language = 'en';
+  info.lang_active = 'en';
+  info.date_locale = 'en-GB';
+  info.whisper_model = 'auto';
+  showInfo();
+  renderSettings();
+
+  return {
+    firstRowId, hintCpu, hintGpu, chipList, initHtmlLang,
+    activeClicks, statusAfterActiveClick,
+    posted, statusDuring, htmlLangDuring, plOnDuring,
+    bestLangPosted, langRefusalTxt, langRefusalInRow,
+    sttChipsEn, sttChipsPl, sttChipsNb, sttBestOnPl, sttSmallEn, sttSmallPl,
+    sttErrTxt, sttErrInRow, chipTxtOnRefusal, chipTxtOnOk,
+    htmlLangPl, htmlLangNb, statusAfter,
+    gotPlDate, expPlDate, gotCustomDate, expCustomDate, gotNbDate, expNbDate,
+    statePolls, pollLangAfter, pollSttChipAfter, pollDateAfter, pollLineAfter, pollsAfterSettled, busLangAfter,
+    spokenFromState, spokenFallback
+  };
+`);
+check(langTest.firstRowId === "langRow", "Language row must be the first .row in #panel-voice", langTest.firstRowId);
+check(langTest.hintCpu.includes("≈150 MB") && langTest.hintCpu.includes("base") && !langTest.hintCpu.includes("small"),
+  "CPU first-switch hint must not suggest small", langTest.hintCpu);
+check(langTest.hintGpu.includes("≈150 MB") && langTest.hintGpu.includes("base") && langTest.hintGpu.includes("≈480 MB") && langTest.hintGpu.includes("small") && /GPU/i.test(langTest.hintGpu),
+  "GPU first-switch size/GPU hint missing required details", langTest.hintGpu);
+check(langTest.chipList.map(c => `${c.lang}:${c.text}:${c.on}`).join(",") === "en:English:true,nb:Norsk:false,pl:Polski:false",
+  "Language chips initial state", JSON.stringify(langTest.chipList));
+check(langTest.initHtmlLang === "en", "initial <html lang> should be en", langTest.initHtmlLang);
+check(langTest.activeClicks.length === 0 && langTest.statusAfterActiveClick === "",
+  "clicking already-active language should do nothing visible", JSON.stringify({ activeClicks: langTest.activeClicks, status: langTest.statusAfterActiveClick }));
+check(langTest.posted.some(p => p.language === "pl") && langTest.plOnDuring, "clicking Polski chip did not post language='pl'", JSON.stringify(langTest.posted));
+check(/Switching to Polski/i.test(langTest.statusDuring), "status line not shown while switching", langTest.statusDuring);
+check(langTest.bestLangPosted.length === 1 && Object.keys(langTest.bestLangPosted[0]).join(",") === "language" && langTest.bestLangPosted[0].language === "pl",
+  "switching language on Best must send only {language}", JSON.stringify(langTest.bestLangPosted));
+check(langTest.langRefusalTxt === "medium.en cannot transcribe Polish" && langTest.langRefusalInRow,
+  "language refusal must appear under #langRow", JSON.stringify({ langRefusalTxt: langTest.langRefusalTxt, langRefusalInRow: langTest.langRefusalInRow }));
+check(langTest.sttChipsEn.join(",") === "tiny.en,base.en,auto,medium.en"
+  && langTest.sttChipsPl.join(",") === "tiny,base,auto,medium"
+  && langTest.sttChipsNb.join(",") === "tiny,base,auto,medium"
+  && langTest.sttBestOnPl && langTest.sttSmallEn === "small.en" && langTest.sttSmallPl === "small",
+  "STT chips did not map per lang_active", JSON.stringify(langTest));
+check(langTest.sttErrTxt === "tiny.en cannot transcribe Norwegian" && langTest.sttErrInRow && !/loading/i.test(langTest.chipTxtOnRefusal) && /speech recognition:.*loading/i.test(langTest.chipTxtOnOk),
+  "STT refusal must show under Speech recognition control and not tick loading", JSON.stringify({ sttErrTxt: langTest.sttErrTxt, sttErrInRow: langTest.sttErrInRow, chipTxtOnRefusal: langTest.chipTxtOnRefusal, chipTxtOnOk: langTest.chipTxtOnOk }));
+check(langTest.htmlLangDuring === "en" && langTest.htmlLangPl === "pl" && langTest.htmlLangNb === "nb" && langTest.statusAfter === "",
+  "<html lang> did not follow lang_active or status did not clear", JSON.stringify(langTest));
+check(langTest.gotPlDate === langTest.expPlDate && langTest.gotCustomDate === langTest.expCustomDate && langTest.gotNbDate === langTest.expNbDate,
+  "date locale did not use state_info.date_locale with DATE_LOCALES fallback", JSON.stringify({ gotPlDate: langTest.gotPlDate, expPlDate: langTest.expPlDate, gotCustomDate: langTest.gotCustomDate, expCustomDate: langTest.expCustomDate, gotNbDate: langTest.gotNbDate, expNbDate: langTest.expNbDate }));
+check(langTest.statePolls >= 1 && langTest.pollLangAfter === "pl" && langTest.pollSttChipAfter === "tiny" && langTest.pollDateAfter === langTest.expPlDate && langTest.pollLineAfter === "Dobrze, porządkuję." && langTest.pollsAfterSettled === 0 && langTest.busLangAfter === "nb",
+  "background switch with Settings closed did not refresh chips, date, and lines via 2 s poll or bus event", JSON.stringify({ statePolls: langTest.statePolls, pollLangAfter: langTest.pollLangAfter, pollSttChipAfter: langTest.pollSttChipAfter, pollDateAfter: langTest.pollDateAfter, pollLineAfter: langTest.pollLineAfter, pollsAfterSettled: langTest.pollsAfterSettled, busLangAfter: langTest.busLangAfter }));
+check(langTest.spokenFromState[0] === "Sterowanie wróciło do Ciebie."
+  && langTest.spokenFromState[1] === "Dobrze, patrzę. Powiedz „stop watching”, kiedy skończysz."
+  && langTest.spokenFromState[2] === "Dobrze, już nie patrzę."
+  && langTest.spokenFromState[3] === "Nie patrzyłem."
+  && langTest.spokenFromState[4] === "Dobrze, porządkuję."
+  && ["cześć! to mój nowy głos.", "jak brzmię?", "o, ten mi się podoba."].includes(langTest.spokenFromState[5]),
+  "page-spoken lines were not taken from state_info.lines", JSON.stringify(langTest.spokenFromState));
+check(langTest.spokenFallback[0] === "Control is back with you."
+  && langTest.spokenFallback[1] === "Okay, I'm watching. Say “stop watching” when you're done."
+  && langTest.spokenFallback[2] === "Okay, I stopped looking."
+  && langTest.spokenFallback[3] === "I wasn't looking."
+  && langTest.spokenFallback[4] === "Okay, tidying up."
+  && ["hi! this is my new voice.", "how do i sound?", "ooh, i like this one."].includes(langTest.spokenFallback[5]),
+  "page-spoken lines did not fall back to English", JSON.stringify(langTest.spokenFallback));
+
+// 10. Zero off-origin requests.
 check(offOrigin.length === 0, "off-origin requests made", offOrigin.join(", "));
 
 ws.close();

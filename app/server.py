@@ -32,6 +32,7 @@ import threading
 import time
 import unicodedata
 import wave
+from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -42,6 +43,7 @@ import plugins  # noqa: E402
 import peers  # noqa: E402
 from floor import FLOOR, pdeathsig_preexec  # noqa: E402
 import day  # noqa: E402
+import lang  # noqa: E402
 import eleven  # noqa: E402
 import quick  # noqa: E402
 import recall  # noqa: E402
@@ -158,6 +160,7 @@ DEFAULTS = {
     "presence": "orb",
     "bar_edge": "top",           # which screen edge the bar is merged into: top | bottom | left | right
     "language": "en",
+    "lang_good": "en",
     "stt_prewarm": True,
 
     "tts": "auto",          # auto (Kokoro → piper → espeak) | kokoro | piper | espeak | elevenlabs | off
@@ -171,6 +174,7 @@ DEFAULTS = {
     # voice preset: girl | cute | guy | deep | british | story | robot
     # (engine: Kokoro if installed, else piper — piper voices download on first use)
     "voice": "girl",
+    "voice_by_lang": {},     # the preset chosen in each language: {"pl": "guy"}; the switcher restores it
     # root mode: Claude may run anything, incl. sudo (you get a password box each time it needs root)
     "root_mode": False,
     "cpu_split": True,       # face (window) and voice/brain (server) on separate CPU cores (4+ cores only)
@@ -250,17 +254,25 @@ def load_config():
             if user.get("whisper_model") == "base.en":     # the old default → let it pick (GPU gets a better model)
                 user["whisper_model"] = "auto"
             cfg.update(user)
+            if "lang_good" not in user:
+                cfg["lang_good"] = "en"
+            if lang.norm(cfg["language"]) != "en" and str(cfg.get("whisper_model", "")).endswith(".en"):
+                cfg["whisper_model"] = "auto"
             if "trust" not in user and user.get("permission_mode"):
                 cfg["trust"] = {"bypassPermissions": "trust", "plan": "readonly"}.get(user["permission_mode"], "ask")
         except Exception as e:  # noqa: BLE001
             print(f"[nixi] could not parse {CONF_PATH}: {e}", file=sys.stderr)
     else:
+        cfg["language"] = lang.detect(os.environ)       # first run only: written now, so the next start doesn't re-detect
+        cfg["lang_good"] = "en"
         CONF_PATH.parent.mkdir(parents=True, exist_ok=True)
-        CONF_PATH.write_text(json.dumps(DEFAULTS, indent=2) + "\n")
+        CONF_PATH.write_text(json.dumps(cfg, indent=2) + "\n")
     return cfg
 
 
 CFG = load_config()
+lang.active = lang.norm(CFG.get("lang_good"))
+_config_lock = threading.RLock()
 eleven.CFG, eleven.DATA_DIR = CFG, DATA_DIR      # (one config and one data folder for the cloud voice)
 PEERS = peers.load()
 plugins.peers_allowed = lambda: CFG.get("peers_on") is True and bool(PEERS)
@@ -683,9 +695,9 @@ def summarize_command(cmd):
     binary = claude_bin()
     if not binary or not cmd.strip():
         return None
-    ask = ("In 3 to 10 plain words, for someone who isn't technical, say what this shell command does. Start with a "
-           "verb, e.g. \"restart Firefox\" or \"delete the old download in your Downloads folder\". Only say what it "
-           "does, never guess why. Reply with only that phrase.\n\nCommand:\n" + cmd[:2000])
+    ask = ("In 3 to 10 plain words, for someone who isn't technical, say what this shell command does. Start with an infinitive verb in the reply language, such as "
+           "\"restart Firefox\" or \"delete the old download in your Downloads folder\". Only say what it "
+           "does, never guess why. Reply with only that phrase." + (" " + lang.clause() if lang.clause() else "") + "\n\nCommand:\n" + cmd[:2000])
     try:
         out = subprocess.run([binary, "-p", "--model", "haiku", "--tools", "", "--no-session-persistence"],
                              input=ask, capture_output=True, text=True, timeout=15, cwd=str(DATA_DIR)).stdout
@@ -698,7 +710,7 @@ def summarize_command(cmd):
 def bridge_question(title, summary=""):
     """The card's question and spoken line in nixi mode: the tool's plain description ("Can I print ...?"), else the title (for Bash that is the raw command)."""
     s = " ".join(str(summary or "").split()).rstrip(".?")
-    return f"Can I {s[0].lower() + s[1:]}?" if s else title
+    return (lang.t("approve.can_i", what=s[0].lower() + s[1:]) if lang.active == "en" else lang.t("approve.command")) if s else title
 
 
 def approval_say(tool, inp):
@@ -707,20 +719,21 @@ def approval_say(tool, inp):
     if tool == "Bash":
         # Claude's own one-line summary of the command (it's told to always write one), else a quick summary from the
         # fast model — never the raw command (the card under him still shows that)
-        desc = " ".join(str(inp.get("description") or "").split()) or summarize_command(str(inp.get("command") or ""))
+        desc = summarize_command(str(inp.get("command") or "")) if lang.active != "en" else None
+        desc = desc or (" ".join(str(inp.get("description") or "").split()) if lang.active == "en" else "")
         desc = speakable(desc or "").rstrip(".")
         if not desc:
-            return "Can I run this command?"
-        return "Can I run a command to " + desc[0].lower() + desc[1:] + "?"
+            return lang.t("approve.command")
+        return lang.t("approve.command_to", what=desc[0].lower() + desc[1:])
     if tool == "WebFetch":
         host = re.sub(r"^https?://(www\.)?", "", str(inp.get("url") or "")).split("/")[0]
-        return f"Can I open a page on {host}?" if host else "Can I open this page?"
+        return lang.t("approve.page_on", host=host) if host else lang.t("approve.page")
     if tool == "WebSearch":
-        return "Can I search the web?"
+        return lang.t("approve.search")
     if tool in EDIT_TOOLS:
         p = edit_path(inp)
-        return f"Can I change {p.name}?" if p else "Can I change this file?"
-    return f"Can I use {tool}?"
+        return lang.t("approve.change", name=p.name) if p else lang.t("approve.change_file")
+    return lang.t("approve.use", tool=tool)
 
 
 # ---------------------------------------------------------------- file edits ("Ask me first")
@@ -1903,28 +1916,37 @@ class Quips:
 
     @classmethod
     def lines(cls, event):
+        code = lang.active
+        path = cls.path if code == "en" else cls.path.with_name(f"quips.{code}.json")
         try:
-            m = cls.path.stat().st_mtime
+            m = (cls.path.stat().st_mtime, path.stat().st_mtime if path != cls.path else None, code)
         except OSError:
-            m = None
+            m = (None, code)
         if cls.data is None or m != cls.mtime:
             cls.mtime, cls.bags = m, {}
             try:
                 d = json.loads(cls.path.read_text(encoding="utf-8"))
+                if path != cls.path:
+                    try:
+                        d = {**d, **json.loads(path.read_text(encoding="utf-8"))}
+                    except (OSError, ValueError):
+                        pass
                 cls.data = {k: [x for x in v if isinstance(x, str) and x.strip()] for k, v in d.items() if isinstance(v, list)}
             except (OSError, ValueError, AttributeError):
                 cls.data = {}                                   # broken or missing: the built-in lines
         Plug.ensure()
         extra = Plug.quips.get(event, []) if event in cls.data or event in QUIP_FALLBACK else []   # unknown events are ignored
-        return (cls.data.get(event) or list(QUIP_FALLBACK.get(event, ()))) + extra
+        base = cls.data.get(event) or list(QUIP_FALLBACK.get(event, ()))
+        return base + extra
 
 
 def quip(event, **slots):
-    bag = Quips.bags.get(event)
+    key = (lang.active, event)                                  # (a switch starts fresh bags)
+    bag = Quips.bags.get(key)
     if not bag:
         bag = Quips.lines(event)[:]
         random.shuffle(bag)
-        Quips.bags[event] = bag
+        Quips.bags[key] = bag
     if not bag:
         return ""
     line = bag.pop()
@@ -2462,6 +2484,11 @@ def _wire_quick():
 _whisper = None
 _whisper_err = None
 _whisper_lock = threading.Lock()
+_stt = None                         # (model, language, device); one immutable snapshot per utterance
+_switch_lock = threading.RLock()
+sg = 0
+lang_status = ""
+_cpu_stt_ms = None
 
 
 def _preload_cuda_libs():
@@ -2510,11 +2537,14 @@ def _compute_type(device):
     return "default"
 
 
-def _load(device):
+def _load(device, code=None):
     from faster_whisper import WhisperModel
+    code = code or lang.active
     name = CFG["whisper_model"]
     if name in ("", "auto"):
-        name = "small.en" if device == "cuda" else "base.en"
+        name = ("small" if device == "cuda" else "base") + (".en" if code == "en" else "")
+    if code != "en" and name.endswith(".en"):
+        raise ValueError(f"{name} cannot transcribe {lang.LANGS[code]['english']}")
     ct = _compute_type(device)
     m = WhisperModel(name, device=device, compute_type=ct)
     m._nixi_name, m._nixi_dev, m._nixi_ct = name, device, ct
@@ -2523,7 +2553,7 @@ def _load(device):
 
 
 def whisper():
-    global _whisper, _whisper_err
+    global _whisper, _whisper_err, _stt
     with _whisper_lock:
         if _whisper is None and _whisper_err is None:
             try:
@@ -2536,11 +2566,13 @@ def whisper():
                     _preload_cuda_libs()
                     dev = "cuda"
                 try:
-                    _whisper = _load(dev)
+                    _whisper = _load(dev, lang.active)
+                    _stt = (_whisper, lang.active, dev)
                 except Exception as e:  # noqa: BLE001
                     print(f"[nixi] whisper on {dev} failed ({e}); using CPU", file=sys.stderr)
                     try:
-                        _whisper = _load("cpu")
+                        _whisper = _load("cpu", lang.active)
+                        _stt = (_whisper, lang.active, "cpu")
                     except Exception as e2:  # noqa: BLE001
                         _whisper_err = str(e2)
         if _whisper is None:
@@ -2550,28 +2582,52 @@ def whisper():
 
 def run_whisper(audio, beam=None, hint=None) -> str:
     """Transcribe; if the GPU path blows up at run time (missing CUDA libs etc.), drop to CPU for good."""
-    global _whisper
+    global _whisper, _stt, _cpu_stt_ms
 
-    def go():
-        segs, _ = whisper().transcribe(
-            audio, language=CFG["language"] or None, beam_size=int(beam or CFG.get("whisper_beam") or 5),
+    whisper()
+    with _whisper_lock:
+        pair = _stt
+
+    def go(current):
+        global _cpu_stt_ms
+        model, code, device = current
+        wake = {"en": "Hey Nixi.", "nb": "Hei Nixi.", "pl": "Hej Nixi."}[code]
+        local_hint = {"en": CFG.get("stt_hint") or "",
+                      "nb": "Nixi, Claude, norsk, Bokmål, stopp, vær stille.",
+                      "pl": "Nixi, Claude, polski, cześć, stop, cicho, dziękuję."}[code]
+        if code != "en" and CFG.get("stt_hint") != DEFAULTS["stt_hint"]:
+            local_hint += " " + (CFG.get("stt_hint") or "")
+        prompt = hint if hint is not None else (local_hint if code == "en" else wake + " " + local_hint)
+        started = time.monotonic() if device == "cpu" else None
+        segs, _ = model.transcribe(
+            audio, language=lang.LANGS[code]["whisper"], beam_size=int(beam or CFG.get("whisper_beam") or 5),
             vad_filter=True, vad_parameters={"min_silence_duration_ms": 600, "speech_pad_ms": 300},
-            condition_on_previous_text=False, initial_prompt=(hint if hint is not None else CFG.get("stt_hint")) or None,
+            condition_on_previous_text=False, initial_prompt=prompt or None,
             no_speech_threshold=0.5)
         out = " ".join(s.text.strip() for s in segs).strip()      # segments are lazy: errors surface here
+        if started is not None:
+            _cpu_stt_ms = round((time.monotonic() - started) * 1000)
         # whisper sometimes "hears" the hint or filler on near-silence
-        if out.strip(" .").lower() in ("", "you", "thank you", "thanks for watching", "bye"):
+        noise = {"en": ("you", "thank you", "thanks for watching", "bye"),
+                 "nb": ("teksting av", "takk for meg"),
+                 "pl": ("napisy stworzone przez społeczność amara.org", "dziękuję")}
+        clean = out.strip(" .!?").casefold()
+        if clean in ("", *noise[code]) or code == "nb" and clean.startswith("teksting av "):
             return ""
         return out
     try:
-        return go()
+        return go(pair)
     except Exception as e:  # noqa: BLE001
         if not re.search(r"cuda|cublas|cudnn|libcu|gpu", str(e), re.I):
             raise
         print(f"[nixi] GPU speech-to-text failed ({e}); switching to CPU", file=sys.stderr)
+        cpu = _load("cpu", pair[1])
+        retry = (cpu, pair[1], "cpu")
         with _whisper_lock:
-            _whisper = _load("cpu")
-        return go()
+            if _stt is pair:
+                _stt = retry
+                _whisper = cpu
+        return go(retry)
 
 
 def pcm_audio(pcm: bytes):
@@ -2840,11 +2896,68 @@ class Listen:
         emit(t="text", text=transcribe_pcm(bytes(pcm)))
 
 
-def reset_whisper():
-    global _whisper, _whisper_err
-    with _whisper_lock:
-        _whisper, _whisper_err = None, None
-    threading.Thread(target=lambda: _try(whisper), daemon=True).start()
+def request_language(code, force=False):
+    """Prepare both resources off-thread; only the newest complete request can become active."""
+    global sg, lang_status
+    with _switch_lock:
+        if code == lang.active and not force:
+            sg += 1
+            lang_status = ""
+            return
+        sg += 1
+        generation = sg
+        changed = code != lang.active
+        lang_status = (f"Loading speech model for {lang.LANGS[code]['name']}…" if force and not changed
+                       else f"Switching to {lang.LANGS[code]['name']}…")
+    if changed:
+        BUS.pub(t="remind", text=lang_status)
+
+    def prepare():
+        global _whisper, _whisper_err, _stt, lang_status
+        try:
+            if code != "en" and tts_mode() == "kokoro":
+                raise RuntimeError(f"Kokoro has no {lang.LANGS[code]['english']} voice")
+            dev = "cuda" if _gpu_ok() else "cpu"
+            if dev == "cuda":
+                _preload_cuda_libs()
+            try:
+                model = _load(dev, code)
+            except Exception as e:  # noqa: BLE001
+                if dev != "cuda":
+                    raise
+                print(f"[nixi] whisper on cuda failed ({e}); using CPU", file=sys.stderr)
+                dev, model = "cpu", _load("cpu", code)
+            name = lang_voice_name(code)
+            if name:
+                with _switch_lock:
+                    if generation == sg and not voice_file(name).exists():
+                        lang_status = f"Switching to {lang.LANGS[code]['name']}: downloading voice…"
+                ok, reason = fetch_voice_sync(name)
+                if not ok:
+                    raise RuntimeError(reason)
+            if not voice_ready_for(code):
+                raise RuntimeError(f"No voice is ready for {lang.LANGS[code]['english']}")
+            with _switch_lock:
+                if generation != sg:
+                    return
+                with _whisper_lock:
+                    _stt = (model, code, dev)
+                    _whisper, _whisper_err = model, None
+                    with _config_lock:
+                        if changed:
+                            save_config(voice_by_lang={**(CFG.get("voice_by_lang") or {}), lang.active: CFG["voice"]})
+                        lang.active = code
+                        restore_voice(code)
+                        save_config(lang_good=code)
+                lang_status = ""
+        except Exception as e:  # noqa: BLE001
+            with _switch_lock:
+                if generation == sg:
+                    if changed:
+                        save_config(language=lang.active)
+                    lang_status = str(e)[:200]
+
+    threading.Thread(target=prepare, daemon=True).start()
 
 
 def list_mics():
@@ -2860,12 +2973,25 @@ def list_mics():
                 if "\t" in ln and ".monitor" not in ln]
 
 
-STOP_RE = re.compile(r"(?:ok(?:ay)?\W+|nixi\W+|hey\W+nixi\W+)?(?:stop|wait|shush|shh+|quiet|be quiet|shut up|hold on|hang on|"
-                     r"enough|stop talking|that's enough|thanks?(?: you)?|got it)(?:\W+(?:nixi|please|now))?")
+_STOP_WORDS = (r"stop|wait|shush|shh+|quiet|be quiet|shut up|hold on|hang on|"
+               r"enough|stop talking|that's enough|thanks?(?: you)?|got it")
+_STOP_EXTRA = {"nb": r"stopp|vent|vær stille|hysj|det holder|takk|ok takk",
+               "pl": r"stop|czekaj|poczekaj|cicho|ciszej|wystarczy|dzięki|dziękuję"}
+_STOP_WRAP = r"(?:(?:ok(?:ay)?|nixi|(?:hey|hei|hej|hallo|cześć)\W+nixi)\W+)?"
+_STOP_TAIL = r"(?:\W+(?:nixi|please|now))?"
+
+
+@lru_cache(maxsize=3)
+def _stop_re(lang):
+    return re.compile(_STOP_WRAP + r"(?:" + _STOP_WORDS + ("|" + _STOP_EXTRA[lang] if lang in _STOP_EXTRA else "") + r")" + _STOP_TAIL)
 # sent ahead of a follow-up (said without "hey Nixi") so Claude can tell if it was even meant for him
 FOLLOW_NOTE = ("(Voice note from Nixi: the mic picked this up a few seconds after your last reply, without \"hey Nixi\". "
                "If it is clearly not meant for you, e.g. the user thinking out loud, talking to themselves or to someone "
                "else, reply with exactly [ignore] and nothing else, and use no tools. Otherwise just answer it normally.)\n\n")
+
+
+def follow_prompt(said):
+    return FOLLOW_NOTE[:-3] + ((" " + lang.clause()) if lang.clause() else "") + ")\n\n" + said
 IGNORE = "[ignore]"
 
 class Beat:
@@ -2933,7 +3059,7 @@ class Beat:
 
 # what the speech model "hears" in background noise — never treat these as a follow-up request
 NOISE_WORDS = {"you", "thank you", "thanks", "bye", "thanks for watching", "thank you for watching", "uh", "um", "hmm"}
-WAKE_RE = re.compile(r"^\W*(?:(?:hey|hi|hay|okay|ok|yo|oi)\W+)?(nixi's|nixi|nixie|nixy|nixey|nixee|nicksy|nicksie)\b\W*(.*)$", re.I | re.S)
+WAKE_RE = re.compile(r"^\W*(?:(?:hey|hi|hay|okay|ok|yo|oi|hei|hallo|hej|cześć)\W+)?(nixi's|nixi|nixie|nixy|nixey|nixee|nicksy|nicksie|niksi)\b\W*(.*)$", re.I | re.S)
 
 
 class Wake:
@@ -3090,14 +3216,19 @@ class Wake:
             ss = speech_seconds(pcm)
             if ss < 0.25 or ss < len(pcm) / (RATE * 2) * 0.2:    # music or noise, not talking: don't let Whisper dream up words
                 return
-            text = transcribe_pcm(pcm) if follow else transcribe_pcm(pcm, beam=1, hint="Hey Nixi.")
+            text = transcribe_pcm(pcm) if follow else transcribe_pcm(pcm, beam=1, hint={"en": "Hey Nixi.", "nb": "Hei Nixi.", "pl": "Hej Nixi."}[lang.active])
         except Exception as e:  # noqa: BLE001
             print(f"[nixi] wake word stt: {e}", file=sys.stderr)
             return
+        if cls.speaking():
+            if _stop_re(stages.lang_active()).fullmatch((text or "").strip(" .,!?").casefold()):
+                BUS.pub(t="barge", listen=False, text="")
+                cls.hush()
+                return
         m = WAKE_RE.match(text or "")
         if cls.speaking():
-            if STOP_RE.fullmatch((text or "").strip(" .,!?").lower()) or m:
-                BUS.pub(t="barge", listen=bool(m), text=(m.group(2).strip(" .,!?") if m else ""))
+            if m:
+                BUS.pub(t="barge", listen=True, text=m.group(2).strip(" .,!?"))
                 cls.hush()
             return
         if m:
@@ -3175,11 +3306,11 @@ def doctor():
             print(f"  (what he heard is saved in {wav} — play it to hear it yourself)")
         if peak > 0.002:
             try:
-                heard = transcribe_pcm(data)
+                wake_hint = {"en": "Hey Nixi.", "nb": "Hei Nixi.", "pl": "Hej Nixi."}[lang.active]
+                heard = transcribe_pcm(data, hint=f"{wake_hint} {lang.LANGS[lang.active]['english']} microphone test.")
                 print("  heard:", repr(heard))
                 if not heard and heard_any:
-                    print("  -> there's talking but no words came out: speak a bit closer to the mic, in English "
-                          "(or set language in Settings)")
+                    print(f"  -> there's talking but no words came out: speak a bit closer to the mic, in {lang.LANGS[lang.active]['english']}")
                 print(f"  (speech model: {_whisper._nixi_name} on {_whisper._nixi_dev}, {_whisper._nixi_ct})")
             except Exception as e:  # noqa: BLE001
                 print("  speech-to-text failed:", e)
@@ -3208,6 +3339,8 @@ def piper_voice():
         v = os.path.expanduser(v)
         return v if os.path.exists(v) else None
     voices = sorted((DATA_DIR / "voices").glob("*.onnx"))
+    pre = {"nb": ("no_",), "pl": ("pl_",)}.get(lang.active)    # (a voice of another language must never read this one: Codex, PR #42)
+    voices = [v for v in voices if v.name.startswith(pre)] if pre else [v for v in voices if not v.name.startswith(("no_", "pl_"))]
     return str(voices[0]) if voices else None
 
 
@@ -3325,7 +3458,7 @@ def tts_engine(local=False):
         return None
     if mode == "elevenlabs":
         return None if eleven_why() else "elevenlabs"
-    if mode in ("auto", "kokoro") and kokoro_ready():
+    if mode in ("auto", "kokoro") and kokoro_ready() and lang.active == "en":      # (Kokoro has no Norwegian or Polish voice)
         return "kokoro"
     if mode in ("auto", "piper") and piper_bin() and piper_voice():
         return "piper"
@@ -3350,21 +3483,21 @@ def say_path(p):
     home = parts[:1] == ["~"] or parts[:1] == ["home"]
     parts = parts[1:] if parts[:1] == ["~"] else parts[2:] if parts[:1] == ["home"] else parts
     if not parts:
-        return "your home folder" if home else "the main folder"
+        return lang.t("path.home") if home else lang.t("path.root")
     last = parts[-1]
     if "." in last.strip("."):                       # a file: just its name
         return last
-    return f"your {last} folder" if home and len(parts) == 1 else f"the {last} folder"
+    return lang.t("path.home_dir", name=last) if home and len(parts) == 1 else lang.t("path.dir", name=last)
 
 
 def speakable(t: str, board: bool = False) -> str:
     """`board`: a commands stage is on screen, so a command is pointed at; otherwise there is nowhere to read it, so it is said."""
     t = untag(t)
-    t = re.sub(r"```.*?```", " I put some code on screen. ", t, flags=re.S)
-    t = re.sub(r"`(?![\w ]+(?:\s*\+\s*[\w ]+)+`)([^`]*\s[^`]*)`", "the command on the board", t) if board else t   # (S24) a key combo is still said
+    t = re.sub(r"```.*?```", lambda m: f" {lang.t('speak.code')} ", t, flags=re.S)
+    t = re.sub(r"`(?![\w ]+(?:\s*\+\s*[\w ]+)+`)([^`]*\s[^`]*)`", lambda m: lang.t("speak.command"), t) if board else t   # (S24) a key combo is still said
     t = re.sub(r"`([^`]*)`", r"\1", t)
     t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)
-    t = re.sub(r"https?://\S+", "a link", t)
+    t = re.sub(r"https?://\S+", lambda m: lang.t("speak.link"), t)
     t = PATH_RE.sub(lambda m: say_path(m.group(0).rstrip(".")) + "." * (len(m.group(0)) - len(m.group(0).rstrip("."))), t)
     t = re.sub(r"^\s*(?:[#>*+\-]+|\d+\.)\s*", "", t, flags=re.M)
     t = re.sub(r"[*_#|~]", "", t)
@@ -3373,7 +3506,7 @@ def speakable(t: str, board: bool = False) -> str:
     if len(t) > lim:
         cut = t[:lim]
         i = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
-        t = (cut[: i + 1] if i > lim // 3 else cut) + " The rest is on screen."
+        t = (cut[: i + 1] if i > lim // 3 else cut) + " " + lang.t("speak.rest")
     return t
 
 
@@ -3390,11 +3523,70 @@ VOICES = {
     "robot":    {"label": "Robot",       "espeak": "en-us+m3",   "pitch": 0.9},
 }
 
+# nb and pl have piper voices only (no Kokoro): each preset speaks with one of them, and Robot with espeak's own
+LANG_PIPER = {"nb": {"*": "no_NO-talesyntese-medium"},
+              "pl": {"girl": "pl_PL-gosia-medium", "cute": "pl_PL-gosia-medium", "guy": "pl_PL-darkman-medium",
+                     "deep": "pl_PL-darkman-medium", "british": "pl_PL-mc_speech-medium", "story": "pl_PL-mc_speech-medium"}}
+
+
+def localize(v, code=None, key=None):
+    """A voice preset as it speaks in this language (English: as is)."""
+    code = code or lang.active
+    if code == "en" or code not in LANG_PIPER:
+        return v
+    if v.get("espeak"):                                    # Robot
+        return {**v, "espeak": f"{code}+m3"}
+    names = LANG_PIPER[code]
+    key = key or next((k for k, x in VOICES.items() if x is v), "girl")
+    return {"label": v["label"], "piper": names.get(key) or names.get("*") or names["girl"],
+            "pitch": v.get("pitch", 1.0), "lang_espeak": code}
+
+
+def lang_voice_name(code):
+    """The piper voice to download so `code` can speak with the chosen preset (None: nothing to download: Robot, or piper isn't what will speak)."""
+    mode = tts_mode()
+    if mode not in ("auto", "piper") or not piper_bin() or (mode == "auto" and code == "en" and kokoro_ready()):
+        return None
+    if code == "en" and CFG.get("piper_voice"):        # (a pinned English voice is the user's own file)
+        return None
+    preset = VOICES.get(CFG.get("voice_by_lang", {}).get(code) or CFG.get("voice") or "girl", VOICES["girl"])
+    return (preset if code == "en" else localize(preset, code)).get("piper")
+
+
+def restore_voice(code):
+    """The switcher calls this when `code` becomes active: the preset last chosen in that language comes back."""
+    v = (CFG.get("voice_by_lang") or {}).get(code)
+    if v in VOICES:
+        save_config(voice=v)
+
+
+def voice_ready_for(code):
+    """Can `code` speak now with the chosen engine? (If not, fetch_voice_sync(lang_voice_name(code)) fetches the piper voice.)"""
+    mode = tts_mode()
+    if mode == "off":
+        return True
+    if mode == "elevenlabs":
+        return not eleven_why()
+    if code == "en":                                   # (only an English voice counts: a Polish model must not read English)
+        name = lang_voice_name("en")
+        return bool(mode in ("auto", "kokoro") and kokoro_ready() or
+                    mode in ("auto", "piper") and piper_bin() and (CFG.get("piper_voice") and piper_voice() or name and voice_file(name).exists()) or
+                    mode in ("auto", "espeak") and shutil.which("espeak-ng"))
+    if mode == "kokoro":
+        return False
+    name, es = lang_voice_name(code), bool(shutil.which("espeak-ng"))
+    piper_ok = bool(piper_bin()) and bool(name) and voice_file(name).exists()
+    if name is None:                                       # Robot
+        return es
+    return es if mode == "espeak" else piper_ok if mode == "piper" else piper_ok or (es and not piper_bin())
+
+
 # ---- Kokoro (kokoro-onnx): a much more natural voice than piper, still fully local. Small int8 model (~120 MB total).
 KOKORO_DIR = DATA_DIR / "voices" / "kokoro"
 KOKORO_FILES = {"kokoro-v1.0.int8.onnx": "model", "voices-v1.0.bin": "voices"}
 _KOKORO = {}
 _downloading = set()
+_download_lock = threading.Lock()
 
 
 def kokoro_installed():
@@ -3442,7 +3634,8 @@ def kokoro_synth(text, voice, speed):
 
 
 def voice_preset():
-    return VOICES.get(CFG.get("voice") or "girl", VOICES["girl"])
+    k = CFG.get("voice") or "girl"
+    return localize(VOICES.get(k, VOICES["girl"]), key=k)
 
 
 def voice_file(name):
@@ -3451,9 +3644,10 @@ def voice_file(name):
 
 def fetch_voice(name):
     """Download a piper voice in the background (same source the installer uses)."""
-    if name in _downloading or voice_file(name).exists():
-        return
-    _downloading.add(name)
+    with _download_lock:
+        if name in _downloading or voice_file(name).exists():
+            return
+        _downloading.add(name)
 
     def go():
         import urllib.request
@@ -3469,8 +3663,50 @@ def fetch_voice(name):
         except Exception as e:  # noqa: BLE001
             print(f"[nixi] voice download {name} failed: {e}", file=sys.stderr)
         finally:
-            _downloading.discard(name)
+            with _download_lock:
+                _downloading.discard(name)
     threading.Thread(target=go, daemon=True).start()
+
+
+def fetch_voice_sync(name, timeout=300):
+    """Download a piper voice in this thread → (ok, reason). Waits for a download already running instead of starting a second."""
+    end = time.monotonic() + timeout
+    with _download_lock:
+        ready = voice_file(name).exists()
+        pending = name in _downloading
+        if not ready and not pending:
+            _downloading.add(name)
+    if ready:
+        return True, ""
+    if pending:
+        while time.monotonic() < end:
+            with _download_lock:
+                if name not in _downloading:
+                    break
+            time.sleep(0.5)
+        return (True, "") if voice_file(name).exists() else (False, "The voice download didn't finish")
+    try:
+        import urllib.request
+        loc, spk, q = name.split("-")
+        base = f"https://huggingface.co/rhasspy/piper-voices/resolve/main/{loc.split('_')[0]}/{loc}/{spk}/{q}/{name}"
+        d = DATA_DIR / "voices"
+        d.mkdir(parents=True, exist_ok=True)
+        for ext, dest in ((".onnx.json", d / f"{name}.onnx.json"), (".onnx", d / f"{name}.onnx.part")):
+            with urllib.request.urlopen(base + ext, timeout=30) as r, open(dest, "wb") as f:
+                while True:
+                    if time.monotonic() > end:
+                        raise TimeoutError("timed out")
+                    chunk = r.read(1 << 16)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+        (d / f"{name}.onnx.part").rename(d / f"{name}.onnx")
+        return True, ""
+    except Exception as e:  # noqa: BLE001
+        return False, f"Couldn't download the voice {name}: {e}"[:200]
+    finally:
+        with _download_lock:
+            _downloading.discard(name)
 
 
 _piper_speed_flag = None
@@ -4099,6 +4335,8 @@ def synth(text: str, engine=None, local=False):
     auto = tts_mode(local) == "auto"
     eng = engine or tts_engine(local=local)
     if not eng or eng == "elevenlabs":                       # (the cloud voice is spoken by the speaker path, not here)
+        if tts_mode(local) == "kokoro" and lang.active != "en":
+            raise NoVoice(f"Kokoro has no {lang.LANGS[lang.active]['english']} voice")
         raise NoVoice((not local and tts_mode() == "elevenlabs" and eleven_why()) or "No voice engine is ready (install espeak-ng or piper)")
     vp = voice_preset()
     if not auto and eng in ("kokoro", "piper") and not vp.get(eng):
@@ -4114,12 +4352,13 @@ def synth(text: str, engine=None, local=False):
     os.close(fd)
     try:
         model = None
-        if eng == "piper" and not vp.get("espeak") and not CFG["piper_voice"]:
+        pinned = CFG["piper_voice"] if lang.active == "en" else ""         # (a pinned voice is the user's English one)
+        if eng == "piper" and not vp.get("espeak") and not pinned:
             if voice_file(vp["piper"]).exists():
                 model = str(voice_file(vp["piper"]))
             else:
                 fetch_voice(vp["piper"])          # use whatever we have until it lands
-        if eng == "piper" and not vp.get("espeak") and model is None:
+        if eng == "piper" and not vp.get("espeak") and model is None and lang.active == "en":
             model = piper_voice()
         if eng == "piper" and not auto and not model:
             raise NoVoice("No piper voice is downloaded yet")
@@ -4131,7 +4370,7 @@ def synth(text: str, engine=None, local=False):
             piper_run(model, text, out, pitch)
             rate = pitch
         elif shutil.which("espeak-ng") and (auto or eng == "espeak"):
-            ev = vp.get("espeak") or CFG["espeak_voice"]
+            ev = vp.get("espeak") or vp.get("lang_espeak") or CFG["espeak_voice"]
             subprocess.run(["espeak-ng", "-v", ev, "-s", "160", "-p", str(int(clamp01(pitch / 2) * 99)), "-w", out, text],
                            capture_output=True, timeout=90, check=True)
             rate = 1.0
@@ -4154,14 +4393,15 @@ NOTIFY_CATS = ("mail", "chat", "meeting", "video", "download", "other")
 
 def save_config(**kw):
     """Persist a few settings into config.json without clobbering the user's other edits."""
-    try:
-        cur = json.loads(CONF_PATH.read_text(encoding="utf-8-sig")) if CONF_PATH.exists() else {}
-    except Exception:  # noqa: BLE001
-        cur = {}
-    cur.update(kw)
-    CFG.update(kw)
-    CONF_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CONF_PATH.write_text(json.dumps(cur, indent=2) + "\n")
+    with _config_lock:
+        try:
+            cur = json.loads(CONF_PATH.read_text(encoding="utf-8-sig")) if CONF_PATH.exists() else {}
+        except Exception:  # noqa: BLE001
+            cur = {}
+        cur.update(kw)
+        CFG.update(kw)
+        CONF_PATH.parent.mkdir(parents=True, exist_ok=True)
+        CONF_PATH.write_text(json.dumps(cur, indent=2) + "\n")
 
 
 # ---------------------------------------------------------------- claude code
@@ -4312,6 +4552,8 @@ def build_cmd(binary, partial):
     mp = memory_prompt(fresh=not ST.session)
     if mp:
         sp += "\n\n" + mp
+    if lang.clause():
+        sp += "\n\n" + lang.clause()
     if sp:
         c += ["--append-system-prompt", sp]
     if ST.session:
@@ -4648,15 +4890,15 @@ def session_status(name, loose=False):
     """(say, None) when it is answered here, (None, prompt) for nixi's agent to summarise, (None, None) to fall through."""
     agents = herdr_agents()
     if not agents:
-        return (None, None) if loose else ("I can't read herdr right now.", None)
+        return (None, None) if loose else (lang.t("session.no_herdr"), None)
     hits = resolve_session(name, agents)
     if not hits:
-        return (None, None) if loose else (f"I can't find a session called {name}.", None)
+        return (None, None) if loose else (lang.t("session.not_found", name=name), None)
     if len(hits) > 1:
-        return ("Which one: " + ", ".join(_title(a) for a in hits[:4]) + "?", None)
+        return (lang.t("session.which", names=", ".join(_title(a) for a in hits[:4])), None)
     out = herdr_read(hits[0].get("pane_id"))
     if out is None:
-        return ("I can't read that session right now.", None)
+        return (lang.t("session.no_read"), None)
     return (None, status_prompt(hits[0], redact_session(out)))
 
 
@@ -4671,39 +4913,39 @@ def attach_argv(pane):
 def session_show(name):
     agents = herdr_agents()
     if not agents:
-        return "I can't read herdr right now."
+        return lang.t("session.no_herdr")
     hits = resolve_session(name, agents)
     if not hits:
-        return f"I can't find a session called {name}."
+        return lang.t("session.not_found", name=name)
     if len(hits) > 1:
-        return "Which one: " + ", ".join(_title(a) for a in hits[:4]) + "?"
+        return lang.t("session.which", names=", ".join(_title(a) for a in hits[:4]))
     try:
         subprocess.Popen(attach_argv(hits[0].get("pane_id")), start_new_session=True,
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except (OSError, ValueError):
-        return "I couldn't open that session."
-    return f"Opening the {_title(hits[0])} session."
+        return lang.t("session.open_failed")
+    return lang.t("session.opening", name=_title(hits[0]))
 
 
 def session_send(name, text):
     """Same shape as session_status. The send itself is nixi's agent's Bash call, which the bridge turns into a click-only card."""
     if not BRIDGED:
-        return ("Sending to sessions needs nixi mode.", None)
+        return (lang.t("session.send_needs_nixi"), None)
     if (nixi_conf().get("agent") or "claude") != "claude":
-        return ("Sending to sessions works with Claude as nixi's agent for now.", None)
+        return (lang.t("session.send_needs_claude"), None)
     agents = herdr_agents()
     if not agents:
-        return ("I can't read herdr right now.", None)
+        return (lang.t("session.no_herdr"), None)
     hits = resolve_session(name, agents, exact_only=True)
     if not hits:
-        return (f"I can't find a session called {name}.", None)
+        return (lang.t("session.not_found", name=name), None)
     if len(hits) > 1:
-        return ("Which one: " + ", ".join(_title(a) for a in hits[:4]) + "?", None)
+        return (lang.t("session.which", names=", ".join(_title(a) for a in hits[:4])), None)
     pane = hits[0].get("pane_id")
     if not isinstance(pane, str) or not PANE_RE.fullmatch(pane):
-        return ("I can't use that session's id.", None)
+        return (lang.t("session.bad_id"), None)
     title = _title(hits[0])
-    return (None, f"Start your reply with exactly this: I'll ask to send '{text}' to {title} — check the card. "
+    return (None, "Start your reply with exactly this: " + lang.t("session.send_say", text=text, title=title) + " "
                   f"Then run exactly this one command and nothing else: herdr agent prompt {pane} {shlex.quote(text)}\n"
                   f"(Why: the user asked by voice to send that text to the \"{title}\" session.)")
 
@@ -4751,6 +4993,8 @@ def run_bridge(prompt, emit):
     if CFG.get("answer_stages", True) and ST.stage_run is None and Plug.agent_lines():
         note = note[:-3] + (" Plugins the user installed: to run one, end with ONE last line <<stage>>{\"v\":1,\"kind\":\"plugin\",\"id\":\"ID\"} "
                             "(the server runs it; say only a sentence):\n" + "\n".join(Plug.agent_lines()) + ")\n\n")
+    if lang.clause():
+        note = note[:-3] + " " + lang.clause() + ")\n\n"
     cur = STAGES.current() if stages_on() and ST.stage_run is None else None
     if cur and cur["kind"] == "day" and cur.get("note") and cur.get("date") == time.strftime("%Y-%m-%d"):        # a question while the desk is open: the agent gets that desk's own summary, once, here only
         note += cur["note"] + "\n\n"
@@ -4860,30 +5104,30 @@ def plugin_stage(pid, query, before=_ANY):
     when it was asked for) the result is shown only if that is still the stage on screen."""
     p = Plug.stage.get(pid)
     if p is None:
-        return False, "That plugin is off."
+        return False, lang.t("plugin.off")
     try:
-        st = plugins.run_stage(p, query)
+        st = plugins.run_stage(p, query, locale=lang.LANGS[lang.active]["locale"])
     except plugins.Busy as e:
         return False, str(e)
     except plugins.StageError as e:
         if str(e) == plugins.CHANGED:
             Plug.reload()                                      # (switched off just now: drop it from memory too)
-        return False, f"{p.manifest['name']}: {e}."
+        return False, lang.t("plugin.failed", name=p.manifest["name"], error=e)
     if peers_withdrawn(st):
-        return False, "Other machines are off."
+        return False, lang.t("plugin.peers_off")
     if before is _ANY or (stages_on() and STAGES.current() is before):
         page = STAGES.put(st, refresh=(pid, query))
         BUS.pub(t="stage", **stage_event(page))
         if st.get("video_query") and p.manifest["stage"].get("videos"):   # (only the news plugin; never the asked words)
             threading.Thread(target=news_clips, args=(page["copy"], st["video_query"]), daemon=True).start()
-    return True, st.get("say") or "Here you go."
+    return True, st.get("say") or lang.t("plugin.done")
 
 
 def plugin_stage_thread(pid, query, before=_ANY):
     """The agent asked for a plugin: run it off the turn; a failure shows as a one-line notebook (both only if the stage on screen is still `before`)."""
     shown, say = plugin_stage(pid, query, before)
     if not shown and stages_on() and (before is _ANY or STAGES.current() is before):
-        BUS.pub(t="stage", **stage_event(STAGES.put({"v": 1, "kind": "facts", "title": str(Plug.stage[pid].manifest["name"])[:120] if pid in Plug.stage else "Plugin", "points": [say[:120]]})))
+        BUS.pub(t="stage", **stage_event(STAGES.put({"v": 1, "kind": "facts", "title": str(Plug.stage[pid].manifest["name"])[:120] if pid in Plug.stage else lang.t("plugin.title"), "points": [say[:120]]})))
 
 
 def video_stage(st, before):
@@ -4954,7 +5198,7 @@ def refresh_stage(token):
     if p is None:
         return {"ok": False}
     try:
-        st = plugins.run_stage(p, got[1]["query"], fresh=True)
+        st = plugins.run_stage(p, got[1]["query"], locale=lang.LANGS[lang.active]["locale"], fresh=True)
     except plugins.Busy:
         return {"ok": True, "skipped": True}
     except plugins.StageError as e:
@@ -5383,6 +5627,7 @@ def diagnostics():
     add("elevenlabs", f"{'on' if CFG.get('eleven_on') is True else 'off'}, key {'present' if eleven.has_key() else 'absent'}, "
                       f"used {eleven.today()['used']}/{eleven_cap()}")
     add("tts first-sound ms", Speaker.stats.get("first_sound_ms", "—"))
+    add("CPU transcription ms", _cpu_stt_ms if _cpu_stt_ms is not None else "—")
     if _whisper:
         add("speech model", f"{_whisper._nixi_name} on {_whisper._nixi_dev} ({_whisper._nixi_ct})")
     else:
@@ -5469,7 +5714,7 @@ def eleven_voices():
 
 
 def engine_list():
-    why = {"kokoro": "" if kokoro_ready() else "Kokoro isn't installed yet",
+    why = {"kokoro": ("" if kokoro_ready() else "Kokoro isn't installed yet") if lang.active == "en" else f"Kokoro has no {lang.LANGS[lang.active]['english']} voice",
            "piper": "" if piper_bin() and piper_voice() else "Piper or its voice isn't installed",
            "espeak": "" if shutil.which("espeak-ng") else "espeak-ng isn't installed",
            "elevenlabs": eleven_why()}
@@ -5482,16 +5727,21 @@ def engine_list():
 def voice_ready(v):
     """Can this preset speak with the chosen engine? (Robot is espeak only; the others also have an espeak voice.)"""
     mode = tts_mode(True)
+    if lang.active != "en" and mode == "kokoro":
+        return False
     if mode == "espeak":
         return bool(shutil.which("espeak-ng"))
     if v.get("espeak") and mode in ("kokoro", "piper"):
         return False
+    v = localize(v)
     return (bool(v.get("espeak")) or (bool(v.get("kokoro")) and tts_engine(local=True) == "kokoro")
             or voice_file(v.get("piper", "")).exists())
 
 
 def state_info():
     evoices, eerr = eleven_voices()
+    wl = lang.LANGS[lang.active]["whisper"]
+    evoices = sorted(evoices, key=lambda v: not any(str(c).lower().split("-")[0] == wl for c in v.get("languages") or []))   # (voices speaking the language first)
     return {
         "bridge": BRIDGED, "theme": THEME,
         "version": VERSION, "update": Updates.status(), "update_check": bool(CFG.get("update_check", True)),
@@ -5519,6 +5769,7 @@ def state_info():
         "projects": quick.projects(),
         **{k: bool(CFG.get(k, k == "notify_sound")) for k in NOTIFY_FLAGS}, "notify_speak": CFG.get("notify_speak", ["meeting"]),
         "quick_actions": CFG.get("quick_actions") or [], "memory_count": len(mem_load()),
+        "language": lang.norm(CFG.get("language")), "lang_active": lang.active, "lang_status": lang_status, "date_locale": lang.LANGS[lang.active]["date"], "lines": lang.lines(),
         "mic_device": CFG.get("mic_device") or "", "whisper_model": CFG.get("whisper_model") or "auto",
         "can_shoot": any(shutil.which(t) for t in ("grim", "spectacle", "gnome-screenshot", "maim", "scrot", "import")),
         "eye_color": CFG.get("eye_color") or "#3e5993", "eye_white": CFG.get("eye_white") or "#ffffff",
@@ -5527,7 +5778,7 @@ def state_info():
         "voice": CFG.get("voice") or "girl", "voice_pitch": voice_preset().get("pitch", 1.0),
         "voices": [{"id": k, "label": v["label"],
                     "ready": voice_ready(v),
-                    "downloading": v.get("piper") in _downloading or (bool(v.get("kokoro")) and "kokoro" in _downloading)}
+                    "downloading": localize(v).get("piper") in _downloading or (bool(v.get("kokoro")) and "kokoro" in _downloading)}
                    for k, v in VOICES.items()],
         "voice_engine": tts_engine() or "none",
         "claude": BRIDGED or bool(claude_bin()), "busy": ST.lock.locked(), "config": str(CONF_PATH),
@@ -5792,8 +6043,6 @@ class Handler(BaseHTTPRequestHandler):
                     upd["effort"] = b["effort"]
                 if "voice" in b and b["voice"] in VOICES:
                     upd["voice"] = b["voice"]
-                    if VOICES[b["voice"]].get("piper"):
-                        fetch_voice(VOICES[b["voice"]]["piper"])
                 bad = voice_settings(b, upd)
                 if bad:
                     return self._json({"error": bad}, 400)
@@ -5849,8 +6098,14 @@ class Handler(BaseHTTPRequestHandler):
                     upd["code_face"] = b["code_face"]
                 if "mic_device" in b:
                     upd["mic_device"] = str(b["mic_device"] or "")
-                if b.get("whisper_model") in ("auto", "tiny.en", "base.en", "small.en", "medium.en"):
+                if b.get("language") in lang.LANGS:      # asked for; lang.active follows only through the switcher
+                    upd["language"] = b["language"]
+                if b.get("whisper_model") in ("auto", "tiny.en", "base.en", "small.en", "medium.en", "tiny", "base", "small", "medium"):
                     upd["whisper_model"] = b["whisper_model"]
+                target = upd.get("language", CFG.get("language"))
+                model = upd.get("whisper_model", CFG.get("whisper_model") or "auto")
+                if target in ("nb", "pl") and model.endswith(".en"):
+                    return self._json({"error": f"{model} cannot transcribe {lang.LANGS[target]['english']}"}, 400)
                 if isinstance(b.get("quick_actions"), list):
                     qa = []
                     for a in b["quick_actions"][:12]:
@@ -5861,7 +6116,15 @@ class Handler(BaseHTTPRequestHandler):
                 if upd:
                     peers_changed = "peers_on" in upd and upd["peers_on"] != (CFG.get("peers_on") is True)
                     cut_cloud = ("tts" in upd and upd["tts"] != CFG.get("tts") and "elevenlabs" in (upd["tts"], CFG.get("tts"))) or (upd.get("eleven_on") is False and CFG.get("eleven_on") is True)
-                    save_config(**upd)
+                    with _switch_lock:
+                        with _config_lock:
+                            if "voice" in upd:
+                                upd["voice_by_lang"] = {**(CFG.get("voice_by_lang") or {}), lang.active: upd["voice"]}
+                                if tts_mode() in ("auto", "piper") and VOICES[upd["voice"]].get("piper"):
+                                    fetch_voice(localize(VOICES[upd["voice"]], key=upd["voice"])["piper"])
+                            save_config(**upd)
+                        if "language" in upd or "whisper_model" in upd:
+                            request_language(lang.norm(CFG.get("language")), force="whisper_model" in upd)
                     if cut_cloud:
                         Speaker.cut_cloud()
                     if peers_changed:
@@ -5876,8 +6139,6 @@ class Handler(BaseHTTPRequestHandler):
                             if STAGES.forget_where(lambda pg: pg.get("kind") == "gauges" and len(pg.get("hosts", [])) > 1):
                                 BUS.pub(t="stage_close")            # (and Back can't restore one either)
                             BUS.pub(t="toast", text="Other machines are off")
-                if "whisper_model" in upd:
-                    reset_whisper()
                 if "autostart" in upd:
                     sync_autostart()
                 if any(k.startswith("ambient_") for k in upd) or "proactive" in upd or "look_weather" in upd:
@@ -6161,20 +6422,20 @@ class Handler(BaseHTTPRequestHandler):
             if fp and fp[0] == "run" and vis and vis.get("kind") == "commands" and fp[1] < len(vis.get("items") or []):
                 body["stage"], body["act"] = vis["items"][fp[1]]["token"], "run"
             elif fp and fp[0] == "ask" and vis:
-                return self._said("Which one? Say the first, second or third.")
+                return self._said(lang.t("stage.which"))
             elif fp and fp[0] in ("copy", "open", "play") and vis:
                 it = (vis["clips"] if vis.get("kind") == "headlines" and fp[0] == "play" else vis.get("items") or vis.get("sessions") or [vis])[fp[1]]         # each set names its tokens per action (map: open/copy, cinema: play, desk: a session)
                 tk = {"copy": it.get("token") or vis.get("copy"), "open": vis.get("open") or it.get("play") or it.get("open"), "play": it.get("play")}[fp[0]]
                 r = stage_act(tk or "", "session" if vis.get("kind") == "status" and fp[0] == "open" else fp[0])
-                return self._said({"copy": "Copied.", "open": "Opening it.", "play": "Playing it."}[fp[0]] if r["ok"]
-                                  else "I can't do that yet." if r.get("error") == "not yet" else "I couldn't do that.")
+                return self._said(lang.t("stage." + fp[0]) if r["ok"]
+                                  else lang.t("stage.not_yet") if r.get("error") == "not yet" else lang.t("stage.failed"))
             elif fp and fp[0] in ("close", "back", "show") and (cur or fp[0] != "close"):
                 if stage_act("", fp[0])["ok"]:
-                    return self._said("Done.")
+                    return self._said(lang.t("stage.done"))
         if BRIDGED and stages_on() and said and not body.get("attach") and not body.get("stage"):      # a stage plugin's own phrase (after Nixi's)
             hit = Plug.match(said)
             if len(hit) > 1:
-                return self._said("Which one: " + " or ".join(str(p.manifest["name"]) for p in hit) + "?")
+                return self._said(lang.t("stage.which_plugin", names=lang.t("stage.or").join(str(p.manifest["name"]) for p in hit)))
             if hit:
                 return self._said(plugin_stage(hit[0].id, said)[1])
         if body.get("stage") and body.get("act") == "run":
@@ -6188,7 +6449,7 @@ class Handler(BaseHTTPRequestHandler):
         prompt = (extra + "\n\n" + said).strip() if extra else said
         follow = bool(body.get("follow")) and not extra and run_cmd is None
         if follow:
-            prompt = FOLLOW_NOTE + said
+            prompt = follow_prompt(said)
         if not prompt:
             return self._json({"error": "empty prompt"}, 400)
         with Speaker.cv:
@@ -6441,6 +6702,8 @@ def main():
     if args.print_port:
         print(CFG["port"])
         return
+    if lang.norm(CFG.get("language")) != lang.active:
+        request_language(lang.norm(CFG["language"]))
     if CFG["stt_prewarm"] or CFG.get("wake_word"):
         threading.Thread(target=lambda: _try(whisper), daemon=True).start()
     _wire_quick()
