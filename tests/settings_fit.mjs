@@ -476,6 +476,9 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   const another = await ev("return wxAside(performance.now())");   // (an ambient cue can legitimately appear in the test: then it rightly stays aside)
   check(back < 12 || another, "weather: the cloud comes back when the mark goes", JSON.stringify([back, another]));
   // (Codex: only the sun shows on a clear day and it doesn't overlap; the situation logic resets sitOn, so ask the rule directly)
+  // with a hat the cloud is already left of the marks: +90 would put it on them (Codex, PR #44; LOOK.skin, because the situation logic resets sitOn)
+  const hatted = await ev("const was=LOOK.skin; LOOK.skin='halo'; AM={from:'claude',kind:'ask',t0:0,until:performance.now()+9000}; await new Promise(r=>setTimeout(r,1500)); const dx=Number(wxEl.getAttribute('transform').match(/translate\\(([-\\d.]+)/)[1]); AM=null; LOOK.skin=was; return dx");
+  check(hatted < 12, "weather: with a hat the cloud stays left of the marks", String(hatted));
   const clear = await ev("sitOn.clear=true; AM={from:'claude',kind:'ask',t0:0,until:performance.now()+9000}; const r=wxAside(performance.now()); AM=null; sitOn.clear=false; return r");
   check(clear === false, "weather: a clear sky stays put under a mark", String(clear));
   await ev("sitOn.rain=false; renderCue(); return 1"); }
