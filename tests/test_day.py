@@ -79,7 +79,13 @@ class DayTest(unittest.TestCase):
         lo, hi = datetime.datetime.fromisoformat(argv[argv.index("--from") + 1]), datetime.datetime.fromisoformat(argv[argv.index("--to") + 1])
         self.assertEqual((lo.date(), lo.time()), (D, datetime.time(0, 0)))
         self.assertEqual((hi.date(), hi.time()), (D + datetime.timedelta(days=1), datetime.time(0, 0)))
-        self.assertIn("work@example.com", argv)
+        self.assertIn("--cal=work@example.com", argv)
+
+    def test_multiple_calendars_are_repeatable_flags(self):
+        r = Runner()
+        snap(r, ids=("a@x", "b@x"))
+        (argv,) = r.of("gog", "calendar")
+        self.assertEqual(argv[argv.index("events") + 1:argv.index("--from")], ["--cal=a@x", "--cal=b@x"])
 
     def test_tasks_use_up_to_three_lists_and_due_max_tomorrow(self):
         r = Runner()

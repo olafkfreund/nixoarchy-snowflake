@@ -1405,7 +1405,7 @@ class Ambient:
             return cls.generation()
         if what == "cal":
             ids = cls.cal_ids()
-            out = ids and cls.run(["gog", "--readonly", "--json", "calendar", "events", *ids, "--from", "now", "--days", "2",
+            out = ids and cls.run(["gog", "--readonly", "--json", "calendar", "events", *("--cal=" + i for i in ids), "--from", "now", "--days", "2",
                                    "--sort", "start", "--max", "20"], timeout=10)
             if out:
                 try:

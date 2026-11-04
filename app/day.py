@@ -67,7 +67,7 @@ def window(now):
 def _cal(ids, start, end, deadline, run):
     if not ids:
         raise _Off()
-    out = _json(["gog", "--readonly", "--json", "calendar", "events", *ids, "--from", start.isoformat(), "--to", end.isoformat(),
+    out = _json(["gog", "--readonly", "--json", "calendar", "events", *("--cal=" + i for i in ids), "--from", start.isoformat(), "--to", end.isoformat(),
                  "--sort", "start", "--max", "50"], deadline, run)
     items = []
     for e in (out.get("events") if isinstance(out, dict) else None) or []:
