@@ -13,10 +13,12 @@ import tempfile
 import threading
 import time
 from collections import namedtuple
+from datetime import datetime, timezone
 from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "nixi-companion"
+peers_allowed = lambda: False
 
 Plugin = namedtuple("Plugin", "id dir manifest source error")
 
@@ -153,8 +155,10 @@ def _check(m, d):
         c = s.get("cache_seconds", 60)
         if type(c) is not int or not 0 <= c <= 600:
             return "bad stage cache_seconds"
-        if "reads" in s and not (isinstance(s["reads"], list) and all(_in(x, ("system-status",)) for x in s["reads"])):
+        if "reads" in s and not (isinstance(s["reads"], list) and all(_in(x, ("system-status", "peer-status")) for x in s["reads"])):
             return "bad stage reads"
+        if s.get("network") is True and "peer-status" in s.get("reads", []):
+            return "a plugin that reads your other machines' status can't use the network"
         if s.get("network") is True and "system-status" in s.get("reads", []):
             return "a plugin that reads your system status can't use the network"
         if not _inside(d, s["argv"][0]):
@@ -554,8 +558,10 @@ def forget():
 
 
 PROC_STAT, PROC_NET, PROC_MEM, PROC_UP, PROC_HOST = "/proc/stat", "/proc/net/dev", "/proc/meminfo", "/proc/uptime", "/proc/sys/kernel/hostname"
-_last = {}                      # the previous counters: {"cpu": (busy, total), "net": (rx, tx), "t": monotonic}
+_last = {}                      # the previous counters and computed rates
 _last_lock = threading.Lock()
+_generation_details = {}
+_generation_lock = threading.Lock()
 
 
 def _read(path):
@@ -592,23 +598,51 @@ def prime():
     """Take a first reading of the counters (cheap: two small /proc files, no sleep) so the first system_status() has a rate."""
     with _last_lock:
         _last.update(cpu=_cpu(), net=_net(), t=time.monotonic())
+        _last.pop("rates", None)
 
 
 def _rates():
     """(cpu_pct, rx_bps, tx_bps) since the last reading; null for what can't be known (unreadable, or a counter that went back)."""
     with _last_lock:
-        if "t" not in _last:
+        now = time.monotonic()
+        if "rates" in _last and now - _last["t"] < 1:
+            return _last["rates"]
+        if "t" not in _last or now - _last["t"] > 30:
             _last.update(cpu=_cpu(), net=_net(), t=time.monotonic())
             time.sleep(0.25)                           # shortcut: no earlier reading, so wait a moment once
         c, n, t = _cpu(), _net(), time.monotonic()
         c0, n0, dt = _last.get("cpu"), _last.get("net"), t - _last["t"]
         _last.update(cpu=c, net=n, t=t)
-    cpu = rx = tx = None
-    if c and c0 and c[1] > c0[1] and c[0] >= c0[0]:
-        cpu = round(100 * (c[0] - c0[0]) / (c[1] - c0[1]), 1)
-    if n and n0 and dt > 0 and n[0] >= n0[0] and n[1] >= n0[1]:
-        rx, tx = round((n[0] - n0[0]) / dt), round((n[1] - n0[1]) / dt)
-    return cpu, rx, tx
+        cpu = rx = tx = None
+        if c and c0 and c[1] > c0[1] and c[0] >= c0[0]:
+            cpu = round(100 * (c[0] - c0[0]) / (c[1] - c0[1]), 1)
+        if n and n0 and dt > 0 and n[0] >= n0[0] and n[1] >= n0[1]:
+            rx, tx = round((n[0] - n0[0]) / dt), round((n[1] - n0[1]) / dt)
+        _last["rates"] = (cpu, rx, tx)
+        return _last["rates"]
+
+
+def _rev_built(target):
+    if target is None:
+        return None, None
+    with _generation_lock:
+        if target not in _generation_details:
+            rev = built = None
+            try:
+                r = subprocess.run(["/run/current-system/sw/bin/nixos-version", "--json"],
+                                   capture_output=True, text=True, timeout=1)
+                if r.returncode == 0:
+                    value = json.loads(r.stdout).get("configurationRevision")
+                    rev = value if isinstance(value, str) and value else None
+            except (OSError, subprocess.SubprocessError, ValueError, AttributeError):
+                pass
+            try:
+                prof = "/nix/var/nix/profiles/system"   # lstat the system-N-link it names: following on into the store gives mtime 1
+                built = datetime.fromtimestamp(os.lstat(os.path.join(os.path.dirname(prof), os.readlink(prof))).st_mtime, timezone.utc).isoformat()
+            except (OSError, OverflowError, ValueError):
+                pass
+            _generation_details[target] = rev, built
+        return _generation_details[target]
 
 
 def _failed(cmd, out, i):
@@ -619,17 +653,20 @@ def _failed(cmd, out, i):
         out[i] = None
 
 
-def system_status():
+def system_status(user=True):
     """What a plugin with reads: [system-status] gets on stdin, collected here, outside its sandbox: the running generation,
     the failed user and system units, and the host's readings. Anything that can't be read is null, never 0 or an empty list."""
     try:
-        gen = os.path.basename(os.readlink("/run/current-system")) or None
+        target = os.readlink("/run/current-system")
+        gen = os.path.basename(target) or None
     except OSError:
-        gen = None
+        target = gen = None
     out = [None, None]
-    ts = [threading.Thread(target=_failed, args=(["systemctl", *u, "--failed", "--plain", "--no-legend"], out, i)) for i, u in enumerate((["--user"], []))]
+    ts = [threading.Thread(target=_failed, args=(["systemctl", *u, "--failed", "--plain", "--no-legend"], out, i))
+          for i, u in enumerate((["--user"], [])) if user or i == 1]
     for t in ts:
         t.start()
+    rev, built = _rev_built(target)
     cpu, rx, tx = _rates()
     mem = None
     try:
@@ -651,7 +688,7 @@ def system_status():
     host = (_read(PROC_HOST) or "").strip()[:32] or None
     for t in ts:
         t.join()
-    return {"generation": gen, "failed": out[0], "failed_system": out[1], "cpu_pct": cpu, "mem": mem, "disks": disks or None,
+    return {"generation": gen, "rev": rev, "built": built, "failed": out[0], "failed_system": out[1], "cpu_pct": cpu, "mem": mem, "disks": disks or None,
             "net": {"rx_bps": rx, "tx_bps": tx}, "uptime_s": up, "host": host}
 
 
@@ -677,7 +714,8 @@ def run_stage(p, query, locale="en", timeout=TIME_DEFAULT, fresh=False):
     """Run a stage plugin on a query -> a `facts` stage (stages.validate'd, nothing else accepted). Raises StageError / Busy.
     Cached per plugin and query for stage.cache_seconds; if a run fails the last good result is shown with its age."""
     import stages
-    stg, key, now = p.manifest["stage"], (p.id, norm(query)), _now()
+    stg, now = p.manifest["stage"], _now()
+    key = (p.id, norm(query), "peer-status" in stg.get("reads", []) and peers_allowed())   # (a board with peers is never served once they're off)
     _consented(p)                                                  # (before the cache too: a changed plugin shows nothing, old or new)
     with _cache_lock:
         hit = _cache.get(key)
@@ -739,6 +777,9 @@ def _run_copy(p, query, locale, timeout, stages, tmp):
         feed = {"v": 1, "query": query, "locale": locale}
         if "system-status" in stg.get("reads", []):
             feed["system_status"] = system_status()
+        if "peer-status" in stg.get("reads", []) and peers_allowed():
+            import peers
+            feed["peers"] = peers.snapshot()
         proc = subprocess.Popen(sandbox_argv(os.path.join(tmp, "plugin"), stg, os.path.join(tmp, "resolv.conf")), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 start_new_session=True, bufsize=0, preexec_fn=_limits)
     except OSError as e:
@@ -781,7 +822,8 @@ def _run_copy(p, query, locale, timeout, stages, tmp):
     if late:
         raise StageError("it took too long")
     if err[0]:
-        sys.stderr.write("plugin %s: %s\n" % (p.id, stages._CTRL.sub(" ", err[0].decode("utf-8", "replace")[:ERR_CAP])))
+        message = f"{len(err[0])} bytes of stderr" if stg.get("reads") else stages._CTRL.sub(" ", err[0].decode("utf-8", "replace")[:ERR_CAP])
+        sys.stderr.write(f"plugin {p.id}: {message}\n")
     if proc.returncode != 0:
         raise StageError("it failed")
     try:

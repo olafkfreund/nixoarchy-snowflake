@@ -347,7 +347,64 @@ const acts = () => ev("return __acts.slice()");
   await ev("applyThemeVars({background:'#fff',foreground:'#222',darker_background:'#fff',accent:'#36f',red:'#f66',green:'#6f6',yellow:'#ff6'}); return 1");
   const c4 = await col();
   check(c4[0] === "rgb(224, 108, 117)" && c4[2] === "rgb(215, 218, 224)" && await ev("return document.getElementById('stg').classList.contains('fixed')"), "term: a light theme gets the fixed dark palette", JSON.stringify(c4));
-  await ev("applyThemeVars(null); stageClose(); return 1"); await sleep(320); }
+  await ev("applyThemeVars(null); stageClose(); return 1"); await sleep(320);
+
+  // fleet board (#168): compact peer panels, expand, down/stale lines, ask line, Settings toggle, toast, stageText
+  const F3 = {
+    t: "stage", v: 1, kind: "gauges", title: "System status", source: "p620", live: true, token: "c1", refresh: "r1",
+    hosts: [
+      { name: "p620", state: "up", badges: [{ k: "rev", v: "a1b2c3d" }], meters: [{ label: "CPU", pct: 18, text: "4 cores" }, { label: "MEM", pct: 40, text: "6 GB" }], lists: [{ title: "Failed", items: ["a.service"], tone: "bad" }] },
+      { name: "p510", state: "up", badges: [{ k: "rev", v: "a1b2c3d" }], meters: [{ label: "CPU", pct: 12, text: "8 cores" }, { label: "MEM", pct: 25, text: "4 GB" }], lists: [{ title: "Failed (system)", items: ["b.service", "c.service"], tone: "bad" }] },
+      { name: "razer", state: "up", badges: [{ k: "rev", v: "≠ f00baa1", tone: "warn" }], meters: [{ label: "CPU", pct: 5, text: "8 cores" }], lists: [{ title: "Failed (system)", items: ["none"], tone: "ok" }] },   // what nix-status sends for a healthy peer: not "1 failed"
+    ],
+  };
+  await show(F3, w => 0);
+  const f1 = await ev(`const ps=[...document.querySelectorAll('#stg .tmh')]; return [ps.length, !ps[0].classList.contains('cmp')&&!ps[0].hasAttribute('aria-expanded'), ps[1].classList.contains('cmp')&&ps[1].getAttribute('aria-expanded')==='false'&&ps[1].getAttribute('role')==='button'&&ps[1].tabIndex===0, ps[2].classList.contains('cmp')&&ps[2].getAttribute('aria-expanded')==='false', getComputedStyle(ps[1].querySelector('.tms')).display==='none'&&getComputedStyle(ps[1].querySelector('.tmli')).display==='none', ps[1].querySelector('.tmfc').textContent, ps[2].querySelector('.tmfc').textContent, ps[1].querySelector('.tmw').innerText.includes('12%')]`);
+  check(f1[0] === 3 && f1[1] && f1[2] && f1[3] && f1[4] && f1[5] === "2 failed" && f1[6] === "0 failed" && f1[7], "fleet: one full + two compact hosts render", JSON.stringify(f1));
+
+  // Enter on a compact panel expands it and sets aria-expanded; expanding another collapses the first; stays expanded after stage_update
+  await ev(`const p1=document.querySelectorAll('#stg .tmh')[1]; p1.focus(); p1.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true})); return 1`);
+  const f2 = await ev(`const ps=[...document.querySelectorAll('#stg .tmh')]; return [ps[1].classList.contains('exp'), ps[1].getAttribute('aria-expanded'), getComputedStyle(ps[1].querySelector('.tms')).display!=='none', getComputedStyle(ps[1].querySelector('.tmli')).display!=='none', getComputedStyle(ps[1].querySelector('.tmfc')).display==='none', ps[1].querySelector('.tms').textContent.length>0]`);
+  check(f2[0] && f2[1] === "true" && f2[2] && f2[3] && f2[4] && f2[5], "fleet: Enter on a compact panel expands it and sets aria-expanded", JSON.stringify(f2));
+  await ev(`onEvent(${JSON.stringify({ ...F3, t: "stage_update", hosts: [F3.hosts[0], { ...F3.hosts[1], meters: [{ label: "CPU", pct: 55, text: "8 cores" }, F3.hosts[1].meters[1]] }, F3.hosts[2]] })}); return 1`);
+  const f3 = await ev(`const ps=[...document.querySelectorAll('#stg .tmh')]; return [ps[1].classList.contains('exp'), ps[1].getAttribute('aria-expanded'), ps[1].querySelector('.tmv').textContent, ps[1].querySelector('.tms').textContent.length]`);
+  check(f3[0] && f3[1] === "true" && f3[2] === "55%" && f3[3] === 2, "fleet: an expanded panel stays expanded after stage_update", JSON.stringify(f3));
+  await ev(`document.querySelectorAll('#stg .tmh')[2].click(); return 1`);
+  const f3b = await ev(`const ps=[...document.querySelectorAll('#stg .tmh')]; return [ps[1].getAttribute('aria-expanded'), ps[2].getAttribute('aria-expanded')]`);
+  check(f3b[0] === "false" && f3b[1] === "true", "fleet: expanding another peer collapses the first", JSON.stringify(f3b));
+
+  // down and stale hosts render as single lines with no meter rows, and stageText lists all hosts
+  const F4 = {
+    ...F3,
+    hosts: [
+      F3.hosts[0],
+      { name: "p510", state: "stale", badges: [{ k: "status", v: "asking…" }], meters: [{ label: "CPU", pct: 0 }], lists: [] },
+      { name: "razer", state: "down", badges: [{ k: "last", v: "not seen yet" }], meters: [{ label: "CPU", pct: 0 }], lists: [] },
+      { name: "t480", state: "down", badges: [{ k: "last", v: "14:20" }], meters: [], lists: [] },
+    ],
+  };
+  await show(F4, w => 0);
+  const f4 = await ev(`const ps=[...document.querySelectorAll('#stg .tmh')]; return [ps[1].querySelectorAll('.tmw').length, ps[2].querySelectorAll('.tmw').length, ps[1].innerText.trim(), ps[2].innerText.trim(), ps[3].innerText.trim()]`);
+  check(f4[0] === 0 && f4[1] === 0 && f4[2] === "┤ p510 ├ asking…" && f4[3] === "┤ razer ├ unreachable · not seen yet" && f4[4] === "┤ t480 ├ unreachable · last seen 14:20", "fleet: down and stale hosts render as single lines with no meter rows", JSON.stringify(f4));
+  const st = await ev(`return stageText(${JSON.stringify(F4)})`);
+  check(st.includes("p620 CPU: 18%") && st.includes("p510: asking…") && st.includes("razer: unreachable · not seen yet") && st.includes("t480: unreachable · last seen 14:20") && st.indexOf("p620") < st.indexOf("p510"), "fleet: stageText lists all hosts with down/stale as one line", st);
+
+  // ask line conditions, "Show them" posts peers_on, no ask line once peers_asked, Settings row and toast
+  await ev(`window.__setPosts=[]; const of3=window.fetch; window.fetch=(u,o)=>{ if(String(u).includes('/api/settings')&&o&&o.body){ const b=JSON.parse(o.body); __setPosts.push(b); Object.assign(info,b); return Promise.resolve(new Response(JSON.stringify(info))); } return of3(u,o); }; return 1`);
+  await ev("info.peers_configured=true; info.peers_on=false; info.peers_asked=false; return 1");
+  await show(G, w => 0);
+  const a1 = await ev(`const a=document.querySelector('#stg .tmask'); return [!!a, a&&a.textContent, a&&a.querySelectorAll('button').length]`);
+  check(a1[0] && a1[1].includes("Your other machines") && a1[1].includes("Show them") && a1[1].includes("Not now") && a1[2] === 2, "fleet: ask line appears when peers_configured && !peers_on && !peers_asked", JSON.stringify(a1));
+  await ev(`document.querySelector('#stg .tmask button').click(); return 1`);
+  const a2 = await ev(`return [!!document.querySelector('#stg .tmask'), __setPosts.at(-1), info.peers_on, info.peers_asked]`);
+  check(!a2[0] && a2[1]?.peers_on === true && a2[1]?.peers_asked === true && a2[2] === true && a2[3] === true, "fleet: 'Show them' posts peers_on and hides the ask line", JSON.stringify(a2));
+  await ev("info.peers_on=false; info.peers_asked=true; return 1");
+  await show(G, w => 0);
+  check(await ev("return !document.querySelector('#stg .tmask')"), "fleet: no ask line once peers_asked");
+  await ev("info.peers_configured=false; info.peers_asked=false; renderSettings(); const h0=document.getElementById('peersRow').hidden; info.peers_configured=true; info.peers_on=true; renderSettings(); const h1=document.getElementById('peersRow').hidden, c1=document.getElementById('peersSw').checked; onEvent({t:'toast',text:'Other machines are off'}); window.__h=[h0,h1,c1,document.getElementById('chip').textContent]; return 1");
+  const s1 = await ev("return window.__h");
+  check(s1[0] === true && s1[1] === false && s1[2] === true && s1[3] === "Other machines are off", "fleet: Settings toggle visibility/binding and toast handler", JSON.stringify(s1));
+  await ev("stageClose(); return 1"); await sleep(320); }
 
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
 console.log(fails.length ? `\n${fails.length} failed: ${fails.join(", ")}` : "\nall pass");

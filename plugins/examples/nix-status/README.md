@@ -5,3 +5,6 @@ It runs in a sandbox with no network; it may read the system status (`reads: ["s
 Needs a Nixi with `gauges` support (the board). On an older Nixi, the store meter still works but the board does not draw.
 
 Updating: a copy in your plugins folder shows "Changed — check it again" once after you update it, until you allow it again; one installed with Nix shows "Updated".
+
+Other machines: it also shows your other machines (load, memory, disks, revision, failed system services). It needs this Nixi version and the "Other machines" switch in Settings → Plugins, which is off by default; with it off, or on an older Nixi, only this computer shows. It still needs no network.
+Because the folder changed, a copy in your plugins folder shows "Changed" once (check it again); one installed with Nix shows "Updated".

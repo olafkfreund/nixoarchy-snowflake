@@ -175,6 +175,8 @@ class T(unittest.TestCase):
         self.assertIsNone(self.one(dict(GOOD, stage=st), ["run"]).error)
         self.assertIsNone(self.one(dict(GOOD, stage=dict(st, network=True, reads=[])), ["run"]).error)
         self.assertIn("system status", self.one(dict(GOOD, stage=dict(st, network=True)), ["run"]).error)
+        self.assertEqual(self.one(dict(GOOD, stage=dict(st, network=True, reads=["peer-status"])), ["run"]).error,
+                         "a plugin that reads your other machines' status can't use the network")
 
     def test_plugin_dirs(self):
         d = plugins.plugin_dirs()
@@ -194,6 +196,7 @@ class Readings(unittest.TestCase):
             mock.patch.object(plugins, n, str(self.d / v)).start()
         self.addCleanup(mock.patch.stopall)
         plugins._last.clear()
+        plugins._generation_details.clear()
 
     def put(self, busy, idle, rx, tx):
         (self.d / "stat").write_text("cpu %d 0 0 %d 0 0 0 0 0 0\n" % (busy, idle))
@@ -207,6 +210,7 @@ class Readings(unittest.TestCase):
         self.assertEqual(cpu, 25.0)
         self.assertTrue(rx > 0 and tx > 0 and rx > tx)
         self.put(1, 1, 10, 10)                                  # counters went back
+        plugins._last["t"] -= 2                                 # (a reading under 1 s old is shared, #168)
         self.assertEqual(plugins._rates(), (None, None, None))
 
     def test_unreadable_is_null_not_zero(self):
@@ -217,7 +221,8 @@ class Readings(unittest.TestCase):
         starts = []
 
         def slow(cmd, **kw):
-            starts.append(time.monotonic())
+            if cmd[0] == "systemctl":                        # (nixos-version is read too, once per generation, #168)
+                starts.append(time.monotonic())
             time.sleep(1)
             return mock.Mock(returncode=0, stdout="")
         self.put(0, 0, 0, 0)

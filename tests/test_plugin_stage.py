@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_speakable import _ServerEnv
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
@@ -162,6 +163,29 @@ class RunnerTest(unittest.TestCase):
             got = plugins.run_stage(p._replace(manifest=m), "q")
         self.assertEqual(json.loads(got["points"][0]), {"generation": "g", "failed": None})
 
+    def test_peer_feed_needs_declaration_consent_and_configuration(self):
+        body = "import json,sys\nq=json.load(sys.stdin)\nprint(json.dumps({'v':1,'kind':'facts','title':'t','points':[json.dumps(q.get('peers'))]}))"
+        p = prog(self.root, body)
+        peer = {"name": "other", "state": "asking", "status": None, "last_ok": None}
+        import peers
+        with mock.patch.object(peers, "snapshot", return_value=[peer]) as snap:
+            self.assertEqual(plugins.run_stage(p, "q")["points"], ["null"])
+            with mock.patch.object(plugins, "peers_allowed", return_value=True):
+                self.assertEqual(plugins.run_stage(p, "q", fresh=True)["points"], ["null"])
+            m = {**p.manifest, "stage": {**p.manifest["stage"], "reads": ["peer-status"]}}
+            with mock.patch.object(plugins, "peers_allowed", return_value=False):
+                self.assertEqual(plugins.run_stage(p._replace(manifest=m), "q", fresh=True)["points"], ["null"])
+            with mock.patch.object(plugins, "peers_allowed", return_value=True):
+                self.assertEqual(json.loads(plugins.run_stage(p._replace(manifest=m), "q", fresh=True)["points"][0]), [peer])
+        snap.assert_called_once()
+
+    def test_reading_plugin_stderr_is_length_only(self):
+        p = prog(self.root, "import json,sys\nsys.stderr.write('private reading')\nprint(json.dumps(%r))" % FACTS)
+        m = {**p.manifest, "stage": {**p.manifest["stage"], "reads": ["system-status"]}}
+        with mock.patch.object(plugins, "system_status", return_value={}), mock.patch.object(plugins.sys, "stderr", io.StringIO()) as log:
+            plugins.run_stage(p._replace(manifest=m), "q")
+        self.assertEqual(log.getvalue(), "plugin tt-t: 15 bytes of stderr\n")
+
     def test_system_status_says_none_never_for_a_failed_query(self):
         with mock.patch.object(plugins.subprocess, "run", side_effect=OSError):
             self.assertIsNone(plugins.system_status()["failed"])
@@ -170,6 +194,17 @@ class RunnerTest(unittest.TestCase):
             self.assertEqual(plugins.system_status()["failed"], ["a.service", "b.service"])
         with mock.patch.object(plugins.subprocess, "run", return_value=mock.Mock(returncode=1, stdout="")):
             self.assertIsNone(plugins.system_status()["failed"])
+
+    def test_a_cached_board_with_peers_is_not_served_once_they_are_off(self):   # (#168)
+        p = prog(self.root, "")
+        p.manifest["stage"].update(cache_seconds=60, reads=["peer-status"])
+        allowed = [True]
+        with mock.patch.object(plugins, "peers_allowed", lambda: allowed[0]), \
+                mock.patch.object(plugins, "_launch", side_effect=[{**FACTS, "title": "with peers"}, {**FACTS, "title": "without"}]) as go:
+            self.assertEqual(plugins.run_stage(p, "q")["title"], "with peers")
+            allowed[0] = False
+            self.assertEqual(plugins.run_stage(p, "q")["title"], "without")
+        self.assertEqual(go.call_count, 2)
 
     def test_forget_drops_remembered_results(self):
         p = prog(self.root, "import json\nprint(json.dumps(%r))" % FACTS)
@@ -333,6 +368,21 @@ class StageServerTest(_ServerEnv):
         S.Plug.loaded, S.Plug.stage, S.Plug.updated = None, {}, {}
         S.STAGES.clear()
         plugins._cache.clear()
+        S._peer_followup_round = False
+
+    def settings(self, body):
+        s = self.server
+        h = s.Handler.__new__(s.Handler)
+        h.path, h.headers = "/api/settings", {"X-Nixi-Token": s.TOKEN}
+        h._host_ok = lambda: True
+        h._body = lambda: json.dumps(body).encode()
+        h._json = mock.Mock()
+        with mock.patch.object(s, "state_info", return_value={}), mock.patch.object(s, "save_config", side_effect=lambda **kw: s.CFG.update(kw)), mock.patch.object(s.Wake, "ensure"):
+            h.do_POST()
+
+    def gauge(self, hosts=2):
+        return {"v": 1, "kind": "gauges", "title": "Fleet", "live": True,
+                "hosts": [{"name": "host%d" % i, "state": "up", "badges": [], "meters": [], "lists": []} for i in range(hosts)]}
 
     def mk(self, where, pid, phrases=("nixi status",), **stage):
         d = self.root / where / pid
@@ -648,6 +698,83 @@ class StageServerTest(_ServerEnv):
         with mock.patch.object(plugins, "run_stage", return_value=FACTS), mock.patch.object(S.BUS, "pub") as pub, mock.patch.dict(S.CFG, {"answer_stages": False}):
             S.plugin_stage_thread("disk-one", "q", S.STAGES.current())
             self.assertFalse(pub.called)
+
+    def test_agent_stage_thread_returns_no_readings(self):
+        s = self.server
+        self.mk("user", "peer-one", reads=["peer-status"])
+        self.on("peer-one")
+        stage = {**self.gauge(), "say": "private reading"}
+        with mock.patch.object(plugins, "run_stage", return_value=stage), mock.patch.object(s.BUS, "pub") as pub:
+            self.assertIsNone(s.plugin_stage_thread("peer-one", "q"))
+        pub.assert_called_once()
+        self.assertEqual(pub.call_args.kwargs["t"], "stage")
+        self.assertNotIn("say", pub.call_args.kwargs)
+
+    def test_peer_switch_off_forgets_and_closes_multihost_board(self):
+        s = self.server
+        s.STAGES.put(self.gauge(), refresh=("peer-one", "q"))
+        plugins._cache[("peer-one", "q")] = (time.monotonic(), self.gauge())
+        with mock.patch.dict(s.CFG, {"peers_on": True}), mock.patch.object(s.peers, "stop") as stop, mock.patch.object(s.BUS, "pub") as pub:
+            self.settings({"peers_on": False, "peers_asked": True})
+        stop.assert_called_once()
+        self.assertFalse(plugins._cache)
+        self.assertIsNone(s.STAGES.current())
+        self.assertFalse(s.STAGES.has_prev())
+        self.assertEqual([x.kwargs for x in pub.call_args_list],
+                         [{"t": "stage_close"}, {"t": "toast", "text": "Other machines are off"}])
+
+    def test_peer_switch_on_refreshes_live_board(self):
+        s = self.server
+        self.mk("user", "peer-one", reads=["peer-status"])
+        self.on("peer-one")
+        s.STAGES.put(self.gauge(1), refresh=("peer-one", "q"))
+        with mock.patch.object(s, "PEERS", [{"name": "other"}]), mock.patch.dict(s.CFG, {"peers_on": False}), \
+                mock.patch.object(plugins, "run_stage", return_value=self.gauge()) as run, mock.patch.object(s.BUS, "pub") as pub:
+            self.settings({"peers_on": True})
+            self.assertTrue(s.plugins.peers_allowed())
+        run.assert_called_once()
+        self.assertTrue(run.call_args.kwargs["fresh"])
+        self.assertEqual(pub.call_args.kwargs["t"], "stage_update")
+        self.assertEqual(len(s.STAGES.current()["hosts"]), 2)
+
+    def test_a_board_with_peers_isnt_shown_once_they_are_off(self):   # a run under way when the switch went off
+        s = self.server
+        self.mk("user", "peer-one", reads=["peer-status"])
+        self.on("peer-one")
+        with mock.patch.object(s, "PEERS", [{"name": "other"}]), mock.patch.dict(s.CFG, {"peers_on": False}), \
+                mock.patch.object(plugins, "run_stage", return_value=self.gauge()) as run, mock.patch.object(s.BUS, "pub") as pub:
+            shown, _ = s.plugin_stage("peer-one", "q")
+        self.assertFalse(shown)
+        pub.assert_not_called()
+        self.assertIsNone(s.STAGES.current())
+
+    def test_peer_round_refreshes_live_board_only(self):
+        s = self.server
+        self.mk("user", "peer-one", reads=["peer-status"])
+        self.on("peer-one")
+        s.STAGES.put(self.gauge(1), refresh=("peer-one", "q"))
+        with mock.patch.object(s, "PEERS", [{"name": "other"}]), mock.patch.dict(s.CFG, {"peers_on": True}), \
+                mock.patch.object(plugins, "run_stage", return_value=self.gauge()) as run, mock.patch.object(s.BUS, "pub") as pub:
+            s.STAGES.set_visible(False)
+            s.peer_round_done()                    # not on screen: nothing samples
+            self.assertEqual(run.call_count, 0)
+            s.STAGES.set_visible(True)
+            s.peer_round_done()
+            self.assertEqual((run.call_count, pub.call_args.kwargs["t"]), (1, "stage_update"))
+            s.peer_round_done()                    # the round started by that refresh does not loop
+            self.assertEqual(run.call_count, 1)
+            s.STAGES.close()
+            s.peer_round_done()
+            self.assertEqual(run.call_count, 1)
+
+    def test_peer_capability_and_configuration_state(self):
+        s = self.server
+        self.assertIn("It can read your other machines' status (load, memory, disks, failed services)",
+                      s.plugin_caps({"stage": {"reads": ["peer-status"]}}))
+        with mock.patch.object(s, "PEERS", []), mock.patch.dict(s.CFG, {"peers_on": True, "peers_asked": True}), mock.patch.object(s.quick, "cfg", s.CFG):
+            self.assertFalse(s.plugins.peers_allowed())
+            info = s.state_info()
+        self.assertEqual((info["peers_on"], info["peers_asked"], info["peers_configured"]), (True, True, False))
 
     def test_reload_and_switch_off_clear_the_result_cache(self):
         S = self.server
