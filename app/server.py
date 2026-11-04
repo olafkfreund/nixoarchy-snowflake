@@ -42,6 +42,7 @@ import plugins  # noqa: E402
 import peers  # noqa: E402
 from floor import FLOOR, pdeathsig_preexec  # noqa: E402
 import day  # noqa: E402
+import eleven  # noqa: E402
 import quick  # noqa: E402
 import recall  # noqa: E402
 import stages  # noqa: E402
@@ -159,7 +160,11 @@ DEFAULTS = {
     "language": "en",
     "stt_prewarm": True,
 
-    "tts": "auto",          # auto (Kokoro → piper → espeak) | kokoro | piper | espeak | off
+    "tts": "auto",          # auto (Kokoro → piper → espeak) | kokoro | piper | espeak | elevenlabs | off
+    "tts_fallback": "auto",  # what speaks when ElevenLabs can't: auto | kokoro | piper | espeak
+    "eleven_on": False,      # cloud voice: off until you read the notice and switch it on
+    "eleven_voice": "",
+    "eleven_daily_chars": 20000,
     "piper_voice": "",
     "espeak_voice": "en-us",
     "speak_max_chars": 600,
@@ -256,6 +261,7 @@ def load_config():
 
 
 CFG = load_config()
+eleven.CFG, eleven.DATA_DIR = CFG, DATA_DIR      # (one config and one data folder for the cloud voice)
 PEERS = peers.load()
 plugins.peers_allowed = lambda: CFG.get("peers_on") is True and bool(PEERS)
 
@@ -3179,7 +3185,7 @@ def doctor():
                 print("  speech-to-text failed:", e)
     except Exception as e:  # noqa: BLE001
         print("  MIC FAILED:", e)
-    print("\nvoice:", tts_engine() or "none (install espeak-ng / piper)")
+    print("\nvoice:", tts_engine(local=True) or "none (install espeak-ng / piper)")
     print("claude:", claude_bin() or "NOT FOUND")
     try:
         line = Path(FLOOR.path).read_text().strip()
@@ -3205,10 +3211,29 @@ def piper_voice():
     return str(voices[0]) if voices else None
 
 
-def tts_engine():
+def tts_mode(local=False):
+    """The chosen engine; with local=True ElevenLabs becomes the voice that speaks when it can't."""
     mode = CFG["tts"]
+    return CFG.get("tts_fallback", "auto") if local and mode == "elevenlabs" else mode
+
+
+def eleven_why():
+    """Why ElevenLabs can't speak yet, or "" when it can."""
+    if CFG.get("eleven_on") is not True:
+        return "Switch it on in the ElevenLabs section first"
+    if not eleven.has_key():
+        return "No ElevenLabs key found"
+    if not CFG.get("eleven_voice"):
+        return "Choose an ElevenLabs voice first"
+    return ""
+
+
+def tts_engine(local=False):
+    mode = tts_mode(local)
     if mode == "off":
         return None
+    if mode == "elevenlabs":
+        return None if eleven_why() else "elevenlabs"
     if mode in ("auto", "kokoro") and kokoro_ready():
         return "kokoro"
     if mode in ("auto", "piper") and piper_bin() and piper_voice():
@@ -3216,6 +3241,13 @@ def tts_engine():
     if mode in ("auto", "espeak") and shutil.which("espeak-ng"):
         return "espeak"
     return None
+
+
+class NoVoice(RuntimeError):
+    """An explicitly chosen engine can't speak; `reason` says why in plain words."""
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
 
 
 PATH_RE = re.compile(r"(?<![\w.])(?:~|/)[\w.\-]*(?:/[\w.\-]+)+/?|(?<![\w.])/(?:home|etc|usr|tmp|opt|var)\b")
@@ -3403,10 +3435,10 @@ def piper_inproc(model, text, length_scale):
 def warm_tts():
     """Load the voice in the background at start-up so his first sentence isn't slow."""
     try:
-        if CFG.get("tts", "auto") in ("auto", "kokoro"):
+        if tts_mode(True) in ("auto", "kokoro"):
             fetch_kokoro()
-        if tts_engine() in ("piper", "kokoro"):
-            synth("Hi.")
+        if tts_engine(local=True) in ("piper", "kokoro"):
+            synth("Hi.", local=True)
     except Exception as e:  # noqa: BLE001
         print(f"[nixi] couldn't warm up the voice: {e}", file=sys.stderr)
 
@@ -3850,7 +3882,7 @@ def stress_voice(silent=False):
     """`nixi-companion stress`: speak a few sentences three times — on a quiet computer, with every CPU core flat out, and with Nixi
     itself busy — and report whether the voice ever ran dry (a stutter), and how close it came."""
     import multiprocessing as mp
-    eng = tts_engine()
+    eng = tts_engine(local=True)
     print(f"voice engine: {eng or 'none'}" + (f" ({Path(piper_voice()).name})" if eng == 'piper' and piper_voice() else ""))
     if not eng:
         print("no voice engine installed — nothing to test"); return 1
@@ -3864,7 +3896,7 @@ def stress_voice(silent=False):
         print(f"player: {cmd[0]}   (you'll hear him say the same few sentences three times)")
     print("plays his voice four times: on a quiet computer, then with your CPU and Nixi itself as busy as they can be")
     print("warming up the voice…", flush=True)
-    synth("Hi.")
+    synth("Hi.", local=True)
     results, ok = [], True
     phases = [("quiet computer", ""), ("every CPU core busy", "cpu"), ("Nixi itself busy", "gil"),
               ("everything busy at once", "cpu+gil")]
@@ -3909,17 +3941,20 @@ def stress_voice(silent=False):
     return 0 if ok else 2
 
 
-def synth(text: str):
-    """→ (wav bytes, playback rate)"""
-    eng = tts_engine()
-    if not eng:
-        raise RuntimeError("no TTS engine (install espeak-ng or piper)")
+def synth(text: str, engine=None, local=False):
+    """→ (wav bytes, playback rate). Only `auto` swaps one voice for another; a chosen engine speaks or raises NoVoice."""
+    auto = tts_mode(local) == "auto"
+    eng = engine or tts_engine(local=local)
+    if not eng or eng == "elevenlabs":                       # (the cloud voice is spoken by the speaker path, not here)
+        raise NoVoice((not local and tts_mode() == "elevenlabs" and eleven_why()) or "No voice engine is ready (install espeak-ng or piper)")
     vp = voice_preset()
+    if not auto and eng in ("kokoro", "piper") and not vp.get(eng):
+        raise NoVoice(f"{vp['label']} needs espeak; {eng} doesn't have it")
     if eng == "kokoro" and vp.get("kokoro"):
         # pitch: play it back a touch faster/slower, and have Kokoro speak slower/faster by the same factor
         kp = float(vp.get("kpitch", 1.0))
         return kokoro_synth(text, CFG.get("kokoro_voice") or vp["kokoro"], 1.0 / kp), kp
-    if eng == "kokoro":                                       # (the robot preset is espeak on purpose)
+    if eng == "kokoro" and auto:                              # (the robot preset is espeak on purpose)
         eng = "piper" if piper_bin() and piper_voice() else "espeak"
     pitch = float(vp.get("pitch", 1.0))
     fd, out = tempfile.mkstemp(suffix=".wav")
@@ -3933,6 +3968,8 @@ def synth(text: str):
                 fetch_voice(vp["piper"])          # use whatever we have until it lands
         if eng == "piper" and not vp.get("espeak") and model is None:
             model = piper_voice()
+        if eng == "piper" and not auto and not model:
+            raise NoVoice("No piper voice is downloaded yet")
         if model:
             with _TTS_LOCK:                                         # one at a time, in order: no CPU fight between sentences
                 audio = piper_inproc(model, text, pitch)
@@ -3940,13 +3977,13 @@ def synth(text: str):
                 return audio, pitch
             piper_run(model, text, out, pitch)
             rate = pitch
-        elif shutil.which("espeak-ng"):
+        elif shutil.which("espeak-ng") and (auto or eng == "espeak"):
             ev = vp.get("espeak") or CFG["espeak_voice"]
             subprocess.run(["espeak-ng", "-v", ev, "-s", "160", "-p", str(int(clamp01(pitch / 2) * 99)), "-w", out, text],
                            capture_output=True, timeout=90, check=True)
             rate = 1.0
         else:
-            raise RuntimeError("no usable voice")
+            raise NoVoice("No usable voice") if not auto else RuntimeError("no usable voice")
         return Path(out).read_bytes(), rate
     finally:
         os.unlink(out)
@@ -5161,6 +5198,8 @@ def diagnostics():
             cv = "found (version unknown)"
     add("claude code", cv)
     add("voice engine", f"{tts_engine() or 'none'} (voice: {CFG.get('voice')})")
+    add("elevenlabs", f"{'on' if CFG.get('eleven_on') is True else 'off'}, key {'present' if eleven.has_key() else 'absent'}, "
+                      f"used {eleven.today()['used']}/{eleven_cap()}")
     if _whisper:
         add("speech model", f"{_whisper._nixi_name} on {_whisper._nixi_dev} ({_whisper._nixi_ct})")
     else:
@@ -5187,7 +5226,85 @@ def trust_nixi():
     return t if t in ("guide", "mechanic") else "guide"
 
 
+def eleven_cap():
+    try:
+        return max(1000, min(500000, int(CFG.get("eleven_daily_chars") or 20000)))
+    except (TypeError, ValueError):
+        return 20000
+
+
+def voice_settings(b, upd):
+    """Check the voice-engine keys of a settings call and copy the good ones into upd → a sentence when one is refused."""
+    if "tts_fallback" in b:
+        if b["tts_fallback"] not in ("auto", "kokoro", "piper", "espeak"):
+            return "The fallback voice must be auto, kokoro, piper or espeak."
+        upd["tts_fallback"] = b["tts_fallback"]
+    if "eleven_voice" in b:
+        if not isinstance(b["eleven_voice"], str) or not re.fullmatch(r"[A-Za-z0-9]{10,40}", b["eleven_voice"]):
+            return "That doesn't look like an ElevenLabs voice id."
+        upd["eleven_voice"] = b["eleven_voice"]
+    if "eleven_daily_chars" in b:
+        n = b["eleven_daily_chars"]
+        if isinstance(n, bool) or not isinstance(n, int) or not 1000 <= n <= 500000:
+            return "The daily limit must be a whole number from 1000 to 500000 characters."
+        upd["eleven_daily_chars"] = n
+    if "eleven_on" in b:
+        if b["eleven_on"] is True and b.get("confirm") != "cloud":
+            return "Read the notice and confirm before switching ElevenLabs on."
+        upd["eleven_on"] = b["eleven_on"] is True
+    if "tts" in b:
+        if b["tts"] not in ("auto", "kokoro", "piper", "espeak", "elevenlabs", "off"):
+            return "Unknown voice engine."
+        if b["tts"] == "elevenlabs":
+            if upd.get("eleven_on", CFG.get("eleven_on")) is not True:
+                return "Switch ElevenLabs on first."
+            if not upd.get("eleven_voice", CFG.get("eleven_voice")):
+                return "Choose an ElevenLabs voice first."
+        upd["tts"] = b["tts"]
+    return ""
+
+
+_eleven_list = {"at": 0.0, "error": ""}
+
+
+def eleven_voices():
+    """→ (voice list, error kind) for the page: only while ElevenLabs is on; a failure isn't retried for a minute."""
+    if CFG.get("eleven_on") is not True or not eleven.has_key():
+        return [], ""
+    if _eleven_list["error"] and time.time() - _eleven_list["at"] < 60:
+        return [], _eleven_list["error"]
+    try:
+        v, _eleven_list["error"] = eleven.voices(time.monotonic() + 1.5), ""
+        return v, ""
+    except eleven.ElevenError as e:
+        _eleven_list.update(at=time.time(), error=e.kind)
+        return [], e.kind
+
+
+def engine_list():
+    why = {"kokoro": "" if kokoro_ready() else "Kokoro isn't installed yet",
+           "piper": "" if piper_bin() and piper_voice() else "Piper or its voice isn't installed",
+           "espeak": "" if shutil.which("espeak-ng") else "espeak-ng isn't installed",
+           "elevenlabs": eleven_why()}
+    why["auto"] = "No local voice is installed" if all(why[k] for k in ("kokoro", "piper", "espeak")) else ""
+    return [{"id": k, "label": l, "ready": not why.get(k, ""), "reason": why.get(k, "")}
+            for k, l in (("auto", "Automatic"), ("kokoro", "Kokoro"), ("piper", "Piper"), ("espeak", "espeak"),
+                         ("elevenlabs", "ElevenLabs"), ("off", "Off"))]
+
+
+def voice_ready(v):
+    """Can this preset speak with the chosen engine? (Robot is espeak only; the others also have an espeak voice.)"""
+    mode = tts_mode(True)
+    if mode == "espeak":
+        return bool(shutil.which("espeak-ng"))
+    if v.get("espeak") and mode in ("kokoro", "piper"):
+        return False
+    return (bool(v.get("espeak")) or (bool(v.get("kokoro")) and tts_engine(local=True) == "kokoro")
+            or voice_file(v.get("piper", "")).exists())
+
+
 def state_info():
+    evoices, eerr = eleven_voices()
     return {
         "bridge": BRIDGED, "theme": THEME,
         "version": VERSION, "update": Updates.status(), "update_check": bool(CFG.get("update_check", True)),
@@ -5195,7 +5312,10 @@ def state_info():
         "presence": "bar" if CFG.get("presence") == "bar" else "orb",
         "bar_edge": CFG.get("bar_edge") if CFG.get("bar_edge") in ("top", "bottom", "left", "right") else "top",
         "cwd": ST.cwd, "cwd_display": pretty_path(ST.cwd), "session": bool(ST.session),
-        "tts": tts_engine(), "mic": bool(mic_cmds()), "stt": "ready" if _whisper else (_whisper_err or "loading"),
+        "tts": tts_engine(), "tts_choice": CFG["tts"], "tts_fallback": CFG.get("tts_fallback", "auto"), "engines": engine_list(),
+        "eleven": {"key": eleven.has_key(), "on": CFG.get("eleven_on") is True, "voice": CFG.get("eleven_voice") or "",
+                   "used_today": eleven.today()["used"], "cap": eleven_cap(), "voices": evoices, "error": eerr},
+        "mic": bool(mic_cmds()), "stt": "ready" if _whisper else (_whisper_err or "loading"),
         "trust": trust_nixi() if BRIDGED else trust(), "model": CFG["model"] or "default", "effort": CFG.get("effort") or "", "lean": bool(CFG.get("lean", True)), "max_cost_usd": CFG.get("max_cost_usd") or 0,
         "compact_tokens": CFG.get("compact_tokens") or 0, "root": bool(CFG.get("root_mode")), "root_ok": True,
 
@@ -5219,8 +5339,7 @@ def state_info():
         "idle_mode": CFG.get("idle_mode") if CFG.get("idle_mode") in ("off", "shrink", "doze") else "shrink",
         "voice": CFG.get("voice") or "girl", "voice_pitch": voice_preset().get("pitch", 1.0),
         "voices": [{"id": k, "label": v["label"],
-                    "ready": bool(v.get("espeak")) or (bool(v.get("kokoro")) and tts_engine() == "kokoro")
-                             or voice_file(v.get("piper", "")).exists(),
+                    "ready": voice_ready(v),
                     "downloading": v.get("piper") in _downloading or (bool(v.get("kokoro")) and "kokoro" in _downloading)}
                    for k, v in VOICES.items()],
         "voice_engine": tts_engine() or "none",
@@ -5466,6 +5585,9 @@ class Handler(BaseHTTPRequestHandler):
                     upd["voice"] = b["voice"]
                     if VOICES[b["voice"]].get("piper"):
                         fetch_voice(VOICES[b["voice"]]["piper"])
+                bad = voice_settings(b, upd)
+                if bad:
+                    return self._json({"error": bad}, 400)
                 if "root" in b:
                     upd["root_mode"] = bool(b["root"])
                 if upd.get("root_mode") is False:
@@ -6126,7 +6248,7 @@ def main():
     except OSError:
         pass
     srv.daemon_threads = True
-    print(f"[nixi] http://127.0.0.1:{CFG['port']}/  cwd={ST.cwd}  tts={tts_engine()}", flush=True)
+    print(f"[nixi] http://127.0.0.1:{CFG['port']}/  cwd={ST.cwd}  tts={tts_engine(local=True)}", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
