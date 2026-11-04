@@ -121,13 +121,20 @@ await ev(`window.bodyBox=el=>{ const b=el.getBBox(), m=document.getElementById('
     const avoid=[...document.querySelectorAll('#body .avoid')].map(e=>[e,bodyBox(e)]);
     for(const [n,js] of ${JSON.stringify(states)}){ new Function(js)(); if(js.includes('rms=')) rms=()=>1; else if(window.__rms) rms=window.__rms;
       await new Promise(r=>setTimeout(r,1400)); let u=null;
-      for(let i=0;i<10;i++){ for(const e of [E.pL,E.pR]){ const b=bodyBox(e); if(b[2]-b[0]>1) u=uni(u,b); } await new Promise(r=>setTimeout(r,60)); }
-      const inside=u&&u[0]>=fx-.5&&u[1]>=fy-.5&&u[2]<=fx+fw+.5&&u[3]<=fy+fh+.5, hits=u?avoid.filter(([e,b])=>hit(u,b)).length:0;
-      out.push([n,!!u,inside,hits,u&&u.map(v=>+v.toFixed(1)).join(',')]); }
+      const hitS=new Map();
+      for(let i=0;i<10;i++){ for(const e of [E.pL,E.pR]){ const b=bodyBox(e); if(b[2]-b[0]<=1) continue; u=uni(u,b);
+          // the eye's real shape against each .avoid's real shape (a box round a leaning oval has empty corners)
+          const l=e.getBBox(); for(const [a,ab] of avoid){ if(!hit(b,ab)) continue; const m=a.getScreenCTM().inverse().multiply(e.getScreenCTM());
+            for(let x=l.x;x<=l.x+l.width&&!hitS.has(a);x+=1) for(let y=l.y;y<=l.y+l.height;y+=1){ const p=new DOMPoint(x,y); if(!e.isPointInFill(p)) continue; const q=p.matrixTransform(m);
+              if(a.isPointInFill(q)||a.isPointInStroke(q)){ hitS.set(a,[x,y]); break; } } } }
+        await new Promise(r=>setTimeout(r,60)); }
+      const inside=u&&u[0]>=fx-.5&&u[1]>=fy-.5&&u[2]<=fx+fw+.5&&u[3]<=fy+fh+.5, hs=[...hitS.keys()].map(e=>[e,bodyBox(e)]), hits=hs.length;
+      out.push([n,!!u,inside,hits,u&&u.map(v=>+v.toFixed(1)).join(',')+hs.map(([e,b])=>' | '+e.tagName+'.'+(e.getAttribute('class')||'')+' '+b.map(v=>v.toFixed(1)).join(',')).join('')]); }
     if(window.__rms) rms=window.__rms; gazeHook=null; transientUntil=0; return [out,avoid.length];`);
   for (const [n, seen, inside, hits, box] of r[0]) check(seen && inside && hits === 0, `${ID}: eyes inside faceBox, clear of .avoid (${n})`, `eyes ${box}${hits ? `, ${hits} .avoid hit` : ""}`);
 }
 
+if (process.env.CHARACTER_ONLY === "face") await done(tab);   // (a quick run of just the face box)
 // 3. the whole body fits his window area
 {
   const b = await ev(`setCharacter(__id); let u=null; for(const e of document.querySelectorAll('#body>path.ball,#body>.nix,#body>.bfront')){ try{ const x=bodyBox(e); if(x[2]>x[0]) u=uni(u,x); }catch(e){} } return u;`);
@@ -213,6 +220,7 @@ await ev(`window.bodyBox=el=>{ const b=el.getBBox(), m=document.getElementById('
       if(!f||!k||!(parseFloat(s.strokeWidth)>0)){ bad.push(e.tagName+' accent has no literal fill or no stroke ('+s.fill+' / '+s.stroke+')'); continue; } const a=L(f), b=L(k), cr=(Math.max(a,b)+.05)/(Math.min(a,b)+.05);
       if(cr<3) bad.push(e.tagName+' '+s.fill+' on '+s.stroke+' '+cr.toFixed(2)); }
     return {n,bad};`);
+  if (ID !== "snowflake") check(r.n >= 1, `${ID}: at least one .accent is marked`, `${r.n} found`);
   check(r.bad.length === 0, `${ID}: fixed accents vs their outline are at least 3:1 (${r.n} checked)`, r.bad.join("; "));
 }
 
