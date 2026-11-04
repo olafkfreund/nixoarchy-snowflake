@@ -208,7 +208,8 @@ class LangVoiceTest(_ServerEnv):
             s.CFG["tts"] = "kokoro"
             self.assertFalse(s.voice_ready_for("nb"))
         s.CFG["tts"] = "auto"
-        self.assertEqual(s.lang_voice_name("nb"), "no_NO-talesyntese-medium")
+        with mock.patch.object(s, "piper_bin", return_value="/bin/piper"):   # (without piper there is nothing to download)
+            self.assertEqual(s.lang_voice_name("nb"), "no_NO-talesyntese-medium")
         with mock.patch.object(s, "voice_file") as vf:
             vf.return_value.exists.return_value = True
             self.assertEqual(s.fetch_voice_sync("x-y-z", 1), (True, ""))
@@ -284,6 +285,42 @@ class LangVoiceTest(_ServerEnv):
             self.assertEqual(plugins.run_stage(p, "q", locale="pl"), {"loc": "pl"})
             self.assertEqual(plugins.run_stage(p, "q", locale="pl"), {"loc": "pl"})
         self.assertEqual(calls, ["en", "pl"])
+
+
+class SwitchVoiceChoiceTest(_ServerEnv):
+    """Codex on PR #42: only a voice of the right language counts, and nothing is downloaded that can't be used."""
+    def setUp(self):
+        s = self.server
+        saved = dict(s.CFG)
+        self.addCleanup(lambda: (s.CFG.clear(), s.CFG.update(saved)))
+        self.addCleanup(setattr, s.lang, "active", s.lang.active)
+        s.CFG.update(tts="auto", voice="girl", voice_by_lang={}, piper_voice="")
+        self.vdir = s.DATA_DIR / "voices"
+        self.vdir.mkdir(parents=True, exist_ok=True)
+        for f in self.vdir.glob("*.onnx"):
+            f.unlink()
+        self.addCleanup(lambda: [f.unlink() for f in self.vdir.glob("*.onnx")])
+
+    def test_only_a_polish_voice_doesnt_make_english_ready(self):
+        s = self.server
+        (self.vdir / "pl_PL-gosia-medium.onnx").write_bytes(b"x")
+        s.lang.active = "en"
+        with mock.patch.object(s, "piper_bin", return_value="/bin/piper"), mock.patch.object(s, "kokoro_ready", return_value=False), \
+                mock.patch.object(s.shutil, "which", return_value=None):
+            self.assertIsNone(s.piper_voice())
+            self.assertFalse(s.voice_ready_for("en"))
+            self.assertEqual(s.lang_voice_name("en"), s.VOICES["girl"]["piper"])
+            (self.vdir / (s.VOICES["girl"]["piper"] + ".onnx")).write_bytes(b"x")
+            self.assertTrue(s.voice_ready_for("en"))
+        s.lang.active = "pl"
+        self.assertTrue(s.piper_voice().endswith("pl_PL-gosia-medium.onnx"))
+
+    def test_no_piper_binary_means_no_download_and_espeak_speaks(self):
+        s = self.server
+        with mock.patch.object(s, "piper_bin", return_value=None), mock.patch.object(s, "kokoro_ready", return_value=False), \
+                mock.patch.object(s.shutil, "which", return_value="/bin/espeak-ng"):
+            self.assertIsNone(s.lang_voice_name("pl"))
+            self.assertTrue(s.voice_ready_for("pl"))
 
 
 class LinesTest(unittest.TestCase):

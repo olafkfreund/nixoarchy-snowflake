@@ -3339,6 +3339,8 @@ def piper_voice():
         v = os.path.expanduser(v)
         return v if os.path.exists(v) else None
     voices = sorted((DATA_DIR / "voices").glob("*.onnx"))
+    pre = {"nb": ("no_",), "pl": ("pl_",)}.get(lang.active)    # (a voice of another language must never read this one: Codex, PR #42)
+    voices = [v for v in voices if v.name.startswith(pre)] if pre else [v for v in voices if not v.name.startswith(("no_", "pl_"))]
     return str(voices[0]) if voices else None
 
 
@@ -3541,10 +3543,14 @@ def localize(v, code=None, key=None):
 
 
 def lang_voice_name(code):
-    """The piper voice to download so `code` can speak with the chosen preset (None: English or Robot)."""
-    if code == "en" or tts_mode() not in ("auto", "piper"):
+    """The piper voice to download so `code` can speak with the chosen preset (None: nothing to download: Robot, or piper isn't what will speak)."""
+    mode = tts_mode()
+    if mode not in ("auto", "piper") or not piper_bin() or (mode == "auto" and code == "en" and kokoro_ready()):
         return None
-    return localize(VOICES.get(CFG.get("voice_by_lang", {}).get(code) or CFG.get("voice") or "girl", VOICES["girl"]), code).get("piper")
+    if code == "en" and CFG.get("piper_voice"):        # (a pinned English voice is the user's own file)
+        return None
+    preset = VOICES.get(CFG.get("voice_by_lang", {}).get(code) or CFG.get("voice") or "girl", VOICES["girl"])
+    return (preset if code == "en" else localize(preset, code)).get("piper")
 
 
 def restore_voice(code):
@@ -3561,10 +3567,11 @@ def voice_ready_for(code):
         return True
     if mode == "elevenlabs":
         return not eleven_why()
-    if code == "en":
-        return (mode in ("auto", "kokoro") and kokoro_ready() or
-                mode in ("auto", "piper") and bool(piper_bin() and piper_voice()) or
-                mode in ("auto", "espeak") and bool(shutil.which("espeak-ng")))
+    if code == "en":                                   # (only an English voice counts: a Polish model must not read English)
+        name = lang_voice_name("en")
+        return bool(mode in ("auto", "kokoro") and kokoro_ready() or
+                    mode in ("auto", "piper") and piper_bin() and (CFG.get("piper_voice") and piper_voice() or name and voice_file(name).exists()) or
+                    mode in ("auto", "espeak") and shutil.which("espeak-ng"))
     if mode == "kokoro":
         return False
     name, es = lang_voice_name(code), bool(shutil.which("espeak-ng"))
