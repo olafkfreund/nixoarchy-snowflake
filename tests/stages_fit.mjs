@@ -9,14 +9,14 @@ const [port, url] = process.argv.slice(2);
 const t = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: "PUT" })).json();
 const ws = new WebSocket(t.webSocketDebuggerUrl);
 await new Promise(r => ws.addEventListener("open", r, { once: true }));
-let id = 0; const pend = new Map();
-ws.addEventListener("message", e => { const m = JSON.parse(e.data); if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });
+let id = 0; const pend = new Map(), reqs = [];
+ws.addEventListener("message", e => { const m = JSON.parse(e.data); if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } if (m.method === "Network.requestWillBeSent") reqs.push(m.params?.request?.url || ""); });
 const send = (method, params = {}) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const ev = async js => { const r = await send("Runtime.evaluate", { expression: `(async()=>{${js}})()`, awaitPromise: true, returnByValue: true });
   if (r.result?.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text); return r.result?.result?.value; };
 const view = (w, h = 460) => send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: false });
-await send("Page.enable");
+await send("Page.enable"); await send("Network.enable");
 await view(340);
 await send("Page.navigate", { url }); await sleep(4500);
 await ev("setInterval(()=>{ nextFidAt=1e15; },50); await post('/api/settings',{idle_mode:'off'}).then(r=>r.json()).then(j=>{info=j;}); if(window.setIdle) setIdle('full'); return 1");
@@ -48,6 +48,8 @@ const FIX = {
   "facts (5 long)": { t: "stage", v: 1, kind: "facts", trust: "mechanic", title: long, token: "f1", points: Array.from({ length: 5 }, () => long), source: long },
   "gauges": { t: "stage", v: 1, kind: "gauges", title: "System status", source: "p620", live: true, token: "c1", refresh: "r1", hosts: [{ name: "p620", state: "up", badges: [{ k: "gen", v: "412" }], meters: [{ label: "CPU", pct: 18, text: "4 cores" }, { label: "MEM", pct: null, text: "n/a" }, { label: "NET\u2193", pct: null, v: 1200, text: "1.2 kB/s" }], lists: [{ title: "Failed", items: ["x.service"], tone: "bad" }] }] },
   "gauges (3 hosts, 8 meters)": { t: "stage", v: 1, kind: "gauges", title: long, token: "c1", hosts: ["a", "b", "c"].map(n => ({ name: n.repeat(32), state: "stale", badges: Array.from({ length: 6 }, (_, i) => ({ k: "k" + i, v: long.slice(0, 60) })), meters: Array.from({ length: 8 }, (_, i) => ({ label: "M" + i, pct: i * 12, text: long.slice(0, 40) })), lists: [{ title: "L", items: Array.from({ length: 5 }, () => long.slice(0, 80)), tone: "bad" }] })) },
+  "headlines": { t: "stage", v: 1, kind: "headlines", title: "News", source: "3 feeds \u00b7 1 couldn't be reached", copy: "c1", items: [{ title: "Kernel 6.19 released", source: "Hacker News", at: Math.floor(Date.now() / 1000) - 7200, open: "h1" }, { title: "Storm crosses the north", source: "BBC News", at: Math.floor(Date.now() / 1000) - 300, open: "h2" }, { title: "Local council budget", source: "The Guardian", at: null }] },
+  "headlines (5 long)": { t: "stage", v: 1, kind: "headlines", title: long.slice(0, 80), source: long, copy: "c1", items: Array.from({ length: 5 }, (_, i) => ({ title: long, source: "Feed " + (i + 1), at: Math.floor(Date.now() / 1000) - (i + 1) * 3600, open: "h" + i })) },
 };
 const show = async (fx, ox) => {                       // the frame as drawn once the window has grown the way the page asked
   await ev(`stageClose(); await new Promise(r=>setTimeout(r,320)); onEvent(${JSON.stringify(fx)}); return 1`);
@@ -348,6 +350,43 @@ const acts = () => ev("return __acts.slice()");
   const c4 = await col();
   check(c4[0] === "rgb(224, 108, 117)" && c4[2] === "rgb(215, 218, 224)" && await ev("return document.getElementById('stg').classList.contains('fixed')"), "term: a light theme gets the fixed dark palette", JSON.stringify(c4));
   await ev("applyThemeVars(null); stageClose(); return 1"); await sleep(320); }
+
+// the press set (#167): newsprint look, small-caps source + age, Tab reaches each Open, reduced motion, no external requests
+{ const H = FIX.headlines;
+  const motion = v => send("Emulation.setEmulatedMedia", { features: v ? [{ name: "prefers-reduced-motion", value: v }] : [] });
+  const key = async k => { await send("Input.dispatchKeyEvent", { type: "keyDown", key: k, code: k, windowsVirtualKeyCode: k === "Tab" ? 9 : 27 }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code: k, windowsVirtualKeyCode: k === "Tab" ? 9 : 27 }); };
+  await motion("no-preference");
+  reqs.length = 0;
+  await show(H, w => 0);
+  const p = await ev(`const f=document.getElementById('stg'), r=f.querySelector('.prw'); return [f.classList.contains('press'), f.getBoundingClientRect().width, document.getElementById('stgT').textContent, document.getElementById('stgDt').textContent.length>0, getComputedStyle(f.querySelector('header')).borderBottomStyle, f.querySelectorAll('.prw').length, [...f.querySelectorAll('.prm')].map(x=>x.textContent).join('|'), getComputedStyle(f.querySelector('.prt')).fontFamily.includes('Georgia'), getComputedStyle(f.querySelector('.prm')).fontVariantCaps, document.getElementById('stgFn').textContent, getComputedStyle(f).animationName, getComputedStyle(f.querySelector('.bd')).animationName, getComputedStyle(r).animationName]`);
+  check(p[0] && p[1] === 340 && p[2] === "News" && p[3] && p[4] === "double" && p[5] === 3 && p[6] === "Hacker News \u00b7 2 h ago|BBC News \u00b7 5 min ago|The Guardian \u00b7 time unknown" && p[7] && p[8] === "small-caps" && p[9] === "3 feeds \u00b7 1 couldn't be reached" && p[10] === "stgSlip" && p[11] === "stgUnfold" && p[12] === "stgRow", "press: a headlines stage renders with source and age per row", JSON.stringify(p));
+  const cr = await ev(`const f=document.getElementById('stg'), bg=lumOf(getComputedStyle(f).backgroundColor), ratio=c=>{ const l=lumOf(c); return (Math.max(bg,l)+.05)/(Math.min(bg,l)+.05); }; return [ratio(getComputedStyle(f.querySelector('.prt')).color), ratio(getComputedStyle(f.querySelector('.prm')).color), ratio(getComputedStyle(f.querySelector('.sb')).color)]`);
+  check(cr.every(x => x >= 4.5), "press: contrast >= 4.5:1", JSON.stringify(cr));
+  // Tab reaches each Open button in order, and Open posts /api/stage/act {token, act:"open"}
+  await ev("document.getElementById('stgX').focus(); return 1");
+  await key("Tab"); const f1 = await ev("return [document.activeElement.tagName, document.activeElement.getAttribute('aria-label')]");
+  await key("Tab"); const f2 = await ev("return [document.activeElement.tagName, document.activeElement.getAttribute('aria-label')]");
+  await ev("window.__openAct=null; const of3=window.fetch; window.fetch=(u,o)=>{ if(String(u).includes('/api/stage/act')&&o?.body){ const b=JSON.parse(o.body); if(b.act==='open') __openAct=b; } return of3(u,o); }; document.querySelector('#stg .prw .sb').click(); return 1");
+  await sleep(60);
+  const act = await ev("return __openAct");
+  check(f1[0] === "BUTTON" && f1[1] === "Open: Kernel 6.19 released" && f2[0] === "BUTTON" && f2[1] === "Open: Storm crosses the north" && act?.token === "h1" && act?.act === "open", "press: Tab reaches each Open and Open posts its token", JSON.stringify([f1, f2, act]));
+  // minute-tick refreshes ages; stageText formats "headline — source, age"; 30 s collapse and Esc close
+  const ageUpd = await ev("stg.items[1].at=Math.floor(Date.now()/1000)-420; stageTick(); return document.querySelectorAll('#stg .prm')[1].textContent");
+  check(ageUpd === "BBC News \u00b7 7 min ago", "press: minute tick refreshes age", ageUpd);
+  check(await ev(`const t=stageText(${JSON.stringify(H)}); return t.includes('Kernel 6.19 released \u2014 Hacker News, 2 h ago') && t.includes('Storm crosses the north \u2014 BBC News, 5 min ago') && t.includes('Local council budget \u2014 The Guardian, time unknown')`), "press: stageText branch formats headline \u2014 source, age");
+  await ev("stgUse=performance.now()-31000; stageTick(); return 1");
+  check(await ev("return stgState") === "tab", "press: collapses to its tab after 30 s");
+  await ev("stageRestore(); return 1"); await sleep(200);
+  await key("Escape"); await sleep(60);
+  check(await ev("return stgState") === "closed", "press: Esc closes");
+  // reduced motion: no animation
+  await motion("reduce"); await sleep(200);
+  await show({ ...H, items: [{ title: "<img src='https://feeds.bbci.co.uk/x.png'>", source: "<b>BBC News</b>", at: null, open: "h1" }] }, w => 0);
+  const rm = await ev(`const f=document.getElementById('stg'); return [f.classList.contains('go'), getComputedStyle(f).animationName, getComputedStyle(f.querySelector('.bd')).animationName, getComputedStyle(f.querySelector('.prw')).animationName, f.querySelectorAll('img,b').length]`);
+  check(!rm[0] && rm[1] === "none" && rm[2] === "none" && rm[3] === "none" && rm[4] === 0, "press: reduced motion has no animation and markup stays text", JSON.stringify(rm));
+  const ext = reqs.filter(u => u && !u.startsWith(`http://127.0.0.1:${port}/`) && !u.startsWith("data:") && !u.startsWith("about:"));
+  check(ext.length === 0, "press: no request leaves the page for a news site", JSON.stringify(ext));
+  await motion(null); await ev("stageClose(); return 1"); await sleep(320); }
 
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
 console.log(fails.length ? `\n${fails.length} failed: ${fails.join(", ")}` : "\nall pass");

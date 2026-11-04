@@ -1,4 +1,4 @@
-"""The answer-stage frame fits the window, shows markup as text and holds still for reduced motion (tests/stages_fit.mjs).
+"""The answer-stage frame fits the window, shows markup as text, holds still for reduced motion, and makes no external requests (tests/stages_fit.mjs).
 
 Starts the server in a throwaway home and a headless Chromium with the GPU switched off (software rendering only:
 an animated page on a GPU-forced Chrome hung an AMD GPU twice, #138), then runs the check. Skipped without node and
