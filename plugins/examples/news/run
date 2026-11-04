@@ -44,8 +44,8 @@ def clean(s):
 def stamp(s, atom=False):
     try:
         dt = datetime.datetime.fromisoformat(s.replace("Z", "+00:00")) if atom else email.utils.parsedate_to_datetime(s)
-        return int(dt.timestamp()) if dt.tzinfo and dt.timestamp() > 0 else None
-    except (TypeError, ValueError, OverflowError):
+        return int(dt.timestamp()) if dt.tzinfo and 0 < dt.timestamp() <= time.time() + 600 else None   # (future dates would crowd out real news)
+    except (AttributeError, TypeError, ValueError, OverflowError):
         return None
 
 

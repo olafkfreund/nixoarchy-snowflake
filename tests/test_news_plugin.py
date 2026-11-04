@@ -35,6 +35,14 @@ class NewsTest(unittest.TestCase):
         self.assertEqual((atom[0]["title"], atom[0]["at"], atom[0]["url"]),
                          ("Second", 1793790000, "https://example.com/b"))
 
+    def test_undated_atom_entry_and_future_dates(self):          # Codex review: one undated entry dropped the whole feed
+        atom = news.parse_feed(b'''<feed xmlns="http://www.w3.org/2005/Atom"><entry><title>No date</title>
+<link href="https://example.com/n"/></entry><entry><title>Later</title><link href="https://example.com/l"/>
+<updated>2099-01-01T00:00:00Z</updated></entry></feed>''', "Feed")
+        self.assertEqual([(x["title"], x["at"]) for x in atom], [("No date", None), ("Later", None)])
+        rss = news.parse_feed(RSS.replace(b"Wed, 04 Nov 2026 10:00:00 GMT", b"Thu, 01 Jan 2099 00:00:00 GMT"), "BBC")
+        self.assertIsNone(rss[0]["at"])
+
     def test_merge_newest_and_dedupes_link_then_title(self):
         old = news.parse_feed(RSS, "BBC")
         new = news.parse_feed(ATOM, "Guardian")
