@@ -485,6 +485,29 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   const clear = await ev("sitOn.clear=true; AM={from:'claude',kind:'ask',t0:0,until:performance.now()+9000}; const r=wxAside(performance.now()); AM=null; sitOn.clear=false; return r");
   check(clear === false, "weather: a clear sky stays put under a mark", String(clear));
   await ev("sitOn.rain=false; renderCue(); return 1"); }
+// Two-click bug (live on p620): the REAL path. Right-click him, click the gear, with a fake window that really grows and moves.
+{ await view(340, 460);
+  await ev(`closePanels(); menu(false);
+    window.__log=[]; const stamp=m=>__log.push(Math.round(performance.now())+' '+m);
+    new MutationObserver(()=>stamp('set.on='+setEl.classList.contains('on'))).observe(setEl,{attributes:true,attributeFilter:['class']});
+    new MutationObserver(()=>stamp('menu='+document.body.classList.contains('menu'))).observe(document.body,{attributes:true,attributeFilter:['class']});
+    for(const n of ['mousedown','mouseup','click','contextmenu']) addEventListener(n,e=>stamp(n+' on '+(e.target.id||e.target.className||e.target.tagName)),true);
+    const op=closePanels; return 1`);
+  const mouse = async (type, x, y, button = "left", clickCount = 1) => send("Input.dispatchMouseEvent", { type, x, y, button, clickCount, buttons: type === "mouseReleased" ? 0 : (button === "left" ? 1 : 2) });
+  const click = async (x, y, button = "left") => { await mouse("mouseMoved", x, y, "none", 0); await mouse("mousePressed", x, y, button); await mouse("mouseReleased", x, y, button); };
+  // the fake window: answer a size: request as window.py does (grow, then tell the page how far he moved)
+  const pump = setInterval(async () => { try {
+    const m = await ev("const a=__msgs.filter(x=>x.startsWith('size:')); __msgs.length=0; return a.length?a[a.length-1]:''");
+    if (m) { const [w, h] = m.slice(5).split(",").map(Number), L = Math.ceil(w / 2);
+      await view(340 + w, 460 + h); await ev(`nixiLayout(${w ? L : 0},0); return 1`); } } catch (e) {} }, 40);
+  const b = await ev("const r=document.getElementById('body').getBoundingClientRect(); return [r.left+r.width/2, r.top+r.height/2]");
+  await click(b[0], b[1], "right"); await sleep(700);
+  const g = await ev("const r=document.querySelector('#menu .mb[data-a=set]').getBoundingClientRect(); return [r.left+r.width/2, r.top+r.height/2, r.width, document.body.classList.contains('menu')]");
+  await click(g[0], g[1]); await sleep(1500);
+  const after = await ev("return [setEl.classList.contains('on'), getComputedStyle(setEl).opacity, getComputedStyle(setEl).visibility, Math.round(setEl.getBoundingClientRect().width), __log]");
+  clearInterval(pump);
+  check(after[0] === true && +after[1] > .5 && after[3] > 400, "gear: one click opens Settings, and it stays open", JSON.stringify(after.slice(0, 4)));
+  await ev("closePanels(); return 1"); await view(340, 460); }
 
 check(exc.size === 0, "no page exceptions", [...exc].join(" ;; "));
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
