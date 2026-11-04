@@ -1911,11 +1911,11 @@ function enqueue(text,o={}){
   if(info.voice_native){ const id=++spkSeq; spkMap.set(id,{cap:o.cap?(o.cap===true?text:o.cap):'',fresh:!!o.fresh});
     playing=true; spkGuard=performance.now();
     const ep=sayEpoch;      // sentences still queued when you cut him off must never be sent (or played) afterwards
-    sayChain=sayChain.then(()=>ep===sayEpoch?post('/api/say',{text,id,epoch:ep,follow:o.follow,reply}):null).catch(()=>{ const it=spkMap.get(id); spkMap.delete(id); if(it&&it.cap) karaNow(it.cap,it.fresh); quietNative(); });   // one after another: keeps them in order
+    sayChain=sayChain.then(()=>ep===sayEpoch?post('/api/say',{text,id,epoch:ep,follow:o.follow,reply,strict:o.strict}):null).catch(()=>{ const it=spkMap.get(id); spkMap.delete(id); if(it&&it.cap) karaNow(it.cap,it.fresh); quietNative(); });   // one after another: keeps them in order
     return; }
   lastFollow=o.follow!==false;   // what the page tells the server when he stops (#133)
   const g=gen, tg=ttsGen, it={cap:o.cap?(o.cap===true?text:o.cap):'',fresh:!!o.fresh,tg,engine:''};
-  it.p=post('/api/tts',{text,reply}).then(async r=>{ if(r.status!==200||g!==gen) return null;
+  it.p=post('/api/tts',{text,reply,strict:o.strict}).then(async r=>{ if(r.status!==200||g!==gen) return null;
       const rate=+(r.headers.get('X-Nixi-Rate')||1), pause=+(r.headers.get('X-Nixi-Pause')||.08), engine=r.headers.get('X-Nixi-Engine')||'';
       it.engine=engine;
       let words=null; try{ words=JSON.parse(r.headers.get('X-Nixi-Words')||'null'); }catch(e){}
@@ -2146,6 +2146,42 @@ async function mirRevoke(){ let ok=false;
   else{ poke('sad',1800); capShow(); himSet("Couldn't take control back — press Super+Shift+Esc.",true); } }
 MX.mk.addEventListener('click',e=>{ e.stopPropagation(); mirRevoke(); });
 $('#mirBarBtn').addEventListener('click',e=>{ e.stopPropagation(); mirRevoke(); });
+/* ================= agent summaries (#191): `agent-say` hands over a whole summary; the queue lives only here =================
+   Up to 3 wait (the oldest beyond that, and any not started in 120 s, stay in replay only); the last 5 are kept per turn,
+   in memory. Each sentence is strict: never another voice. Stopping them is only speech, never /api/stop or the mic. */
+const agentLog=[], agentQ=[]; let agentCur=null, agentCheck=false, AGENT_GUARD=30000, AGENT_STALE=120000;
+const agentSplit=t=>(String(t).replace(/\s+/g,' ').trim().match(/[^.!?]+(?:[.!?]+['")\]]*|$)/g)||[]).map(x=>x.trim()).filter(Boolean);
+function agentIn(ev){
+  const e={from:ev.from,name:ev.name,turn:ev.turn,text:ev.text,kind:ev.kind,at:performance.now()};
+  const i=agentLog.findIndex(x=>x.turn===e.turn); if(i>=0) agentLog.splice(i,1);
+  agentLog.push(e); while(agentLog.length>5) agentLog.shift();
+  agentQ.push(e); while(agentQ.length>3) agentQ.shift();
+}
+function agentStop(){ agentQ.length=0; agentCur=null; shush(); }
+async function agentTick(){
+  if(agentCheck) return;
+  if(hiddenNow){ if(agentCur||agentQ.length) agentStop(); return; }
+  const now=performance.now();
+  if(agentCur&&agentCur.sent){
+    if(playing){ if(now-agentCur.sent>AGENT_GUARD){ agentCur=null; shush(); } return; }       // (a dropped event can't wedge him)
+    agentCur.sent=0; agentCur.i++; }
+  if(!agentCur){
+    while(agentQ.length&&now-agentQ[0].at>AGENT_STALE) agentQ.shift();
+    if(!agentQ.length||busy||playing||rec||transcribing||pendingAppr||follow) return;
+    const e=agentQ.shift(); agentCur={e,ss:agentSplit(e.text),i:0,sent:0}; }
+  const c=agentCur;
+  if(c.i>=c.ss.length){ agentCur=null; return; }
+  if(muted){ capShow(); setYou(''); himSet(c.e.text); capQuiet(); agentCur=null; return; }
+  agentCheck=true; let go=false;
+  try{ go=(await (await post('/api/agent-say/check')).json()).go===true; }catch(e){}
+  agentCheck=false;
+  if(agentCur!==c) return;                                   // stopped while checking
+  if(!go){ agentCur=null; return; }                          // (call, meeting, anything but "go": the rest of this summary is dropped)
+  if(c.i===0){ restore(Math.min(60000,4000+c.e.text.length*80),false); if(info.hover) await comeBack(); if(agentCur!==c) return;
+    agentMark(c.e.from,'done'); capShow(); setYou(''); himSet(''); }       // (no sfx, no tick: the finished alert already did)
+  c.sent=performance.now(); enqueue(c.ss[c.i],{follow:false,cap:true,strict:true,fresh:c.i===0});
+}
+setInterval(()=>agentTick().catch(()=>{ agentCheck=false; }),250);
 function onEvent(ev){
   if(ev.t==='mirror'){ mirSet(ev); return; }
   if(ev.t==='theme'){ info.theme=ev.theme; lookShown=''; syncLook(); if(setEl.classList.contains('on')) renderSettings(); return; }
@@ -2176,6 +2212,7 @@ function onEvent(ev){
   else if(ev.t==='tts_gen'){ cutTtsGen(ev.gen); }
   else if(ev.t==='note'){ tick(ev.text); }
   else if(ev.t==='approve'){ restore(20000,true); queueApproval(ev); }
+  else if(ev.t==='agent_say') agentIn(ev);
   else if(ev.t==='attention'){                            // an agent (claude/codex/agy…) is waiting for you: `nixi-companion attention`
     const ask=ev.kind!=='done', r=(ev.text||'').replace(new RegExp('^'+ev.name+'\\s+','i'),''), pj=ev.project?' · '+ev.project:'';
     const head=ask?(/^(needs|is waiting|wants)\b/i.test(r)?ev.name+' '+r:ev.name+' needs you'+(r?': '+r:'')):'✓ '+ev.name+' finished'+(r?': '+r:'');   // ("Claude needs your permission…", not "Claude needs you: Claude needs…")
@@ -2211,7 +2248,7 @@ function onEvent(ev){
 /* ================= mic (recorded by the server — no browser permissions involved) ================= */
 async function startRec(mode){
   if(rec||transcribing||(busy&&mode!=='approve')) return null;
-  if(mode!=='approve') shush();
+  if(mode!=='approve') agentStop();        // (agentStop is shush() and a cleared summary queue)
   wake(); hideAsk(); menu(false);
   const r=rec={mode,stopping:false,opened:false,cancelled:false};
   if(mode!=='approve'){ capShow(); setYou(''); himSet(''); }       // (the cue comes when the mic is actually open)
@@ -2673,7 +2710,7 @@ function toolLabel(name,detail){
 /* ================= ask box ================= */
 function showAsk(pre){ menu(false); closePanels(); ask.classList.add('on'); if(pre!=null) input.value=pre; input.focus(); }
 function hideAsk(){ ask.classList.remove('on'); input.blur(); }
-ask.addEventListener('submit',e=>{ e.preventDefault(); const v=input.value; input.value=''; hideAsk(); send(v); });
+ask.addEventListener('submit',e=>{ e.preventDefault(); agentStop(); const v=input.value; input.value=''; hideAsk(); send(v); });
 
 /* ================= attachments: screenshots & clipboard ================= */
 let atts=[];
@@ -3692,7 +3729,7 @@ function toggleMute(){ muted=!muted; try{localStorage.setItem('nixi.muted',muted
 
 // hidden (Esc, hide, closing him) = fully off: he stops talking and the server closes the mic — no "hey Nixi" until
 // he's shown again (Start menu, your hotkey, or `nixi-companion`)
-window.nixiHidden=()=>{ hiddenNow=true; endListening(); menu(false); hideAsk(); shush(); post('/api/sleep',{on:true}).catch(()=>{}); };
+window.nixiHidden=()=>{ hiddenNow=true; endListening(); menu(false); hideAsk(); agentStop(); post('/api/sleep',{on:true}).catch(()=>{}); };
 window.nixiShown=()=>{ hiddenNow=false; dozing=false; restore(15000);   // (the host showed him: leave doze without another native message)
   post('/api/sleep',{on:false}).catch(()=>{}); entrance(); wake(); refresh().then(()=>{ syncEye(true); if(pendingAppr||busy) return;
   if(info.listen_on_show&&!info.hover) setTimeout(()=>startRec('auto'),450); else setTimeout(()=>poke('wink',900),350); }); };
@@ -3828,6 +3865,7 @@ E.body.addEventListener('click',()=>{ if(dragged){ dragged=false; return; } down
   if(clicks.length>=6){ clicks=[]; dodge(); poke('annoyed',1600); return; }
   if(clicks.length===4){ dodge(); poke('surprised',800); return; }
   G.jelly.kick(.6);
+  if(agentCur){ agentStop(); return; }          // a summary: stop only the speech (no /api/stop, no mic)
   if(pendingAppr) return;
   if(follow){ post('/api/follow',{act:'finish'}); return; }   // he's hearing you after his answer: click = I'm done, go
   if(rec) stopRec(false); else if(busy||playing) interrupt().then(()=>{ if(!busy&&!rec) startRec('auto'); }); else startRec('auto'); });
@@ -3846,6 +3884,7 @@ addEventListener('keydown',e=>{ wake(); lastUser=performance.now();
     if(askOn) return hideAsk();
     if(follow) return post('/api/follow',{act:'cancel'});
     if(rec) return stopRec(true);
+    if(agentCur) return agentStop();
     if(busy){ post('/api/stop'); return; }
     if(playing) return shush();
     if(notifyRow&&notifyRow.span.isConnected) return notifyAct('dismiss');
@@ -3854,6 +3893,7 @@ addEventListener('keydown',e=>{ wake(); lastUser=performance.now();
   if(typing) return;
   if(e.code==='Space' && !e.repeat && !e.ctrlKey && !(askOn&&input.value) && !setEl.classList.contains('on') && !panelEl.classList.contains('on')){ e.preventDefault(); spaceHeld=true;
     if(follow){ post('/api/follow',{act:'cancel'}); return; }   // he's hearing you after his answer: Space = stop listening
+    if(agentCur){ agentStop(); return; }
     if((busy||playing)&&!pendingAppr){ interrupt().then(()=>{ if(spaceHeld&&!busy&&!rec) startRec('ptt'); else if(!rec) tick('stopped'); }); return; }   // tap = stop · hold = stop and talk
     startRec('ptt'); return; }
   if(e.ctrlKey&&k==='n'){ e.preventDefault(); return slash('/new'); }
