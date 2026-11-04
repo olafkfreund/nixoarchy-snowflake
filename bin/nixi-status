@@ -1,0 +1,2 @@
+#!/bin/sh
+exec @python@ "$(dirname "$0")/../share/nixi-companion/app/status_serve.py" "$@"
