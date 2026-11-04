@@ -2,6 +2,8 @@ import io
 import http.server
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -197,19 +199,89 @@ class ElevenTest(unittest.TestCase):
         seen = []
         def fake(req, timeout):
             seen.append((req, timeout))
-            return Response(b"\x88\x13" * 4410)
+            return Response(b"MP3")
         eleven.urlopen = fake
-        with mock.patch.object(eleven, "_key", return_value=KEY):
+        with mock.patch.object(eleven, "_key", return_value=KEY), \
+             mock.patch.object(eleven.shutil, "which", return_value="/bin/ffmpeg"), \
+             mock.patch.object(eleven.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"\x88\x13" * 4410)) as decode:
             wav = eleven.speak("Hello.", VOICE)
         with wave.open(io.BytesIO(wav)) as audio:
-            self.assertEqual((audio.getframerate(), audio.getnchannels(), audio.getsampwidth()), (22050, 1, 2))
+            self.assertEqual((audio.getframerate(), audio.getnchannels(), audio.getsampwidth()), (44100, 1, 2))
             self.assertEqual(audio.getnframes(), 4410)
         self.wav = wav                                   # (tidy_full timing is checked in ElevenWavTimingTest, under a throwaway HOME)
         req, timeout = seen[0]
-        self.assertIn("output_format=pcm_22050", req.full_url)
-        self.assertEqual(json.loads(req.data)["model_id"], "eleven_flash_v2_5")
+        self.assertIn("output_format=mp3_44100_128", req.full_url)
+        self.assertEqual(json.loads(req.data), {"text": "Hello.", "model_id": "eleven_v4_turbo",
+                                               "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}})
         self.assertEqual(req.get_header("Xi-api-key"), KEY)
         self.assertLessEqual(timeout, 1.5)
+        self.assertEqual(decode.call_args.args[0], ["/bin/ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
+                                                    "-f", "mp3", "-i", "pipe:0", "-af",
+                                                    "volume=6dB,alimiter=limit=0.84:level=0", "-ac", "1", "-ar", "44100",
+                                                    "-f", "s16le", "pipe:1"])
+        self.assertEqual(decode.call_args.kwargs["input"], b"MP3")
+        self.assertLessEqual(decode.call_args.kwargs["timeout"], 4)
+        self.assertEqual(decode.call_args.kwargs["stderr"], subprocess.DEVNULL)
+        self.assertNotIn("shell", decode.call_args.kwargs)
+
+    def test_speak_without_ffmpeg(self):
+        self.voice_cache()
+        seen = []
+        def fake(req, timeout):
+            seen.append(req)
+            return Response(b"\x88\x13" * 4410)
+        eleven.urlopen = fake
+        with mock.patch.object(eleven, "_key", return_value=KEY), \
+             mock.patch.object(eleven.shutil, "which", return_value=None), \
+             mock.patch.object(eleven.subprocess, "run") as decode:
+            wav = eleven.speak("Hi", VOICE)
+        with wave.open(io.BytesIO(wav)) as audio:
+            self.assertEqual((audio.getframerate(), audio.getnchannels(), audio.getsampwidth()), (22050, 1, 2))
+            self.assertEqual(audio.getnframes(), 4410)
+        self.assertIn("output_format=pcm_22050", seen[0].full_url)
+        self.assertEqual(json.loads(seen[0].data)["voice_settings"], {"stability": 0.5, "similarity_boost": 0.75})
+        decode.assert_not_called()
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
+    def test_speak_really_decodes_mp3(self):                # the mocks above only restate the argv: this runs the filter
+        mp3 = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+                              "-f", "mp3", "pipe:1"], stdout=subprocess.PIPE, check=True).stdout
+        self.voice_cache()
+        eleven.urlopen = lambda req, timeout: Response(mp3)
+        with mock.patch.object(eleven, "_key", return_value=KEY):
+            wav = eleven.speak("Hello.", VOICE)
+        with wave.open(io.BytesIO(wav)) as audio:
+            self.assertEqual((audio.getframerate(), audio.getnchannels(), audio.getsampwidth()), (44100, 1, 2))
+            self.assertAlmostEqual(audio.getnframes() / 44100, 1, delta=0.2)
+
+    def test_speak_decode_failure_raises_redacted_error(self):
+        self.voice_cache()
+        eleven.urlopen = lambda req, timeout: Response(b"MP3")
+        with mock.patch.object(eleven, "_key", return_value=KEY), \
+             mock.patch.object(eleven.shutil, "which", return_value="/bin/ffmpeg"), \
+             mock.patch.object(eleven.subprocess, "run", return_value=subprocess.CompletedProcess([], 1, b"", b"secret URL")):
+            with self.assertRaises(eleven.ElevenError) as got:
+                eleven.speak("Hi", VOICE)
+        self.assertEqual(got.exception.kind, "decode")
+        self.assertTrue(got.exception.sent)
+        self.assertNotIn("secret URL", str(got.exception))
+
+    def test_speak_decode_uses_remaining_deadline(self):
+        self.voice_cache()
+        clock = [0.0]
+        def fake(req, timeout):
+            clock[0] = 3.5
+            return Response(b"MP3")
+        eleven.urlopen = fake
+        with mock.patch.object(eleven, "_key", return_value=KEY), \
+             mock.patch.object(eleven.shutil, "which", return_value="/bin/ffmpeg"), \
+             mock.patch.object(eleven.time, "monotonic", side_effect=lambda: clock[0]), \
+             mock.patch.object(eleven.subprocess, "run", side_effect=subprocess.TimeoutExpired("ffmpeg", 0.5)) as decode:
+            with self.assertRaises(eleven.ElevenError) as got:
+                eleven.speak("Hi", VOICE)
+        self.assertEqual(got.exception.kind, "decode")
+        self.assertTrue(got.exception.sent)
+        self.assertEqual(decode.call_args.kwargs["timeout"], 0.5)
 
     def test_statuses_and_no_key_in_error(self):
         self.voice_cache()
@@ -240,6 +312,7 @@ class ElevenTest(unittest.TestCase):
             return Response(b"\x00\x00")
         eleven.urlopen = fake
         with mock.patch.object(eleven, "_key", return_value=KEY), \
+             mock.patch.object(eleven.shutil, "which", return_value=None), \
              mock.patch.object(eleven.time, "monotonic", side_effect=lambda: clock[0]), \
              mock.patch.object(eleven.time, "sleep", side_effect=lambda n: clock.__setitem__(0, clock[0] + n)):
             eleven.speak("Hi", VOICE)

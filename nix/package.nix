@@ -20,6 +20,7 @@
   brightnessctl,
   piper-tts,
   espeak-ng,
+  ffmpeg-headless,
   procps,
   wireplumber,
   pipewire,
@@ -108,6 +109,7 @@ stdenvNoCC.mkDerivation {
           brightnessctl
           piper
           espeak-ng
+          ffmpeg-headless
           procps
           wireplumber
           pipewire
