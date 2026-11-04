@@ -356,6 +356,58 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   check(r.every(Boolean), "plugins: consent text fully shown, rows don't overlap, switches line up with long paths", JSON.stringify(r));
   await ev("plugConsent(null); settings(false); return 1"); }
 
+// 14. A corner drag updates wanted size, coalesces size requests, persists, and expands the click region.
+{ await view(900, 900); await ev("settings(true); info.click_through=true; return 1"); await sleep(450);
+  await clearMsgs();
+  const drag = await ev(`const g=document.querySelector('#set .sgrip.corner'); let captured=false;
+    g.setPointerCapture=()=>{ captured=true; };
+    const pointer=(type,x,y)=>g.dispatchEvent(new PointerEvent(type,{pointerId:7,button:0,clientX:x,clientY:y,bubbles:true,cancelable:true}));
+    pointer('pointerdown',560,680); pointer('pointermove',600,710); pointer('pointermove',640,750);
+    const before=__msgs.filter(m=>m.startsWith('size:')).length;
+    pointer('pointerup',640,750);
+    await new Promise(requestAnimationFrame);
+    const r=setEl.getBoundingClientRect(), msg=[...__msgs].reverse().find(m=>m.startsWith('region:'));
+    return {captured,before, sizes:__msgs.filter(m=>m.startsWith('size:')), w:setW,h:setH,
+      css:[setEl.style.getPropertyValue('--setW'),setEl.style.getPropertyValue('--setH')],
+      saved:JSON.parse(localStorage.getItem('nixi.setSize')),
+      covers:JSON.parse(msg.slice(7)).some(([x,y,w,h])=>x<=r.left&&y<=r.top&&x+w>=r.right&&y+h>=r.bottom)}`);
+  check(drag.captured && drag.before===0 && drag.sizes.length===1 && drag.w===640 && drag.h===750
+    && drag.css[0]==='640px' && drag.css[1]==='750px' && JSON.stringify(drag.saved)==='[640,750]' && drag.covers,
+    "corner drag changes wanted/CSS size, one size per frame, saves, and updates region", JSON.stringify(drag));
+
+  const min = await ev(`const g=document.querySelector('#set .sgrip.corner');
+    const p=(type,x,y)=>g.dispatchEvent(new PointerEvent(type,{pointerId:8,button:0,clientX:x,clientY:y,bubbles:true}));
+    p('pointerdown',640,750); p('pointermove',-100,-100); p('pointerup',-100,-100);
+    return [setW,setH,JSON.parse(localStorage.getItem('nixi.setSize'))]`);
+  check(min[0]===420 && min[1]===420 && JSON.stringify(min[2])==='[420,420]',
+    "drag clamps both axes to 420", JSON.stringify(min));
+
+  const edges = await ev(`const drag=(axis,id,dx,dy)=>{ const g=document.querySelector('#set .sgrip.'+axis); g.setPointerCapture=()=>{};
+      const p=(type,x,y)=>g.dispatchEvent(new PointerEvent(type,{pointerId:id,button:0,clientX:x,clientY:y,bubbles:true}));
+      p('pointerdown',0,0); p('pointermove',dx,dy); p('pointerup',dx,dy); };
+    drag('r',9,80,90); const right=[setW,setH]; drag('b',10,90,80);
+    return {right,bottom:[setW,setH]}`);
+  check(JSON.stringify(edges.right)==='[500,420]' && JSON.stringify(edges.bottom)==='[500,500]',
+    "right and bottom strips resize only their own axes", JSON.stringify(edges));
+
+  const keys = await ev(`const g=document.querySelector('#set .sgrip.corner'); g.focus();
+    const key=(k,shift=false)=>{ const e=new KeyboardEvent('keydown',{key:k,shiftKey:shift,bubbles:true,cancelable:true}); g.dispatchEvent(e); return e.defaultPrevented; };
+    const right=key('ArrowRight'), down=key('ArrowDown',true), grown=[setW,setH];
+    const enter=key('Enter'), reset=[setW,setH,localStorage.getItem('nixi.setSize'),setEl.classList.contains('on'),ask.classList.contains('on')];
+    key('ArrowLeft'); g.dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true}));
+    return {right,down,enter,grown,reset,dbl:[setW,setH,localStorage.getItem('nixi.setSize')]}`);
+  check(keys.right && keys.down && keys.enter && JSON.stringify(keys.grown)==='[516,564]'
+    && JSON.stringify(keys.reset)==='[560,680,null,true,false]' && JSON.stringify(keys.dbl)==='[560,680,null]',
+    "arrows prevent scroll and resize; Enter and double-click reset without closing", JSON.stringify(keys));
+
+  await ev(`settings(false); localStorage.setItem('nixi.setSize','[900,850]'); setW=0; setH=0; return 1`);
+  await view(440,520); await ev("settings(true); return 1"); await sleep(450);
+  const saved = await ev(`const r=setEl.getBoundingClientRect(); return [setW,setH,Math.round(r.width),Math.round(r.height),localStorage.getItem('nixi.setSize')]`);
+  check(JSON.stringify(saved)==='[900,850,416,474,"[900,850]"]',
+    "saved size opens CSS-clamped while storage and wanted size stay intact", JSON.stringify(saved));
+  await ev("settings(false); localStorage.removeItem('nixi.setSize'); setW=0; setH=0; return 1"); await view(340,460);
+}
+
 check(exc.size === 0, "no page exceptions", [...exc].join(" ;; "));
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
 console.log(fails.length ? `\n${fails.length} failed: ${fails.join(", ")}` : "\nall pass");

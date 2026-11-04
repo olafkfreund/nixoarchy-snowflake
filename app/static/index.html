@@ -564,6 +564,11 @@ body.calm.mir-agent #mirBar{display:flex} #mirBar span{overflow:hidden;text-over
 .mb.off{display:none}
 /* ===== settings, take two: cards, a sliding tab pill, a live clickable preview and a proper colour picker ===== */
 #set{--setW:560px;--setH:680px;right:auto;width:min(var(--setW),calc(100vw - 24px));height:min(var(--setH),calc(100vh - 46px));max-height:none;background:linear-gradient(180deg,var(--panel2) 0,var(--panel) 120px,var(--panel) 100%)}
+#set .sgrip{position:absolute;z-index:2;touch-action:none}
+#set .sgrip.r{right:0;top:46px;bottom:14px;width:6px;cursor:ew-resize}
+#set .sgrip.b{bottom:0;left:0;right:14px;height:6px;cursor:ns-resize}
+#set .sgrip.corner{right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;border-radius:0 0 14px 0}
+#set .sgrip.corner:focus-visible{outline:2px solid var(--hot);outline-offset:-2px}
 #set .hd{padding:12px 12px 8px 14px}
 #set .hd .logo{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%,var(--body0,#1b1b1b),var(--body2,#030303) 70%);
   box-shadow:0 0 0 1.5px var(--edge2),0 0 10px var(--accA);position:relative}
@@ -929,6 +934,9 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <div class="keys"><kbd>Space</kbd><span>hold to talk · tap to stop him</span><kbd>Enter</kbd><span>type</span><kbd>Esc</kbd><span>back / stop / hide</span><kbd>Ctrl+N</kbd><span>new chat</span><kbd>Ctrl+H</kbd><span>history</span><kbd>Ctrl+M</kbd><span>mute</span></div></div>
     </div>
   </div>
+  <div class="sgrip r" data-resize="w" aria-hidden="true"></div>
+  <div class="sgrip b" data-resize="h" aria-hidden="true"></div>
+  <div class="sgrip corner" data-resize="wh" role="separator" aria-label="Resize settings" tabindex="0"></div>
 </div>
 
 <!-- history / memory / quick actions share one panel -->
@@ -2800,7 +2808,7 @@ const panelEl=$('#panel'); let panelKind=null;
 const ago=ts=>{ const s=Date.now()/1000-ts; return s<60?'just now':s<3600?`${s/60|0} min ago`:s<86400?`${s/3600|0} h ago`:`${s/86400|0} d ago`; };
 let pnMoved=false, setW=0, setH=0, setWasOpen=false, setFocusBack=null;
 function setDefaultSize(){ return [Math.min(560,((screen&&screen.availWidth)||1920)-40), Math.min(680,Math.round(0.85*((screen&&screen.availHeight)||1080)))]; }
-function setSyncVars(){ if(!setW||!setH) [setW,setH]=setDefaultSize(); setEl.style.setProperty('--setW',setW+'px'); setEl.style.setProperty('--setH',setH+'px'); }
+function setSyncVars(){ if(!setW||!setH){ try{ const s=JSON.parse(localStorage.getItem('nixi.setSize')); if(Array.isArray(s)&&s.length===2&&s.every(n=>Number.isFinite(n)&&n>=420)) [setW,setH]=s; }catch(e){} if(!setW||!setH) [setW,setH]=setDefaultSize(); } setEl.style.setProperty('--setW',setW+'px'); setEl.style.setProperty('--setH',setH+'px'); }
 function panelSize(){ const sOn=setEl.classList.contains('on'), pOn=panelEl.classList.contains('on');
   document.body.classList.toggle('pnl',sOn||pOn);
   if(sOn&&!setWasOpen){ setFocusBack=document.activeElement; const b=$('#tabs button.on')||$('#tabs button'); if(b) b.focus(); }
@@ -3123,6 +3131,28 @@ const TRUST=[['ask','✋','Ask me first','Edits files on his own; asks you (out 
   ['trust','⚡','Just do it','Runs anything without asking. Fast, but you won’t get a say.'],
   ['readonly','👀','Look, don’t touch','Can read and explain things, but changes nothing.']];
 const setEl=$('#set'), TABS=['look','voice','brain','plugins','more'];
+let setResizeFrame=0;
+function setResize(w,h){ setW=w; setH=h; setSyncVars(); setWant=[Math.max(0,w-340+24),Math.max(0,h-460+46)];
+  if(!setResizeFrame) setResizeFrame=requestAnimationFrame(()=>{ setResizeFrame=0; sizeWindow(); sendRegion(true); }); }
+function setSaveSize(){ try{ localStorage.setItem('nixi.setSize',JSON.stringify([setW,setH])); }catch(e){} }
+function setResetSize(){ try{ localStorage.removeItem('nixi.setSize'); }catch(e){} setResize(...setDefaultSize()); }
+for(const grip of $$('#set .sgrip')){
+  let drag=null;
+  grip.addEventListener('pointerdown',e=>{ if(e.button!==0) return; e.preventDefault(); grip.setPointerCapture(e.pointerId); drag=[e.pointerId,e.clientX,e.clientY,setW,setH]; });
+  grip.addEventListener('pointermove',e=>{ if(!drag||e.pointerId!==drag[0]) return;
+    const [,,,w,h]=drag, axis=grip.dataset.resize;
+    const maxW=Math.max(420,screen.availWidth-40), maxH=Math.max(420,Math.round(screen.availHeight*.85));
+    setResize(axis.includes('w')?Math.round(clamp(w+(e.clientX-drag[1])/fitK,420,maxW)):w,
+      axis.includes('h')?Math.round(clamp(h+(e.clientY-drag[2])/fitK,420,maxH)):h); });
+  for(const end of ['pointerup','pointercancel']) grip.addEventListener(end,e=>{ if(!drag||e.pointerId!==drag[0]) return; drag=null; setSaveSize(); });
+}
+const setCorner=$('#set .sgrip.corner');
+setCorner.addEventListener('dblclick',e=>{ e.preventDefault(); setResetSize(); });
+setCorner.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); setResetSize(); return; }
+  if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) return;
+  e.preventDefault(); const d=e.shiftKey?64:16, maxW=Math.max(420,screen.availWidth-40), maxH=Math.max(420,Math.round(screen.availHeight*.85));
+  setResize(Math.round(clamp(setW+(e.key==='ArrowLeft'?-d:e.key==='ArrowRight'?d:0),420,maxW)),
+    Math.round(clamp(setH+(e.key==='ArrowUp'?-d:e.key==='ArrowDown'?d:0),420,maxH))); setSaveSize(); });
 function settings(on,tab){ setEl.classList.toggle('on',on);
   if(on){ menu(false); hideAsk(); panelEl.classList.remove('on'); panelKind=null;
     if(tab) showTab(tab); else try{ showTab(localStorage.getItem('nixi.tab')||'look'); }catch(e){ showTab('look'); } }
