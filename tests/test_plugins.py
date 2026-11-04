@@ -43,6 +43,11 @@ class T(unittest.TestCase):
         self.assertIsNone(p.error)
         self.assertEqual((p.id, p.source), ("pirate-quips", "nix"))
 
+    def test_reserved_voice_clips(self):
+        self.assertTrue(plugins.reserved("play the first video"))
+        self.assertTrue(plugins.reserved("play the second clip"))
+        self.assertTrue(plugins.reserved("open the first one"))
+
     def test_sources(self):
         self.mk("p", GOOD, "a")
         self.mk("q", dict(GOOD, id="other-one"), "b")

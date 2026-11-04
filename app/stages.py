@@ -627,7 +627,7 @@ _ORD = {"first": 0, "second": 1, "third": 2, "fourth": 3, "fifth": 4,
         "one": 0, "two": 1, "three": 2, "four": 3, "five": 4,
         "1": 0, "2": 1, "3": 2, "4": 3, "5": 4}
 _N = "|".join(_ORD)
-_ACT = re.compile(r"(run|copy|play|open)\s+(?:(?:the|number|option|item)\s+)*(?:(%s)(?:\s+one)?|(it|that|this)(?:\s+one)?)" % _N)
+_ACT = re.compile(r"(run|copy|play|open)\s+(?:(?:the|number|option|item)\s+)*(?:(%s)|(it|that|this))(?:\s+(one|video|clip))?" % _N)
 _PLAIN = {"close": "close", "go back": "back", "show it": "show"}
 
 
@@ -644,7 +644,14 @@ def fast_path(said, stage):
     m = _ACT.fullmatch(t)
     if not m or not stage or stage.get("kind") == "day":  # (the day desk is clicked in v1: no voice-numbered opening)
         return None
-    n = len(stage.get("items") or stage.get("sessions") or [None])  # facts: one target; a status stage: its sessions
+    if m.group(4) in ("video", "clip") and (stage.get("kind") not in ("headlines", "video") or m.group(1) != "play"):
+        return None
+    if stage.get("kind") == "headlines" and m.group(1) == "play":
+        n = len(stage.get("clips") or [])
+        if not n:
+            return None
+    else:
+        n = len(stage.get("items") or stage.get("sessions") or [None])  # facts: one target; a status stage: its sessions
     if stage.get("kind") == "headlines" and m.group(1) == "copy":
         return "copy", 0
     if stage.get("kind") == "status" and not stage.get("sessions"):

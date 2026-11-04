@@ -546,6 +546,36 @@ class FastPathTest(unittest.TestCase):
         self.assertEqual(f("open it", self.two), ("ask", None))
         self.assertEqual(f("copy that", self.two), ("ask", None))
 
+    def test_headlines_clips_and_story_voice(self):
+        f = S.fast_path
+        page = {"kind": "headlines", "items": [0] * 5, "clips": [0] * 3}
+        self.assertEqual(f("play the first video", page), ("play", 0))
+        self.assertEqual(f("play the second clip", page), ("play", 1))
+        self.assertEqual(f("play the third one", page), ("play", 2))
+        self.assertIsNone(f("play the fourth video", page))
+        self.assertEqual(f("play it", page), ("ask", None))
+        self.assertEqual(f("play that clip", page), ("ask", None))
+        self.assertEqual(f("open the first one", page), ("open", 0))
+        self.assertEqual(f("open the fifth one", page), ("open", 4))
+        self.assertEqual(f("copy the first one", page), ("copy", 0))
+        for phrase in ("open the first video", "copy that clip", "run the first video"):
+            self.assertIsNone(f(phrase, page))
+        page["clips"] = [0]
+        self.assertEqual(f("play it", page), ("play", 0))
+        self.assertEqual(f("play that video", page), ("play", 0))
+        page["clips"] = []
+        self.assertIsNone(f("play it", page))
+        self.assertIsNone(f("play the first video", page))
+
+    def test_video_noun_only_for_playable_sets(self):
+        f = S.fast_path
+        self.assertEqual(f("play the first video", {"kind": "video", "items": [0] * 3}), ("play", 0))
+        self.assertEqual(f("play the second clip", {"kind": "video", "items": [0] * 3}), ("play", 1))
+        self.assertIsNone(f("open the first video", {"kind": "video", "items": [0] * 3}))
+        for kind in ("calendar", "place", "status", "facts"):
+            self.assertIsNone(f("open the first video", {"kind": kind, "items": [0] * 3}))
+            self.assertIsNone(f("play the first clip", {"kind": kind, "items": [0] * 3}))
+
     def test_no_match(self):
         f = S.fast_path
         self.assertIsNone(f("run the fifth one", self.two))

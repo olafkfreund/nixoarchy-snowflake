@@ -44,7 +44,7 @@ def reserved(phrase):
     import quick
     import stages
     t = norm(phrase)
-    if not t or t in ("close", "go back", "show it", "what s next", "what is next", "guide", "mechanic") or stages.fast_path(t, {"items": [0] * 5}) is not None:
+    if not t or t in ("close", "go back", "show it", "what s next", "what is next", "guide", "mechanic") or any(stages.fast_path(t, stage) is not None for stage in ({"items": [0] * 5}, {"kind": "headlines", "items": [0] * 5, "clips": [0] * 3}, {"kind": "video", "items": [0] * 3})):
         return True
     try:
         return quick.matches(phrase)

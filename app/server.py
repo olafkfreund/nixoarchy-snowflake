@@ -5809,7 +5809,7 @@ class Handler(BaseHTTPRequestHandler):
             elif fp and fp[0] == "ask" and vis:
                 return self._said("Which one? Say the first, second or third.")
             elif fp and fp[0] in ("copy", "open", "play") and vis:
-                it = (vis.get("items") or vis.get("sessions") or [vis])[fp[1]]         # each set names its tokens per action (map: open/copy, cinema: play, desk: a session)
+                it = (vis["clips"] if vis.get("kind") == "headlines" and fp[0] == "play" else vis.get("items") or vis.get("sessions") or [vis])[fp[1]]         # each set names its tokens per action (map: open/copy, cinema: play, desk: a session)
                 tk = {"copy": it.get("token") or vis.get("copy"), "open": vis.get("open") or it.get("play") or it.get("open"), "play": it.get("play")}[fp[0]]
                 r = stage_act(tk or "", "session" if vis.get("kind") == "status" and fp[0] == "open" else fp[0])
                 return self._said({"copy": "Copied.", "open": "Opening it.", "play": "Playing it."}[fp[0]] if r["ok"]
