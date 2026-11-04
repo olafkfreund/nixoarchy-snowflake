@@ -337,6 +337,22 @@ class StageActionsTest(unittest.TestCase):
         self.assertEqual(prompts, [])
         self.assertIsNone(self.s.STAGES.current())
 
+    def test_headlines_voice_opens_and_copies(self):
+        stage = {"v": 1, "kind": "headlines", "title": "News", "items": [
+            {"title": "First", "source": "BBC", "at": None, "url": "https://www.bbc.co.uk/news/first"},
+            {"title": "Second", "source": "Guardian", "at": None, "url": "https://www.theguardian.com/world/second"}]}
+        self.s.STAGES.put(self.stages.validate(stage))
+        self.s.STAGES.set_visible(True)
+        with mock.patch.object(self.s.subprocess, "Popen") as po:
+            evs, prompts, _ = self.ask({"prompt": "open the second one"})
+        self.assertEqual((prompts, evs[0]["text"]), ([], "Opening it."))
+        self.assertEqual(po.call_args[0][0], ["xdg-open", "https://www.theguardian.com/world/second"])
+        for phrase in ("copy that", "copy the first one"):
+            with mock.patch.object(self.s.subprocess, "run", return_value=mock.Mock(returncode=0)) as run:
+                evs, prompts, _ = self.ask({"prompt": phrase})
+            self.assertEqual((prompts, evs[0]["text"]), ([], "Copied."))
+            self.assertEqual(run.call_args.kwargs["input"], b"First \xe2\x80\x94 BBC\nSecond \xe2\x80\x94 Guardian")
+
     def test_fast_path_reaches_map_and_cinema_tokens(self):           # Codex review: voice used .token, which these sets lack
         page = self.s.STAGES.put(self.stages.validate({"v": 1, "kind": "place", "dest": "Oslo S"})); self.s.STAGES.set_visible(True)
         with mock.patch.object(self.s.subprocess, "Popen") as po:

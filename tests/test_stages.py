@@ -1,5 +1,6 @@
 import json
 import sys
+import time
 import unittest
 from unittest import mock
 from pathlib import Path
@@ -15,6 +16,9 @@ GAUGES = {"v": 1, "kind": "gauges", "title": "System", "source": "local", "live"
                      "meters": [{"label": "CPU", "pct": 18, "v": 1.5, "text": "busy", "tone": "warn"},
                                 {"label": "NET", "pct": None}],
                      "lists": [{"title": "Failed", "items": ["none"], "tone": "ok"}]}]}
+HEADLINES = {"v": 1, "kind": "headlines", "title": "News", "source": "BBC", "say": "Top stories.",
+             "items": [{"title": "First", "source": "BBC", "at": 1, "url": "https://www.bbc.co.uk/news/x"},
+                       {"title": "Second", "source": "Guardian", "at": None}]}
 
 
 class CutterTest(unittest.TestCase):
@@ -94,6 +98,39 @@ class ValidateTest(unittest.TestCase):
             self.assertIsNone(S.validate({**GAUGES, field: value}))
         self.assertIsNone(S.validate({**GAUGES, "hosts": [{**host, "meters": [{"label": "CPU", "pct": 2, "v": True}]}]}))
 
+    def test_headlines_schema_and_plugin_only(self):
+        self.assertEqual(S.validate(HEADLINES), HEADLINES)
+        self.assertIsNone(S.validate(HEADLINES, plugin_ok=lambda _: True))
+        self.assertEqual(S.validate(HEADLINES)["kind"], "headlines")
+        clean = S.validate({**HEADLINES, "extra": "drop", "items": [{**HEADLINES["items"][0], "extra": "drop"}]})
+        self.assertNotIn("extra", clean)
+        self.assertNotIn("extra", clean["items"][0])
+        for items in ([HEADLINES["items"][0]] * 6, [],
+                      [{**HEADLINES["items"][0], "title": "x" * 161}],
+                      [{k: v for k, v in HEADLINES["items"][0].items() if k != "source"}],
+                      [{**HEADLINES["items"][0], "at": True}],
+                      [{**HEADLINES["items"][0], "at": 1.5}]):
+            self.assertIsNone(S.validate({**HEADLINES, "items": items}))
+        for key, value in (("title", "x" * 81), ("source", "x" * 121), ("say", "x" * 201)):
+            self.assertIsNone(S.validate({**HEADLINES, key: value}))
+        self.assertIsNone(S.validate({**HEADLINES, "items": [{**HEADLINES["items"][0], "source": "x" * 41}]}))
+        self.assertIsNone(S.validate({**HEADLINES, "items": [{"title": "x", "source": "s"}]}))
+        future = S.validate({**HEADLINES, "items": [{**HEADLINES["items"][0], "at": int(time.time()) + 601}]})
+        self.assertIsNone(future["items"][0]["at"])
+        unsafe = S.validate({**HEADLINES, "items": [{**HEADLINES["items"][0], "url": "https://nas.local/x"}]})
+        self.assertEqual(len(unsafe["items"]), 1)
+        self.assertNotIn("url", unsafe["items"][0])
+
+    def test_news_url_ok(self):
+        self.assertTrue(S.news_url_ok("https://www.bbc.co.uk/news/x"))
+        for url in ("http://a.com/", "javascript:alert(1)", "https://u@a.com/", "https://a.com:8443/",
+                    "https://[::1]/", "https://127.0.0.1/", "https://2130706433/", "https://0x7f.0.0.1/",
+                    "https://localhost/", "https://localhost./", "https://box.ts.net./", "https://nas.local/",
+                    "https://x.home.arpa/", "https://intranet/", "https://a..com/", "https://a.com/" + "x" * 387,
+                    "https://a.com/a b", "https://a.com/\x00"):
+            with self.subTest(url=url):
+                self.assertFalse(S.news_url_ok(url))
+
     def test_drops(self):
         def bad(o):
             self.assertIsNone(S.validate(o))
@@ -164,6 +201,16 @@ class StoreTest(unittest.TestCase):
         page = self.s.put(stage, refresh=("nix-status", "system status"))
         self.s.put(S.validate(FACTS))
         self.assertIsNone(self.s.replace(page["refresh"], updated))
+
+    def test_headlines_tokens_hide_urls_and_say(self):
+        stage = S.validate(HEADLINES)
+        page = self.s.put(stage)
+        self.assertNotIn("say", page)
+        self.assertEqual(stage["say"], "Top stories.")
+        self.assertNotIn("url", json.dumps(page))
+        self.assertEqual(self.s.get(page["items"][0]["open"]), ("link", {"url": "https://www.bbc.co.uk/news/x"}))
+        self.assertNotIn("open", page["items"][1])
+        self.assertEqual(self.s.get(page["copy"]), ("facts", {"text": "First — BBC\nSecond — Guardian"}))
 
     def test_gauges_refresh_only_when_live_and_supplied(self):
         self.assertNotIn("refresh", self.s.put(S.validate(GAUGES)))

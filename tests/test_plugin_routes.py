@@ -95,6 +95,20 @@ class PluginRoutesTest(_ServerEnv):
         self.assertTrue(it["enabled"] and it["error"])                        # the page keeps its switch usable
         self.assertFalse(self.items(S.plugins_act({"id": "hat-one", "enabled": False}))["hat-one"]["enabled"])
 
+    def test_edit_config_runs_without_enabled_and_only_for_config_plugins(self):   # #167 review: the handler's order
+        S = self.server
+        self.mk("set-one", stage={"phrases": ["x"], "argv": ["run"], "config": True})
+        (self.root / "pk" / "set-one" / "defaults.json").write_text('{"feeds": []}')
+        self.mk("plain-one", stage={"phrases": ["y"], "argv": ["run"]})
+        with mock.patch.dict(S.os.environ, {"XDG_CONFIG_HOME": str(self.root / "cfg")}), mock.patch.object(S.subprocess, "Popen") as po:
+            got = S.plugins_act({"id": "set-one", "edit_config": True})
+            self.assertNotIn("error", got)
+            path = self.root / "cfg" / "nixi-companion" / "plugin-config" / "set-one.json"
+            self.assertEqual((po.call_args[0][0], path.read_text()), (["xdg-open", str(path)], '{"feeds": []}'))
+            self.assertEqual(self.items(got)["set-one"]["config"], str(path))
+            self.assertIn("no such", S.plugins_act({"id": "plain-one", "edit_config": True})["error"])
+            self.assertEqual(po.call_count, 1)
+
     def test_routes_need_the_window_token(self):
         import urllib.error
         import urllib.request

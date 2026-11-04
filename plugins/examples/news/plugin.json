@@ -1,0 +1,15 @@
+{
+  "api": 1,
+  "id": "news",
+  "name": "News",
+  "version": "1.0.0",
+  "description": "Top stories from your configured RSS and Atom feeds.",
+  "stage": {
+    "phrases": ["news", "the news", "what's the news", "what is the news", "headlines", "the headlines"],
+    "hint": "top stories from your news feeds",
+    "argv": ["run"],
+    "network": true,
+    "config": true,
+    "cache_seconds": 300
+  }
+}
