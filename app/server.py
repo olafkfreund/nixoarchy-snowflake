@@ -3374,7 +3374,7 @@ def clear_eleven_error(reply=None):
             _eleven_sticky.update(reply=reply, kind="")
 
 
-def speak_sentence(text, gen, reply=None, engine=None, local=False, sid=None):
+def speak_sentence(text, gen, reply=None, engine=None, local=False, sid=None, strict=False):
     """Make one sentence for either playback path; a stale cloud generation cannot send."""
     clear_eleven_error(reply)
     sending = object()
@@ -3390,6 +3390,8 @@ def speak_sentence(text, gen, reply=None, engine=None, local=False, sid=None):
             engine = tts_engine(local=True)
         if engine == "elevenlabs" and _eleven_sticky["kind"]:
             engine = tts_engine(local=True)
+    if strict and tts_mode() == "elevenlabs" and (local or engine != "elevenlabs"):
+        return None
     if engine != "elevenlabs":
         local = local or tts_mode() == "elevenlabs"
         engine = engine or tts_engine(local=local)
@@ -3398,7 +3400,8 @@ def speak_sentence(text, gen, reply=None, engine=None, local=False, sid=None):
         except NoVoice as fallback:
             if not local:
                 raise
-            BUS.pub(t="spk_skip", id=sid, reason=fallback.reason)
+            if not strict:
+                BUS.pub(t="spk_skip", id=sid, reason=fallback.reason)
             return None
     n = len(text)
     reserved = ok = False
@@ -3436,14 +3439,18 @@ def speak_sentence(text, gen, reply=None, engine=None, local=False, sid=None):
                 _eleven_sticky.update(reply=reply, kind=exc.kind)
         day = time.strftime("%Y-%m-%d")
         with Speaker.cv:
-            first_note = (day, exc.kind) not in _eleven_noted
-            _eleven_noted.add((day, exc.kind))
+            first_note = not strict and (day, exc.kind) not in _eleven_noted
+            if first_note:
+                _eleven_noted.add((day, exc.kind))
         if first_note:
             BUS.pub(t="note", text=str(exc) if exc.kind == "bad_voice" else f"ElevenLabs {exc.kind}; using the fallback voice.")
+        if strict and tts_mode() == "elevenlabs":
+            return None
         try:
             return (*synth(text, local=True), tts_engine(local=True))
         except NoVoice as fallback:
-            BUS.pub(t="spk_skip", id=sid, reason=fallback.reason)
+            if not strict:
+                BUS.pub(t="spk_skip", id=sid, reason=fallback.reason)
             return None
     finally:
         if reserved:
@@ -3915,6 +3922,7 @@ class Speaker:
     making = False
     making_item = None
     sending = set()
+    strict = set()
     current_engine = None
     current_sid = None
     queued_at = {}
@@ -3950,11 +3958,15 @@ class Speaker:
                 t.start()
 
     @classmethod
-    def say(cls, text, sid, epoch=None, follow=True, reply=None, local=False):
+    def say(cls, text, sid, epoch=None, follow=True, reply=None, local=False, strict=False):
         with cls.cv:
             if epoch is not None and epoch < cls.epoch:      # sent before you cut him off, arrived after
+                if strict:
+                    BUS.pub(t="spk_skip", id=sid)
                 return
             clear_eleven_error(reply)
+            if strict:
+                cls.strict.add(sid)
             cls.todo.append((cls.gen, sid, text, follow, tts_engine(local=local), reply, local))
             cls.queued_at[sid] = time.monotonic()
             if all(isinstance(x[1], int) for x in cls.todo):     # sentences can arrive out of order: play them in order
@@ -3975,6 +3987,7 @@ class Speaker:
             cls.drop_before = cls.gen
             cls.todo.clear()
             cls.ready.clear()
+            cls.strict.clear()
             cls.queued_at.clear()
             cls.current_engine = cls.current_sid = None
             p, cls.proc = cls.proc, None
@@ -4019,7 +4032,12 @@ class Speaker:
         for sid in dropped:
             with cls.cv:
                 cls.queued_at.pop(sid, None)
-            BUS.pub(t="spk_done", id=sid)
+                strict = sid in cls.strict
+                cls.strict.discard(sid)
+            if strict:
+                BUS.pub(t="spk_skip", id=sid)
+            else:
+                BUS.pub(t="spk_done", id=sid)
         BUS.pub(t="tts_gen", gen=cls.gen)
         return cls.gen
 
@@ -4035,8 +4053,15 @@ class Speaker:
                 cls.making_item = (g, sid, text, follow, engine, reply, local)
             try:
                 t = time.monotonic()
-                made = speak_sentence(text, g, reply, engine, local, sid=sid)
+                with cls.cv:
+                    strict = sid in cls.strict
+                made = speak_sentence(text, g, reply, engine, local, sid=sid, strict=strict)
                 if made is None:
+                    with cls.cv:
+                        skipped = sid in cls.strict
+                        cls.strict.discard(sid)
+                    if skipped:
+                        BUS.pub(t="spk_skip", id=sid)
                     continue
                 wav, rate, engine = made
                 wav, times, level = tidy_full(wav, text)
@@ -4061,6 +4086,8 @@ class Speaker:
                         cls.cv.notify_all()
             except Exception as e:  # noqa: BLE001
                 print(f"[nixi] speech: {e}", file=sys.stderr)
+                with cls.cv:
+                    cls.strict.discard(sid)
                 BUS.pub(t="spk_skip", id=sid)
             finally:
                 with cls.cv:
@@ -4171,6 +4198,8 @@ class Speaker:
             cls.stats["audio_s"] = round(cls.stats.get("audio_s", 0) + dur, 2)
             BUS.pub(t="spk", id=sid, at=round((start - now + cls.LAT) * 1000), dur=round(dur, 3), words=words,
                     level=level, step=lstep, engine=engine)
+            with cls.cv:
+                cls.strict.discard(sid)
             if not cls._write(pcm, g):
                 cls._release_if_idle()
                 continue
@@ -5937,7 +5966,7 @@ class Handler(BaseHTTPRequestHandler):
                     return None
                 with Speaker.cv:
                     gen, engine = Speaker.gen, tts_engine()
-                made = speak_sentence(text, gen, b.get("reply"), engine)
+                made = speak_sentence(text, gen, b.get("reply"), engine, strict=b.get("strict") is True)
                 if made is None:
                     self.send_response(204)
                     self.end_headers()
@@ -5974,7 +6003,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not text or (not tts_engine() and tts_mode() != "elevenlabs") or (Ambient.meeting and b.get("follow", True) is False):   # (no unasked speech in a meeting)
                     BUS.pub(t="spk_skip", id=b.get("id"))
                 else:
-                    Speaker.say(text, b.get("id"), b.get("epoch"), b.get("follow", True) is not False, b.get("reply"))
+                    Speaker.say(text, b.get("id"), b.get("epoch"), b.get("follow", True) is not False, b.get("reply"), strict=b.get("strict") is True)
                 return self._json({"ok": True})
             if p == "/api/say/stop":
                 Speaker.stop(json.loads(self._body() or b"{}").get("epoch"))
