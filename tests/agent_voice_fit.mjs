@@ -24,7 +24,7 @@ await ev(`setInterval(()=>{ nextFidAt=1e15; info.voice_native=!!window.__native;
   window.__calls=[]; window.__sfx=0; window.__tick=0; window.__native=true; window.__go=true; window.__autoend=true;
   const of=window.fetch;
   window.fetch=(u,o)=>{ const p=String(u).split('?')[0];
-    if(['/api/say','/api/tts','/api/stop','/api/listen','/api/say/stop','/api/agent-say/check'].includes(p)){ __calls.push([p,o&&o.body?JSON.parse(o.body):null]);
+    if(['/api/say','/api/tts','/api/stop','/api/listen','/api/say/stop','/api/agent-say/check','/api/agent-say/more'].includes(p)){ __calls.push([p,o&&o.body?JSON.parse(o.body):null]);
       if(p==='/api/agent-say/check') return Promise.resolve(new Response(JSON.stringify({go:window.__go}),{status:200}));
       if(p==='/api/tts') return window.__autoend?Promise.resolve(new Response(null,{status:204})):new Promise(()=>{});   // (never answers: a stuck sentence)
       return Promise.resolve(new Response('{"ok":true}',{status:200})); }
@@ -124,7 +124,75 @@ for (const native of [true, false]) {
   }
 }
 
-// 10. a reload clears the queue and the replay
+// 10. Settings -> Voice -> Agents row (#191 step 4): switches, live list, Replay with strict, More on newest only, long title fit at 420x420, and <b> stays text
+{ await view(584, 726); await reset(true);
+  await ev("settings(true,'voice'); return 1"); await sleep(200);
+  const rowOk = await ev(`const r=document.getElementById('agentRow'), pv=document.getElementById('panel-voice');
+    const sw=[...r.querySelectorAll('input[data-agent]')].map(x=>x.dataset.agent+':'+x.checked);
+    return pv&&pv.contains(r)&&sw.join()==='claude:true,codex:true,agy:true'&&document.getElementById('agentList').textContent.length>0`);
+  check(rowOk, "Settings -> Voice has #agentRow with claude/codex/agy switches", String(rowOk));
+
+  // switches set agent_voice_mute via /api/settings
+  const muteRes = await ev(`document.getElementById('agentCodexSw').click();
+    await new Promise(r=>setTimeout(r,150));
+    const m1=(info.agent_voice_mute||[]).slice();
+    document.getElementById('agentAgySw').click();
+    await new Promise(r=>setTimeout(r,150));
+    const m2=(info.agent_voice_mute||[]).slice();
+    document.getElementById('agentCodexSw').click();
+    await new Promise(r=>setTimeout(r,150));
+    document.getElementById('agentAgySw').click();
+    await new Promise(r=>setTimeout(r,150));
+    const m3=(info.agent_voice_mute||[]).slice();
+    return {m1,m2,m3}`);
+  check(muteRes.m1.join() === "codex" && muteRes.m2.join() === "codex,agy" && muteRes.m3.length === 0,
+    "Agents switches update agent_voice_mute in settings", JSON.stringify(muteRes));
+
+  // summaries arriving while Settings is open refresh #agentList; text/name with <b> stays literal text; More only on newest
+  const longName = "very-long-workspace-folder-name-".repeat(3).slice(0, 80);
+  await ev(`muted=true;
+    onEvent({t:'agent_say',from:'claude',name:'<b>bold-name</b>',turn:'t1',text:'First <b>bold</b> summary.',kind:'short'});
+    onEvent({t:'agent_say',from:'codex',name:${JSON.stringify(longName)},turn:'t2',text:'Second summary for replay.',kind:'short'});
+    return 1`);
+  const listSt = await ev(`const al=document.getElementById('agentList'), rows=[...al.querySelectorAll('.el-v')];
+    const mores=al.querySelectorAll('[data-amore]'), replays=al.querySelectorAll('[data-areplay]');
+    const firstMore=rows[0]?.querySelector('[data-amore]'), secondMore=rows[1]?.querySelector('[data-amore]');
+    const hasBTag=!!al.querySelector('b');
+    const texts=rows.map(r=>[r.querySelector('.ag-t')?.textContent, r.querySelector('.el-vt small')?.textContent]);
+    return {count:rows.length, mores:mores.length, replays:replays.length, firstMore:!!firstMore, secondMore:!!secondMore, hasBTag, texts}`);
+  check(listSt.count === 2 && listSt.replays === 2 && listSt.mores === 1 && listSt.firstMore && !listSt.secondMore,
+    "live summary refresh shows newest first with Tell me more only on newest row", JSON.stringify(listSt));
+  check(!listSt.hasBTag && listSt.texts[1][0].includes("<b>bold-name</b>") && listSt.texts[1][1] === "First <b>bold</b> summary.",
+    "summary text and name with <b> stay literal text via textContent", JSON.stringify(listSt.texts));
+
+  // Replay queues with strict (and follow:false, cap:true)
+  await ev("agentQ.length=0; agentCur=null; muted=false; __calls.length=0; document.querySelector('#agentList [data-areplay]').click(); return 1");
+  await idle();
+  const repSp = await calls("/api/say");
+  check(repSp.length === 1 && repSp[0][1].text === "Second summary for replay." && repSp[0][1].strict === true && repSp[0][1].follow === false,
+    "Replay queues summary with strict:true and follow:false", JSON.stringify(repSp));
+
+  // More posts to /api/agent-say/more
+  await ev("__calls.length=0; document.querySelector('#agentList [data-amore]').click(); return 1");
+  await sleep(100);
+  const moreCalls = await calls("/api/agent-say/more");
+  check(moreCalls.length === 1, "Tell me more posts to /api/agent-say/more", JSON.stringify(moreCalls));
+
+  // Long title fits at the smallest Settings size (420x420 and 320x400 viewport)
+  await ev("setResize(420,420); return 1"); await sleep(300);
+  const fit420 = await ev(`const bd=setEl.querySelector('.bd'), ar=document.getElementById('agentRow'), pv=document.getElementById('panel-voice');
+    const rows=[...document.querySelectorAll('#agentList .el-v')].map(e=>e.getBoundingClientRect());
+    const t0=document.querySelector('#agentList .ag-t').getBoundingClientRect(), pvr=pv.getBoundingClientRect();
+    return {w:setW, h:setH, noHScroll:bd.scrollWidth<=bd.clientWidth+1, titleFits:t0.right<=pvr.right+1&&t0.width>0,
+      noOverlap:rows.every((b,i)=>i===0||b.top>=rows[i-1].bottom-1)}`);
+  check(fit420.w === 420 && fit420.h === 420 && fit420.noHScroll && fit420.titleFits && fit420.noOverlap,
+    "long title fits at smallest Settings size (420x420)", JSON.stringify(fit420));
+
+  await ev("settings(false); localStorage.removeItem('nixi.setSize'); setW=0; setH=0; return 1");
+  await view(340, 460);
+}
+
+// 11. a reload clears the queue and the replay
 { await reset(true); await ev("busy=true; return 1"); await say("Gone after reload.");
   await send("Page.reload"); await sleep(4500);
   check((await ev("return agentLog.length+agentQ.length")) === 0, "a reload clears the queue and the replay");

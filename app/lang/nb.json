@@ -49,9 +49,20 @@
     "page.tidy": "Greit, rydder opp.",
     "page.voice_1": "hei! dette er den nye stemmen min.",
     "page.voice_2": "hvordan høres jeg ut?",
-    "page.voice_3": "å, denne liker jeg."
+    "page.voice_3": "å, denne liker jeg.",
+    "page.agents": "Agenter",
+    "page.agents_hint": "Les opp oppsummeringer fra kodeagentene dine.",
+    "page.agents_empty": "Ingen oppsummeringer ennå.",
+    "page.agent_replay": "Spill av igjen",
+    "page.agent_more": "Fortell mer"
   },
-  "_review": [],
+  "_review": [
+    "page.agents",
+    "page.agents_hint",
+    "page.agents_empty",
+    "page.agent_replay",
+    "page.agent_more"
+  ],
   "words": {
     "verbs": {
       "kjør": "run",

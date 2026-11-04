@@ -612,6 +612,11 @@ body.calm.mir-agent #mirBar{display:flex} #mirBar span{overflow:hidden;text-over
 .el-vt{flex:1;min-width:0} .el-vt b{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .el-vt small{display:block;color:var(--dim);font-size:10.8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .el-va{flex:none;display:flex;gap:4px}
+#agentList{display:flex;flex-direction:column;gap:5px;margin-top:8px}
+#agentList .el-v{align-items:flex-start;flex-wrap:wrap}
+#agentList .el-vt{flex:1 1 140px;min-width:0;overflow-wrap:anywhere}
+#agentList .ag-t{font-size:12px;font-weight:600;overflow-wrap:anywhere}
+#agentList .el-vt small{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.35;margin-top:2px}
 .pn input[type=number]{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:5px 7px;font:12px var(--mono);outline:0}
 #capCloud{display:none;font:11px/1 var(--mono);color:var(--cap-dim,var(--dim))} #plate.cloud #capCloud{display:inline-block}
 /* look: preview + parts + picker */
@@ -890,6 +895,14 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <div class="t sub">Fallback voice</div>
         <div class="h">Used when ElevenLabs is off, over your daily cap, or unreachable.</div>
         <div class="seg" id="fallbackChips"></div>
+      </div>
+      <div class="row" id="agentRow">
+        <div class="t" id="agentTitle">Agents</div>
+        <div class="h" id="agentHint">Speak turn summaries from your coding agents.</div>
+        <label class="tg"><input type="checkbox" id="agentClaudeSw" data-agent="claude"><span class="sw"></span><span class="l">Claude</span></label>
+        <label class="tg"><input type="checkbox" id="agentCodexSw" data-agent="codex"><span class="sw"></span><span class="l">Codex</span></label>
+        <label class="tg"><input type="checkbox" id="agentAgySw" data-agent="agy"><span class="sw"></span><span class="l">agy</span></label>
+        <div id="agentList"></div>
       </div>
       <div class="row tgs">
         <label class="tg"><input type="checkbox" id="speakSw"><span class="sw"></span><span class="l">Speak replies out loud</span></label>
@@ -2156,6 +2169,7 @@ function agentIn(ev){
   const i=agentLog.findIndex(x=>x.turn===e.turn); if(i>=0) agentLog.splice(i,1);
   agentLog.push(e); while(agentLog.length>5) agentLog.shift();
   agentQ.push(e); while(agentQ.length>3) agentQ.shift();
+  if(setEl.classList.contains('on')) renderAgents();
 }
 function agentStop(){ agentQ.length=0; agentCur=null; shush(); }
 async function agentTick(){
@@ -3411,11 +3425,12 @@ function renderSettings(){
       }
     }
   }
-  const sw={rootSw:info.root,speakSw:!muted&&info.tts_choice!=='off',wakeSw:info.wake_word,autoSw:info.autostart,listenShowSw:info.listen_on_show,hoverSw:info.hover,
+  const am=info.agent_voice_mute||[];
+  const sw={rootSw:info.root,speakSw:!muted&&info.tts_choice!=='off',wakeSw:info.wake_word,agentClaudeSw:!am.includes('claude'),agentCodexSw:!am.includes('codex'),agentAgySw:!am.includes('agy'),autoSw:info.autostart,listenShowSw:info.listen_on_show,hoverSw:info.hover,
     followSw:!!info.follow_focus,asideSw:info.step_aside!==false,stagesSw:info.answer_stages!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,proactiveSw:!!info.proactive,takeoverSw:!!info.notifications_takeover,detailsSw:!!info.notify_details,nsoundSw:info.notify_sound!==false,lookMeetSw:!!info.look_meeting,lookMusicSw:!!info.look_music,lookBeatSw:!!info.look_beat,speakSubjSw:!!info.notify_speak_subject,lookFsSw:!!info.look_fullscreen,reactLoadSw:!!info.react_load,reactBreakSw:!!info.react_break,reactWelcomeSw:!!info.react_welcome,lookCodingSw:!!info.look_coding,lookNightSw:!!info.look_night,lookWeatherSw:!!info.look_weather,lookPartySw:!!info.look_party,reactQuipsSw:!!info.react_quips,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
     updSw:info.update_check!==false,peersSw:!!info.peers_on,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
-  renderUpdate(); renderPtt();
+  renderAgents(); renderUpdate(); renderPtt();
   for(const k in sw){ const e=document.getElementById(k); if(e) e.checked=!!sw[k]; }
   for(const [k,on] of [['lookBeatSw',info.look_music],['speakSubjSw',info.notify_details]]){ const e=$('#'+k); e.disabled=!on; e.closest('.row').style.opacity=on?'':'.5'; }   // (each needs its parent switch)
   const ps=restPu();
@@ -3438,6 +3453,24 @@ function renderSettings(){
     sk.setAttribute('viewBox','-125 -150 250 250'); b.append(sk,document.createTextNode(P.name)); $('#skinGrid').appendChild(b); }
   $$('#skinGrid button').forEach(b=>miniNixi(b.querySelector('svg'),{...L,skin:b.dataset.skin},false));
   selectPart(pkPart); renderRecent();
+}
+function renderAgents(){
+  const t=$('#agentTitle'); if(t) t.textContent=pageLine('page.agents','Agents');
+  const h=$('#agentHint'); if(h) h.textContent=pageLine('page.agents_hint','Speak turn summaries from your coding agents.');
+  const box=$('#agentList'); if(!box) return;
+  box.replaceChildren();
+  if(!agentLog.length){ box.appendChild(hx('div','h',pageLine('page.agents_empty','No summaries yet.'))); return; }
+  const last=agentLog.length-1, repTxt=pageLine('page.agent_replay','Replay'), moreTxt=pageLine('page.agent_more','Tell me more');
+  for(let i=last;i>=0;i--){
+    const e=agentLog[i], row=hx('div','el-v'), tx=hx('div','el-vt'), ab=hx('div','el-va');
+    row.dataset.turn=e.turn;
+    tx.appendChild(hx('div','ag-t',e.name||e.from));
+    tx.appendChild(hx('small',null,e.text));
+    const rb=hx('button','btn sm',repTxt); rb.type='button'; rb.dataset.areplay=e.turn;
+    ab.appendChild(rb);
+    if(i===last){ const mb=hx('button','btn sm',moreTxt); mb.type='button'; mb.dataset.amore='1'; ab.appendChild(mb); }
+    row.append(tx,ab); box.appendChild(row);
+  }
 }
 // push-to-talk hotkey: your compositor binds `nixi-companion ptt-down` / `nixi-companion ptt-up`
 let pttCapture=false;
@@ -3611,6 +3644,8 @@ setEl.addEventListener('click',e=>{
   const bfb=g('fb'); if(bfb) return setSetting({tts_fallback:bfb.dataset.fb},'#elevenErr');
   const beprev=g('eprev'); if(beprev) return previewEleven(beprev.dataset.eprev,beprev);
   const bepick=g('epick'); if(bepick) return setSetting({eleven_voice:bepick.dataset.epick},'#elevenErr');
+  const barep=g('areplay'); if(barep){ const it=agentLog.find(x=>x.turn===barep.dataset.areplay)||agentLog[+barep.dataset.areplay]; if(it) enqueue(it.text,{follow:false,cap:true,strict:true}); return; }
+  if(g('amore')) return post('/api/agent-say/more');
   const bm=g('m'), bv=g('v'), bp=g('ps'), bi=g('idle'), bs=g('stt'), bt=g('trust'), bo=g('open'), bk=g('skin'), bsw=g('sw'), bpd=g('pdel');
   const part=e.target.closest('#lookPrev [data-part], #partChips [data-part]');
   if(part&&part.dataset.part) return selectPart(part.dataset.part);
@@ -3643,7 +3678,8 @@ setEl.addEventListener('click',e=>{
 const costLbl=()=>{ const v=+$('#costIn').value; $('#costVal').textContent=v?'$'+v.toFixed(2):'No limit'; };
 setEl.addEventListener('input',e=>{ if(e.target.id==='costIn') costLbl(); });
 setEl.addEventListener('change',e=>{
-  const id=e.target.id, on=e.target.checked;
+  const id=e.target.id, on=e.target.checked, ag=e.target.dataset&&e.target.dataset.agent;
+  if(ag){ const l=(info.agent_voice_mute||[]).filter(x=>x!==ag), m=on?l:[...l,ag]; info.agent_voice_mute=m; return setSetting({agent_voice_mute:m}); }
   if(id==='rootSw') setSetting(on?{root:true}:{root:false,trust:'ask'}).then(()=>{ tick(on?'root mode ON — he can run anything (I\'ll ask for your sudo password)':'root mode off',on); poke(on?'scared':'happy',900); });
   if(id==='speakSw'){ if(on&&info.tts_choice==='off') setSetting({tts:'auto'},'#voiceErr'); if(on===muted) toggleMute(); }
   if(id==='elevenSw'){ const cf=$('#elevenConfirm'); return setSetting(on?{eleven_on:true,...(cf&&cf.checked?{confirm:'cloud'}:{})}:{eleven_on:false},'#elevenErr'); }
