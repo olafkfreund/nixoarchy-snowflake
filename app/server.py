@@ -5000,6 +5000,32 @@ def peer_round_done():
 peers.on_round(peer_round_done)
 
 
+def _play_fallback(first, url):
+    """YouTube refuses some videos' streams to mpv (HTTP 403, exit 2) but serves them to yt-dlp, at a lower quality with no
+    seeking, so only those take the pipe. If that fails too, the browser plays it."""
+    quiet = {"start_new_session": True, "stderr": subprocess.DEVNULL}
+    if first.wait() != 2:                                # (0: finished or closed by you; negative: killed)
+        return
+    try:
+        if shutil.which("yt-dlp"):
+            yt = subprocess.Popen(["yt-dlp", "--ignore-config", "-q", "-o", "-", "--", url], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, **quiet)
+            try:
+                player = subprocess.Popen(["mpv", "--force-window=immediate", "-"], stdin=yt.stdout, stdout=subprocess.DEVNULL, **quiet)
+            except OSError:
+                yt.kill()
+                yt.wait()
+                player = None
+            finally:
+                yt.stdout.close()                        # (mpv's copy is the reader now: a dead mpv stops yt-dlp)
+            if player and player.wait() == 0:
+                yt.wait()
+                return
+            yt.wait()
+        subprocess.Popen(["xdg-open", url], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, **quiet)
+    except OSError:
+        pass
+
+
 def stage_act(token, act):
     """A button on the stage (never Run: that is a turn, see ask). Only what the store holds is ever used, never page text."""
     if not stages_on() and act not in ("close", "shown", "hidden"):
@@ -5043,8 +5069,11 @@ def stage_act(token, act):
             return {"ok": False, "error": "couldn't open it"}
     if act == "play" and got and got[0] == "video":      # mpv if it is installed, otherwise the browser
         try:
-            argv = ["mpv", got[1]["url"]] if shutil.which("mpv") else ["xdg-open", got[1]["url"]]
-            subprocess.Popen(argv, start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            url = got[1]["url"]
+            mpv = shutil.which("mpv")
+            first = subprocess.Popen(["mpv", url] if mpv else ["xdg-open", url], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if mpv:
+                threading.Thread(target=_play_fallback, args=(first, url), daemon=True).start()
             return {"ok": True}
         except OSError:
             return {"ok": False, "error": "couldn't play it"}
