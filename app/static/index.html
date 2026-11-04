@@ -605,7 +605,7 @@ body.calm.mir-agent #mirBar{display:flex} #mirBar span{overflow:hidden;text-over
 .voices button:hover{border-color:var(--edge2)} .voices button.on{border-color:var(--hot);background:var(--deep);color:#fff}
 .voices button:disabled{opacity:.4;cursor:default}
 .voices button i{font-style:normal;opacity:.6}
-.verr{color:#e8836f;margin:5px 0 0} .verr:empty,#engWhy:empty{display:none}
+.verr{color:#e8836f;margin:5px 0 0} .verr:empty,#engWhy:empty,#langStatus:empty{display:none}
 .el-list{display:flex;flex-direction:column;gap:5px;max-height:180px;overflow-y:auto}
 .el-v{display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:10px;background:var(--panel);border:1px solid var(--line)}
 .el-v.on{border-color:var(--hot);background:var(--deep)}
@@ -871,7 +871,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
     </div>
     <!-- ================= VOICE ================= -->
     <div class="tab" id="panel-voice" role="tabpanel" aria-labelledby="tab-voice" data-tab="voice">
-      <div class="row" id="langRow"><div class="t">Language</div><div class="h" id="langHint">First switch downloads a speech model (≈150 MB for base, ≈480 MB for small — use small only with a GPU) and voice.</div><div class="seg" id="langChips"></div><div class="h" id="langStatus" style="margin:5px 0 0"></div></div>
+      <div class="row" id="langRow"><div class="t">Language</div><div class="h" id="langHint">First switch downloads a speech model (≈150 MB for base) and voice.</div><div class="seg" id="langChips"></div><div class="h" id="langStatus" style="margin:5px 0 0"></div><div class="h verr" id="langErr"></div></div>
       <div class="row" id="engRow"><div class="t">Speech engine</div><div class="h">Local voices run on your computer. <span id="voiceEng"></span></div><div class="seg" id="engChips"></div><div class="h" id="engWhy" style="margin:5px 0 0"></div><div class="h verr" id="voiceErr"></div></div>
       <div class="row"><div class="t">His voice</div><div class="h">Tap one to hear it.</div><div class="voices" id="voiceChips"></div></div>
       <div class="row" id="elevenRow">
@@ -909,7 +909,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><div class="t">Push-to-talk hotkey</div><div class="h" id="pttHelp">Hold it anywhere, even in another app, to talk. Let go to send.</div>
         <div class="bar" id="pttBar"><button class="btn" id="pttSet"></button><button class="btn" id="pttOff">Turn off</button></div></div>
       <div class="row"><div class="t">Microphone</div><select id="micSel"></select></div>
-      <div class="row"><div class="t">Speech recognition</div><div class="h">Better understands you more often but takes a moment longer.</div><div class="seg" id="sttChips"></div></div>
+      <div class="row"><div class="t">Speech recognition</div><div class="h">Better understands you more often but takes a moment longer.</div><div class="seg" id="sttChips"></div><div class="h verr" id="sttErr"></div></div>
     </div>
     <!-- ================= BRAIN ================= -->
     <div class="tab" id="panel-brain" role="tabpanel" aria-labelledby="tab-brain" data-tab="brain">
@@ -2204,6 +2204,8 @@ function onEvent(ev){
   else if(ev.t==='toast') tick(ev.text);
   else if(ev.t==='askpass'){ restore(20000,true); askPass(ev); }
   else if(ev.t==='askpass_done') pwGone(ev.id);
+  else if(ev.t==='lang'||ev.t==='lang_status') refresh().then(()=>{ if(setEl.classList.contains('on')) renderSettings(); });
+  if((ev.t!=='lang'&&ev.t!=='lang_status')&&('lang_status' in ev||'lang_active' in ev)) refresh().then(()=>{ if(setEl.classList.contains('on')) renderSettings(); });
 }
 
 /* ================= mic (recorded by the server — no browser permissions involved) ================= */
@@ -2560,8 +2562,9 @@ function pressWatch(clips,bd,fn,anim){ stgEl.querySelector('.prws')?.remove(); i
 function pressUpdate(ev){ if(!stg||stg.kind!=='headlines'||ev.kind!=='headlines'||ev.copy!==stg.copy||stgState==='closed') return;
   stg.clips=ev.clips; stgUse=performance.now(); pressWatch(ev.clips,$('#stgBd'),$('#stgFn'),true); }
 const DATE_LOCALES={en:'en-GB',nb:'nb-NO',pl:'pl-PL'};
+const pressDate=()=>new Date().toLocaleDateString(info.date_locale||DATE_LOCALES[info.lang_active]||'en-GB',{weekday:'short',day:'numeric',month:'short'});
 function stagePress(ev,bd,acts,fn){
-  $('#stgDt').textContent=new Date().toLocaleDateString(DATE_LOCALES[info.lang_active]||'en-GB',{weekday:'short',day:'numeric',month:'short'});
+  $('#stgDt').textContent=pressDate();
   (ev.items||[]).forEach((it,i)=>{ const row=hx('div','it prw'), tx=hx('div','tx'), m=hx('div','prm'); row.style.setProperty('--i',i);
     tx.appendChild(hx('div','prt',it.title)); m.dataset.source=it.source||''; m.dataset.at=typeof it.at==='number'&&it.at>0?String(it.at):''; tx.appendChild(m); row.appendChild(tx);
     if(it.open){ const b=stageBtn('Open',b=>stageOpen(b,fn,it.open,'open')); b.setAttribute('aria-label','Open: '+it.title); row.appendChild(b); }
@@ -3186,6 +3189,20 @@ const EFFORTS=['low','medium','high','xhigh','max'];
 const MODELS=[['auto','Auto'],['default','Default'],['opus','Opus'],['sonnet','Sonnet'],['haiku','Haiku']];
 const LANGS=[['en','English'],['nb','Norsk'],['pl','Polski']];
 const STT=[['tiny.en','Fastest'],['base.en','Fast'],['auto','Balanced'],['medium.en','Best']];
+const STT_MULTI={'tiny.en':'tiny','base.en':'base','small.en':'small','medium.en':'medium'};
+const sttId=id=>(info.lang_active==='nb'||info.lang_active==='pl')?(STT_MULTI[id]||id):id;
+const hasGpu=()=>Boolean(info.gpu||info.cuda||/\b(cuda|gpu)\b/i.test([info.whisper_device,info.stt_device,info.device,info.stt?.device,info.whisper?.device,typeof info.stt==='string'?info.stt:'',typeof info.whisper==='string'?info.whisper:''].join(' ')));
+const langHintText=()=>hasGpu()?'First switch downloads a speech model (≈150 MB for base, ≈480 MB for small — use small only with a GPU) and voice.':'First switch downloads a speech model (≈150 MB for base) and voice.';
+function syncLangUI(){
+  const lh=$('#langHint'); if(lh) lh.textContent=langHintText();
+  const lc=$('#langChips'); if(lc){ lc.replaceChildren();
+    const curL=info.language||info.lang_active||'en';
+    for(const [id,l] of LANGS){ const b=hx('button',curL===id?'on':'',l); b.type='button'; b.dataset.lang=id; lc.appendChild(b); } }
+  const ls=$('#langStatus'); if(ls) ls.textContent=info.lang_status||'';
+  const sc=$('#sttChips'); if(sc){ const curS=sttId(info.whisper_model||'auto'), rawS=String(info.whisper_model||'auto').replace(/\.en$/,'');
+    sc.innerHTML=STT.map(([id,l])=>{ const m=sttId(id), on=curS===m||rawS===id.replace(/\.en$/,''); return `<button data-stt="${m}" class="${on?'on':''}">${l}</button>`; }).join(''); }
+  if((stg&&stg.kind==='headlines')||$('#stgDt')?.textContent) $('#stgDt').textContent=pressDate();
+}
 const TRUST=[['ask','✋','Ask me first','Edits files on his own; asks you (out loud) before running commands or going online.'],
   ['trust','⚡','Just do it','Runs anything without asking. Fast, but you won’t get a say.'],
   ['readonly','👀','Look, don’t touch','Can read and explain things, but changes nothing.']];
@@ -3304,12 +3321,7 @@ function renderSettings(){
   const cur=(info.model||'default');
   $('#effortChips').innerHTML=['',...EFFORTS].map(e=>`<button data-eff="${e}" class="${(info.effort||'')===e?'on':''}">${e||'default'}</button>`).join('');
   $('#modelChips').innerHTML=MODELS.map(([id,l])=>`<button data-m="${id}" class="${cur===id?'on':''}">${l}</button>`).join('');
-  { const lc=$('#langChips'); if(lc){ lc.replaceChildren();
-    const curL=info.language||info.lang_active||'en';
-    for(const [id,l] of LANGS){
-      const b=hx('button',curL===id?'on':'',l); b.type='button'; b.dataset.lang=id; lc.appendChild(b);
-    } }
-    const ls=$('#langStatus'); if(ls) ls.textContent=info.lang_status||''; }
+  syncLangUI();
   { const vc=$('#voiceChips'); if(vc){ vc.replaceChildren();
     for(const v of info.voices||[]){
       const b=hx('button',info.voice===v.id?'on':'',v.label); b.type='button'; b.dataset.v=v.id;
@@ -3374,7 +3386,6 @@ function renderSettings(){
   { const im=info.idle_mode||'shrink'; $('#idleChips').innerHTML=[['off','Stay'],['shrink','Shrink'],['doze','Shrink, then hide']].map(([id,l])=>`<button data-idle="${id}" class="${im===id?'on':''}">${l}</button>`).join(''); }
   { const ve=$('#voiceEng'); if(ve) ve.textContent=voiceEngText(); }
   $('#nsChips').innerHTML=['mail','chat','meeting','video','download','other'].map(c=>`<button data-ns="${c}" class="${(info.notify_speak||[]).includes(c)?'on':''}">${c==='video'?'Feeds':c}</button>`).join('');
-  $('#sttChips').innerHTML=STT.map(([id,l])=>`<button data-stt="${id}" class="${(info.whisper_model||'auto')===id?'on':''}">${l}</button>`).join('');
   const tr=info.trust==='root'?'trust':(info.trust||'ask');
   $('#trustOpts').innerHTML=TRUST.map(([id,ic,t,d])=>`<button class="opt${tr===id&&!info.root?' on':''}" data-trust="${id}"><span class="ic">${ic}</span><span><b>${t}</b><small>${d}</small></span></button>`).join('');
   if(info.bridge) $('#trustOpts').innerHTML=`<div class="h">Trust: ${info.trust||'guide'} (set by nixi: type /mechanic or /guide)</div>`;
@@ -3533,7 +3544,7 @@ async function previewEleven(vid,btn){
   }
 }
 async function setSetting(b,errSel){
-  const errEl=errSel?$(errSel):('tts' in b||'voice' in b||'language' in b)?$('#voiceErr'):('eleven_on' in b||'eleven_voice' in b||'eleven_daily_chars' in b||'tts_fallback' in b)?$('#elevenErr'):null;
+  const errEl=errSel?$(errSel):('language' in b)?$('#langErr'):('whisper_model' in b)?$('#sttErr'):('tts' in b||'voice' in b)?$('#voiceErr'):('eleven_on' in b||'eleven_voice' in b||'eleven_daily_chars' in b||'tts_fallback' in b)?$('#elevenErr'):null;
   if(errEl) errEl.textContent='';
   try{
     const r=await post('/api/settings',b), j=await r.json().catch(()=>({}));
@@ -3553,7 +3564,7 @@ setEl.addEventListener('click',e=>{
   const g=k=>e.target.closest(`[data-${k}]`);
   const be=g('eff'); if(be) return setSetting({effort:be.dataset.eff}).then(()=>tick('effort → '+be.dataset.eff));
   const bn=g('ns'); if(bn){ const l=info.notify_speak||[], c=bn.dataset.ns; return setSetting({notify_speak:l.includes(c)?l.filter(x=>x!==c):[...l,c]}); }
-  const blang=g('lang'); if(blang) return setSetting({language:blang.dataset.lang},'#voiceErr');
+  const blang=g('lang'); if(blang){ if(blang.dataset.lang===(info.lang_active||'en')&&(info.language||info.lang_active||'en')===blang.dataset.lang&&!info.lang_status) return; return setSetting({language:blang.dataset.lang},'#langErr'); }
   const beng=g('eng'); if(beng){ if(beng.disabled) return; return setSetting({tts:beng.dataset.eng},'#voiceErr').then(ok=>{ if(ok&&beng.dataset.eng!=='off'&&muted) toggleMute(); }); }
   const bfb=g('fb'); if(bfb) return setSetting({tts_fallback:bfb.dataset.fb},'#elevenErr');
   const beprev=g('eprev'); if(beprev) return previewEleven(beprev.dataset.eprev,beprev);
@@ -3569,7 +3580,7 @@ setEl.addEventListener('click',e=>{
     if(muted) toggleMute(); shush(); say([pageLine('page.voice_1','hi! this is my new voice.'),pageLine('page.voice_2','how do i sound?'),pageLine('page.voice_3','ooh, i like this one.')][Math.random()*3|0]); }); }
   if(bp) setSetting({pupil_style:bp.dataset.ps}).then(()=>{ idlePu=null; idleSwapAt=performance.now()+12000; popPupils(); });
   if(bi) setSetting({idle_mode:bi.dataset.idle});
-  if(bs) setSetting({whisper_model:bs.dataset.stt}).then(()=>tick('speech recognition: '+bs.textContent+' (loading…)'));
+  if(bs) setSetting({whisper_model:bs.dataset.stt},'#sttErr').then(ok=>{ if(ok) tick('speech recognition: '+bs.textContent+' (loading…)'); });
   if(bt){ const tr=bt.dataset.trust; setSetting({trust:tr}).then(()=>{ poke(tr==='trust'?'excited':tr==='readonly'?'curious':'wink',1000);
     tick({ask:"I'll ask before running anything",trust:"okay — I'll just do it",readonly:"looking only, no touching"}[tr]); }); }
   if(bpd) post('/api/projects',{op:'del',name:bpd.dataset.pdel}).then(()=>refresh()).then(renderSettings);
@@ -3624,7 +3635,7 @@ setEl.addEventListener('change',e=>{
   if(id==='rndSw') setLook({random:on}).then(()=>{ if(on){ lookRolled=false; syncLook(true); } else { lookShown=''; syncLook(); } renderSettings(); });
 });
 setEl.addEventListener('keydown',e=>{ if(e.key!=='Escape'&&!(e.ctrlKey&&e.key.toLowerCase()===',')) e.stopPropagation(); if(e.key==='Enter'&&(e.target.id==='projPath'||e.target.id==='projName')) $('#projAdd').click(); if(e.key==='Enter'&&e.target.id==='elevenCap') e.target.blur(); });
-setInterval(()=>{ if(setEl.classList.contains('on') && ((info.voices||[]).some(v=>v.downloading)||info.lang_status||(info.language&&info.lang_active&&info.language!==info.lang_active))) refresh().then(renderSettings); },1500);
+setInterval(()=>{ if(info.lang_status||(setEl.classList.contains('on')&&(info.voices||[]).some(v=>v.downloading))) refresh().then(()=>{ if(setEl.classList.contains('on')) renderSettings(); }); },2000);
 
 /* ================= slash commands ================= */
 async function slash(cmd){
@@ -3665,7 +3676,7 @@ async function slash(cmd){
 }
 
 /* ================= wiring ================= */
-function showInfo(){ document.documentElement.lang=info.lang_active||'en'; const ls=$('#langStatus'); if(ls) ls.textContent=info.lang_status||''; if('mirror' in info) mirSet(info.mirror); if(info.ambient){ AMB=info.ambient; renderCue(); } syncEye(); document.body.classList.toggle('fulltext',!!info.full_text); ctxRender(); input.placeholder=`ask in ${info.cwd_display||'~'}…`; const l=$('#cwdLbl'); if(l) l.textContent=info.cwd_display||'folder';
+function showInfo(){ document.documentElement.lang=info.lang_active||'en'; syncLangUI(); if('mirror' in info) mirSet(info.mirror); if(info.ambient){ AMB=info.ambient; renderCue(); } syncEye(); document.body.classList.toggle('fulltext',!!info.full_text); ctxRender(); input.placeholder=`ask in ${info.cwd_display||'~'}…`; const l=$('#cwdLbl'); if(l) l.textContent=info.cwd_display||'folder';
   const ve=$('#voiceEng'); if(ve) ve.textContent=voiceEngText();
   document.body.classList.toggle('root',!!info.root); document.body.classList.toggle('nixi',!!info.bridge); }
 async function refresh(){ try{ await tokenReady; const r=await fetch('/api/state',{headers:hdr()}); const j=await r.json();
