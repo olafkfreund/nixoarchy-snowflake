@@ -4,6 +4,7 @@ import http.client
 import ipaddress
 import json
 import math
+import socket
 import threading
 import time
 from pathlib import Path
@@ -102,9 +103,11 @@ def _status(body):
             "failed_system": failed}
 
 
-def _ask(peer, token, results, index):
+def _ask(peer, token, results, index, conns):
     conn = http.client.HTTPConnection(peer["address"], peer["port"], timeout=1.5)
     try:
+        conn.connect()
+        conns[index] = conn.sock                       # the raw socket, so the round can cut it off (the response drops conn.sock)
         conn.request("GET", "/v1/status", headers={"Authorization": "Bearer " + token})
         response = conn.getresponse()
         if response.status != 200:
@@ -132,12 +135,19 @@ def _round(number, peers, token_file):
         token = ""
     answers = [None] * len(peers)
     if token:
-        threads = [threading.Thread(target=_ask, args=(peer, token, answers, i), daemon=True)
+        conns = [None] * len(peers)
+        threads = [threading.Thread(target=_ask, args=(peer, token, answers, i, conns), daemon=True)
                    for i, peer in enumerate(peers)]
         for thread in threads:
             thread.start()
         for thread in threads:
             thread.join(max(0, deadline - time.monotonic()))
+        for i, thread in enumerate(threads):           # a peer still talking at the deadline is cut off: the socket timeout only bounds silence
+            if thread.is_alive() and conns[i] is not None:
+                try:
+                    conns[i].shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
     answers = answers.copy()
     with _lock:
         if number != _round_id:

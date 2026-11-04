@@ -195,6 +195,17 @@ class RunnerTest(unittest.TestCase):
         with mock.patch.object(plugins.subprocess, "run", return_value=mock.Mock(returncode=1, stdout="")):
             self.assertIsNone(plugins.system_status()["failed"])
 
+    def test_a_cached_board_with_peers_is_not_served_once_they_are_off(self):   # (#168)
+        p = prog(self.root, "")
+        p.manifest["stage"].update(cache_seconds=60, reads=["peer-status"])
+        allowed = [True]
+        with mock.patch.object(plugins, "peers_allowed", lambda: allowed[0]), \
+                mock.patch.object(plugins, "_launch", side_effect=[{**FACTS, "title": "with peers"}, {**FACTS, "title": "without"}]) as go:
+            self.assertEqual(plugins.run_stage(p, "q")["title"], "with peers")
+            allowed[0] = False
+            self.assertEqual(plugins.run_stage(p, "q")["title"], "without")
+        self.assertEqual(go.call_count, 2)
+
     def test_forget_drops_remembered_results(self):
         p = prog(self.root, "import json\nprint(json.dumps(%r))" % FACTS)
         p.manifest["stage"]["cache_seconds"] = 60

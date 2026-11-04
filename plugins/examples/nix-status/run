@@ -108,7 +108,7 @@ hosts = [{"name": host, "state": "up", "badges": badges, "meters": meters, "list
 peers = feed.get("peers") if isinstance(feed.get("peers"), list) else []
 if peers:
     probs = [x for x in re.split(r"(?<=\.) (?=[A-Z])", say) if x != "All fine."]
-    anyup = False
+    anyup = unknown = False
     for p in peers[:5]:
         if not isinstance(p, dict) or not isinstance(p.get("name"), str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,32}", p["name"]):
             continue
@@ -123,9 +123,14 @@ if peers:
             pb += [{"k": "up", "v": uptime(pup)}] if pup is not None else []
             pb.append({"k": "user", "v": "—"})
             fl = ps.get("failed_system")
-            fl = [str(x)[:80] for x in fl] if isinstance(fl, list) else []
-            hosts.append({"name": n, "state": "up", "badges": pb, "meters": meters_of(ps, pdisk, False),
-                          "lists": [{"title": "Failed (system)", "items": fl[:5], "tone": "bad"} if fl else {"title": "Failed (system)", "items": ["none"], "tone": "ok"}]})
+            if not isinstance(fl, list):                      # the check failed on that machine: unknown, never "none"
+                unknown = True
+                lst = {"title": "Failed (system)", "items": ["unknown"], "tone": "warn"}
+                fl = []
+            else:
+                fl = [str(x)[:80] for x in fl]
+                lst = {"title": "Failed (system)", "items": fl[:5], "tone": "bad"} if fl else {"title": "Failed (system)", "items": ["none"], "tone": "ok"}
+            hosts.append({"name": n, "state": "up", "badges": pb, "meters": meters_of(ps, pdisk, False), "lists": [lst]})
             if fl:
                 probs.append(f"{n} has one failed service." if len(fl) == 1 else f"{n} has {len(fl)} failed services.")
             if prev and my_rev and prev != my_rev:
@@ -138,7 +143,7 @@ if peers:
             probs.append(f"{n} is off.")
     if anyup or len(hosts) > 1:
         if not probs:
-            say = "All machines look fine." if anyup else say
+            say = ("No problems I can see." if unknown else "All machines look fine.") if anyup else say
         else:
             say = " ".join(probs)
             k = len(probs)

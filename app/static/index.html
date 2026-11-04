@@ -2396,7 +2396,7 @@ function gaugeHostFill(p,h,i=0){ const st=h.state||'up', one=st==='down'||st==='
   const b=p.querySelector('.tmb'); b.textContent='';
   (h.badges||[]).forEach(x=>{ const s=hx('span','tmg'+(x.tone?' '+x.tone:'')); s.appendChild(hx('em',null,x.k)); s.appendChild(document.createTextNode(' '+x.v)); b.appendChild(s); });
   const ls=p.querySelector('.tmls'); ls.textContent='';
-  let fn=0; (h.lists||[]).forEach(l=>{ fn+=(l.items||[]).length; const d=hx('div','tmli'+(l.tone?' '+l.tone:'')); d.appendChild(hx('div','tmlt',l.title)); (l.items||[]).forEach(t=>d.appendChild(hx('div','tmit',t))); ls.appendChild(d); });
+  let fn=0; (h.lists||[]).forEach(l=>{ if(l.tone==='bad') fn+=(l.items||[]).length; const d=hx('div','tmli'+(l.tone?' '+l.tone:'')); d.appendChild(hx('div','tmlt',l.title)); (l.items||[]).forEach(t=>d.appendChild(hx('div','tmit',t))); ls.appendChild(d); });
   if(cmp){ ls.appendChild(hx('div','tmfc'+(fn?' bad':''),fn?fn+' failed':'0 failed')); } }
 function gaugeToggle(name){ gaugeExp=gaugeExp===name?null:name; stgUse=performance.now();
   stgEl.querySelectorAll('.tmh.cmp').forEach(p=>{ const on=p.dataset.host===gaugeExp; p.classList.toggle('exp',on); p.setAttribute('aria-expanded',String(on)); }); }

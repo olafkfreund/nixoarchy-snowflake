@@ -345,6 +345,13 @@ class SandboxTest(unittest.TestCase):
         got = self.fleet([self.up("p510", rev="c" * 40 + "-dirty")])
         self.assertIn("dirty", got["hosts"][1]["badges"][0]["v"])
 
+    def test_nix_status_fleet_unknown_failed_units_are_not_none(self):   # failed_system null: the check failed on that machine
+        peer = self.up("p510")
+        peer["status"]["failed_system"] = None
+        got = self.fleet([peer])
+        self.assertEqual(got["hosts"][1]["lists"], [{"title": "Failed (system)", "items": ["unknown"], "tone": "warn"}])
+        self.assertEqual(got["say"], "No problems I can see.")
+
     def test_nix_status_fleet_say_is_capped(self):
         got = self.fleet([self.up("m%d" % i + "x" * 30, failed=["a", "b"]) for i in range(5)])
         self.assertLessEqual(len(got["say"]), 200)

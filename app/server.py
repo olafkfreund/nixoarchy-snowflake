@@ -5490,11 +5490,8 @@ class Handler(BaseHTTPRequestHandler):
                         else:
                             peers.stop()
                             plugins.forget()
-                            page = STAGES.current()
-                            if page and page.get("kind") == "gauges" and len(page.get("hosts", [])) > 1:
-                                STAGES.close()
-                                STAGES.clear()
-                                BUS.pub(t="stage_close")
+                            if STAGES.forget_where(lambda pg: pg.get("kind") == "gauges" and len(pg.get("hosts", [])) > 1):
+                                BUS.pub(t="stage_close")            # (and Back can't restore one either)
                             BUS.pub(t="toast", text="Other machines are off")
                 if "whisper_model" in upd:
                     reset_whisper()

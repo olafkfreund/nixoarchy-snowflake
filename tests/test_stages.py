@@ -182,6 +182,15 @@ class StoreTest(unittest.TestCase):
         self.assertIsNone(self.s.get(tok))
         self.assertIsNone(self.s.current())
 
+    def test_forget_where_drops_current_and_back(self):        # (#168: peers switched off)
+        a = self.s.put(S.validate(CMDS))
+        self.s.put(S.validate(FACTS))
+        self.assertFalse(self.s.forget_where(lambda pg: pg.get("kind") == "commands"))   # only the one Back would bring back
+        self.assertIsNotNone(self.s.current())
+        self.assertIsNone(self.s.back())
+        self.assertTrue(self.s.forget_where(lambda pg: pg.get("kind") == "facts"))
+        self.assertIsNone(self.s.current())
+
     def test_back_and_close(self):
         a = self.s.put(S.validate(CMDS))
         self.s.put(S.validate(FACTS))

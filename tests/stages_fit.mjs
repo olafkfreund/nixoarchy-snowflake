@@ -355,7 +355,7 @@ const acts = () => ev("return __acts.slice()");
     hosts: [
       { name: "p620", state: "up", badges: [{ k: "rev", v: "a1b2c3d" }], meters: [{ label: "CPU", pct: 18, text: "4 cores" }, { label: "MEM", pct: 40, text: "6 GB" }], lists: [{ title: "Failed", items: ["a.service"], tone: "bad" }] },
       { name: "p510", state: "up", badges: [{ k: "rev", v: "a1b2c3d" }], meters: [{ label: "CPU", pct: 12, text: "8 cores" }, { label: "MEM", pct: 25, text: "4 GB" }], lists: [{ title: "Failed (system)", items: ["b.service", "c.service"], tone: "bad" }] },
-      { name: "razer", state: "up", badges: [{ k: "rev", v: "≠ f00baa1", tone: "warn" }], meters: [{ label: "CPU", pct: 5, text: "8 cores" }], lists: [{ title: "Failed (system)", items: [], tone: "bad" }] },
+      { name: "razer", state: "up", badges: [{ k: "rev", v: "≠ f00baa1", tone: "warn" }], meters: [{ label: "CPU", pct: 5, text: "8 cores" }], lists: [{ title: "Failed (system)", items: ["none"], tone: "ok" }] },   // what nix-status sends for a healthy peer: not "1 failed"
     ],
   };
   await show(F3, w => 0);

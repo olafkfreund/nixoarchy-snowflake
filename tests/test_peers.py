@@ -31,8 +31,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(self.server.code)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(body)
-        except BrokenPipeError:
+            if getattr(self.server, "drip", False):         # one byte every 0.5 s: never silent long enough to time out
+                for i in range(len(body)):
+                    self.wfile.write(body[i:i + 1]); self.wfile.flush(); time.sleep(0.5)
+            else:
+                self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
             pass
 
     def log_message(self, *args):
@@ -95,6 +99,24 @@ class PeerTests(unittest.TestCase):
         self.assertEqual(rows[0]["status"], STATUS)
         self.assertIsNotNone(rows[0]["last_ok"])
         self.assertEqual(rows[2]["note"], "gave an answer Nixi can't read")
+
+    def test_a_dripping_peer_is_cut_off_at_the_deadline(self):
+        server = self.server()
+        server.drip = True
+        self.configure([server])
+        done = threading.Event()
+        peers.on_round(done.set)
+        def workers():                                   # the collector's own threads (the fake server's drip thread goes on)
+            return [t for t in threading.enumerate() if getattr(t, "_target", None) is peers._ask]
+        started = time.monotonic()
+        peers.snapshot()
+        self.assertTrue(done.wait(2.2), "round exceeded its two second deadline")
+        self.assertEqual(peers._results[0]["state"], "down")    # (not snapshot(): that would start the next round)
+        deadline = time.monotonic() + 1                  # the worker ends soon after the round, not after the whole drip
+        while workers() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertEqual(workers(), [], "a worker outlived its round")
+        self.assertLess(time.monotonic() - started, 3.3)
 
     def test_stop_discards_round_and_last_ok(self):
         server = self.server(delay=0.2)

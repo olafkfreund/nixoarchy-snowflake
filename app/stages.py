@@ -512,6 +512,16 @@ class Store:
         with self.lock:
             self.prev, self.cur, self.vis = self.cur, None, False
 
+    def forget_where(self, pred):
+        """Forget the current and the previous stage where pred(page) holds, so neither can be shown or restored. -> True if the current one went."""
+        with self.lock:
+            gone = bool(self.cur and pred(self.cur[0]))
+            if gone:
+                self.cur, self.vis = None, False
+            if self.prev and pred(self.prev[0]):
+                self.prev = None
+            return gone
+
     def clear(self):
         """Forget both stages (Answer stages was turned off): nothing can be restored."""
         with self.lock:
