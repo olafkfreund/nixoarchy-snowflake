@@ -149,7 +149,10 @@ def _request(request, deadline, limit=None, retry=False, still_ok=None):
             raise
         except Exception as exc:
             reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
-            after_send = isinstance(reason, (ConnectionResetError, BrokenPipeError))
+            # urllib wraps connect/send failures in URLError; an OSError/timeout raised bare comes from waiting for the
+            # response, i.e. after the POST left the machine and may be billed (Codex review on PR #40)
+            after_send = (isinstance(exc, OSError) and not isinstance(exc, urllib.error.URLError)) or \
+                isinstance(reason, (ConnectionResetError, BrokenPipeError))
             raise ElevenError("network", sent=ever_sent or request.data is not None and (sent or after_send)) from None
 
 
