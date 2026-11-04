@@ -468,11 +468,14 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   const box = id => `(()=>{ const r=document.querySelector('${id}').getBoundingClientRect(); return [r.left,r.right]; })()`;
   await ev("agentMark('claude','ask'); return 1"); await sleep(1600);
   const on = await ev(`return [${box("#wx")}, ${box("#agentMark")}, +(/translate\\((-?[\\d.]+)/.exec(wxEl.getAttribute('transform'))||[0,0])[1]]`);
-  check(on[2] < -60 && on[0][1] <= on[1][0] + 1, "weather: the cloud stands clear of the notification mark", JSON.stringify(on));
+  check(on[2] > 60 && on[0][0] >= on[1][1] - 1, "weather: the cloud stands clear of the notification mark", JSON.stringify(on));
   await ev("AM.until=0; renderCue(); return 1"); await sleep(1600);
   const off = await ev("return Math.abs(+(/translate\\((-?[\\d.]+)/.exec(wxEl.getAttribute('transform'))||[0,0])[1])+''");
   check(Math.abs(+off) < 12, "weather: the cloud comes back when the mark goes", String(off));
-  await ev("sitOn.rain=false; return 1"); }
+  await ev("sitOn.rain=false; sitOn.clear=true; agentMark('claude','ask'); return 1"); await sleep(1200);   // (Codex: only the sun shows and doesn't overlap, so nothing moves)
+  const clear = await ev("return Math.abs(+(/translate\\((-?[\\d.]+)/.exec(wxEl.getAttribute('transform'))||[0,0])[1])+''");
+  check(Math.abs(+clear) < 12, "weather: a clear sky stays put under a mark", String(clear));
+  await ev("AM.until=0; sitOn.clear=false; renderCue(); return 1"); }
 
 check(exc.size === 0, "no page exceptions", [...exc].join(" ;; "));
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});

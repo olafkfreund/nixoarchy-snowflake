@@ -1525,7 +1525,7 @@ let FID=null, nextFidAt=performance.now()+6000, lastFid='';
 const paintEl=document.getElementById('paint');
 const REDUCED=matchMedia('(prefers-reduced-motion: reduce)');
 const wxAlpha=p=>.85*Math.sin(Math.PI*p);
-const wxEl=$('#wx'), WX_ASIDE=-90;
+const wxEl=$('#wx'), WX_ASIDE=90;   // (to the right: the cloud clears the marks at x≈8, and a sun at x≈98 slides off rather than onto them)
 // the weather marks (#157): built once, every group display="none" until wxStep shows it; flat colours only. Particles are children of their cloud's group.
 function drawMarks(){ const W={}, d=sv('defs',{},wxEl), R=at=>({...at,'stroke-linecap':'round','stroke-linejoin':'round'});
   const grad=(id,a,b)=>{ const lg=sv('linearGradient',{id,x1:0,y1:0,x2:0,y2:1},d); sv('stop',{offset:0,'stop-color':a},lg); sv('stop',{offset:1,'stop-color':b},lg); };
@@ -1840,7 +1840,7 @@ function frame(ts){
         for(const [s,cu] of [[-1,SIT_P.cL],[1,SIT_P.cR]]) cu.setAttribute('transform',`translate(${(s*X-s*lx*.6).toFixed(2)} -8) rotate(${(s*8+(s<0?-12*L:0)).toFixed(2)}) scale(${(1+.07*k).toFixed(3)})`);
         SIT_P.bd.setAttribute('transform',`translate(0 ${(-1.5*k).toFixed(2)})`);
         if(k>.6&&ts-nodAt>=200){ nodAt=ts; G.jelly.kick(.015*k); } } } }   // (nothing to write while all are off)
-  { const on=(AM&&ts<AM.until)||mirKind()||$('#cue').getAttribute('display')!=='none', dx=REDUCED.matches?(on?WX_ASIDE:0):G.wxAside.to(on?WX_ASIDE:0,dt);   // (#187: a notification mark must never sit under the cloud)
+  { const on=!sitOn.clear&&((AM&&ts<AM.until)||mirKind()||$('#cue').getAttribute('display')!=='none'), dx=REDUCED.matches?(on?WX_ASIDE:0):G.wxAside.to(on?WX_ASIDE:0,dt);   // (#187: a notification mark must never sit under the cloud)
     wxEl.setAttribute('transform',`translate(${dx.toFixed(1)} 0)`); }
   wxStep(t,dt);
   { const k=mirKind(), bar=document.body.classList.contains('bar');       // the ai-mirror mark (nothing to write while it is gone)
