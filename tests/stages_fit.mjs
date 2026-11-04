@@ -50,6 +50,7 @@ const FIX = {
   "gauges (3 hosts, 8 meters)": { t: "stage", v: 1, kind: "gauges", title: long, token: "c1", hosts: ["a", "b", "c"].map(n => ({ name: n.repeat(32), state: "stale", badges: Array.from({ length: 6 }, (_, i) => ({ k: "k" + i, v: long.slice(0, 60) })), meters: Array.from({ length: 8 }, (_, i) => ({ label: "M" + i, pct: i * 12, text: long.slice(0, 40) })), lists: [{ title: "L", items: Array.from({ length: 5 }, () => long.slice(0, 80)), tone: "bad" }] })) },
   "headlines": { t: "stage", v: 1, kind: "headlines", title: "News", source: "3 feeds \u00b7 1 couldn't be reached", copy: "c1", items: [{ title: "Kernel 6.19 released", source: "Hacker News", at: Math.floor(Date.now() / 1000) - 7200, open: "h1" }, { title: "Storm crosses the north", source: "BBC News", at: Math.floor(Date.now() / 1000) - 300, open: "h2" }, { title: "Local council budget", source: "The Guardian", at: null }] },
   "headlines (5 long)": { t: "stage", v: 1, kind: "headlines", title: long.slice(0, 80), source: long, copy: "c1", items: Array.from({ length: 5 }, (_, i) => ({ title: long, source: "Feed " + (i + 1), at: Math.floor(Date.now() / 1000) - (i + 1) * 3600, open: "h" + i })) },
+  "headlines (5 stories, 3 clips)": { t: "stage", v: 1, kind: "headlines", title: long.slice(0, 80), source: long, copy: "c1", items: Array.from({ length: 5 }, (_, i) => ({ title: long, source: "Feed " + (i + 1), at: Math.floor(Date.now() / 1000) - (i + 1) * 3600, open: "h" + i })), clips: [1, 2, 3].map(i => ({ title: long, channel: "Chan " + i, duration: "3:0" + i, play: "p" + i, thumb: "th" + i })) },
 };
 const show = async (fx, ox) => {                       // the frame as drawn once the window has grown the way the page asked
   await ev(`stageClose(); await new Promise(r=>setTimeout(r,320)); onEvent(${JSON.stringify(fx)}); return 1`);
@@ -415,8 +416,11 @@ const acts = () => ev("return __acts.slice()");
   await motion("no-preference");
   reqs.length = 0;
   await show(H, w => 0);
-  const p = await ev(`const f=document.getElementById('stg'), r=f.querySelector('.prw'); return [f.classList.contains('press'), f.getBoundingClientRect().width, document.getElementById('stgT').textContent, document.getElementById('stgDt').textContent.length>0, getComputedStyle(f.querySelector('header')).borderBottomStyle, f.querySelectorAll('.prw').length, [...f.querySelectorAll('.prm')].map(x=>x.textContent).join('|'), getComputedStyle(f.querySelector('.prt')).fontFamily.includes('Georgia'), getComputedStyle(f.querySelector('.prm')).fontVariantCaps, document.getElementById('stgFn').textContent, getComputedStyle(f).animationName, getComputedStyle(f.querySelector('.bd')).animationName, getComputedStyle(r).animationName]`);
-  check(p[0] && p[1] === 340 && p[2] === "News" && p[3] && p[4] === "double" && p[5] === 3 && p[6] === "Hacker News \u00b7 2 h ago|BBC News \u00b7 5 min ago|The Guardian \u00b7 time unknown" && p[7] && p[8] === "small-caps" && p[9] === "3 feeds \u00b7 1 couldn't be reached" && p[10] === "stgSlip" && p[11] === "stgUnfold" && p[12] === "stgRow", "press: a headlines stage renders with source and age per row", JSON.stringify(p));
+  const p = await ev(`const f=document.getElementById('stg'), r=f.querySelector('.prw'); return [f.classList.contains('press'), f.getBoundingClientRect().width, document.getElementById('stgT').textContent, document.getElementById('stgDt').textContent.length>0, getComputedStyle(f.querySelector('header')).borderBottomStyle, f.querySelectorAll('.prw').length, [...f.querySelectorAll('.prm')].map(x=>x.textContent).join('|'), getComputedStyle(f.querySelector('.prt')).fontFamily.includes('Georgia'), getComputedStyle(f.querySelector('.prm')).fontVariantCaps, document.getElementById('stgFn').textContent, getComputedStyle(f).animationName, getComputedStyle(f.querySelector('.bd')).animationName, getComputedStyle(r).animationName, f.querySelectorAll('.prws').length]`);
+  check(p[0] && p[1] === 340 && p[2] === "News" && p[3] && p[4] === "double" && p[5] === 3 && p[6] === "Hacker News \u00b7 2 h ago|BBC News \u00b7 5 min ago|The Guardian \u00b7 time unknown" && p[7] && p[8] === "small-caps" && p[9] === "3 feeds \u00b7 1 couldn't be reached" && p[10] === "stgSlip" && p[11] === "stgUnfold" && p[12] === "stgRow" && p[13] === 0, "press: a headlines stage renders with source and age per row", JSON.stringify(p));
+  await show({ ...H, clips: [] }, w => 0);
+  check(await ev("return document.querySelectorAll('#stg .prws, #stg .prwh').length") === 0, "press: clips:[] (or no clips) renders no Watch heading");
+  await show(H, w => 0);
   const cr = await ev(`const f=document.getElementById('stg'), bg=lumOf(getComputedStyle(f).backgroundColor), ratio=c=>{ const l=lumOf(c); return (Math.max(bg,l)+.05)/(Math.min(bg,l)+.05); }; return [ratio(getComputedStyle(f.querySelector('.prt')).color), ratio(getComputedStyle(f.querySelector('.prm')).color), ratio(getComputedStyle(f.querySelector('.sb')).color)]`);
   check(cr.every(x => x >= 4.5), "press: contrast >= 4.5:1", JSON.stringify(cr));
   // Tab reaches each Open button in order, and Open posts /api/stage/act {token, act:"open"}
@@ -427,22 +431,61 @@ const acts = () => ev("return __acts.slice()");
   await sleep(60);
   const act = await ev("return __openAct");
   check(f1[0] === "BUTTON" && f1[1] === "Open: Kernel 6.19 released" && f2[0] === "BUTTON" && f2[1] === "Open: Storm crosses the north" && act?.token === "h1" && act?.act === "open", "press: Tab reaches each Open and Open posts its token", JSON.stringify([f1, f2, act]));
-  // minute-tick refreshes ages; stageText formats "headline — source, age"; 30 s collapse and Esc close
-  const ageUpd = await ev("stg.items[1].at=Math.floor(Date.now()/1000)-420; stageTick(); return document.querySelectorAll('#stg .prm')[1].textContent");
-  check(ageUpd === "BBC News \u00b7 7 min ago", "press: minute tick refreshes age", ageUpd);
-  check(await ev(`const t=stageText(${JSON.stringify(H)}); return t.includes('Kernel 6.19 released \u2014 Hacker News, 2 h ago') && t.includes('Storm crosses the north \u2014 BBC News, 5 min ago') && t.includes('Local council budget \u2014 The Guardian, time unknown')`), "press: stageText branch formats headline \u2014 source, age");
+  // clips via stage_update (#174): Watch rows appear, focused story Open keeps focus, stgUse resets, Tab reaches Play, empty length has no " · ", 404 poster hidden
+  const CLIPS = [
+    { title: "World roundup", channel: "BBC News", duration: "4:12", play: "cp1", thumb: "ct1" },
+    { title: "Live briefing", channel: "Sky News", duration: "", play: "cp2", thumb: "ct2" },
+    { title: "Evening report", channel: "Channel 4", duration: "9:05", play: "cp3", thumb: "ct3" },
+  ];
+  await ev("const b=document.querySelector('#stg .prw .sb'); b.focus(); window.__sRow=document.querySelector('#stg .prw'); stgUse=performance.now()-20000; window.__u0=stgUse; return 1");
+  await ev(`onEvent(${JSON.stringify({ ...H, t: "stage_update", clips: CLIPS })}); return 1`);
+  await sleep(120);
+  const cu = await ev(`const f=document.getElementById('stg'), cs=[...f.querySelectorAll('.pvc')]; return [f.querySelector('.prwh')?.textContent, getComputedStyle(f.querySelector('.prwh')).fontVariantCaps, cs.length, document.querySelector('#stg .prw')===__sRow, document.activeElement===__sRow.querySelector('.sb'), stgUse>__u0+10000, stg.clips?.length, cs.map(r=>r.querySelector('.prm').textContent).join('|'), cs.map(r=>r.querySelector('.sb').getAttribute('aria-label')).join('|'), cs.map(r=>getComputedStyle(r).animationDelay).join(','), cs.map(r=>getComputedStyle(r).animationName).join(','), cs.reduce((n,r)=>n+r.querySelectorAll('img.po').length,0), cs[0].querySelector('.pw').getBoundingClientRect().width, Math.round(cs[0].querySelector('.pw').getBoundingClientRect().height)]`);
+  check(cu[0] === "Watch" && cu[1] === "small-caps" && cu[2] === 3 && cu[3] && cu[4] && cu[5] && cu[6] === 3 && cu[7] === "BBC News \u00b7 4:12|Sky News|Channel 4 \u00b7 9:05" && cu[8] === "Play: World roundup|Play: Live briefing|Play: Evening report" && cu[9] === "0s,0.04s,0.08s" && cu[10] === "stgRow,stgRow,stgRow" && cu[11] === 0 && cu[12] === 96 && cu[13] === 54, "press: stage_update adds Watch clips, keeps focus, resets stgUse, hides 404 posters, omits separator for empty length", JSON.stringify(cu));
+  const cr2 = await ev(`const f=document.getElementById('stg'), bg=lumOf(getComputedStyle(f).backgroundColor), ratio=c=>{ const l=lumOf(c); return (Math.max(bg,l)+.05)/(Math.min(bg,l)+.05); }; return [ratio(getComputedStyle(f.querySelector('.prwh')).color), ratio(getComputedStyle(f.querySelector('.pvc .prt')).color), ratio(getComputedStyle(f.querySelector('.pvc .prm')).color), ratio(getComputedStyle(f.querySelector('.pvc .sb')).color)]`);
+  check(cr2.every(x => x >= 4.5), "press: Watch contrast >= 4.5:1", JSON.stringify(cr2));
+  await ev("document.querySelectorAll('#stg .prw:not(.pvc) .sb')[1].focus(); return 1");
+  await key("Tab"); const p1 = await ev("return document.activeElement.getAttribute('aria-label')");
+  await key("Tab"); const p2 = await ev("return document.activeElement.getAttribute('aria-label')");
+  await key("Tab"); const p3 = await ev("return document.activeElement.getAttribute('aria-label')");
+  await ev("window.__playAct=null; const of4=window.fetch; window.fetch=(u,o)=>{ if(String(u).includes('/api/stage/act')&&o?.body){ const b=JSON.parse(o.body); if(b.act==='play') __playAct=b; } return of4(u,o); }; document.querySelector('#stg .pvc .sb').click(); return 1");
+  await sleep(60);
+  const pact = await ev("return __playAct");
+  check(p1 === "Play: World roundup" && p2 === "Play: Live briefing" && p3 === "Play: Evening report" && pact?.token === "cp1" && pact?.act === "play", "press: Tab reaches each Play and Play posts its token", JSON.stringify([p1, p2, p3, pact]));
+  // stage_update with another copy token is ignored
+  await ev(`onEvent(${JSON.stringify({ ...H, t: "stage_update", copy: "other", clips: [{ title: "Wrong", channel: "X", duration: "1:00", play: "px", thumb: "tx" }] })}); return 1`);
+  check(await ev("return document.querySelectorAll('#stg .pvc').length===3 && document.querySelector('#stg .pvc .prt').textContent==='World roundup'"), "press: stage_update with another copy is ignored");
+  // minute-tick refreshes ages without touching clip metadata; stageText formats headline and clip lines; 30 s collapse and Esc close
+  const ageUpd = await ev("stg.items[1].at=Math.floor(Date.now()/1000)-420; stageTick(); return [document.querySelectorAll('#stg .prw:not(.pvc) .prm')[1].textContent, document.querySelector('#stg .pvc .prm').textContent]");
+  check(ageUpd[0] === "BBC News \u00b7 7 min ago" && ageUpd[1] === "BBC News \u00b7 4:12", "press: minute tick refreshes age and keeps clip metadata", JSON.stringify(ageUpd));
+  check(await ev(`const t=stageText(${JSON.stringify(H)}); return t.includes('Kernel 6.19 released \u2014 Hacker News, 2 h ago') && t.includes('Storm crosses the north \u2014 BBC News, 5 min ago') && t.includes('Local council budget \u2014 The Guardian, time unknown') && !t.includes('Watch:')`), "press: stageText branch formats headline \u2014 source, age");
+  const stClips = await ev(`return stageText(${JSON.stringify({ ...H, clips: [{ title: "A", channel: "BBC", duration: "4:12" }, { title: "B", channel: "Sky", duration: "" }, { title: "C", channel: "", duration: "1:00" }, { title: "D", channel: "", duration: "" }] })})`);
+  check(stClips.includes("Watch:\nA \u2014 BBC, 4:12\nB \u2014 Sky\nC \u2014 1:00\nD\n3 feeds"), "press: stageText uses the shared clip line format", stClips);
   await ev("stgUse=performance.now()-31000; stageTick(); return 1");
   check(await ev("return stgState") === "tab", "press: collapses to its tab after 30 s");
   await ev("stageRestore(); return 1"); await sleep(200);
   await key("Escape"); await sleep(60);
   check(await ev("return stgState") === "closed", "press: Esc closes");
-  // reduced motion: no animation
+  // stage_update after close changes nothing
+  await ev(`onEvent(${JSON.stringify({ ...H, t: "stage_update", clips: [{ title: "After close", channel: "X", duration: "1:00", play: "px", thumb: "tx" }] })}); return 1`);
+  check(await ev("return stgState==='closed' && document.querySelector('#stg .pvc .prt')?.textContent==='World roundup'"), "press: stage_update after close changes nothing");
+  // reduced motion: no animation (including Watch rows on stage and stage_update)
   await motion("reduce"); await sleep(200);
-  await show({ ...H, items: [{ title: "<img src='https://feeds.bbci.co.uk/x.png'>", source: "<b>BBC News</b>", at: null, open: "h1" }] }, w => 0);
-  const rm = await ev(`const f=document.getElementById('stg'); return [f.classList.contains('go'), getComputedStyle(f).animationName, getComputedStyle(f.querySelector('.bd')).animationName, getComputedStyle(f.querySelector('.prw')).animationName, f.querySelectorAll('img,b').length]`);
-  check(!rm[0] && rm[1] === "none" && rm[2] === "none" && rm[3] === "none" && rm[4] === 0, "press: reduced motion has no animation and markup stays text", JSON.stringify(rm));
-  const ext = reqs.filter(u => u && !u.startsWith(new URL(url).origin + "/") && !u.startsWith("data:") && !u.startsWith("about:"));
-  check(ext.length === 0, "press: no request leaves the page for a news site", JSON.stringify(ext));
+  await show({ ...H, items: [{ title: "<img src='https://feeds.bbci.co.uk/x.png'>", source: "<b>BBC News</b>", at: null, open: "h1" }], clips: [{ title: "<b>Clip</b>", channel: "<i>Ch</i>", duration: "1:00", play: "cp1", thumb: "ct1" }] }, w => 0);
+  await ev(`onEvent(${JSON.stringify({ ...H, t: "stage_update", clips: [{ title: "<b>Clip</b>", channel: "<i>Ch</i>", duration: "1:00", play: "cp1", thumb: "ct1" }] })}); return 1`);
+  await sleep(60);
+  const rm = await ev(`const f=document.getElementById('stg'); return [f.classList.contains('go'), f.querySelector('.prws').classList.contains('go'), getComputedStyle(f).animationName, getComputedStyle(f.querySelector('.bd')).animationName, getComputedStyle(f.querySelector('.prw')).animationName, getComputedStyle(f.querySelector('.pvc')).animationName, f.querySelectorAll('img,b,i').length]`);
+  check(!rm[0] && !rm[1] && rm[2] === "none" && rm[3] === "none" && rm[4] === "none" && rm[5] === "none" && rm[6] === 0, "press: reduced motion has no animation and markup stays text", JSON.stringify(rm));
+  const orig = new URL(url).origin + "/";
+  const thumbReqs = reqs.filter(u => u.includes("/api/stage/thumb/"));
+  const ext = reqs.filter(u => u && !u.startsWith(orig) && !u.startsWith("data:") && !u.startsWith("about:"));
+  const yt = reqs.filter(u => /youtube\.com|ytimg\.com/i.test(u));
+  check(thumbReqs.length >= 3 && thumbReqs.every(u => u.startsWith(orig)) && ext.length === 0 && yt.length === 0, "press: posters come from page origin and no request goes to youtube.com or ytimg.com", JSON.stringify({ thumbs: thumbReqs.length, ext, yt }));
+  // consent card shows the YouTube line when c.videos is true, and omits it when false
+  const cons = await ev(`plugConsent({id:'news',name:'News',sha256:'abc',what:'Headlines',runs:'run',network:true,videos:true,reads:[],config:'/tmp/news.json'}); const t1=document.querySelector('#plugCons pre').textContent;
+    plugConsent({id:'news',name:'News',sha256:'abc',what:'Headlines',runs:'run',network:true,videos:false,reads:[],config:''}); const t2=document.querySelector('#plugCons pre').textContent;
+    plugConsent(null); return [t1, t2]`);
+  check(cons[0].includes("Can search YouTube for news clips (off in its settings)") && !cons[1].includes("Can search YouTube"), "press: consent card shows the YouTube line when videos is true", JSON.stringify(cons));
   await motion(null); await ev("stageClose(); return 1"); await sleep(320); }
 
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
