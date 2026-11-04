@@ -224,6 +224,7 @@ def _snap(d, dest=None):
     if _symlink(d):
         raise ValueError(f"contains a symlink: {_symlink(d)}")
     root, h, total, paths = os.path.realpath(d), hashlib.sha256(), 0, []
+    store = _in_store(root)                          # (the store is read-only; nix-store --optimise hard-links identical files there)
     for dirpath, dirs, files in os.walk(root, onerror=_raise):
         for n in dirs:
             if dest:
@@ -236,7 +237,7 @@ def _snap(d, dest=None):
             st = os.fstat(fd)
             if not stat.S_ISREG(st.st_mode):
                 raise ValueError(f"not a plain file: {rel.decode(errors='replace')}")
-            if st.st_nlink > 1:                      # (a hardlink may point at a file outside the folder)
+            if st.st_nlink > 1 and not store:        # (in a folder plugin a hardlink may point at a file outside it)
                 raise ValueError(f"hard link: {rel.decode(errors='replace')}")
             total += st.st_size
             if total > SNAP_MAX:

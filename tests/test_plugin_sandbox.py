@@ -183,6 +183,15 @@ class SandboxTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "hard link"):
             plugins._snap(d)
 
+    def test_a_deduplicated_file_in_the_store_is_fine(self):
+        outside = self.root / "outside"
+        outside.write_text("same")
+        d = self.root / "st"
+        d.mkdir()
+        os.link(outside, d / "x")
+        with mock.patch.object(plugins, "_in_store", return_value=True):
+            self.assertEqual(len(plugins._snap(d)), 64)
+
     def test_a_network_plugin_will_not_run_without_pasta(self):
         p = self.mk("print(1)", network=True)
         with mock.patch.object(plugins, "pasta_ok", return_value=False):
