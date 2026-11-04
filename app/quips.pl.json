@@ -1,0 +1,54 @@
+{
+  "break": [
+    "Już godzina! Wstań i się przeciągnij?",
+    "Czas na rozprostowanie kości. Plecy ci podziękują.",
+    "Długo już pracujesz. Wody i krótki spacer?",
+    "Oderwij wzrok na chwilę? Popatrz na coś daleko."
+  ],
+  "welcome": [
+    "Witaj z powrotem!",
+    "Miło cię znowu widzieć!",
+    "No, jesteś!"
+  ],
+  "ram": [
+    "Pamięci robi się mało. Może zamknąć coś ciężkiego?",
+    "Kończy mi się miejsce. Czy coś dużego dałoby się zamknąć?",
+    "Dużo pamięci w użyciu. Porządek w kartach może pomóc."
+  ],
+  "cpu": [
+    "Komputer ciężko pracuje.",
+    "Tu się robi gorąco.",
+    "Procesor jest zajęty. Poczekam."
+  ],
+  "rain": [
+    "Deszcz za oknem. Przytulnie tutaj!",
+    "Pada. Dobrze, że siedzimy w środku.",
+    "Pewnie bębni o szybę."
+  ],
+  "snow": [
+    "Śnieg! Moja ulubiona rzecz na świecie.",
+    "Sypie śnieg! Czuję się jak w domu.",
+    "Śnieg za oknem. To moja pogoda.",
+    "Wszędzie płatki śniegu. Cześć, kuzyni!"
+  ],
+  "night": [
+    "Robi się późno. Nie zapomnij o odpoczynku.",
+    "Już głęboka noc. Sen to też dobry pomysł.",
+    "Późny wieczór. Przyciszę światło."
+  ],
+  "party": [
+    "Dziś jest co świętować!",
+    "Czas na imprezę!",
+    "Wyjątkowy dzień. Hurra!"
+  ],
+  "coding": [
+    "{n} godz. kodowania. Łyk wody?",
+    "{n} godz. za nami. Rozprostujesz dłonie?",
+    "Długa sesja kodowania: {n} godz. Odpoczną oczy?"
+  ],
+  "done": [
+    "Gotowe!",
+    "Skończone!",
+    "Zrobione."
+  ]
+}
