@@ -525,6 +525,9 @@ select:focus,.pn input[type=text]:focus,.pn textarea:focus{border-color:var(--ed
 #appr.on{opacity:1;transform:none;pointer-events:auto}
 #plugCons{display:none;margin:8px 0;padding:11px 12px 12px;border-radius:16px;background:#0c0c0cf7;border:1px solid #6b4a10;box-shadow:0 6px 20px #000a,0 0 18px #ffb02a22}
 #plugCons.on{display:block}
+#set #plugCons pre{max-height:none}   /* (#175: the card sits in the scrolling tab, so show all of its text; a nested scroll box hid the first lines) */
+#plugList .tg{align-items:flex-start} #plugList .tg .sw{flex:none;margin-top:2px}   /* switch in line with the plugin's name, however long the text */
+#plugList .tg .l{min-width:0;overflow-wrap:anywhere} #plugList .tg small{display:block;overflow-wrap:anywhere}
 #appr .q,#plugCons .q{font-size:12.5px;color:#ffd38a;margin-bottom:6px;display:flex;gap:6px;align-items:flex-start;overflow-wrap:anywhere}
 #appr pre,#plugCons pre{margin:0 0 9px;padding:7px 9px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);font:11.5px/1.4 var(--mono);color:var(--text);
   max-height:var(--apprMax,60vh);overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}

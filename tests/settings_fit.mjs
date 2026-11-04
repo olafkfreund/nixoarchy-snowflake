@@ -344,6 +344,18 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
     "radial menu and openPanel('plugins') title use 'Claude Code plug-ins'", JSON.stringify(lbl));
 }
 
+// #175 live evidence: consent card open + 6 plugins + a long settings path — nothing clipped, rows don't overlap, switches line up
+{ await ev("settings(true,'plugins'); return 1"); await sleep(200);
+  const long = "/home/someone/.config/nixi-companion/plugin-config/" + "very-long-folder-name/".repeat(4) + "news.json";
+  const items = Array.from({ length: 6 }, (_, i) => ({ id: "p-" + i, name: "Plugin " + i, version: "1.0.0", source: i % 2 ? "Nix" : "Folder", enabled: i % 2 === 0,
+    caps: ["Runs a program when you ask for it and uses the network", "Can read your system status"], error: "", config: i === 0 ? long : "", config_note: "" }));
+  const r = await ev(`plugRender(${JSON.stringify({ items })}); plugConsent({id:'p-0',name:'Nix status',sha256:'x',network:true,what:'${"Shows a live board of this machine. ".repeat(6)}',hint:'system status',runs:'run',reads:['system-status'],config:''});
+    const pre=document.querySelector('#plugCons pre'), rows=[...document.querySelectorAll('#plugList label.tg')].map(l=>l.getBoundingClientRect()),
+      sw=[...document.querySelectorAll('#plugList label.tg')].map(l=>[l.querySelector('.sw').getBoundingClientRect().top,l.querySelector('.l').getBoundingClientRect().top]);
+    return [pre.scrollHeight<=pre.clientHeight+1, rows.every((b,i)=>i===0||b.top>=rows[i-1].bottom-1), sw.every(([a,b])=>Math.abs(a-b)<=6), rows.every(b=>b.width>0)]`);
+  check(r.every(Boolean), "plugins: consent text fully shown, rows don't overlap, switches line up with long paths", JSON.stringify(r));
+  await ev("plugConsent(null); settings(false); return 1"); }
+
 check(exc.size === 0, "no page exceptions", [...exc].join(" ;; "));
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
 console.log(fails.length ? `\n${fails.length} failed: ${fails.join(", ")}` : "\nall pass");
