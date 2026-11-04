@@ -464,18 +464,21 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
 }
 
 // #187: the weather cloud moves aside while a notification mark shows, and comes back after
-{ await ev("for(const k of ['snow','clear','partly','cloudy']) sitOn[k]=false; sitOn.rain=true; return 1"); await sleep(400);
-  const box = id => `(()=>{ const r=document.querySelector('${id}').getBoundingClientRect(); return [r.left,r.right]; })()`;
-  await ev("agentMark('claude','ask'); return 1"); await sleep(1600);
-  const on = await ev(`return [${box("#wx")}, ${box("#agentMark")}, +(/translate\\((-?[\\d.]+)/.exec(wxEl.getAttribute('transform'))||[0,0])[1]]`);
-  check(on[2] > 60 && on[0][0] >= on[1][1] - 1, "weather: the cloud stands clear of the notification mark", JSON.stringify(on));
-  await ev("AM.until=0; renderCue(); return 1"); await sleep(1600);
-  const off = await ev("return Math.abs(+(/translate\\((-?[\\d.]+)/.exec(wxEl.getAttribute('transform'))||[0,0])[1])+''");
-  check(Math.abs(+off) < 12, "weather: the cloud comes back when the mark goes", String(off));
-  await ev("sitOn.rain=false; sitOn.clear=true; agentMark('claude','ask'); return 1"); await sleep(1200);   // (Codex: only the sun shows and doesn't overlap, so nothing moves)
-  const clear = await ev("return Math.abs(+(/translate\\((-?[\\d.]+)/.exec(wxEl.getAttribute('transform'))||[0,0])[1])+''");
-  check(Math.abs(+clear) < 12, "weather: a clear sky stays put under a mark", String(clear));
-  await ev("AM.until=0; sitOn.clear=false; renderCue(); return 1"); }
+{ const dx = () => ev("return Math.abs(+(/translate\\((-?[\\d.]+)/.exec(wxEl.getAttribute('transform'))||[0,0])[1])+''").then(Number);
+  const until = async (ok, ms = 4000) => { const t0 = Date.now(); let v = await dx(); while (!ok(v) && Date.now() - t0 < ms) { await sleep(100); v = await dx(); } return v; };
+  await ev("for(const k of ['snow','clear','partly','cloudy']) sitOn[k]=false; sitOn.rain=true; return 1"); await sleep(300);
+  await ev("agentMark('claude','ask'); return 1");
+  const out = await until(v => v > 80);
+  const on = await ev("const a=wxEl.getBoundingClientRect(), b=document.querySelector('#agentMark').getBoundingClientRect(); return [a.left, b.right]");
+  check(out > 80 && on[0] >= on[1] - 1, "weather: the cloud stands clear of the notification mark", JSON.stringify([out, on]));
+  await ev("AM.until=0; AM=null; renderCue(); return 1");
+  const back = await until(v => v < 12);
+  const another = await ev("return wxAside(performance.now())");   // (an ambient cue can legitimately appear in the test: then it rightly stays aside)
+  check(back < 12 || another, "weather: the cloud comes back when the mark goes", JSON.stringify([back, another]));
+  // (Codex: only the sun shows on a clear day and it doesn't overlap; the situation logic resets sitOn, so ask the rule directly)
+  const clear = await ev("sitOn.clear=true; AM={from:'claude',kind:'ask',t0:0,until:performance.now()+9000}; const r=wxAside(performance.now()); AM=null; sitOn.clear=false; return r");
+  check(clear === false, "weather: a clear sky stays put under a mark", String(clear));
+  await ev("sitOn.rain=false; renderCue(); return 1"); }
 
 check(exc.size === 0, "no page exceptions", [...exc].join(" ;; "));
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
