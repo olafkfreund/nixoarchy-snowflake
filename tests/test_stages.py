@@ -434,3 +434,11 @@ class FastPathTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PluginOnlyKindsTest(unittest.TestCase):
+    def test_the_agent_cannot_send_a_gauges_board(self):          # (#166 review: made-up readings dressed as system status)
+        g = {"v": 1, "kind": "gauges", "title": "System status", "hosts": [{"name": "p620", "meters": [{"label": "CPU", "pct": 1}]}]}
+        self.assertIsNotNone(S.validate(g))                          # a plugin's output
+        self.assertIsNone(S.validate(g, lambda pid: True))           # the agent's <<stage>> block
+

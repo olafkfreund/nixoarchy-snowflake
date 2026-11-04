@@ -2430,7 +2430,7 @@ function stageHide(toTab){
   sendRegion(true); setTimeout(()=>sendRegion(true),260);
 }
 function stageClose(){ if(stgState==='closed') return; stageHide(false); post('/api/stage/act',{act:'close'}).catch(()=>{}); }
-function stageRestore(){ if(stgState!=='tab'||!stg) return; stgState='open'; stgUse=stgQuiet=performance.now(); stgTab.classList.remove('on'); stgTab.inert=true; stgEl.inert=false; stgEl.setAttribute('aria-hidden','false'); stgSize(800);
+function stageRestore(){ if(stgState!=='tab'||!stg) return; stgState='open'; if(stg.kind==='gauges') termContrast(); stgUse=stgQuiet=performance.now(); stgTab.classList.remove('on'); stgTab.inert=true; stgEl.inert=false; stgEl.setAttribute('aria-hidden','false'); stgSize(800);
   stgTm.push(setTimeout(()=>{ if(!stgOpen()) return; stagePlace(); void stgEl.offsetWidth; stgEl.classList.add('on'); sendRegion(true); stagePost(true); },90)); clearInterval(stgTimer); stgTimer=setInterval(stageTick,1000); }
 function stageTick(){ const now=performance.now(), hov=stgEl.matches(':hover');
   if(hov) stgUse=now;

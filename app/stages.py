@@ -98,12 +98,17 @@ def _gauges_text(stage):
     return "\n".join(lines)
 
 
+PLUGIN_ONLY = ("gauges",)   # kinds only a stage plugin may return: never from the agent's own <<stage>> block (#166 review)
+
+
 def validate(obj, plugin_ok=None):
     """-> a clean stage dict built from known keys only, or None. kind "plugin" (the agent asks for a stage plugin; the
     server runs it, the page never sees it) passes only for an id plugin_ok() accepts: none when plugin_ok is not given."""
     if not isinstance(obj, dict) or obj.get("v") != 1:
         return None
     kind = obj.get("kind")
+    if kind in PLUGIN_ONLY and plugin_ok is not None:   # (plugin_ok is given only for the agent's block)
+        return None
     if kind == "plugin":
         pid = obj.get("id")
         return {"v": 1, "kind": "plugin", "id": pid} if isinstance(pid, str) and plugin_ok and plugin_ok(pid) else None
