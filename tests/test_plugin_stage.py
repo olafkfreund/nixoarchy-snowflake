@@ -756,15 +756,15 @@ class StageServerTest(_ServerEnv):
         with mock.patch.object(s, "PEERS", [{"name": "other"}]), mock.patch.dict(s.CFG, {"peers_on": True}), \
                 mock.patch.object(plugins, "run_stage", return_value=self.gauge()) as run, mock.patch.object(s.BUS, "pub") as pub:
             s.STAGES.set_visible(False)
-            s.peers._callback()                    # not on screen: nothing samples
+            s.peer_round_done()                    # not on screen: nothing samples
             self.assertEqual(run.call_count, 0)
             s.STAGES.set_visible(True)
-            s.peers._callback()
+            s.peer_round_done()
             self.assertEqual((run.call_count, pub.call_args.kwargs["t"]), (1, "stage_update"))
-            s.peers._callback()                    # the round started by that refresh does not loop
+            s.peer_round_done()                    # the round started by that refresh does not loop
             self.assertEqual(run.call_count, 1)
             s.STAGES.close()
-            s.peers._callback()
+            s.peer_round_done()
             self.assertEqual(run.call_count, 1)
 
     def test_peer_capability_and_configuration_state(self):
