@@ -479,6 +479,9 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   // with a hat the cloud is already left of the marks: +90 would put it on them (Codex, PR #44; LOOK.skin, because the situation logic resets sitOn)
   const hatted = await ev("const was=LOOK.skin; LOOK.skin='halo'; AM={from:'claude',kind:'ask',t0:0,until:performance.now()+9000}; await new Promise(r=>setTimeout(r,1500)); const dx=Number(wxEl.getAttribute('transform').match(/translate\\(([-\\d.]+)/)[1]); AM=null; LOOK.skin=was; return dx");
   check(hatted < 12, "weather: with a hat the cloud stays left of the marks", String(hatted));
+  // heavy rain's small extra clouds land on the marks once the sky has moved aside (Codex, PR #44), so they go while a mark is up
+  const extras = await ev("const skies=['snow','rain','clear','partly','cloudy'].map(k=>[k,sitOn[k]]), wasH=SIT.heavy, wasL=lowFx, wasOn=wxOn; skies.forEach(([k])=>sitOn[k]=k==='rain'); SIT.heavy=true; lowFx=false; const shown=on=>{ wxOn=on; wxStep(1,1); const op=+(WX.ex[0].getAttribute('opacity')||0), d=WX.ex[0].getAttribute('display'); return d!=='none'&&op>0; }; const a=shown(false), b=shown(true); skies.forEach(([k,v])=>sitOn[k]=v); SIT.heavy=wasH; lowFx=wasL; wxOn=wasOn; return [a,b]");
+  check(extras[0] === true && extras[1] === false, "weather: heavy rain's small clouds leave while a mark is up", JSON.stringify(extras));
   const clear = await ev("sitOn.clear=true; AM={from:'claude',kind:'ask',t0:0,until:performance.now()+9000}; const r=wxAside(performance.now()); AM=null; sitOn.clear=false; return r");
   check(clear === false, "weather: a clear sky stays put under a mark", String(clear));
   await ev("sitOn.rain=false; renderCue(); return 1"); }

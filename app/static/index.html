@@ -1570,10 +1570,10 @@ function wxStep(t,dt){
   if(document.body.classList.contains('bar')||document.body.classList.contains('hover')||document.body.classList.contains('calm')||document.body.classList.contains('goohide')) return;
   const kind=['snow','rain','clear','partly','cloudy'].find(k=>sitOn[k])||'', still=REDUCED.matches;
   const hat=wxHat(), slot=hat?'hat':'head', night=!SIT.day;
-  const key=[kind,slot,SIT.day,SIT.heavy,lowFx,sitOn.windy,SIT.lean,hat&&wxOn].join(':');
+  const key=[kind,slot,SIT.day,SIT.heavy,lowFx,sitOn.windy,SIT.lean,wxOn].join(':');
   if(still&&wxWasReduced&&key===wxReducedKey) return;
   wxWasReduced=still; wxReducedKey=key; t=typeof WXT==='number'?WXT:t;
-  const windy=sitOn.windy, dir=windy&&SIT.lean?-SIT.lean:1, extra=kind==='rain'&&SIT.heavy&&!lowFx&&!(hat&&wxOn);   // (with a hat the second small cloud sits over the marks, and nothing moves aside)
+  const windy=sitOn.windy, dir=windy&&SIT.lean?-SIT.lean:1, extra=kind==='rain'&&SIT.heavy&&!lowFx&&!wxOn;   // (a mark is up: the small extra clouds would land on it, with or without a hat)
   const scale=hat?.95:.92, cloudY=hat?-106:-108;
   const cloudX=(phase=0,speed=1,L=63.5,R=56.5,s=scale)=>{
     if(still) return {x:hat?-76:0,fade:1};
