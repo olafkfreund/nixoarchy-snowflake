@@ -3228,6 +3228,74 @@ def eleven_why():
     return ""
 
 
+_eleven_sticky = {"reply": None, "kind": ""}
+_eleven_noted = set()
+
+
+def clear_eleven_error(reply=None):
+    with Speaker.cv:
+        if reply is None or reply != _eleven_sticky["reply"]:
+            _eleven_sticky.update(reply=reply, kind="")
+
+
+def speak_sentence(text, gen, reply=None, engine=None, local=False):
+    """Make one sentence for either playback path; a stale cloud generation cannot send."""
+    clear_eleven_error(reply)
+    sending = object()
+    with Speaker.cv:
+        if gen != Speaker.gen and engine == "elevenlabs":
+            return None
+        if gen != Speaker.gen:
+            local = True
+            engine = tts_engine(local=True) or engine
+        elif engine is None:
+            engine = tts_engine(local=local)
+        if engine == "elevenlabs" and (CFG.get("eleven_on") is not True or eleven_why()):
+            engine = tts_engine(local=True)
+        if engine == "elevenlabs" and _eleven_sticky["kind"]:
+            engine = tts_engine(local=True)
+        if engine == "elevenlabs":
+            Speaker.sending = sending
+    if engine != "elevenlabs":
+        local = local or tts_mode() == "elevenlabs"
+        engine = engine or tts_engine(local=local)
+        return (*synth(text, engine=engine, local=local), engine)
+    n = len(text)
+    reserved = sent = ok = False
+    try:
+        eleven.reserve(n, eleven_cap())
+        reserved = True
+        sent = True
+        audio = eleven.speak(text, CFG["eleven_voice"])
+        ok = True
+        with Speaker.cv:
+            if gen != Speaker.gen:
+                return None
+        return audio, 1.0, "elevenlabs"
+    except eleven.ElevenError as exc:
+        if exc.status is None and exc.kind in ("key", "bad_voice"):
+            sent = False
+        if exc.kind in ("auth", "cap", "bad_voice"):
+            with Speaker.cv:
+                _eleven_sticky.update(reply=reply, kind=exc.kind)
+        day = time.strftime("%Y-%m-%d")
+        with Speaker.cv:
+            first_note = (day, exc.kind) not in _eleven_noted
+            _eleven_noted.add((day, exc.kind))
+        if first_note:
+            BUS.pub(t="note", text=str(exc) if exc.kind == "bad_voice" else f"ElevenLabs {exc.kind}; using the fallback voice.")
+        with Speaker.cv:
+            if gen != Speaker.gen:
+                return None
+        return (*synth(text, local=True), tts_engine(local=True))
+    finally:
+        if reserved:
+            eleven.settle(n, ok, sent)
+        with Speaker.cv:
+            if Speaker.sending is sending:
+                Speaker.sending = None
+
+
 def tts_engine(local=False):
     mode = tts_mode(local)
     if mode == "off":
@@ -3583,9 +3651,14 @@ class Speaker:
     It always knows when each sentence will start playing and tells the page, which times the captions and his face
     from that. If it ever does run dry, it counts it (see `nixi-companion stress`) and shifts its clock so sync stays right."""
     cv = threading.Condition()
-    todo = []            # (gen, id, text) waiting to be made
-    ready = []           # (gen, id, text, pcm, prate, words, level) waiting to be played
+    todo = []            # (gen, id, text, follow, engine, reply)
+    ready = []           # audio tuple, then engine and reply
     making = False
+    making_item = None
+    sending = None
+    current_engine = None
+    current_sid = None
+    queued_at = {}
     gen = 0
     epoch = 0            # the page's "he was cut off" count: sentences it sent before the cut-off are never played
     proc = None
@@ -3617,11 +3690,15 @@ class Speaker:
                 t.start()
 
     @classmethod
-    def say(cls, text, sid, epoch=None, follow=True):
+    def say(cls, text, sid, epoch=None, follow=True, reply=None, local=False):
         with cls.cv:
             if epoch is not None and epoch < cls.epoch:      # sent before you cut him off, arrived after
                 return
-            cls.todo.append((cls.gen, sid, text, follow))
+            clear = reply is not None and reply != _eleven_sticky["reply"]
+            if clear:
+                _eleven_sticky.update(reply=reply, kind="")
+            cls.todo.append((cls.gen, sid, text, follow, tts_engine(local=local), reply, local))
+            cls.queued_at[sid] = time.monotonic()
             if all(isinstance(x[1], int) for x in cls.todo):     # sentences can arrive out of order: play them in order
                 cls.todo.sort(key=lambda x: (x[0], x[1]))
             cls.cv.notify_all()
@@ -3639,6 +3716,8 @@ class Speaker:
             cls.gen += 1
             cls.todo.clear()
             cls.ready.clear()
+            cls.queued_at.clear()
+            cls.current_engine = cls.current_sid = None
             p, cls.proc = cls.proc, None
             cls.written, cls.t0 = 0, 0.0
             cls.cv.notify_all()
@@ -3650,6 +3729,40 @@ class Speaker:
                 pass
         Wake.hush()
 
+    @classmethod
+    def cut_cloud(cls, gen=None):
+        with cls.cv:
+            cls.gen = max(cls.gen + 1, gen or 0)
+            dropped = [x[1] for x in cls.todo if x[4] == "elevenlabs"]
+            dropped += [x[1] for x in cls.ready if len(x) > 9 and x[9] == "elevenlabs"]
+            cls.todo = [(cls.gen, x[1], x[2], x[3], tts_engine(local=True) or x[4], x[5], True)
+                        for x in cls.todo if x[4] != "elevenlabs"]
+            cls.todo[:0] = [(cls.gen, x[1], x[2], x[8], tts_engine(local=True) or x[9], x[10], True)
+                            for x in cls.ready if len(x) > 9 and x[9] != "elevenlabs"]
+            cls.ready = [(cls.gen, *x[1:]) for x in cls.ready if len(x) <= 9]
+            if cls.making_item and cls.making_item[4] == "elevenlabs":
+                dropped.append(cls.making_item[1])
+            cloud = cls.current_engine == "elevenlabs"
+            p = cls.proc if cloud else None
+            if cloud:
+                dropped.append(cls.current_sid)
+                cls.proc = cls.current_engine = cls.current_sid = None
+                cls.written, cls.t0 = 0, 0.0
+                FLOOR.drop()
+            cls.cv.notify_all()
+        if p:
+            try:
+                p.kill()
+            except OSError:
+                pass
+        if cloud:
+            Wake.hush()
+        for sid in dropped:
+            cls.queued_at.pop(sid, None)
+            BUS.pub(t="spk_done", id=sid)
+        BUS.pub(t="tts_gen", gen=cls.gen)
+        return cls.gen
+
     # ---- worker 1: make the audio ahead of time
     @classmethod
     def _maker(cls):
@@ -3657,13 +3770,15 @@ class Speaker:
             with cls.cv:
                 while not cls.todo or len(cls.ready) >= 3:
                     cls.cv.wait()
-                g, sid, text, follow = cls.todo.pop(0)
+                g, sid, text, follow, engine, reply, local = cls.todo.pop(0)
                 cls.making = True
+                cls.making_item = (g, sid, text, follow, engine, reply, local)
             try:
-                if g != cls.gen:
-                    continue
                 t = time.monotonic()
-                wav, rate = synth(text)
+                made = speak_sentence(text, g, reply, engine, local)
+                if made is None:
+                    continue
+                wav, rate, engine = made
                 wav, times, level = tidy_full(wav, text)
                 with wave.open(io.BytesIO(wav)) as w:
                     sr, pcm = w.getframerate(), w.readframes(w.getnframes())
@@ -3676,8 +3791,8 @@ class Speaker:
                     st["worst_rtf"] = max(st.get("worst_rtf", 0), round(took / dur, 3))
                 words = [[round(a * sr / prate, 3), round(b * sr / prate, 3)] for a, b in times] if times else None
                 with cls.cv:
-                    if g == cls.gen:
-                        cls.ready.append((g, sid, text, pcm, prate, words, level, round(40 * sr / prate, 2), follow))
+                    if g == cls.gen or engine != "elevenlabs":
+                        cls.ready.append((cls.gen, sid, text, pcm, prate, words, level, round(40 * sr / prate, 2), follow, engine, reply))
                         cls.cv.notify_all()
             except Exception as e:  # noqa: BLE001
                 print(f"[nixi] speech: {e}", file=sys.stderr)
@@ -3685,6 +3800,7 @@ class Speaker:
             finally:
                 with cls.cv:
                     cls.making = False
+                    cls.making_item = None
                     cls.cv.notify_all()
 
     # ---- worker 2: play it
@@ -3708,7 +3824,7 @@ class Speaker:
         step = max(2, int(cls.prate * 0.02)) * 2
         for i in range(0, len(data), step):
             while True:
-                if g != cls.gen:
+                if g != cls.gen and cls.current_engine in (None, "elevenlabs"):
                     return False
                 ahead = cls.written / cls.prate - (time.monotonic() - cls.t0)
                 if ahead <= cls.LEAD:
@@ -3752,16 +3868,20 @@ class Speaker:
                         cls.cv.wait(timeout=max(0.0, end - time.monotonic()))
                         if not cls.ready and not cls.todo and not cls.making and g == cls.gen and time.monotonic() >= end - 0.01:
                             BUS.pub(t="spk_done")
+                            cls.current_engine = cls.current_sid = None
                             FLOOR.release("speaker", float(CFG.get("follow_up") or 0))
                             cls.written, cls.t0 = 0, time.monotonic()
                         continue
                     cls.cv.wait()
-                g, sid, text, pcm, prate, words, level, lstep, follow = cls.ready.pop(0)
+                item = cls.ready.pop(0)
+                g, sid, text, pcm, prate, words, level, lstep, follow = item[:9]
+                engine = item[9] if len(item) > 9 else "local"
+                cls.current_engine, cls.current_sid = engine, sid
                 cls.cv.notify_all()
             # The floor is taken before the player starts and the clock is read (the wait can be long).
-            if not FLOOR.hold("speaker", cancelled=lambda: g != cls.gen):
+            if not FLOOR.hold("speaker", cancelled=lambda: g != cls.gen and cls.current_engine in (None, "elevenlabs")):
                 continue
-            if g != cls.gen:
+            if g != cls.gen and cls.current_engine in (None, "elevenlabs"):
                 cls._release_if_idle()
                 continue
             try:
@@ -3772,16 +3892,19 @@ class Speaker:
                 cls._release_if_idle()
                 continue
             now = time.monotonic()
+            queued = cls.queued_at.pop(sid, None)
+            if queued is not None:
+                cls.stats["first_sound_ms"] = round((now - queued + cls.LAT) * 1000)
             if cls.written / cls.prate < now - cls.t0:           # it had gone quiet: restart the clock
                 cls.t0, cls.written, cls.filled = now, 0, False
             start = cls.t0 + cls.written / cls.prate
             dur = len(pcm) / 2 / prate
-            if g == cls.gen:                                     # (not if he was cut off meanwhile)
+            if g == cls.gen or cls.current_engine not in (None, "elevenlabs"):
                 Wake.talking_until(start + dur + 0.45, follow)
             cls.stats["sentences"] = cls.stats.get("sentences", 0) + 1
             cls.stats["audio_s"] = round(cls.stats.get("audio_s", 0) + dur, 2)
             BUS.pub(t="spk", id=sid, at=round((start - now + cls.LAT) * 1000), dur=round(dur, 3), words=words,
-                    level=level, step=lstep)
+                    level=level, step=lstep, engine=engine)
             if not cls._write(pcm, g):
                 cls._release_if_idle()
                 continue
@@ -3911,7 +4034,7 @@ def stress_voice(silent=False):
         Speaker.reset_stats()
         print(f"\n▶ {name}…", flush=True)
         for i, line in enumerate(STRESS_LINES):
-            Speaker.say(line, n * 100 + i + 1)
+            Speaker.say(line, n * 100 + i + 1, local=True)
         t = time.monotonic()
         time.sleep(0.5)
         while not Speaker.idle() and time.monotonic() - t < 180:
@@ -5200,6 +5323,7 @@ def diagnostics():
     add("voice engine", f"{tts_engine() or 'none'} (voice: {CFG.get('voice')})")
     add("elevenlabs", f"{'on' if CFG.get('eleven_on') is True else 'off'}, key {'present' if eleven.has_key() else 'absent'}, "
                       f"used {eleven.today()['used']}/{eleven_cap()}")
+    add("tts first-sound ms", Speaker.stats.get("first_sound_ms", "—"))
     if _whisper:
         add("speech model", f"{_whisper._nixi_name} on {_whisper._nixi_dev} ({_whisper._nixi_ct})")
     else:
@@ -5312,7 +5436,7 @@ def state_info():
         "presence": "bar" if CFG.get("presence") == "bar" else "orb",
         "bar_edge": CFG.get("bar_edge") if CFG.get("bar_edge") in ("top", "bottom", "left", "right") else "top",
         "cwd": ST.cwd, "cwd_display": pretty_path(ST.cwd), "session": bool(ST.session),
-        "tts": tts_engine(), "tts_choice": CFG["tts"], "tts_fallback": CFG.get("tts_fallback", "auto"), "engines": engine_list(),
+        "tts": tts_engine(), "tts_choice": CFG["tts"], "tts_fallback": CFG.get("tts_fallback", "auto"), "gen": Speaker.gen, "engines": engine_list(),
         "eleven": {"key": eleven.has_key(), "on": CFG.get("eleven_on") is True, "voice": CFG.get("eleven_voice") or "",
                    "used_today": eleven.today()["used"], "cap": eleven_cap(), "voices": evoices, "error": eerr},
         "mic": bool(mic_cmds()), "stt": "ready" if _whisper else (_whisper_err or "loading"),
@@ -5422,6 +5546,19 @@ class Handler(BaseHTTPRequestHandler):
             if not secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
                 return self._json({"error": "forbidden"}, 403)
             return self._json(plugins_api())
+        if p.startswith("/api/eleven/preview/"):
+            if not secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
+                return self._json({"error": "forbidden"}, 403)
+            try:
+                audio = eleven.preview(p.rsplit("/", 1)[-1])
+            except eleven.ElevenError as exc:
+                return self._json({"error": str(exc)}, 404 if exc.kind == "bad_voice" else 502)
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/wav" if audio.startswith(b"RIFF") else "audio/mpeg")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Length", str(len(audio)))
+            self.end_headers()
+            return self.wfile.write(audio)
         if p in ("/api/location", "/api/location/suggest"):      # the Location settings; the window's token only
             if not secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
                 return self._json({"error": "forbidden"}, 403)
@@ -5478,12 +5615,20 @@ class Handler(BaseHTTPRequestHandler):
                 b = json.loads(self._body() or b"{}")
                 return self._json(stage_act(str(b.get("token") or ""), str(b.get("act") or "")))
             if p == "/api/tts":
-                text = speakable(json.loads(self._body() or b"{}").get("text", ""), board_up())
-                if not text or not tts_engine():
+                b = json.loads(self._body() or b"{}")
+                text = speakable(b.get("text", ""), board_up())
+                if not text or (not tts_engine() and tts_mode() != "elevenlabs"):
                     self.send_response(204)
                     self.end_headers()
                     return None
-                audio, rate = synth(text)
+                with Speaker.cv:
+                    gen, engine = Speaker.gen, tts_engine()
+                made = speak_sentence(text, gen, b.get("reply"), engine)
+                if made is None:
+                    self.send_response(204)
+                    self.end_headers()
+                    return None
+                audio, rate, engine = made
                 audio, words = tidy_and_time(audio, text)
                 pause = 0.3 if re.search(r"[.!?]['\")]*$", text) else 0.14 if re.search(r"[,;:—–]$", text) else 0.06
                 try:
@@ -5494,10 +5639,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", "audio/wav")
                 self.send_header("X-Nixi-Rate", f"{rate:.3f}")
+                self.send_header("X-Nixi-Engine", engine or "none")
                 self.send_header("X-Nixi-Pause", f"{pause:.2f}")
                 if words:
                     self.send_header("X-Nixi-Words", json.dumps(words, separators=(",", ":")))
-                self.send_header("Access-Control-Expose-Headers", "X-Nixi-Rate, X-Nixi-Pause, X-Nixi-Words")
+                self.send_header("Access-Control-Expose-Headers", "X-Nixi-Rate, X-Nixi-Pause, X-Nixi-Words, X-Nixi-Engine")
                 self.send_header("Content-Length", str(len(audio)))
                 self.end_headers()
                 self.wfile.write(audio)
@@ -5511,10 +5657,10 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/say":                       # speak this (played by the server, see Speaker)
                 b = json.loads(self._body() or b"{}")
                 text = speakable(b.get("text", ""), board_up())
-                if not text or not tts_engine() or (Ambient.meeting and b.get("follow", True) is False):   # (no unasked speech in a meeting)
+                if not text or (not tts_engine() and tts_mode() != "elevenlabs") or (Ambient.meeting and b.get("follow", True) is False):   # (no unasked speech in a meeting)
                     BUS.pub(t="spk_skip", id=b.get("id"))
                 else:
-                    Speaker.say(text, b.get("id"), b.get("epoch"), b.get("follow", True) is not False)
+                    Speaker.say(text, b.get("id"), b.get("epoch"), b.get("follow", True) is not False, b.get("reply"))
                 return self._json({"ok": True})
             if p == "/api/say/stop":
                 Speaker.stop(json.loads(self._body() or b"{}").get("epoch"))
@@ -5651,7 +5797,10 @@ class Handler(BaseHTTPRequestHandler):
                     upd["quick_actions"] = qa
                 if upd:
                     peers_changed = "peers_on" in upd and upd["peers_on"] != (CFG.get("peers_on") is True)
+                    cut_cloud = ("tts" in upd and upd["tts"] != CFG.get("tts") and "elevenlabs" in (upd["tts"], CFG.get("tts"))) or (upd.get("eleven_on") is False and CFG.get("eleven_on") is True)
                     save_config(**upd)
+                    if cut_cloud:
+                        Speaker.cut_cloud()
                     if peers_changed:
                         global _peer_followup_round
                         _peer_followup_round = False
@@ -5979,6 +6128,7 @@ class Handler(BaseHTTPRequestHandler):
             prompt = FOLLOW_NOTE + said
         if not prompt:
             return self._json({"error": "empty prompt"}, 400)
+        clear_eleven_error()
         if BRIDGED and said in ("/mechanic", "/guide"):        # trust is nixi's: pass it through, no agent turn
             if not ST.lock.acquire(timeout=0):                 # the turn's reader owns the bridge's stdout
                 return self._json({"error": "still working on the last one"}, 409)
