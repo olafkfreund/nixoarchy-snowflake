@@ -83,6 +83,12 @@ class VoiceSettingsTest(_ServerEnv):
         self.assertNotIn(KEY, json.dumps(st))
         self.assertNotIn(KEY, self.server.diagnostics() if hasattr(self.server, "diagnostics") else "")
 
+    def test_unavailable_cloud_reports_the_fallback_as_speaking(self):
+        s = self.server
+        s.CFG.update(tts="elevenlabs", eleven_on=False, tts_fallback="espeak")
+        with mock.patch.object(s.shutil, "which", return_value="/bin/espeak-ng"):
+            self.assertEqual(s.state_info()["tts"], "espeak")
+
     def test_robot_and_espeak_readiness(self):
         s = self.server
         def ready(mode):

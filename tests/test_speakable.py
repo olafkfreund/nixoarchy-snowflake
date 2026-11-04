@@ -22,6 +22,10 @@ class _ServerEnv(unittest.TestCase):
         sys.path.insert(0, str(REPO_ROOT / "app"))
         import server
         cls.server = server
+        # server.py fixes its config/data paths at import. If anything imported it earlier under the real HOME, every
+        # save_config() in the tests would write the user's real config.json (it happened: #176). Refuse loudly.
+        if not str(server.CONF_PATH).startswith(tempfile.gettempdir()):
+            raise RuntimeError(f"server.py was imported outside a throwaway HOME; CONF_PATH={server.CONF_PATH}")
 
     @classmethod
     def tearDownClass(cls):

@@ -1,11 +1,14 @@
 import io
+import http.server
 import json
 import os
 import sys
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
+import urllib.request
 import wave
 from email.message import Message
 from pathlib import Path
@@ -15,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 import eleven
 
 VOICE = "abcdefghij123"
-KEY = "known-fake-key"
+KEY = "known-fake-key-1234"
 
 
 class Response:
@@ -50,7 +53,7 @@ class ElevenTest(unittest.TestCase):
     def restore(self):
         eleven.DATA_DIR, eleven.CFG, eleven.urlopen = self.old_dir, self.old_cfg, self.old_open
 
-    def voice_cache(self, preview_url="https://storage.googleapis.com:443/audio.mp3"):
+    def voice_cache(self, preview_url="https://storage.googleapis.com/audio.mp3"):
         eleven._write(eleven.DATA_DIR / "eleven-voices.json", [{"id": VOICE, "preview_url": preview_url}])
 
     def test_key_symlink_and_rejections(self):
@@ -88,6 +91,54 @@ class ElevenTest(unittest.TestCase):
             path.mkdir()
             self.assertFalse(eleven.has_key())
 
+    def test_multiline_key_is_rejected_without_disclosure(self):
+        bad = "known-fake-key-1234\nsecond-secret-line-1234"
+        path = Path(self.tmp.name) / "key"
+        path.write_text(bad)
+        eleven.CFG["eleven_key_file"] = str(path)
+        with mock.patch.dict(os.environ, {"CREDENTIALS_DIRECTORY": self.tmp.name}):
+            with self.assertRaises(eleven.ElevenError) as got:
+                eleven._key()
+        self.assertEqual(got.exception.kind, "key")
+        self.assertNotIn(bad, str(got.exception))
+        self.assertNotIn("second-secret-line", str(got.exception))
+
+    def test_opener_value_error_is_redacted(self):
+        req = urllib.request.Request("https://api.elevenlabs.io/v1/voices")
+        with mock.patch.object(eleven, "_open", side_effect=ValueError("Invalid header value b'known-fake-key-1234'")):
+            with self.assertRaises(eleven.ElevenError) as got:
+                eleven._request(req, time.monotonic() + 1)
+        self.assertEqual(got.exception.kind, "network")
+        self.assertNotIn(KEY, str(got.exception))
+
+    def test_trickling_body_obeys_deadline(self):
+        class Trickle(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                try:
+                    for _ in range(20):
+                        self.wfile.write(b"x" * 100)
+                        self.wfile.flush()
+                        time.sleep(.5)
+                except BrokenPipeError:
+                    pass
+            def log_message(self, *args):
+                pass
+        try:
+            srv = http.server.HTTPServer(("127.0.0.1", 0), Trickle)
+        except PermissionError:
+            self.skipTest("sandbox forbids loopback sockets")
+        self.addCleanup(srv.server_close)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        start = time.monotonic()
+        with urllib.request.urlopen(f"http://127.0.0.1:{srv.server_port}/", timeout=1.5) as response:
+            with self.assertRaises(eleven.ElevenError) as got:
+                eleven._read(response, start + 4)
+        self.assertEqual(got.exception.kind, "network")
+        self.assertLess(time.monotonic() - start, 6)
+
     def test_voices_cache_and_expiry(self):
         calls = []
         def fake(req, timeout):
@@ -118,8 +169,7 @@ class ElevenTest(unittest.TestCase):
         with wave.open(io.BytesIO(wav)) as audio:
             self.assertEqual((audio.getframerate(), audio.getnchannels(), audio.getsampwidth()), (22050, 1, 2))
             self.assertEqual(audio.getnframes(), 4410)
-        from server import tidy_full
-        self.assertIsNotNone(tidy_full(wav, "Hello.")[1])
+        self.wav = wav                                   # (tidy_full timing is checked in ElevenWavTimingTest, under a throwaway HOME)
         req, timeout = seen[0]
         self.assertIn("output_format=pcm_22050", req.full_url)
         self.assertEqual(json.loads(req.data)["model_id"], "eleven_flash_v2_5")
@@ -210,12 +260,18 @@ class ElevenTest(unittest.TestCase):
         eleven.settle(5, False, False)
         self.assertEqual(eleven.today()["reserved"], 0)
 
+    def test_reserve_recovers_from_nonobject_usage(self):
+        eleven._write(eleven.DATA_DIR / "eleven-usage.json", [])
+        self.assertEqual(eleven.reserve(5, 10), 5)
+        self.assertEqual(eleven.today()["reserved"], 5)
+
     def test_preview_rejections_and_success(self):
         self.voice_cache()
         eleven.urlopen = lambda req, timeout: Response(b"MP3", content_type="audio/mpeg")
         self.assertEqual(eleven.preview(VOICE), b"MP3")
         for url in ("http://storage.googleapis.com:443/a", "https://127.0.0.1:443/a",
-                    "https://storage.googleapis.com.evil:443/a", "https://storage.googleapis.com/a"):
+                    "https://storage.googleapis.com.evil:443/a", "https://storage.googleapis.com:444/a",
+                    "https://storage.googleapis.com:bad/a"):
             self.voice_cache(url)
             with self.assertRaises(eleven.ElevenError):
                 eleven.preview(VOICE)
@@ -232,3 +288,15 @@ class ElevenTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+from test_speakable import _ServerEnv   # noqa: E402  (server.py must only ever be imported under a throwaway HOME)
+
+
+class ElevenWavTimingTest(_ServerEnv):
+    def test_speak_wav_is_timed_by_tidy_full(self):
+        import wave as _w
+        out = io.BytesIO()
+        with _w.open(out, "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050); w.writeframes(b"\x88\x13" * 4410)
+        self.assertIsNotNone(self.server.tidy_full(out.getvalue(), "Hello.")[1])

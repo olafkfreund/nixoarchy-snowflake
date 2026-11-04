@@ -38,7 +38,7 @@ VOICES = json.dumps({
             "description": "Calm narrator",
             "labels": {"accent": "american"},
             "verified_languages": [{"language": "en"}],
-            "preview_url": "https://storage.googleapis.com:443/eleven-public-prod/rachel.wav",
+            "preview_url": "https://storage.googleapis.com/eleven-public-prod/rachel.wav",
         },
         {
             "voice_id": "AZnzlk1XvdvUeBnXmlld",
@@ -47,7 +47,7 @@ VOICES = json.dumps({
             "description": "<script>window.__pwn=1</script>",
             "labels": {"accent": "british"},
             "verified_languages": [{"language": "en"}],
-            "preview_url": "https://storage.googleapis.com:443/eleven-public-prod/evil.wav",
+            "preview_url": "https://storage.googleapis.com/eleven-public-prod/evil.wav",
         },
     ]
 }).encode()
@@ -108,7 +108,7 @@ class VoiceFit(unittest.TestCase):
         creds = home / "creds"
         creds.mkdir(mode=0o700, parents=True, exist_ok=True)
         key_file = creds / "api-elevenlabs"
-        key_file.write_text("xi-test-key\n")
+        key_file.write_text("xi-test-key-0123456789\n")   # (a token: _key refuses anything else, #176 review)
         os.chmod(key_file, 0o600)
         env = dict(
             os.environ,

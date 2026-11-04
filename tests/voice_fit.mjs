@@ -61,6 +61,7 @@ check(init.elVis, "ElevenLabs section not visible before engine chosen");
 check(init.orderOk, "notice and confirm must precede the on/off switch in DOM");
 check(init.noticeTxt === "What he says out loud is sent to ElevenLabs. That can include anything in his answers.", "notice text mismatch", init.noticeTxt);
 check(init.offTxt === "Text already sent may still count on your ElevenLabs account.", "off note text mismatch", init.offTxt);
+check(init.keyTxt.includes("Nixi reads the key from /run/agenix/api-elevenlabs (an agenix secret).") && !init.keyTxt.includes("~/.config/nixi/"), "key hint points at a refused path", init.keyTxt);
 const elChip0 = init.chips.find(c => c.id === "elevenlabs");
 check(elChip0 && elChip0.disabled && /Switch it on|ElevenLabs/i.test(elChip0.reason), "ElevenLabs chip not disabled with reason initially", JSON.stringify(elChip0));
 check(init.chips.map(c => c.id).join(",") === "auto,kokoro,piper,espeak,elevenlabs,off", "engine chip ids", init.chips.map(c => c.id).join(","));
@@ -119,11 +120,14 @@ const prev = await ev(`
   const beforeVoice = info.eleven?.voice || '';
   const beforeUsed = info.eleven?.used_today || 0;
   const btn = document.querySelector('#elevenVoices button[data-eprev="21m00Tcm4TlvDq8ikWAM"]');
+  const createBlobUrl=URL.createObjectURL; let blobUrl='';
+  URL.createObjectURL=(...args)=>{ blobUrl=createBlobUrl(...args); return blobUrl; };
   btn.click();
   await new Promise(r => setTimeout(r, 350));
+  URL.createObjectURL=createBlobUrl;
   await refresh();
   return {
-    blobUrl: window.__lastPreviewUrl || btn.dataset.blobUrl || '',
+    blobUrl,
     afterVoice: info.eleven?.voice || '',
     afterUsed: info.eleven?.used_today || 0,
     beforeVoice, beforeUsed,
@@ -219,8 +223,8 @@ const genTest = await ev(`
     const g0 = ttsGen;
     let resolveSlow;
     const slowP = new Promise(r => { resolveSlow = r; });
-    q.push({ cap: 'holding', fresh: true, tg: g0, p: slowP });
-    q.push({ cap: 'stale decoded', fresh: false, tg: g0, p: Promise.resolve({ b: {}, rate: 1, pause: 0.08, words: null, engine: 'elevenlabs', tg: g0 }) });
+    q.push({ cap: 'holding', fresh: true, tg: g0, engine: 'elevenlabs', p: slowP });
+    q.push({ cap: 'stale decoded', fresh: false, tg: g0, engine: 'elevenlabs', p: Promise.resolve({ b: {}, rate: 1, pause: 0.08, words: null, engine: 'elevenlabs', tg: g0 }) });
     const beforeQ = q.length;
     onEvent({ t: 'tts_gen', gen: g0 + 5 });
     const afterQ = q.length;
@@ -236,6 +240,40 @@ const ttsCall = genTest.calls.find(c => c.u === "/api/tts");
 check(sayCall && typeof sayCall.body.reply === "string" && sayCall.body.reply.length > 0, "/api/say missing reply id", JSON.stringify(sayCall));
 check(ttsCall && typeof ttsCall.body.reply === "string" && ttsCall.body.reply.length > 0, "/api/tts missing reply id", JSON.stringify(ttsCall));
 check(genTest.beforeQ === 2 && genTest.afterQ === 0 && genTest.newTtsGen === genTest.expectedGen, "stale queued/decoded clips not dropped on tts_gen", JSON.stringify(genTest));
+
+const localCut = await ev(`
+  const g0=ttsGen; q.push({tg:g0,engine:'espeak',p:Promise.resolve(null)});
+  cutTtsGen(g0+1);
+  const kept=q.some(x=>x.engine==='espeak'); q.length=0;
+  return kept;
+`);
+check(localCut, "tts_gen dropped a local clip");
+
+const pumpRace = await ev(`
+  const oldFloor=floorPage; floorPage=async()=>true;
+  try {
+    q.length=0; pumpGen=-1;
+    let finishOld, finishNew;
+    const old={tg:ttsGen,engine:'elevenlabs',p:new Promise(r=>finishOld=r)};
+    q.push(old); pump();
+    await new Promise(r=>setTimeout(r,20));
+    cutTtsGen(ttsGen+1);
+    const next={tg:ttsGen,engine:'espeak',p:new Promise(r=>finishNew=r)};
+    q.push(next);
+    finishOld(null);
+    await new Promise(r=>setTimeout(r,20));
+    const kept=q.includes(next);
+    finishNew(null); q.length=0;
+    return kept;
+  } finally { floorPage=oldFloor; }
+`);
+check(pumpRace, "pump removed the new sentence after its awaited cloud item was cut");
+
+const confirmOff = await ev(`
+  info.eleven.on=false; renderSettings();
+  return !document.getElementById('elevenConfirm').checked;
+`);
+check(confirmOff, "turning ElevenLabs off left confirm checked");
 
 // 8. spk_done with an id removes that item from spkMap (when cut_cloud drops queued cloud items).
 const cutMap = await ev(`

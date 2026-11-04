@@ -1879,9 +1879,9 @@ function setSpkEngine(eng){
 function cutTtsGen(g){
   if(typeof g!=='number'||g<=ttsGen) return;
   ttsGen=g;
-  for(let i=q.length-1;i>=0;i--) if(q[i].tg<ttsGen){ const it=q.splice(i,1)[0]; if(it&&it.cap) karaNow(it.cap,it.fresh,true); }
-  if(curIt&&curIt.tg<ttsGen){ if(curIt.cap){ karaNow(curIt.cap,curIt.fresh,true); curIt.cap=''; } }
-  for(const x of [...srcs]) if(x._tg<ttsGen){ try{ x.stop(); }catch(e){} srcs=srcs.filter(s=>s!==x); }
+  for(let i=q.length-1;i>=0;i--) if(q[i].tg<ttsGen&&q[i].engine==='elevenlabs'){ const it=q.splice(i,1)[0]; if(it&&it.cap){ karaNow(it.cap,it.fresh,true); it.cap=''; } }
+  if(curIt&&curIt.tg<ttsGen&&curIt.engine==='elevenlabs'){ if(curIt.cap){ karaNow(curIt.cap,curIt.fresh,true); curIt.cap=''; } }
+  for(const x of [...srcs]) if(x._tg<ttsGen&&x._engine==='elevenlabs'){ try{ x.stop(); }catch(e){} srcs=srcs.filter(s=>s!==x); }
   if(!srcs.length){ nextAt=0; setSpkEngine(''); quietCheck(); }
 }
 function ac(){ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==='suspended') actx.resume(); return actx; }
@@ -1899,11 +1899,13 @@ function enqueue(text,o={}){
     sayChain=sayChain.then(()=>ep===sayEpoch?post('/api/say',{text,id,epoch:ep,follow:o.follow,reply}):null).catch(()=>{ const it=spkMap.get(id); spkMap.delete(id); if(it&&it.cap) karaNow(it.cap,it.fresh); quietNative(); });   // one after another: keeps them in order
     return; }
   lastFollow=o.follow!==false;   // what the page tells the server when he stops (#133)
-  const g=gen, tg=ttsGen; q.push({cap:o.cap?(o.cap===true?text:o.cap):'',fresh:!!o.fresh,tg,
-    p:post('/api/tts',{text,reply}).then(async r=>{ if(r.status!==200||g!==gen||tg<ttsGen) return null;
+  const g=gen, tg=ttsGen, it={cap:o.cap?(o.cap===true?text:o.cap):'',fresh:!!o.fresh,tg,engine:''};
+  it.p=post('/api/tts',{text,reply}).then(async r=>{ if(r.status!==200||g!==gen) return null;
       const rate=+(r.headers.get('X-Nixi-Rate')||1), pause=+(r.headers.get('X-Nixi-Pause')||.08), engine=r.headers.get('X-Nixi-Engine')||'';
+      it.engine=engine;
       let words=null; try{ words=JSON.parse(r.headers.get('X-Nixi-Words')||'null'); }catch(e){}
-      const b=await ac().decodeAudioData(await r.arrayBuffer()); return g===gen&&tg>=ttsGen?{b,rate,pause,words,engine,tg}:null; }).catch(()=>null).then(x=>g===gen&&tg>=ttsGen?x:null)});
+      const b=await ac().decodeAudioData(await r.arrayBuffer()); return g===gen?{b,rate,pause,words,engine,tg}:null; }).catch(()=>null);
+  q.push(it);
   pump();
 }
 /* karaoke captions: each spoken sentence's words are timed across its audio (longer words and pauses after
@@ -2027,8 +2029,8 @@ async function pump(){
   if(!playing){ playing=true; speaking(true); }
   await floorPage(true); if(g!==gen) return;   // the server answers once the other voice is done
   while(q.length&&g===gen){
-    const it=curIt=q[0], item=await it.p; if(g!==gen) break; q.shift(); curIt=null;
-    if(!item||it.tg<ttsGen||item.tg<ttsGen){ if(it.cap) karaNow(it.cap,it.fresh); continue; }           // no audio for this one: just show it
+    const it=curIt=q[0], item=await it.p; if(g!==gen) break; const at=q.indexOf(it); if(at>=0) q.splice(at,1); curIt=null;
+    if(!item||(it.tg<ttsGen&&item.engine==='elevenlabs')){ if(it.cap) karaNow(it.cap,it.fresh); continue; }           // no audio for this one: just show it
     const a=ac(); if(!spkAn){ spkAn=a.createAnalyser(); spkAn.fftSize=1024; spkAn.connect(a.destination); }
     const src=a.createBufferSource(), gn=a.createGain(), r=item.rate||1, dur=item.b.duration/r;
     src.buffer=item.b; src.playbackRate.value=r; src._tg=it.tg; src._engine=item.engine||''; src.connect(gn); gn.connect(spkAn);
@@ -3262,9 +3264,9 @@ function renderSettings(){
     }
   } }
   { const el=info.eleven||{};
-    const ek=$('#elevenKey'); if(ek) ek.textContent=el.key?'API key ready (/run/agenix/api-elevenlabs or ~/.config/nixi/elevenlabs.key)':'No API key found — add /run/agenix/api-elevenlabs (agenix) or ~/.config/nixi/elevenlabs.key';
+    const ek=$('#elevenKey'); if(ek) ek.textContent=(el.key?'API key ready. ':'No API key found. ')+'Nixi reads the key from /run/agenix/api-elevenlabs (an agenix secret).';
     const esw=$('#elevenSw'); if(esw) esw.checked=!!el.on;
-    const ecf=$('#elevenConfirm'); if(ecf&&el.on) ecf.checked=true;
+    const ecf=$('#elevenConfirm'); if(ecf) ecf.checked=!!el.on;
     const evl=$('#elevenVoices'); if(evl){ evl.replaceChildren();
       if(el.error) evl.appendChild(hx('div','h verr',el.error));
       for(const v of el.voices||[]){
@@ -3448,8 +3450,7 @@ async function previewEleven(vid,btn){
     const blob=await r.blob(), url=URL.createObjectURL(blob);
     if(prevAudio){ try{ prevAudio.pause(); }catch(e){} }
     if(prevUrl) URL.revokeObjectURL(prevUrl);
-    const au=new Audio(url); prevAudio=au; prevUrl=url; window.__lastPreviewUrl=url;
-    if(btn) btn.dataset.blobUrl=url;
+    const au=new Audio(url); prevAudio=au; prevUrl=url;
     au.onended=au.onerror=()=>{ if(prevUrl===url){ URL.revokeObjectURL(url); prevUrl=null; prevAudio=null; } };
     await au.play().catch(()=>{});
   }catch(e){ if(errEl) errEl.textContent=e.message; }

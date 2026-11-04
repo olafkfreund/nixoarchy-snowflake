@@ -23,9 +23,10 @@ _VOICE_ID = re.compile(r"[A-Za-z0-9]{10,40}\Z")
 
 
 class ElevenError(Exception):
-    def __init__(self, kind, status=None):
+    def __init__(self, kind, status=None, sent=False):
         self.kind = kind
         self.status = status
+        self.sent = sent
         message = "voice no longer on your account" if kind == "bad_voice" else f"ElevenLabs {kind}"
         super().__init__(message + (f" ({status})" if status else ""))
 
@@ -44,7 +45,7 @@ def _key():
             if not stat.S_ISREG(meta.st_mode) or not 0 < meta.st_size <= 256 or meta.st_uid not in (0, os.getuid()):
                 raise ElevenError("key")
             value = os.read(fd, 257).strip()
-            if not value:
+            if not re.fullmatch(rb"[A-Za-z0-9_-]{16,128}", value):
                 raise ElevenError("key")
             return value.decode("ascii")
         finally:
@@ -94,7 +95,11 @@ def _read(response, deadline, limit=None):
         sock = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
         if sock is not None:
             sock.settimeout(remaining)
-        chunk = response.read(min(65536, limit + 1 - len(data)) if limit is not None else 65536)
+        size = min(4096, limit + 1 - len(data)) if limit is not None else 4096
+        try:
+            chunk = (response.read1(size) if hasattr(response, "read1") else response.read(size))
+        except (OSError, TimeoutError):
+            raise ElevenError("network") from None
         data.extend(chunk)
         if limit is not None and len(data) > limit:
             raise ElevenError("preview")
@@ -102,21 +107,32 @@ def _read(response, deadline, limit=None):
             return bytes(data)
 
 
-def _request(request, deadline, limit=None, retry=False):
+def _request(request, deadline, limit=None, retry=False, still_ok=None):
+    ever_sent = False
     for attempt in range(2 if retry else 1):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise ElevenError("network")
+            raise ElevenError("network", sent=ever_sent)
+        sent = False
         try:
-            with _open(request, min(1.5, remaining)) as response:
+            if still_ok is not None:
+                opened = still_ok(lambda: _open(request, min(1.5, remaining)))
+                if opened is None:
+                    raise ElevenError("network")
+            else:
+                opened = _open(request, min(1.5, remaining))
+            with opened as response:
+                sent = request.data is not None
                 status = response.getcode()
                 if status != 200:
                     raise urllib.error.HTTPError(request.full_url, status, "", response.headers, None)
                 body = _read(response, deadline, limit)
                 if time.monotonic() > deadline:
-                    raise ElevenError("network")
+                    raise ElevenError("network", sent=sent)
                 return body, response.headers
         except urllib.error.HTTPError as exc:
+            sent = request.data is not None
+            ever_sent |= sent
             exc.close()
             if exc.code == 429 and retry and attempt == 0:
                 try:
@@ -126,9 +142,15 @@ def _request(request, deadline, limit=None, retry=False):
                 if 0 <= delay <= 2 and deadline - time.monotonic() >= delay + 1.5:
                     time.sleep(delay)
                     continue
-            raise ElevenError(_kind(exc.code), exc.code) from None
-        except (OSError, TimeoutError, urllib.error.URLError) as exc:
-            raise ElevenError("network") from None
+            raise ElevenError(_kind(exc.code), exc.code, sent=sent) from None
+        except ElevenError as exc:
+            if sent or ever_sent:
+                exc.sent = True
+            raise
+        except Exception as exc:
+            reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+            after_send = isinstance(reason, (ConnectionResetError, BrokenPipeError))
+            raise ElevenError("network", sent=ever_sent or request.data is not None and (sent or after_send)) from None
 
 
 def _api(path, data=None):
@@ -178,15 +200,15 @@ def voices(deadline=None):
     return result
 
 
-def speak(text, voice_id):
+def speak(text, voice_id, still_ok=None, checked=False):
     deadline = time.monotonic() + 4
     if not _VOICE_ID.fullmatch(voice_id):
         raise ElevenError("bad_voice")
     # A deleted voice is a configuration error even if the API would return another status.
-    if not any(v["id"] == voice_id for v in voices(deadline)):
+    if not checked and not any(v["id"] == voice_id for v in voices(deadline)):
         raise ElevenError("bad_voice")
     body = json.dumps({"text": text, "model_id": "eleven_flash_v2_5"}).encode()
-    pcm, _ = _request(_api(f"/v1/text-to-speech/{voice_id}?output_format=pcm_22050", body), deadline, retry=True)
+    pcm, _ = _request(_api(f"/v1/text-to-speech/{voice_id}?output_format=pcm_22050", body), deadline, retry=True, still_ok=still_ok)
     out = io.BytesIO()
     with wave.open(out, "wb") as wav:
         wav.setnchannels(1)
@@ -204,7 +226,11 @@ def preview(voice_id):
         raise ElevenError("bad_voice")
     url = voice["preview_url"]
     parts = urlsplit(url)
-    if parts.scheme != "https" or parts.hostname != "storage.googleapis.com" or parts.port != 443 or not parts.path.startswith("/") or parts.username or parts.password or parts.query or parts.fragment:
+    try:
+        port = parts.port
+    except ValueError:
+        raise ElevenError("preview") from None
+    if parts.scheme != "https" or parts.hostname != "storage.googleapis.com" or port not in (None, 443) or not parts.path.startswith("/") or parts.username or parts.password or parts.query or parts.fragment:
         raise ElevenError("preview")
     data, headers = _request(urllib.request.Request(url), time.monotonic() + 5, limit=1024 * 1024)
     if headers.get_content_type() not in ("audio/mpeg", "audio/wav"):
@@ -233,7 +259,9 @@ def reserve(n, cap):
         date = datetime.date.today().isoformat()
         try:
             data = json.loads(path.read_text())
-        except (OSError, ValueError):
+        except (OSError, ValueError, AttributeError):
+            data = {}
+        if not isinstance(data, dict):
             data = {}
         if data.get("date") != date:
             data = {"date": date, "used": 0, "reserved": 0}
