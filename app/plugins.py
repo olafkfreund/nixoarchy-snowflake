@@ -155,6 +155,8 @@ def _check(m, d):
             return "bad stage cache_seconds"
         if "reads" in s and not (isinstance(s["reads"], list) and all(_in(x, ("system-status",)) for x in s["reads"])):
             return "bad stage reads"
+        if s.get("network") is True and "system-status" in s.get("reads", []):
+            return "a plugin that reads your system status can't use the network"
         if not _inside(d, s["argv"][0]):
             return "stage argv[0] missing or outside the folder"
         if any(a.startswith("/") or "=/" in a or ".." in re.split(r"[/=]", a) for a in s["argv"][1:]):
@@ -551,19 +553,106 @@ def forget():
         _cache.clear()
 
 
+PROC_STAT, PROC_NET, PROC_MEM, PROC_UP, PROC_HOST = "/proc/stat", "/proc/net/dev", "/proc/meminfo", "/proc/uptime", "/proc/sys/kernel/hostname"
+_last = {}                      # the previous counters: {"cpu": (busy, total), "net": (rx, tx), "t": monotonic}
+_last_lock = threading.Lock()
+
+
+def _read(path):
+    try:
+        return Path(path).read_text()
+    except OSError:
+        return None
+
+
+def _cpu():
+    """(busy, total) jiffies from /proc/stat, or None."""
+    try:
+        v = [int(x) for x in _read(PROC_STAT).splitlines()[0].split()[1:9]]
+        return v[0] + v[1] + v[2] + v[5] + v[6] + v[7], sum(v)
+    except (AttributeError, ValueError, IndexError):
+        return None
+
+
+def _net():
+    """(rx, tx) bytes summed over every interface but lo, or None."""
+    try:
+        rx = tx = 0
+        for ln in _read(PROC_NET).splitlines()[2:]:
+            name, _, rest = ln.partition(":")
+            if name.strip() != "lo":
+                f = rest.split()
+                rx, tx = rx + int(f[0]), tx + int(f[8])
+        return rx, tx
+    except (AttributeError, ValueError, IndexError):
+        return None
+
+
+def prime():
+    """Take a first reading of the counters (cheap: two small /proc files, no sleep) so the first system_status() has a rate."""
+    with _last_lock:
+        _last.update(cpu=_cpu(), net=_net(), t=time.monotonic())
+
+
+def _rates():
+    """(cpu_pct, rx_bps, tx_bps) since the last reading; null for what can't be known (unreadable, or a counter that went back)."""
+    with _last_lock:
+        if "t" not in _last:
+            _last.update(cpu=_cpu(), net=_net(), t=time.monotonic())
+            time.sleep(0.25)                           # shortcut: no earlier reading, so wait a moment once
+        c, n, t = _cpu(), _net(), time.monotonic()
+        c0, n0, dt = _last.get("cpu"), _last.get("net"), t - _last["t"]
+        _last.update(cpu=c, net=n, t=t)
+    cpu = rx = tx = None
+    if c and c0 and c[1] > c0[1] and c[0] >= c0[0]:
+        cpu = round(100 * (c[0] - c0[0]) / (c[1] - c0[1]), 1)
+    if n and n0 and dt > 0 and n[0] >= n0[0] and n[1] >= n0[1]:
+        rx, tx = round((n[0] - n0[0]) / dt), round((n[1] - n0[1]) / dt)
+    return cpu, rx, tx
+
+
+def _failed(cmd, out, i):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1)
+        out[i] = [ln.split()[0][:80] for ln in r.stdout.splitlines() if ln.strip()][:20] if r.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError):
+        out[i] = None
+
+
 def system_status():
-    """What a plugin with reads: [system-status] gets on stdin, collected here, outside its sandbox: the running generation
-    (null if unknown) and the failed user units (null if the query failed: never an empty list on failure)."""
+    """What a plugin with reads: [system-status] gets on stdin, collected here, outside its sandbox: the running generation,
+    the failed user and system units, and the host's readings. Anything that can't be read is null, never 0 or an empty list."""
     try:
         gen = os.path.basename(os.readlink("/run/current-system")) or None
     except OSError:
         gen = None
+    out = [None, None]
+    ts = [threading.Thread(target=_failed, args=(["systemctl", *u, "--failed", "--plain", "--no-legend"], out, i)) for i, u in enumerate((["--user"], []))]
+    for t in ts:
+        t.start()
+    cpu, rx, tx = _rates()
+    mem = None
     try:
-        r = subprocess.run(["systemctl", "--user", "--failed", "--plain", "--no-legend"], capture_output=True, text=True, timeout=2)
-        failed = [ln.split()[0][:80] for ln in r.stdout.splitlines() if ln.strip()][:20] if r.returncode == 0 else None
-    except (OSError, subprocess.SubprocessError):
-        failed = None
-    return {"generation": gen, "failed": failed}
+        mi = {ln.split(":")[0]: int(ln.split()[1]) * 1024 for ln in _read(PROC_MEM).splitlines()}
+        mem = {"total": mi["MemTotal"], "available": mi["MemAvailable"]}
+    except (AttributeError, ValueError, IndexError, KeyError):
+        pass
+    disks = []
+    for path in ("/", "/nix/store"):
+        try:
+            v = os.statvfs(path)
+            disks.append({"path": path, "total": v.f_blocks * v.f_frsize, "used": (v.f_blocks - v.f_bfree) * v.f_frsize})
+        except OSError:
+            pass
+    try:
+        up = round(float(_read(PROC_UP).split()[0]))
+    except (AttributeError, ValueError, IndexError):
+        up = None
+    host = (_read(PROC_HOST) or "").strip()[:32] or None
+    for t in ts:
+        t.join()
+    return {"generation": gen, "failed": out[0], "failed_system": out[1], "cpu_pct": cpu, "mem": mem, "disks": disks or None,
+            "net": {"rx_bps": rx, "tx_bps": tx}, "uptime_s": up, "host": host}
 
 
 def _consented(p, h=None):

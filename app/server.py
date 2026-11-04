@@ -1735,6 +1735,8 @@ class Plug:
                     errors[p.id] = str(e)                       # the whole prop is dropped; the plugin's other parts stay
             rules += [(k, n[k], n["category"]) for n in m.get("notifications", []) for k in ("app", "host") if k in n]
         cls.loaded, cls.quips, cls.rules, cls.props, cls.prop_errors = loaded, quips, rules, props, errors
+        if any("system-status" in p.manifest.get("stage", {}).get("reads", []) for p in loaded):
+            plugins.prime()
         cls.stage = {p.id: p for p in loaded if "stage" in p.manifest} if any("stage" in p.manifest for p in loaded) and plugins.bwrap_ok() else {}
         Quips.bags.clear()
 

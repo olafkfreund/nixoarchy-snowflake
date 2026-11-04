@@ -521,10 +521,10 @@ class StageServerTest(_ServerEnv):
     # ---- consent
     def test_folder_plugin_needs_consent_bound_to_its_hash(self):
         S = self.server
-        d = self.mk("user", "net-one", network=True, reads=["system-status"])
+        d = self.mk("user", "net-one", network=True, reads=[])
         got = S.plugins_act({"id": "net-one", "enabled": True})
         c = got["needs_consent"]
-        self.assertEqual((c["id"], c["network"], c["reads"], c["runs"], c["sha256"]), ("net-one", True, ["system-status"], "run", plugins.sha256_of(d)))
+        self.assertEqual((c["id"], c["network"], c["reads"], c["runs"], c["sha256"]), ("net-one", True, [], "run", plugins.sha256_of(d)))
         self.assertFalse(self.state.get("net-one")["enabled"])
         self.assertFalse(S.Plug.stage_enabled("net-one"))
         (d / "run").write_text("#!/bin/sh\necho changed\n")                          # changed between the card and Allow
@@ -536,6 +536,11 @@ class StageServerTest(_ServerEnv):
         self.assertNotIn("error", got)
         self.assertEqual(self.state.get("net-one"), {"enabled": True, "sha256": c["sha256"]})
         self.assertTrue(S.Plug.stage_enabled("net-one"))
+
+    def test_consent_card_lists_what_a_system_status_plugin_reads(self):
+        self.mk("user", "stat-one", reads=["system-status"])
+        c = self.server.plugins_act({"id": "stat-one", "enabled": True})["needs_consent"]
+        self.assertEqual((c["network"], c["reads"]), (False, ["system-status"]))
 
     def test_a_forged_consent_for_the_wrong_plugin_or_hash_is_refused(self):
         S = self.server

@@ -3126,7 +3126,7 @@ function plugConsent(c){
   const box=$('#plugCons'); box.replaceChildren(); box.classList.toggle('on',!!c); if(!c) return;
   const q=document.createElement('div'), pre=document.createElement('pre'), bar=document.createElement('div'), no=document.createElement('button'), yes=document.createElement('button');
   q.className='q'; q.textContent='\u270b Let '+c.name+' run a program?';
-  pre.textContent=[c.what,'It runs: '+c.runs,...(c.hint?['Nixi tells the agent: '+c.hint]:[]),c.network?'It can use the internet and your local networks (not this computer\'s own services).':'It cannot use the network.',...(c.reads||[]).map(r=>'It can read your '+r.replace('-',' ')+'.'),'Nixi checks it again if any of its files change.'].join('\n');
+  pre.textContent=[c.what,'It runs: '+c.runs,...(c.hint?['Nixi tells the agent: '+c.hint]:[]),c.network?'It can use the internet and your local networks (not this computer\'s own services).':'It cannot use the network.',...(c.reads||[]).map(r=>r==='system-status'?'It can read your system status (load, memory, disks, network rates, failed services).':'It can read your '+r.replace('-',' ')+'.'),'Nixi checks it again if any of its files change.'].join('\n');
   bar.className='bar'; no.className='btn sm'; no.textContent='Cancel'; yes.className='btn sm yes'; yes.textContent='Allow';
   no.addEventListener('click',()=>plugConsent(null)); yes.addEventListener('click',()=>plugAct({consent:true,id:c.id,sha256:c.sha256}));
   bar.append(no,yes); box.append(q,pre,bar);
