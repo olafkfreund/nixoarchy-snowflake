@@ -503,16 +503,16 @@ class Store:
             if not items or not e or e[0].get("kind") != "headlines" or e[0].get("copy") != slip or "clips" in e[0]:
                 return None
             page, toks = e[0], e[1]           # (in place: callers waiting on `STAGES.current() is before` must still see the same stage)
-            page["clips"] = []
-            lines = []
+            rows, lines = [], []
             for it in items:
                 pt, tt = secrets.token_urlsafe(12), secrets.token_urlsafe(12)
                 toks[pt] = ("video", {"url": "https://www.youtube.com/watch?v=" + it["id"]})
                 toks[tt] = ("thumb", {"id": it["id"]})
-                page["clips"].append({"title": it["title"], "channel": it["channel"], "duration": it["duration"], "play": pt, "thumb": tt})
+                rows.append({"title": it["title"], "channel": it["channel"], "duration": it["duration"], "play": pt, "thumb": tt})
                 parts = [it[k] for k in ("channel", "duration") if it[k]]
                 lines.append(it["title"] + (" — " + ", ".join(parts) if parts else ""))
             toks[slip] = ("facts", {"text": e[1][slip][1]["text"] + "\nWatch:\n" + "\n".join(lines)})
+            page["clips"] = rows               # (one assignment: a reader outside the lock never sees a half-filled list)
             return page
 
     def _day(self, stage, page, toks):
