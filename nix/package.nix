@@ -25,6 +25,7 @@
   pipewire,
   alsa-utils,
   bubblewrap,
+  passt,
   nixiBridge ? null,
   # companion plugins (#149): folders or packages, each linked into share/nixi-companion/plugins/ (the server scans it)
   plugins ? [ ],
@@ -111,6 +112,7 @@ stdenvNoCC.mkDerivation {
           pipewire
           alsa-utils
           bubblewrap # stage plugins run in it (#149)
+          passt # pasta: the internet for network plugins, in a namespace of their own (#149)
         ]
       } \
       "''${gappsWrapperArgs[@]}"

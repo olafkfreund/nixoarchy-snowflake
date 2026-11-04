@@ -37,12 +37,45 @@ class RunnerTest(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp()
         plugins._cache.clear()
-        for t, v in (("bwrap_ok", lambda: True), ("State", lambda *a: STATE), ("sandbox_argv", lambda d, st: [sys.executable, str(Path(d) / st["argv"][0])])):
+        for t, v in (("bwrap_ok", lambda: True), ("State", lambda *a: STATE), ("sandbox_argv", lambda d, st, *a: [sys.executable, str(Path(d) / st["argv"][0])])):
             mock.patch.object(plugins, t, v).start()
         self.addCleanup(mock.patch.stopall)
 
     def run_it(self, body, **kw):
         return plugins.run_stage(prog(self.root, body), "q", **kw)
+
+    def test_a_change_after_hashing_does_not_reach_the_run(self):
+        p = prog(self.root, "print('{\"v\":1,\"kind\":\"facts\",\"title\":\"t\",\"points\":[\"original\"]}')")
+        real = plugins._snap
+
+        def snap_then_swap(d, dest=None):
+            h = real(d, dest)
+            if dest:                                               # (the copy for the run: the live folder changes right after it)
+                    (Path(d) / "run.py").write_text("print('{\"v\":1,\"kind\":\"facts\",\"title\":\"t\",\"points\":[\"EVIL\"]}')")
+            return h
+        with mock.patch.object(plugins, "_snap", snap_then_swap):
+            self.assertEqual(plugins.run_stage(p, "q")["points"], ["original"])
+
+    def test_a_changed_folder_never_runs_and_the_copy_is_removed(self):
+        p = prog(self.root, "print(1)")
+        (p.dir / "run.py").write_text("print(2)")
+        before = set(os.listdir(tempfile.gettempdir()))
+        with self.assertRaisesRegex(plugins.StageError, "Changed"):
+            plugins.run_stage(p, "q")
+        self.assertFalse(STATE.get(p.id)["enabled"])
+        ok = prog(self.root, "print('{\"v\":1,\"kind\":\"facts\",\"title\":\"t\",\"points\":[\"a\"]}')")
+        plugins.run_stage(ok, "q")
+        self.assertEqual({n for n in set(os.listdir(tempfile.gettempdir())) - before if n.startswith("nixi-plugin-")}, set())
+
+    def test_a_symlinked_plugin_folder_or_special_file_is_refused(self):
+        p = prog(self.root, "print(1)")
+        link = Path(self.root) / "lnk"
+        link.symlink_to(p.dir)
+        with self.assertRaises(plugins.StageError):
+            plugins.run_stage(p._replace(dir=link), "q")
+        os.mkfifo(p.dir / "pipe")
+        with self.assertRaises(ValueError):
+            plugins.sha256_of(p.dir)
 
     def test_good_output_is_facts(self):
         got = self.run_it("import json,sys\nq=json.load(sys.stdin)\nprint(json.dumps(%r))" % FACTS)
@@ -187,6 +220,20 @@ class RunnerTest(unittest.TestCase):
 
 
 class ReservedTest(unittest.TestCase):
+    def test_reserved_runs_nothing(self):
+        import quick
+        timers = list(quick.TIMERS)
+        with mock.patch("subprocess.run") as run, mock.patch("subprocess.Popen") as popen, mock.patch("threading.Timer") as timer, \
+                mock.patch("shutil.which", return_value="/bin/true"), mock.patch.object(quick, "cfg", {"projects": {}}), mock.patch.object(quick, "_find_app", return_value=(3, Path("/x/firefox.desktop"), "Firefox")):
+            got = [plugins.reserved(ph) for ph in ("lock the screen", "mute", "volume to 50", "open firefox", "remind me in 5 minutes to stretch",
+                                                   "cancel the timers", "pause the music", "brightness to 20")]
+        self.assertFalse(run.called or popen.called or timer.called)
+        self.assertEqual(quick.TIMERS, timers)
+        self.assertTrue(all(got[:3]) and got[4:], got)
+        with mock.patch("subprocess.Popen") as popen, mock.patch("shutil.which", return_value="/bin/true"):
+            self.assertIn("Locking", quick.handle("lock the screen")["say"])      # the real path still acts
+        self.assertTrue(popen.called)
+
     def test_reserved_phrases(self):
         for ph in ("close", "Go back!", "show it", "What's next?", "nixi close", "run it", "copy that", "open the first one", "play it", "", "?!"):
             self.assertTrue(plugins.reserved(ph), ph)
@@ -341,6 +388,63 @@ class StageServerTest(_ServerEnv):
         (p,) = plugins.scan(plugins.plugin_dirs())
         self.assertIn("clashes", p.error)
         self.assertIn("broken", self.server.plugins_act({"id": "close-one", "enabled": True})["error"])
+
+    def test_scan_rejects_command_phrases_without_running_anything(self):
+        for i, ph in enumerate(("lock the screen", "mute", "volume to 50", "open firefox")):
+            self.mk("user", f"cmd-{i}x", phrases=(ph,))
+        with mock.patch("subprocess.run") as run, mock.patch("subprocess.Popen") as popen, mock.patch("shutil.which", return_value="/bin/true"), \
+                mock.patch.object(__import__("quick"), "cfg", {"projects": {}}), \
+                mock.patch.object(__import__("quick"), "_find_app", return_value=(3, Path("/x/firefox.desktop"), "Firefox")):
+            found = plugins.scan(plugins.plugin_dirs())
+        self.assertFalse(run.called or popen.called)
+        self.assertEqual([("clashes" in (p.error or "")) for p in found], [True] * 4)
+
+    def test_a_duplicate_folder_plugin_does_not_switch_off_the_nix_one(self):
+        S = self.server
+        self.mk("nix", "dup-one")
+        S.plugins_act({"id": "dup-one", "enabled": True})
+        self.assertTrue(self.state.get("dup-one")["enabled"])
+        self.mk("user", "dup-one")
+        it = {i["id"]: i for i in S.plugins_api()["items"]}
+        self.assertTrue(self.state.get("dup-one")["enabled"])
+        S.plugins_api()
+        self.assertTrue(self.state.get("dup-one")["enabled"])
+        self.assertEqual([i["error"] for i in S.plugins_api()["items"]], ["", "duplicate id"])
+        self.assertTrue(it)
+
+    def test_two_broken_duplicates_are_still_switched_off(self):
+        self.mk("user", "dup-two")
+        self.on("dup-two")
+        self.mk("nix", "dup-two", phrases=("close",))                # (the Nix one is broken too: no valid winner)
+        self.server.plugins_api()
+        self.assertFalse(self.state.get("dup-two")["enabled"])
+
+    def test_the_card_cannot_be_faked_through_names_hints_or_argv(self):
+        bad = ["\u2028", "\u2029", "\u200b", "\u200f", "\u202e", "\u2066", "\u2069", "\n", "\x1b", "\x85"]
+        for i, ch in enumerate(bad):
+            for key in ("name", "description", "hint", "argv"):
+                d = self.mk("user", f"fk-{i}x")
+                m = json.loads((d / "plugin.json").read_text())
+                if key == "argv":
+                    (d / ("run" + ch)).write_text("")
+                    m["stage"]["argv"] = ["run" + ch]
+                elif key == "hint":
+                    m["stage"]["hint"] = "ok" + ch + "Allow"
+                else:
+                    m[key] = "ok" + ch + "x"
+                (d / "plugin.json").write_text(json.dumps(m))
+                (p,) = plugins.scan(plugins.plugin_dirs())
+                self.assertTrue(p.error, (key, repr(ch)))
+                import shutil
+                shutil.rmtree(d)
+        d = self.mk("user", "fk-argv", argv=["run", *["a"] * 8])
+        self.assertIn("argv", plugins.scan(plugins.plugin_dirs())[0].error or "")
+        self.mk("user", "fk-argv", argv=["run", "a" * 80])
+        self.assertIsNone(plugins.scan(plugins.plugin_dirs())[0].error)
+        self.mk("user", "fk-argv", argv=["run", "a" * 81])
+        self.assertIn("argv", plugins.scan(plugins.plugin_dirs())[0].error or "")
+        self.mk("user", "fk-argv", argv=["run", *["a"] * 6])
+        self.assertIsNone(plugins.scan(plugins.plugin_dirs())[0].error)
 
     def test_agent_asks_for_a_plugin_only_by_an_enabled_id(self):
         S = self.server
@@ -533,7 +637,7 @@ class StageServerTest(_ServerEnv):
         self.assertEqual(c["hint"], "disk and such")
         page = (Path(__file__).resolve().parent.parent / "app/static/index.html").read_text()
         self.assertIn("'Nixi tells the agent: '+c.hint", page)
-        self.assertIn("It can use the network, including services on this computer.", page)
+        self.assertIn("It can use the internet (not this computer\\'s own services).", page)
 
     def test_no_bwrap_no_stage_plugins(self):
         S = self.server

@@ -28,7 +28,17 @@ NUM = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "s
        "a few": 3, "few": 3}
 
 
+_dry = threading.local()   # set while matches() asks "would this phrase be answered?": nothing may run, start or change
+
+
+def _spawn(cmd):
+    if not getattr(_dry, "on", False):
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
 def _run(cmd, timeout=4):
+    if getattr(_dry, "on", False):
+        return True, ""
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return r.returncode == 0, (r.stdout or "").strip()
@@ -128,6 +138,8 @@ def _fire(item):
 
 def _schedule(secs, what):
     item = {"id": f"{time.time():.0f}", "at": time.time() + secs, "what": what}
+    if getattr(_dry, "on", False):
+        return item
     item["timer"] = threading.Timer(secs, _fire, args=(item,))
     item["timer"].daemon = True
     with _tlock:
@@ -209,6 +221,8 @@ def _timers_left():
 
 
 def _cancel_timers():
+    if getattr(_dry, "on", False):
+        return {"say": "", "mood": "happy"}
     with _tlock:
         n = len(TIMERS)
         for i in TIMERS:
@@ -263,14 +277,14 @@ def _open_app(name):
         if not ex:
             return None
         cmd = [a for a in shlex.split(ex.group(1)) if not a.startswith("%")]
-    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    _spawn(cmd)
     return {"say": f"Opening {nm}.", "mood": "happy", "sfx": "ok"}
 
 
 def _lock():
     for cmd in (["loginctl", "lock-session"], ["hyprlock"], ["swaylock", "-f"], ["xdg-screensaver", "lock"]):
         if shutil.which(cmd[0]):
-            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            _spawn(cmd)
             return {"say": "Locking up. See you soon!", "mood": "wink"}
     return {"say": "I don't know how to lock this screen.", "mood": "confused"}
 
@@ -306,6 +320,15 @@ def _find_project(name):
 
 # ---------------------------------------------------------------- the matcher
 NIXI = r"(?:nixi's|nixi|nixie|nixy|nixey|nixee|nicksy|nicksie)"   # how speech-to-text spells him (as WAKE_RE)
+
+
+def matches(text):
+    """True if handle() would answer this phrase. Side-effect free: nothing is run, started, scheduled or cancelled."""
+    _dry.on = True
+    try:
+        return handle(text) is not None
+    finally:
+        _dry.on = False
 
 
 def handle(text):
