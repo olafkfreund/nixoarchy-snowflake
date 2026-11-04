@@ -214,6 +214,136 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   await view(340, 460);
 }
 
+// 8. Five tabs; Plugins tab (between Brain and More, with puzzle icon) holds #peersRow, #plugCons, #plugList, #plugErr, #plugReload in a .row wrapper, and More does not
+{ const t5 = await ev(`const bs=[...document.querySelectorAll('#tabs button')], ps=[...document.querySelectorAll('#set .tab')];
+    const plugTab=document.querySelector('#set .tab[data-tab="plugins"]'), moreTab=document.querySelector('#set .tab[data-tab="more"]');
+    const ids=['peersRow','plugCons','plugList','plugErr','plugReload'];
+    const inPlug=ids.every(id=>plugTab.contains(document.getElementById(id)) && document.getElementById(id).closest('.row')?.parentElement===plugTab);
+    const inMore=ids.some(id=>moreTab.contains(document.getElementById(id)));
+    const pb=document.querySelector('#tabs button[data-tab="plugins"]');
+    return {
+      tabs: bs.map(b=>b.dataset.tab),
+      panels: ps.map(p=>p.dataset.tab),
+      tablistRole: document.getElementById('tabs').getAttribute('role'),
+      tabRoles: bs.map(b=>b.getAttribute('role')),
+      panelRoles: ps.map(p=>p.getAttribute('role')),
+      controls: bs.map(b=>document.getElementById(b.getAttribute('aria-controls'))?.dataset?.tab),
+      hasPuzzleSvg: !!pb?.querySelector('svg path'),
+      inPlug, inMore
+    }`);
+  check(t5.tabs.join() === "look,voice,brain,plugins,more"
+    && t5.panels.join() === "look,voice,brain,plugins,more"
+    && t5.tablistRole === "tablist"
+    && t5.tabRoles.every(r => r === "tab")
+    && t5.panelRoles.every(r => r === "tabpanel")
+    && t5.controls.join() === "look,voice,brain,plugins,more"
+    && t5.hasPuzzleSvg && t5.inPlug && !t5.inMore,
+    "five tabs with ARIA roles; Plugins holds the five plugin IDs in .row and More does not", JSON.stringify(t5));
+}
+
+// 9. ArrowLeft/ArrowRight wrap, Home and End move between tabs, updating aria-selected, roving tabindex, and focus
+{ await ev("settings(true,'look'); return 1");
+  const nav = await ev(`const tabsEl=document.getElementById('tabs'), key=k=>tabsEl.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true}));
+    const state=()=>[document.activeElement?.dataset?.tab, document.querySelector('#tabs button.on')?.dataset?.tab, document.querySelector('#set .tab.on')?.dataset?.tab,
+      [...document.querySelectorAll('#tabs button')].map(b=>b.getAttribute('aria-selected')+':'+b.tabIndex).join(',')];
+    const s0=state();
+    key('ArrowLeft'); const s1=state();
+    key('ArrowRight'); const s2=state();
+    key('End'); const s3=state();
+    key('ArrowLeft'); const s4=state();
+    key('Home'); const s5=state();
+    return {s0,s1,s2,s3,s4,s5}`);
+  check(nav.s0[0] === "look" && nav.s0[1] === "look" && nav.s0[2] === "look" && nav.s0[3] === "true:0,false:-1,false:-1,false:-1,false:-1"
+    && nav.s1[0] === "more" && nav.s1[1] === "more" && nav.s1[2] === "more" && nav.s1[3] === "false:-1,false:-1,false:-1,false:-1,true:0"
+    && nav.s2[0] === "look" && nav.s2[1] === "look" && nav.s2[2] === "look"
+    && nav.s3[0] === "more" && nav.s3[1] === "more"
+    && nav.s4[0] === "plugins" && nav.s4[1] === "plugins" && nav.s4[2] === "plugins" && nav.s4[3] === "false:-1,false:-1,false:-1,true:0,false:-1"
+    && nav.s5[0] === "look" && nav.s5[1] === "look",
+    "ArrowLeft/ArrowRight wrap and Home/End select, show and focus tabs with roving tabindex", JSON.stringify(nav));
+  await ev("settings(false); return 1");
+}
+
+// 10. nixi.tab='bogus' and settings(true,'bogus') fall back to Look, and nixi.tab='plugins' opens Plugins
+{ const fb = await ev(`localStorage.setItem('nixi.tab','bogus'); settings(true);
+    const a=[document.querySelector('#tabs button.on')?.dataset?.tab, document.querySelector('#set .tab.on')?.dataset?.tab, localStorage.getItem('nixi.tab'), document.activeElement?.dataset?.tab];
+    settings(false);
+    settings(true,'bogus');
+    const b=[document.querySelector('#tabs button.on')?.dataset?.tab, document.querySelector('#set .tab.on')?.dataset?.tab, localStorage.getItem('nixi.tab'), document.activeElement?.dataset?.tab];
+    settings(false);
+    localStorage.setItem('nixi.tab','plugins'); settings(true);
+    const c=[document.querySelector('#tabs button.on')?.dataset?.tab, document.querySelector('#set .tab.on')?.dataset?.tab, document.activeElement?.dataset?.tab];
+    settings(false);
+    localStorage.setItem('nixi.tab','look');
+    return {a,b,c}`);
+  check(fb.a.join() === "look,look,look,look" && fb.b.join() === "look,look,look,look" && fb.c.join() === "plugins,plugins,plugins",
+    "nixi.tab='bogus' and settings(true,'bogus') fall back to Look; nixi.tab='plugins' selects Plugins", JSON.stringify(fb));
+}
+
+// 11. Opening Settings saves document.activeElement and focuses the selected tab; closing (every path) restores focus if still connected
+{ const foc = await ev(`const probe=document.createElement('button'); probe.id='focusProbe'; document.body.appendChild(probe);
+    const out={};
+    probe.focus(); settings(true,'brain');
+    out.open=[document.activeElement?.dataset?.tab];
+    settings(false);
+    out.afterSettingsFalse=document.activeElement===probe;
+    probe.focus(); settings(true,'plugins');
+    setEl.querySelector('[data-close]').click();
+    out.afterX=document.activeElement===probe;
+    probe.focus(); settings(true,'voice');
+    setEl.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+    out.afterEsc=document.activeElement===probe;
+    probe.focus(); settings(true,'more');
+    document.body.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true}));
+    out.afterOutside=document.activeElement===probe;
+    probe.focus(); settings(true,'look');
+    closePanels();
+    out.afterClosePanels=document.activeElement===probe;
+    // disconnected element does not throw
+    probe.focus(); settings(true,'look'); probe.remove(); settings(false);
+    out.afterRemoved=!setEl.classList.contains('on');
+    return out`);
+  check(foc.open[0] === "brain" && foc.afterSettingsFalse && foc.afterX && foc.afterEsc && foc.afterOutside && foc.afterClosePanels && foc.afterRemoved,
+    "opening focuses selected tab and closing restores previous focus across all close paths", JSON.stringify(foc));
+}
+
+// 12. setEl keydown isolation: Enter, Space, typing and Ctrl+N/H/M inside Settings do not reach showAsk, PTT or global shortcuts; Esc and Ctrl+, still reach window
+{ const iso = await ev(`settings(true,'plugins');
+    const tabBtn=document.querySelector('#tabs button.on'), reloadBtn=document.getElementById('plugReload');
+    for(const el of [tabBtn, reloadBtn]){
+      el.focus();
+      for(const [k,code,ctrl] of [['Enter','Enter',false],[' ','Space',false],['a','KeyA',false],['n','KeyN',true],['h','KeyH',true]]){
+        el.dispatchEvent(new KeyboardEvent('keydown',{key:k,code,ctrlKey:ctrl,bubbles:true,cancelable:true}));
+      }
+    }
+    const during=[setEl.classList.contains('on'), ask.classList.contains('on'), panelEl.classList.contains('on'), !!rec, spaceHeld];
+    // Esc inside setEl still bubbles to window and closes Settings
+    reloadBtn.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true,cancelable:true}));
+    const afterEsc=setEl.classList.contains('on');
+    // Ctrl+, bubbles to window
+    let ctrlCommaBubbled=false;
+    const h=e=>{ if(e.ctrlKey&&e.key===',') ctrlCommaBubbled=true; };
+    window.addEventListener('keydown',h,{once:true});
+    settings(true,'look');
+    document.querySelector('#tabs button.on').dispatchEvent(new KeyboardEvent('keydown',{key:',',ctrlKey:true,bubbles:true,cancelable:true}));
+    window.removeEventListener('keydown',h);
+    settings(false);
+    return {during, afterEsc, ctrlCommaBubbled}`);
+  check(iso.during[0] === true && iso.during[1] === false && iso.during[2] === false && iso.during[3] === false && iso.during[4] === false
+    && iso.afterEsc === false && iso.ctrlCommaBubbled === true,
+    "Enter, Space, typing and shortcuts inside Settings are isolated; Esc and Ctrl+, still work", JSON.stringify(iso));
+}
+
+// 13. Radial-menu item and openPanel('plugins') title are "Claude Code plug-ins"
+{ const lbl = await ev(`const mb=document.querySelector('#menu .mb[data-a="plugins"]');
+    const menuTitle=mb?.getAttribute('title'), menuSpan=mb?.querySelector('span')?.textContent;
+    await openPanel('plugins');
+    const pTitle=document.getElementById('pTitle').textContent;
+    closePanels();
+    return {menuTitle, menuSpan, pTitle}`);
+  check(lbl.menuTitle === "Claude Code plug-ins" && lbl.menuSpan === "Claude Code plug-ins" && lbl.pTitle === "Claude Code plug-ins",
+    "radial menu and openPanel('plugins') title use 'Claude Code plug-ins'", JSON.stringify(lbl));
+}
+
 check(exc.size === 0, "no page exceptions", [...exc].join(" ;; "));
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
 console.log(fails.length ? `\n${fails.length} failed: ${fails.join(", ")}` : "\nall pass");

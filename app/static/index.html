@@ -795,16 +795,17 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 <!-- settings -->
 <div class="pn" id="set">
   <div class="hd"><span class="logo"></span><b>Settings</b><button class="x" data-close title="Close (Esc)">✕</button></div>
-  <div class="tabs" id="tabs">
-    <button data-tab="look" class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="9.3" cy="11" rx="1.6" ry="3"/><ellipse cx="14.7" cy="11" rx="1.6" ry="3"/></svg>Look</button>
-    <button data-tab="voice"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>Voice</button>
-    <button data-tab="brain"><svg viewBox="0 0 24 24"><path d="M12 4a3.5 3.5 0 0 0-6.6 1.6A3.5 3.5 0 0 0 4 12a3.5 3.5 0 0 0 2 5.9A3.5 3.5 0 0 0 12 19.5ZM12 4a3.5 3.5 0 0 1 6.6 1.6A3.5 3.5 0 0 1 20 12a3.5 3.5 0 0 1-2 5.9 3.5 3.5 0 0 1-6 1.6"/></svg>Brain</button>
-    <button data-tab="more"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>More</button>
+  <div class="tabs" id="tabs" role="tablist">
+    <button id="tab-look" role="tab" aria-selected="true" aria-controls="panel-look" tabindex="0" data-tab="look" class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="9.3" cy="11" rx="1.6" ry="3"/><ellipse cx="14.7" cy="11" rx="1.6" ry="3"/></svg>Look</button>
+    <button id="tab-voice" role="tab" aria-selected="false" aria-controls="panel-voice" tabindex="-1" data-tab="voice"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>Voice</button>
+    <button id="tab-brain" role="tab" aria-selected="false" aria-controls="panel-brain" tabindex="-1" data-tab="brain"><svg viewBox="0 0 24 24"><path d="M12 4a3.5 3.5 0 0 0-6.6 1.6A3.5 3.5 0 0 0 4 12a3.5 3.5 0 0 0 2 5.9A3.5 3.5 0 0 0 12 19.5ZM12 4a3.5 3.5 0 0 1 6.6 1.6A3.5 3.5 0 0 1 20 12a3.5 3.5 0 0 1-2 5.9 3.5 3.5 0 0 1-6 1.6"/></svg>Brain</button>
+    <button id="tab-plugins" role="tab" aria-selected="false" aria-controls="panel-plugins" tabindex="-1" data-tab="plugins"><svg viewBox="0 0 24 24"><path d="M19.4 13a1.65 1.65 0 0 0 0-2H18a1 1 0 0 1-1-1V7a1 1 0 0 0-1-1h-3a1 1 0 0 1-1-1V3.6a1.65 1.65 0 0 0-2 0V5a1 1 0 0 1-1 1H6a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h1.4a1.65 1.65 0 0 1 0 2H6a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1.4a1.65 1.65 0 0 1 2 0V17a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-3a1 1 0 0 1 1-1z"/></svg>Plugins</button>
+    <button id="tab-more" role="tab" aria-selected="false" aria-controls="panel-more" tabindex="-1" data-tab="more"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>More</button>
     <i class="ind" id="tabInd"></i>
   </div>
   <div class="bd">
     <!-- ================= LOOK ================= -->
-    <div class="tab on" data-tab="look">
+    <div class="tab on" id="panel-look" role="tabpanel" aria-labelledby="tab-look" data-tab="look">
       <div class="row lookrow">
         <div class="lookbox"><svg id="lookPrev" viewBox="-128 -150 256 256"></svg><div class="tapme" id="partName">tap a part of him</div></div>
         <div class="seg parts" id="partChips"></div>
@@ -851,7 +852,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="clickSw"><span class="sw"></span><span class="l">Click through around him<small>Clicks on the empty space around him go to the window behind. Turn off if he flickers.</small></span></label></div>
     </div>
     <!-- ================= VOICE ================= -->
-    <div class="tab" data-tab="voice">
+    <div class="tab" id="panel-voice" role="tabpanel" aria-labelledby="tab-voice" data-tab="voice">
       <div class="row"><div class="t">His voice</div><div class="h">Tap one to hear it. <span id="voiceEng"></span></div><div class="voices" id="voiceChips"></div></div>
       <div class="row tgs">
         <label class="tg"><input type="checkbox" id="speakSw"><span class="sw"></span><span class="l">Speak replies out loud</span></label>
@@ -874,7 +875,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><div class="t">Speech recognition</div><div class="h">Better understands you more often but takes a moment longer.</div><div class="seg" id="sttChips"></div></div>
     </div>
     <!-- ================= BRAIN ================= -->
-    <div class="tab" data-tab="brain">
+    <div class="tab" id="panel-brain" role="tabpanel" aria-labelledby="tab-brain" data-tab="brain">
       <div class="row"><div class="t">How much can he do on his own?</div><div class="opts" id="trustOpts"></div></div>
       <div class="row nx"><div class="t">Claude model</div><div class="h">Auto uses the fast model for quick questions and the full one for real work.</div><div class="seg" id="modelChips"></div>
         <div class="t sub">Thinking effort</div><div class="h">Higher thinks harder on real work, but is slower and uses more of your plan. “default” leaves it to Claude.</div><div class="seg" id="effortChips"></div>
@@ -894,18 +895,21 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row nx"><label class="tg red"><input type="checkbox" id="rootSw"><span class="sw"></span><span class="l">Root mode<small>Runs <b>anything</b>, incl. <code>sudo</code> — a password card appears next to him when he needs root.</small></span></label>
         </div>
     </div>
+    <!-- ================= PLUGINS ================= -->
+    <div class="tab" id="panel-plugins" role="tabpanel" aria-labelledby="tab-plugins" data-tab="plugins">
+      <div class="row"><div class="t">Plugins</div><div class="h">Things other people made for him. They never download anything; they only use what is on this computer.</div>
+        <label class="tg" id="peersRow" hidden style="margin-bottom:8px"><input type="checkbox" id="peersSw"><span class="sw"></span><span class="l">Other machines<small>Let plugins show your other machines' status (load, memory, disks, failed services)</small></span></label>
+        <div id="plugCons"></div><div id="plugList"></div><div class="h" id="plugErr" style="color:#e8836f"></div>
+        <div class="bar"><button class="btn" id="plugReload">Reload</button></div></div>
+    </div>
     <!-- ================= MORE ================= -->
-    <div class="tab" data-tab="more">
+    <div class="tab" id="panel-more" role="tabpanel" aria-labelledby="tab-more" data-tab="more">
       <div class="row tgs">
         <label class="tg nx"><input type="checkbox" id="autoSw"><span class="sw"></span><span class="l">Start when I log in<small>Ready and listening for “hey Nixi”.</small></span></label>
         <label class="tg"><input type="checkbox" id="notifySw"><span class="sw"></span><span class="l">Notify me when a long task finishes<small>…while he's hidden.</small></span></label>
         <label class="tg"><input type="checkbox" id="popupSw"><span class="sw"></span><span class="l">Pop back up when it's done</span></label>
         <label class="tg nx"><input type="checkbox" id="updSw"><span class="sw"></span><span class="l">Check for updates<small>Asks GitHub for the latest version when he starts, every few hours and when you open Settings. Nothing about you is sent.</small></span></label>
       </div>
-      <div class="row"><div class="t">Plugins</div><div class="h">Things other people made for him. They never download anything; they only use what is on this computer.</div>
-        <label class="tg" id="peersRow" hidden style="margin-bottom:8px"><input type="checkbox" id="peersSw"><span class="sw"></span><span class="l">Other machines<small>Let plugins show your other machines' status (load, memory, disks, failed services)</small></span></label>
-        <div id="plugCons"></div><div id="plugList"></div><div class="h" id="plugErr" style="color:#e8836f"></div>
-        <div class="bar"><button class="btn" id="plugReload">Reload</button></div></div>
       <div class="row"><div class="t">ai-mirror</div><div class="h">Shows when an agent controls your desktop through ai-mirror. Super+Shift+Esc always takes it back.</div></div>
       <div class="row"><div class="t">Memory &amp; history</div><div class="h">Say “remember …” and he keeps it for every future chat.</div>
         <div class="bar"><button class="btn nx" data-open="memory">🧠 Memory <i id="memCount"></i></button><button class="btn nx" data-open="history">🕘 History</button></div></div>
@@ -2791,11 +2795,14 @@ function whenQuiet(fn){ const t0=performance.now();
 /* ================= panels: history, memory, quick actions ================= */
 const panelEl=$('#panel'); let panelKind=null;
 const ago=ts=>{ const s=Date.now()/1000-ts; return s<60?'just now':s<3600?`${s/60|0} min ago`:s<86400?`${s/3600|0} h ago`:`${s/86400|0} d ago`; };
-let pnMoved=false, setW=0, setH=0;
+let pnMoved=false, setW=0, setH=0, setWasOpen=false, setFocusBack=null;
 function setDefaultSize(){ return [Math.min(560,((screen&&screen.availWidth)||1920)-40), Math.min(680,Math.round(0.85*((screen&&screen.availHeight)||1080)))]; }
 function setSyncVars(){ if(!setW||!setH) [setW,setH]=setDefaultSize(); setEl.style.setProperty('--setW',setW+'px'); setEl.style.setProperty('--setH',setH+'px'); }
 function panelSize(){ const sOn=setEl.classList.contains('on'), pOn=panelEl.classList.contains('on');
   document.body.classList.toggle('pnl',sOn||pOn);
+  if(sOn&&!setWasOpen){ setFocusBack=document.activeElement; const b=$('#tabs button.on')||$('#tabs button'); if(b) b.focus(); }
+  else if(!sOn&&setWasOpen){ const el=setFocusBack; setFocusBack=null; if(el&&el.isConnected&&typeof el.focus==='function') el.focus(); }
+  setWasOpen=sOn;
   if(sOn){ setSyncVars(); setWant=[Math.max(0,setW-340+24),Math.max(0,setH-460+46)]; native('wide:off'); sizeWindow(); }
   else if(pOn){ setWant=[0,0]; native('wide:on'); sizeWindow(); }
   else { setWant=[0,0]; native('wide:off'); sizeWindow(); reDock(); }
@@ -2825,7 +2832,7 @@ async function openPanel(kind){
       :'<div class="empty">Nothing yet — everything you ask shows up here,<br>so you can reread answers or pick a chat back up.</div>';
     body._items=items;
   } else if(kind==='plugins'){
-    $('#pTitle').textContent='Plug-ins';
+    $('#pTitle').textContent='Claude Code plug-ins';
     body.innerHTML='<div class="empty">loading…</div>';
     const j=await (await post('/api/plugins',{op:'list'})).json(), items=j.items||[];
     body.innerHTML=(j.lean?'<div class="h" style="color:#e89a2c;font-size:11.5px;margin:2px 0 9px">Light mode is on, so he isn’t using plug-ins right now. Turn it off in Settings → Brain to use the ones switched on here.</div>':'')
@@ -2912,7 +2919,7 @@ const ICON={
 };
 // (no top bar / blob button: you dock him by dragging him into a screen edge, and pull him out to get the blob back)
 const NX_MENU=['cd','history','look','plugins'];
-const MENU=[['talk','talk'],['cd','folder'],['history','history'],['look','show my screen'],['hover','hover mode'],['plugins','plug-ins'],['mirror','take control back'],['set','settings'],['hide','hide']];
+const MENU=[['talk','talk'],['cd','folder'],['history','history'],['look','show my screen'],['hover','hover mode'],['plugins','Claude Code plug-ins'],['mirror','take control back'],['set','settings'],['hide','hide']];
 const MENU_XY=[];
 menuEl.innerHTML=MENU.map(([a,l],i)=>{ const ang=(-168+i*(156/(MENU.length-1)))*Math.PI/180, r=122;
   MENU_XY[i]=[Math.cos(ang)*r/1.1, Math.sin(ang)*r/1.1];                 // same spot in the face's SVG units (330px = 300 units)
@@ -3112,17 +3119,27 @@ const STT=[['tiny.en','Fastest'],['base.en','Fast'],['auto','Balanced'],['medium
 const TRUST=[['ask','✋','Ask me first','Edits files on his own; asks you (out loud) before running commands or going online.'],
   ['trust','⚡','Just do it','Runs anything without asking. Fast, but you won’t get a say.'],
   ['readonly','👀','Look, don’t touch','Can read and explain things, but changes nothing.']];
-const setEl=$('#set');
+const setEl=$('#set'), TABS=['look','voice','brain','plugins','more'];
 function settings(on,tab){ setEl.classList.toggle('on',on);
-  if(on){ menu(false); hideAsk(); panelEl.classList.remove('on'); panelKind=null; }
+  if(on){ menu(false); hideAsk(); panelEl.classList.remove('on'); panelKind=null;
+    if(tab) showTab(tab); else try{ showTab(localStorage.getItem('nixi.tab')||'look'); }catch(e){ showTab('look'); } }
   panelSize();
-  if(on){ if(tab) showTab(tab); renderSettings(); loadMics(); locLoad(); plugLoad(); requestAnimationFrame(moveInd);
+  if(on){ renderSettings(); loadMics(); locLoad(); plugLoad(); requestAnimationFrame(moveInd);
     if(info.update_check!==false) post('/api/update/check',{stale:1800}).then(r=>r.json()).then(u=>{ info.update=u; renderUpdate(); }).catch(()=>{}); } }   // fresh "latest" when you look
 function moveInd(){ const b=$('#tabs button.on'), ind=$('#tabInd'); if(!b||!ind) return; ind.style.width=b.offsetWidth+'px'; ind.style.transform=`translateX(${b.offsetLeft-3}px)`; }
-function showTab(t){ $$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t)); $$('#set .tab').forEach(x=>x.classList.toggle('on',x.dataset.tab===t));
+function showTab(t,focus){ if(!TABS.includes(t)) t='look';
+  $$('#tabs button').forEach(b=>{ const on=b.dataset.tab===t; b.classList.toggle('on',on); b.setAttribute('aria-selected',on?'true':'false'); b.tabIndex=on?0:-1; if(on&&focus) b.focus(); });
+  $$('#set .tab').forEach(x=>x.classList.toggle('on',x.dataset.tab===t));
   moveInd(); try{ localStorage.setItem('nixi.tab',t); }catch(e){} }
 try{ const t=localStorage.getItem('nixi.tab'); if(t) showTab(t); }catch(e){}
 $('#tabs').addEventListener('click',e=>{ const b=e.target.closest('[data-tab]'); if(b) showTab(b.dataset.tab); });
+$('#tabs').addEventListener('keydown',e=>{
+  if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) return;
+  e.preventDefault();
+  const cur=Math.max(0,TABS.indexOf(($('#tabs button.on')||{}).dataset?.tab)), n=TABS.length;
+  const idx=e.key==='Home'?0:e.key==='End'?n-1:(cur+(e.key==='ArrowRight'?1:-1)+n)%n;
+  showTab(TABS[idx],true);
+});
 
 /* ---------- the colour picker: tap a part of him (or a chip), then pick ---------- */
 const PART_LABEL={body:'body',pupL:'left pupil',pupR:'right pupil',whiteL:'left eye white',whiteR:'right eye white',skin:'skin colour'};
@@ -3411,7 +3428,7 @@ setEl.addEventListener('change',e=>{
   if(id==='themeSw') return setLook({follow_theme:on}).then(()=>{ lookShown=''; syncLook(); renderSettings(); });
   if(id==='rndSw') setLook({random:on}).then(()=>{ if(on){ lookRolled=false; syncLook(true); } else { lookShown=''; syncLook(); } renderSettings(); });
 });
-setEl.addEventListener('keydown',e=>{ if(e.target.matches('input[type=text],input[type=number]')) e.stopPropagation(); if(e.key==='Enter'&&(e.target.id==='projPath'||e.target.id==='projName')) $('#projAdd').click(); });
+setEl.addEventListener('keydown',e=>{ if(e.key!=='Escape'&&!(e.ctrlKey&&e.key.toLowerCase()===',')) e.stopPropagation(); if(e.key==='Enter'&&(e.target.id==='projPath'||e.target.id==='projName')) $('#projAdd').click(); });
 setInterval(()=>{ if(setEl.classList.contains('on') && (info.voices||[]).some(v=>v.downloading)) refresh().then(renderSettings); },1500);
 
 /* ================= slash commands ================= */
