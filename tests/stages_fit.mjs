@@ -352,7 +352,7 @@ const acts = () => ev("return __acts.slice()");
   await ev("applyThemeVars(null); stageClose(); return 1"); await sleep(320); }
 
 // the press set (#167): newsprint look, small-caps source + age, Tab reaches each Open, reduced motion, no external requests
-{ const H = FIX.headlines;
+{ const now = Math.floor(Date.now() / 1000), H = { ...FIX.headlines, items: FIX.headlines.items.map((it, i) => ({ ...it, at: [now - 7200, now - 300, null][i] })) };   // (times set here: the fixture is built minutes earlier)
   const motion = v => send("Emulation.setEmulatedMedia", { features: v ? [{ name: "prefers-reduced-motion", value: v }] : [] });
   const key = async k => { await send("Input.dispatchKeyEvent", { type: "keyDown", key: k, code: k, windowsVirtualKeyCode: k === "Tab" ? 9 : 27 }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code: k, windowsVirtualKeyCode: k === "Tab" ? 9 : 27 }); };
   await motion("no-preference");
@@ -384,7 +384,7 @@ const acts = () => ev("return __acts.slice()");
   await show({ ...H, items: [{ title: "<img src='https://feeds.bbci.co.uk/x.png'>", source: "<b>BBC News</b>", at: null, open: "h1" }] }, w => 0);
   const rm = await ev(`const f=document.getElementById('stg'); return [f.classList.contains('go'), getComputedStyle(f).animationName, getComputedStyle(f.querySelector('.bd')).animationName, getComputedStyle(f.querySelector('.prw')).animationName, f.querySelectorAll('img,b').length]`);
   check(!rm[0] && rm[1] === "none" && rm[2] === "none" && rm[3] === "none" && rm[4] === 0, "press: reduced motion has no animation and markup stays text", JSON.stringify(rm));
-  const ext = reqs.filter(u => u && !u.startsWith(`http://127.0.0.1:${port}/`) && !u.startsWith("data:") && !u.startsWith("about:"));
+  const ext = reqs.filter(u => u && !u.startsWith(new URL(url).origin + "/") && !u.startsWith("data:") && !u.startsWith("about:"));
   check(ext.length === 0, "press: no request leaves the page for a news site", JSON.stringify(ext));
   await motion(null); await ev("stageClose(); return 1"); await sleep(320); }
 
