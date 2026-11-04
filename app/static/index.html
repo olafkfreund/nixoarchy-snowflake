@@ -2164,7 +2164,7 @@ function onEvent(ev){
     if(hiddenNow) native('show');
     restore(15000,true);
     if(info.hover){ comeBack().then(()=>onEvent(ev)); return; }
-    if(ev.follow){ if(busy) return; wake(); send(ev.text,{follow:true}); return; }   // talked right after he answered: no "hey Nixi" needed
+    if(ev.follow){ if(busy||ask.classList.contains('on')) return; wake(); send(ev.text,{follow:true}); return; }   // talked right after he answered: no "hey Nixi" needed
     poke('surprised',500); wake(); sfx('wake');
     if(ev.text && ev.text.split(/\s+/).length>=2) send(ev.text); else if(!busy) startRec('auto'); else tick("one sec — I'm still on the last thing");
   }
@@ -2679,8 +2679,11 @@ function toolLabel(name,detail){
 }
 
 /* ================= ask box ================= */
-function showAsk(pre){ menu(false); closePanels(); ask.classList.add('on'); if(pre!=null) input.value=pre; input.focus(); }
-function hideAsk(){ ask.classList.remove('on'); input.blur(); }
+function showAsk(pre){ menu(false); closePanels();
+  if(!ask.classList.contains('on')){ endListening(); post('/api/follow',{act:'hold',on:true}).catch(()=>{}); }
+  ask.classList.add('on'); if(pre!=null) input.value=pre; input.focus(); }
+function hideAsk(){ if(ask.classList.contains('on')) post('/api/follow',{act:'hold',on:false}).catch(()=>{});
+  ask.classList.remove('on'); input.blur(); }
 ask.addEventListener('submit',e=>{ e.preventDefault(); const v=input.value; input.value=''; hideAsk(); send(v); });
 
 /* ================= attachments: screenshots & clipboard ================= */
@@ -2794,7 +2797,9 @@ const MEM_SHOW=/^(?:hey\s+nixi[,\s]+)?what (?:do|did) you (?:remember|know about
 const PROJ_ADD=/^(?:hey\s+nixi[,\s]+)?(?:remember|note)\s+(?:that\s+)?((?:my|the)\s+.+?)\s+(?:project\s+|folder\s+|repo\s+)?(?:is|lives)\s+(?:in|at)\s+(~?\/?[\w.\/-]+)\s*\.?$/i;
 const NICE=/\b(thank(s| you)|good job|well done|nice( one| work)?|love you|you'?re (the best|awesome|cute|great)|good boy|cutie)\b/i;
 async function send(text,opts={}){
-  text=(text||'').trim(); if(!text&&!atts.length) return; wake(); lastUser=performance.now();
+  text=(text||'').trim(); if(!text&&!atts.length) return;
+  if(!opts.follow&&((rec&&rec.mode!=='approve')||follow)) endListening();
+  wake(); lastUser=performance.now();
   if(!opts.stage && text.startsWith('/') && !(info.bridge && /^\/(mechanic|guide)$/.test(text))) return slash(text);   // nixi's trust: to the server
   if(!opts.stage){   /* a stage Run is not a phrase to interpret */
   let mm; const question=/\?\s*$/.test(text)||/^(?:hey\s+nixi[,\s]+)?(?:do|did|can|could) you\b|^remember (what|when|how|where|why|which|who|if|the time)\b/i.test(text);
@@ -2964,7 +2969,7 @@ panelEl.addEventListener('click',async e=>{
     if(!b){ it.classList.toggle('open'); return; }
     if(b.dataset.h==='copy'){ try{ await navigator.clipboard.writeText(h.him||''); tick('copied'); }catch(err){ tick("couldn't copy",true); } }
     if(b.dataset.h==='again'){ closePanels(); send(h.you); }
-    if(b.dataset.h==='cont'){ const r=await post('/api/resume',{session:h.session,cwd:h.cwd}); const j=await r.json();
+    if(b.dataset.h==='cont'){ endListening(); const r=await post('/api/resume',{session:h.session,cwd:h.cwd}); const j=await r.json();
       if(j.error) return tick(j.error,true); info=j; showInfo(); closePanels(); tick('↩ back in that chat · '+j.cwd_display); poke('happy',900); capShow(); setYou(h.you); himSet(h.him); }
   } else if(panelKind==='memory'){
     const del=e.target.closest('[data-del]');
@@ -2973,7 +2978,7 @@ panelEl.addEventListener('click',async e=>{
   } else if(panelKind==='actions'){
     if(e.target.closest('#qaEditBtn')){ settings(true,'brain'); return; }
     const b=e.target.closest('[data-qa]'); if(!b) return; const a=(info.quick_actions||[])[+b.dataset.qa]; closePanels();
-    if(a.attach) await shoot(a.attach);
+    if(a.attach){ endListening(); await shoot(a.attach); }
     send(a.prompt);
   }
 });
@@ -3027,7 +3032,7 @@ let menuShutAt=0;
 function menu(on){ if(on) layoutMenu(); if(!on&&menuOn) menuShutAt=performance.now(); if(on!==menuOn) sfx(on?'menu':'close'); menuOn=on; menuEl.classList.toggle('on',on); document.body.classList.toggle('menu',on); if(on){ closePanels(); hideAsk(); } $('[data-a="hover"]').classList.toggle('on',!!info.hover); sendRegion(true); }
 menuEl.addEventListener('click',e=>{ const b=e.target.closest('.mb'); if(!b) return; menu(false);
   ({talk:()=>startRec('auto'), bar:()=>toggleBar(), cd:()=>showAsk('/cd '), history:()=>openPanel('history'), plugins:()=>openPanel('plugins'),
-    look:()=>shoot('screen').then(j=>{ if(j) showAsk(''); }), hover:toggleHover, mirror:mirRevoke, hide:dismiss, set:()=>settings(true)})[b.dataset.a](); });
+    look:()=>{ endListening(); return shoot('screen').then(j=>{ if(j) showAsk(''); }); }, hover:toggleHover, mirror:mirRevoke, hide:dismiss, set:()=>settings(true)})[b.dataset.a](); });
 function dismiss(){ menu(false); hideAsk(); closePanels(); endListening(); if(!native('hide')) poke('sleepy',1200); }
 // Esc / hiding him: he stops listening — a recording in progress is dropped and the "just keep talking" window closes
 function endListening(){ if(rec&&rec.mode!=='approve') stopRec(true); post('/api/follow',{act:'cancel'}).catch(()=>{}); follow=false; hearRaw=0; }
@@ -4009,6 +4014,7 @@ refresh().then(()=>{
   setTimeout(()=>poke('wink',900),700);
 });
 applyLook(LOOK_DEFAULT);
+post('/api/follow',{act:'hold',on:false}).catch(()=>{});
 events();
 setInterval(()=>{ if(!busy) refresh(); },15000);
 </script>
