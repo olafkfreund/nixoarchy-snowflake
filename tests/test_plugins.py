@@ -4,6 +4,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -169,6 +170,12 @@ class T(unittest.TestCase):
         f.write_text("garbage")
         self.assertEqual(plugins.State(f).data, {})
 
+    def test_network_and_system_status_are_refused_together(self):
+        st = {"phrases": ["x"], "argv": ["run"], "reads": ["system-status"]}
+        self.assertIsNone(self.one(dict(GOOD, stage=st), ["run"]).error)
+        self.assertIsNone(self.one(dict(GOOD, stage=dict(st, network=True, reads=[])), ["run"]).error)
+        self.assertIn("system status", self.one(dict(GOOD, stage=dict(st, network=True)), ["run"]).error)
+
     def test_plugin_dirs(self):
         d = plugins.plugin_dirs()
         self.assertEqual(d[0], plugins.APP_DIR.parent / "plugins")
@@ -176,6 +183,51 @@ class T(unittest.TestCase):
 
 
 HAT = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g transform="translate(1 2) scale(1.5)"><path d="M50 8L88 92Z" fill="acc" stroke="#fff"/><circle cx="5" cy="5" r="2" fill="#abc" opacity=".5"/></g></svg>'
+
+
+class Readings(unittest.TestCase):
+    def setUp(self):
+        self._t = tempfile.TemporaryDirectory()
+        self.addCleanup(self._t.cleanup)
+        self.d = Path(self._t.name)
+        for n, v in (("PROC_STAT", "stat"), ("PROC_NET", "net")):
+            mock.patch.object(plugins, n, str(self.d / v)).start()
+        self.addCleanup(mock.patch.stopall)
+        plugins._last.clear()
+
+    def put(self, busy, idle, rx, tx):
+        (self.d / "stat").write_text("cpu %d 0 0 %d 0 0 0 0 0 0\n" % (busy, idle))
+        (self.d / "net").write_text("h\nh\n lo: 999 0 0 0 0 0 0 0 999 0\n eth0: %d 0 0 0 0 0 0 0 %d 0\n" % (rx, tx))
+
+    def test_rates_from_two_readings_and_null_after_a_reset(self):
+        self.put(0, 0, 1000, 500)
+        plugins.prime()
+        self.put(25, 75, 3000, 1500)
+        cpu, rx, tx = plugins._rates()
+        self.assertEqual(cpu, 25.0)
+        self.assertTrue(rx > 0 and tx > 0 and rx > tx)
+        self.put(1, 1, 10, 10)                                  # counters went back
+        self.assertEqual(plugins._rates(), (None, None, None))
+
+    def test_unreadable_is_null_not_zero(self):
+        plugins.prime()
+        self.assertEqual(plugins._rates(), (None, None, None))
+
+    def test_the_two_systemctl_calls_run_in_parallel(self):
+        starts = []
+
+        def slow(cmd, **kw):
+            starts.append(time.monotonic())
+            time.sleep(1)
+            return mock.Mock(returncode=0, stdout="")
+        self.put(0, 0, 0, 0)
+        plugins.prime()
+        t0 = time.monotonic()
+        with mock.patch.object(plugins.subprocess, "run", slow):
+            r = plugins.system_status()
+        self.assertEqual((len(starts), r["failed"], r["failed_system"]), (2, [], []))
+        self.assertLess(max(starts) - min(starts), 0.5)
+        self.assertLess(time.monotonic() - t0, 2.5)
 
 
 class Sanitize(unittest.TestCase):

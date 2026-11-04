@@ -1,31 +1,77 @@
 #!/usr/bin/env python3
-"""Nix status: one `facts` stage on stdout. The sandbox shows it nothing of the system: Nixi passes system_status on stdin (reads: system-status); no network."""
+"""Nix status: one live `gauges` stage on stdout. The sandbox shows it nothing of the system: Nixi passes system_status on stdin (reads: system-status); no network."""
 import json
 import os
+import re
 import sys
 
 
-def human(n):
-    for unit in "BKMGTPE":
-        if round(n, 1) < 1024 or unit == "E":
-            return f"{n:.1f}".rstrip("0").rstrip(".") + unit
+def num(x):
+    return x if type(x) in (int, float) and x == x and abs(x) != float("inf") and x >= 0 else None
+
+
+def human(n, rate=False):
+    for unit in ("B", "KB", "MB", "GB", "TB", "PB") if rate else ("B", "KiB", "MiB", "GiB", "TiB", "PiB"):
+        if round(n, 1) < 1024 or unit[0] == "P":
+            return f"{n:.1f}".rstrip("0").rstrip(".") + (" " + unit + "/s" if rate else " " + unit)
         n /= 1024
+
+
+def used_meter(label, total, used):
+    total, used = num(total), num(used)
+    if not total or used is None:
+        return {"label": label, "pct": None, "text": "unavailable"}
+    return {"label": label, "pct": round(min(100.0, used * 100 / total), 1), "text": f"{human(used)} / {human(total)}"[:40]}
+
+
+def rate_meter(label, bps):
+    bps = num(bps)
+    return {"label": label, "pct": None, "text": "unavailable"} if bps is None else {"label": label, "pct": None, "v": bps, "text": human(bps, True)}
+
 
 try:
     ss = json.load(sys.stdin).get("system_status") or {}
 except ValueError:
     ss = {}
-pts = []
-gen, failed = ss.get("generation"), ss.get("failed")
-pts.append("System: " + (gen.split("-", 1)[-1][:100] if isinstance(gen, str) and gen else "unknown"))
-if isinstance(failed, list):
-    failed = [str(x) for x in failed]
-    pts.append("Failed user services: " + (", ".join(failed[:3])[:90] + (" …" if len(failed) > 3 else "") if failed else "none"))
+if not isinstance(ss, dict):
+    ss = {}
+disks = ss.get("disks") if isinstance(ss.get("disks"), list) else None
+disk = {d.get("path"): d for d in disks or [] if isinstance(d, dict)}
+if disks is None:                                   # an older Nixi sends no disks: read the store ourselves
+    try:
+        fs = os.statvfs("/nix/store")
+        disk["/nix/store"] = {"total": fs.f_blocks * fs.f_frsize, "used": (fs.f_blocks - fs.f_bfree) * fs.f_frsize}
+    except OSError:
+        pass
+mem = ss.get("mem") if isinstance(ss.get("mem"), dict) else {}
+tot, avail = num(mem.get("total")), num(mem.get("available"))
+net = ss.get("net") if isinstance(ss.get("net"), dict) else {}
+cpu = num(ss.get("cpu_pct"))
+meters = [{"label": "CPU", "pct": None if cpu is None else min(100.0, cpu), "text": "" if cpu is not None else "unavailable"},
+          used_meter("MEM", tot, None if tot is None or avail is None else tot - avail),
+          used_meter("/", (disk.get("/") or {}).get("total"), (disk.get("/") or {}).get("used")),
+          used_meter("STORE", (disk.get("/nix/store") or {}).get("total"), (disk.get("/nix/store") or {}).get("used")),
+          rate_meter("NET ↓", net.get("rx_bps")), rate_meter("NET ↑", net.get("tx_bps"))]
+meters[0] = {k: v for k, v in meters[0].items() if v != ""}
+gen, up = ss.get("generation"), num(ss.get("uptime_s"))
+badges = [{"k": "gen", "v": gen.split("-", 1)[-1][:60] if isinstance(gen, str) and gen else "unknown"}]
+if up is not None:
+    d, h, m = int(up // 86400), int(up % 86400 // 3600), int(up % 3600 // 60)
+    badges.append({"k": "up", "v": f"{d}d {h}h" if d else f"{h}h {m}m" if h else f"{m}m"})
+fu, fs_ = ss.get("failed"), ss.get("failed_system")
+lists_ok = isinstance(fu, list) and isinstance(fs_, list)
+units = [str(x)[:80] for q in (fu, fs_) if isinstance(q, list) for x in q]
+if fu is None and fs_ is None:
+    flist, say = {"title": "Failed", "items": ["unavailable"], "tone": "warn"}, "I couldn't check the services."
+elif not lists_ok:
+    flist, say = ({"title": "Failed", "items": units[:5] or ["not all checked"], "tone": "bad" if units else "warn"},
+                  (f"{len(units)} failed services." if len(units) > 1 else "One failed service: " + units[0] + ".") + " I couldn't check all of them." if units else "I couldn't check all the services.")
+elif units:
+    flist, say = {"title": "Failed", "items": units[:5], "tone": "bad"}, f"One failed service: {units[0][:60]}." if len(units) == 1 else f"{len(units)} failed services."
 else:
-    pts.append("Failed user services: unavailable")
-try:
-    fs = os.statvfs("/nix/store")
-    pts.append(f"Store: {human((fs.f_blocks - fs.f_bfree) * fs.f_frsize)} used of {human(fs.f_blocks * fs.f_frsize)}")
-except OSError:
-    pts.append("Store: couldn't check")
-print(json.dumps({"v": 1, "kind": "facts", "title": "Nix status", "points": pts, "source": "this computer"}))
+    flist, say = {"title": "Failed", "items": ["none"], "tone": "ok"}, "All fine."
+if meters[1]["pct"] is not None and meters[1]["pct"] >= 90:
+    say += " Memory is high."
+host = ss.get("host") if isinstance(ss.get("host"), str) and re.fullmatch(r"[A-Za-z0-9._-]{1,32}", ss["host"]) else "this-computer"
+print(json.dumps({"v": 1, "kind": "gauges", "title": "Nix status", "say": say, "source": "this computer", "live": True,
+                  "hosts": [{"name": host, "state": "up", "badges": badges, "meters": meters, "lists": [flist]}]}))

@@ -210,6 +210,18 @@ class RunnerTest(unittest.TestCase):
             with self.assertRaises(plugins.StageError):
                 plugins.run_stage(p, "never seen")                 # nothing cached: the error
 
+    def test_fresh_skips_cache_and_stale_fallback_but_updates_cache(self):
+        p = prog(self.root, "")
+        p.manifest["stage"]["cache_seconds"] = 60
+        newer = {**FACTS, "points": ["new"]}
+        with mock.patch.object(plugins, "_launch", side_effect=[FACTS, newer, plugins.StageError("failed")]) as launch:
+            self.assertEqual(plugins.run_stage(p, "q"), FACTS)
+            self.assertEqual(plugins.run_stage(p, "q", fresh=True), newer)
+            self.assertEqual(plugins.run_stage(p, "q"), newer)
+            with self.assertRaisesRegex(plugins.StageError, "failed"):
+                plugins.run_stage(p, "q", fresh=True)
+            self.assertEqual(launch.call_count, 3)
+
     def test_one_run_per_plugin_at_a_time(self):
         p, go, seen = prog(self.root, ""), threading.Event(), []
 
@@ -221,7 +233,7 @@ class RunnerTest(unittest.TestCase):
             t.start()
             time.sleep(0.2)
             with self.assertRaises(plugins.Busy) as e:
-                plugins.run_stage(p, "b")
+                plugins.run_stage(p, "b", fresh=True)
             self.assertIn("still fetching", str(e.exception))
             go.set()
             t.join()
@@ -371,6 +383,19 @@ class StageServerTest(_ServerEnv):
         self.assertEqual(pub.call_args[1]["t"], "stage")
         self.assertEqual(evs[0]["text"], "Here you go.")
 
+    def test_phrase_says_cached_stage_say_without_publishing_it(self):
+        self.mk("user", "disk-one")
+        self.on("disk-one")
+        stage = {**FACTS, "say": "All fine."}
+        with mock.patch.object(plugins, "_launch", return_value=stage) as launch, mock.patch.object(self.server.BUS, "pub") as pub:
+            first, prompts = self.ask({"prompt": "nixi status"})
+            second, cached_prompts = self.ask({"prompt": "nixi status"})
+        self.assertEqual((prompts, cached_prompts), ([], []))
+        self.assertEqual((first[0]["text"], second[0]["text"]), ("All fine.", "All fine."))
+        self.assertEqual(launch.call_count, 1)
+        self.assertNotIn("say", pub.call_args.kwargs)
+        self.assertNotIn("say", self.server.STAGES.current())
+
     def test_off_plugin_does_not_match_and_two_matches_ask(self):
         self.mk("user", "disk-one")
         self.mk("user", "disk-two")
@@ -508,10 +533,10 @@ class StageServerTest(_ServerEnv):
     # ---- consent
     def test_folder_plugin_needs_consent_bound_to_its_hash(self):
         S = self.server
-        d = self.mk("user", "net-one", network=True, reads=["system-status"])
+        d = self.mk("user", "net-one", network=True, reads=[])
         got = S.plugins_act({"id": "net-one", "enabled": True})
         c = got["needs_consent"]
-        self.assertEqual((c["id"], c["network"], c["reads"], c["runs"], c["sha256"]), ("net-one", True, ["system-status"], "run", plugins.sha256_of(d)))
+        self.assertEqual((c["id"], c["network"], c["reads"], c["runs"], c["sha256"]), ("net-one", True, [], "run", plugins.sha256_of(d)))
         self.assertFalse(self.state.get("net-one")["enabled"])
         self.assertFalse(S.Plug.stage_enabled("net-one"))
         (d / "run").write_text("#!/bin/sh\necho changed\n")                          # changed between the card and Allow
@@ -523,6 +548,11 @@ class StageServerTest(_ServerEnv):
         self.assertNotIn("error", got)
         self.assertEqual(self.state.get("net-one"), {"enabled": True, "sha256": c["sha256"]})
         self.assertTrue(S.Plug.stage_enabled("net-one"))
+
+    def test_consent_card_lists_what_a_system_status_plugin_reads(self):
+        self.mk("user", "stat-one", reads=["system-status"])
+        c = self.server.plugins_act({"id": "stat-one", "enabled": True})["needs_consent"]
+        self.assertEqual((c["network"], c["reads"]), (False, ["system-status"]))
 
     def test_a_forged_consent_for_the_wrong_plugin_or_hash_is_refused(self):
         S = self.server

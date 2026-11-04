@@ -238,9 +238,24 @@ class SandboxTest(unittest.TestCase):
             self.assertEqual(json.loads(self.facts(p)[0]), {"generation": "g-1", "failed": ["a.service"]})
 
     def test_nix_status_says_unavailable_when_the_query_failed(self):
-        with mock.patch.object(plugins, "system_status", return_value={"generation": "nixos-system-h-1", "failed": None}):
-            pts = plugins.run_stage(load(EX / "nix-status"), "nixi status")["points"]
-        self.assertEqual(pts[:2], ["System: system-h-1", "Failed user services: unavailable"])
+        with mock.patch.object(plugins, "system_status", return_value={"generation": "nixos-system-h-1", "failed": None, "failed_system": None}):
+            got = plugins.run_stage(load(EX / "nix-status"), "nixi status")
+        h = got["hosts"][0]
+        self.assertEqual(h["lists"][0]["items"], ["unavailable"])
+        self.assertEqual(h["badges"][0], {"k": "gen", "v": "system-h-1"})
+        self.assertTrue(all(m["pct"] is None for m in h["meters"][:2]))      # unknown is null, never 0
+
+    def test_nix_status_partial_failure_is_not_all_fine(self):
+        for failed, failed_system, items, tone, say in (
+            (None, [], ["not all checked"], "warn", "I couldn't check all the services."),
+            (["a.service"], None, ["a.service"], "bad", "One failed service: a.service. I couldn't check all of them."),
+        ):
+            with self.subTest(failed=failed, failed_system=failed_system), \
+                    mock.patch.object(plugins, "system_status", return_value={"failed": failed, "failed_system": failed_system}):
+                got = plugins.run_stage(load(EX / "nix-status"), "nixi status", fresh=True)
+                self.assertEqual(got["hosts"][0]["lists"][0]["items"], items)
+                self.assertEqual(got["hosts"][0]["lists"][0]["tone"], tone)
+                self.assertEqual(got["say"], say)
 
     def test_a_file_over_64_mib_cannot_be_written(self):
         p = self.mk("import json\ntry:\n    with open('/tmp/big', 'wb') as f:\n        for _ in range(80):\n            f.write(b'x' * (1 << 20))\n    r = 'wrote'\n"
@@ -270,9 +285,23 @@ class SandboxTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {"PATH": ":".join(bins)}):
             self.assertFalse(any(os.path.exists(os.path.join(b, "df")) for b in bins if b.startswith("/nix/store/")))   # (the sandbox keeps only these)
             got = plugins.run_stage(load(EX / "nix-status"), "nixi status")
-        self.assertEqual((got["kind"], got["title"], len(got["points"])), ("facts", "Nix status", 3))
-        self.assertTrue(got["points"][0].startswith("System: "))
-        self.assertRegex(got["points"][2], r"^Store: \S+ used of \S+$")
+        self.assertEqual((got["kind"], got["title"], got["live"], len(got["hosts"])), ("gauges", "Nix status", True, 1))
+        self.assertTrue(got["say"])
+        self.assertEqual([m["label"] for m in got["hosts"][0]["meters"]], ["CPU", "MEM", "/", "STORE", "NET \u2193", "NET \u2191"])
+        store = got["hosts"][0]["meters"][3]
+        self.assertIsNotNone(store["pct"])                                   # the statvfs fallback worked without df
+        self.assertRegex(store["text"], r"^\S+ \S+ / \S+ \S+$")
+
+    def test_nix_status_reads_the_host_and_says_what_failed(self):
+        ss = {"generation": "nixos-system-h-1", "failed": ["a.service"], "failed_system": ["b.service"], "cpu_pct": 18.0, "host": "p620",
+              "mem": {"total": 64 << 30, "available": 4 << 30}, "disks": [{"path": "/", "total": 100, "used": 50}, {"path": "/nix/store", "total": 100, "used": 25}],
+              "net": {"rx_bps": 1.5e6, "tx_bps": None}, "uptime_s": 90000}
+        with mock.patch.object(plugins, "system_status", return_value=ss):
+            got = plugins.run_stage(load(EX / "nix-status"), "nixi status")
+        h = got["hosts"][0]
+        self.assertEqual((h["name"], got["say"], h["lists"][0]), ("p620", "2 failed services. Memory is high.", {"title": "Failed", "items": ["a.service", "b.service"], "tone": "bad"}))
+        self.assertEqual([m["pct"] for m in h["meters"]], [18.0, 93.8, 50.0, 25.0, None, None])
+        self.assertEqual((h["meters"][4]["text"], h["meters"][5]["text"], h["badges"][1]), ("1.4 MB/s", "unavailable", {"k": "up", "v": "1d 1h"}))
 
     @unittest.skipUnless(plugins.pasta_ok(), "needs pasta")
     def test_rss_headlines_example_against_a_local_feed(self):

@@ -10,6 +10,11 @@ import stages as S
 CMDS = {"v": 1, "kind": "commands", "items": [{"label": "Install", "cmd": "  nix profile install nixpkgs#firefox "},
                                               {"label": "Try", "cmd": "nix run nixpkgs#firefox"}]}
 FACTS = {"v": 1, "kind": "facts", "title": "Tide", "points": ["a", "b"], "source": "moon"}
+GAUGES = {"v": 1, "kind": "gauges", "title": "System", "source": "local", "live": True, "say": "All fine.",
+          "hosts": [{"name": "p620", "state": "up", "badges": [{"k": "gen", "v": "42", "tone": "ok"}],
+                     "meters": [{"label": "CPU", "pct": 18, "v": 1.5, "text": "busy", "tone": "warn"},
+                                {"label": "NET", "pct": None}],
+                     "lists": [{"title": "Failed", "items": ["none"], "tone": "ok"}]}]}
 
 
 class CutterTest(unittest.TestCase):
@@ -58,6 +63,37 @@ class ValidateTest(unittest.TestCase):
     def test_facts_ok(self):
         self.assertEqual(S.validate(FACTS), FACTS)
 
+    def test_facts_say_is_optional_and_checked(self):
+        self.assertEqual(S.validate({**FACTS, "say": " All fine. "})["say"], "All fine.")
+        self.assertNotIn("say", S.validate(FACTS))
+        self.assertIsNone(S.validate({**FACTS, "say": "x" * 201}))
+
+    def test_gauges_full_example_and_unknown_keys(self):
+        self.assertEqual(S.validate(GAUGES), GAUGES)
+        stage = {**GAUGES, "extra": "drop", "hosts": [{**GAUGES["hosts"][0], "extra": "drop",
+                  "badges": [{**GAUGES["hosts"][0]["badges"][0], "extra": "drop"}],
+                  "meters": [{**GAUGES["hosts"][0]["meters"][0], "extra": "drop"}],
+                  "lists": [{**GAUGES["hosts"][0]["lists"][0], "extra": "drop"}]}]}
+        clean = S.validate(stage)
+        self.assertNotIn("extra", clean)
+        self.assertNotIn("extra", clean["hosts"][0])
+        for key in ("badges", "meters", "lists"):
+            self.assertNotIn("extra", clean["hosts"][0][key][0])
+        self.assertEqual(S.validate({"v": 1, "kind": "gauges", "title": "x", "hosts": [{"name": "p620"}]})["hosts"][0]["state"], "up")
+
+    def test_gauges_refuses_bad_fields(self):
+        host = GAUGES["hosts"][0]
+        bad_hosts = ([host] * 7,
+                     [{**host, "meters": host["meters"] * 5}],
+                     *[[{**host, "meters": [{"label": "CPU", "pct": pct}]}] for pct in (101, float("nan"), True)],
+                     [{**host, "name": "p 620"}],
+                     [{**host, "badges": [{"k": "gen", "v": "x" * 61}]}])
+        for hosts in bad_hosts:
+            self.assertIsNone(S.validate({**GAUGES, "hosts": hosts}))
+        for field, value in (("live", 1), ("say", "x" * 201)):
+            self.assertIsNone(S.validate({**GAUGES, field: value}))
+        self.assertIsNone(S.validate({**GAUGES, "hosts": [{**host, "meters": [{"label": "CPU", "pct": 2, "v": True}]}]}))
+
     def test_drops(self):
         def bad(o):
             self.assertIsNone(S.validate(o))
@@ -94,6 +130,44 @@ class StoreTest(unittest.TestCase):
     def test_facts_token_copies_text(self):
         page = self.s.put(S.validate(FACTS))
         self.assertEqual(self.s.get(page["token"])[1]["text"], "Tide\na\nb")
+
+    def test_say_stays_off_page_and_on_stage(self):
+        stage = S.validate({**FACTS, "say": "All fine."})
+        page = self.s.put(stage)
+        self.assertNotIn("say", page)
+        self.assertEqual(stage["say"], "All fine.")
+
+    def test_gauges_tokens_and_replace(self):
+        stage = S.validate(GAUGES)
+        page = self.s.put(stage, refresh=("nix-status", "system status"))
+        copy, refresh = page["token"], page["refresh"]
+        self.assertNotIn("say", page)
+        self.assertEqual(stage["say"], "All fine.")
+        self.assertEqual(self.s.get(refresh), ("refresh", {"pid": "nix-status", "query": "system status"}))
+        self.assertIn("CPU: 18%", self.s.get(copy)[1]["text"])
+        self.assertIn("NET: —", self.s.get(copy)[1]["text"])
+        self.t[0] = 5
+        updated = S.validate({**GAUGES, "say": "Changed.", "hosts": [{**GAUGES["hosts"][0],
+                  "meters": [{"label": "CPU", "pct": 23}]}]})
+        new_page = self.s.replace(refresh, updated)
+        self.assertEqual((new_page["token"], new_page["refresh"]), (copy, refresh))
+        self.assertNotIn("say", new_page)
+        self.assertEqual(updated["say"], "Changed.")
+        self.assertEqual(self.s.get(refresh), ("refresh", {"pid": "nix-status", "query": "system status"}))
+        self.assertIn("CPU: 23%", self.s.get(copy)[1]["text"])
+        self.assertNotIn("CPU: 18%", self.s.get(copy)[1]["text"])
+        self.assertEqual(self.s.cur[2], 0)
+        self.assertIsNone(self.s.replace(refresh, S.validate(FACTS)))
+        self.assertEqual(self.s.current()["kind"], "gauges")
+        self.s.close()
+        self.assertIsNone(self.s.replace(refresh, updated))
+        page = self.s.put(stage, refresh=("nix-status", "system status"))
+        self.s.put(S.validate(FACTS))
+        self.assertIsNone(self.s.replace(page["refresh"], updated))
+
+    def test_gauges_refresh_only_when_live_and_supplied(self):
+        self.assertNotIn("refresh", self.s.put(S.validate(GAUGES)))
+        self.assertNotIn("refresh", self.s.put(S.validate({**GAUGES, "live": False}), refresh=("id", "q")))
 
     def test_token_of_old_stage_refused(self):
         old = self.s.put(S.validate(CMDS))["items"][0]["token"]
@@ -360,3 +434,11 @@ class FastPathTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PluginOnlyKindsTest(unittest.TestCase):
+    def test_the_agent_cannot_send_a_gauges_board(self):          # (#166 review: made-up readings dressed as system status)
+        g = {"v": 1, "kind": "gauges", "title": "System status", "hosts": [{"name": "p620", "meters": [{"label": "CPU", "pct": 1}]}]}
+        self.assertIsNotNone(S.validate(g))                          # a plugin's output
+        self.assertIsNone(S.validate(g, lambda pid: True))           # the agent's <<stage>> block
+

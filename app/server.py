@@ -1735,6 +1735,8 @@ class Plug:
                     errors[p.id] = str(e)                       # the whole prop is dropped; the plugin's other parts stay
             rules += [(k, n[k], n["category"]) for n in m.get("notifications", []) for k in ("app", "host") if k in n]
         cls.loaded, cls.quips, cls.rules, cls.props, cls.prop_errors = loaded, quips, rules, props, errors
+        if any("system-status" in p.manifest.get("stage", {}).get("reads", []) for p in loaded):
+            plugins.prime()
         cls.stage = {p.id: p for p in loaded if "stage" in p.manifest} if any("stage" in p.manifest for p in loaded) and plugins.bwrap_ok() else {}
         Quips.bags.clear()
 
@@ -4644,8 +4646,8 @@ def plugin_stage(pid, query, before=_ANY):
             Plug.reload()                                      # (switched off just now: drop it from memory too)
         return False, f"{p.manifest['name']}: {e}."
     if before is _ANY or (stages_on() and STAGES.current() is before):
-        BUS.pub(t="stage", **stage_event(STAGES.put(st)))
-    return True, "Here you go."
+        BUS.pub(t="stage", **stage_event(STAGES.put(st, refresh=(pid, query))))
+    return True, st.get("say") or "Here you go."
 
 
 def plugin_stage_thread(pid, query, before=_ANY):
@@ -4714,7 +4716,28 @@ def stage_act(token, act):
         if page:
             BUS.pub(t="stage", **stage_event(page))
         return {"ok": bool(page)}
-    got = STAGES.get(token) if act in ("copy", "open", "play", "session", "terminal") else None
+    got = STAGES.get(token) if act in ("copy", "open", "play", "session", "terminal", "refresh") else None
+    if act == "refresh":
+        if not got or got[0] != "refresh" or Desk.locked() is True:
+            return {"ok": False}
+        p = Plug.stage.get(got[1]["pid"])
+        if p is None:
+            return {"ok": False}
+        try:
+            st = plugins.run_stage(p, got[1]["query"], fresh=True)
+        except plugins.Busy:
+            return {"ok": True, "skipped": True}
+        except plugins.StageError as e:
+            if str(e) == plugins.CHANGED:
+                Plug.reload()
+            return {"ok": False}
+        if st["kind"] != "gauges" or not st.get("live"):
+            return {"ok": False}
+        page = STAGES.replace(token, st)
+        if page is None:
+            return {"ok": False, "error": "gone"}
+        BUS.pub(t="stage_update", **stage_event(page))
+        return {"ok": True}
     if act in ("session", "terminal") and got and got[0] == act:    # the desk: a herdr session's window, or a fresh terminal
         try:
             argv = attach_argv(got[1]["pane"]) if act == "session" else ["xdg-terminal-exec"]

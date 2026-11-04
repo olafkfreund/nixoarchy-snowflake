@@ -46,6 +46,8 @@ const FIX = {
   "day (empty)": { t: "stage", v: 1, kind: "day", wd: "Sunday", md: "1 Jan", at: "09:55", cal: "ok", next: null, rows: ["today", "tasks", "github"].map(key => ({ key, label: key, n: 0, st: "ok", items: [] })) },
   "facts": { t: "stage", v: 1, kind: "facts", trust: "mechanic", title: "Tides", token: "f1", points: ["Two highs a day", "Two lows a day", "Springs at new moon"], source: "NOAA" },
   "facts (5 long)": { t: "stage", v: 1, kind: "facts", trust: "mechanic", title: long, token: "f1", points: Array.from({ length: 5 }, () => long), source: long },
+  "gauges": { t: "stage", v: 1, kind: "gauges", title: "System status", source: "p620", live: true, token: "c1", refresh: "r1", hosts: [{ name: "p620", state: "up", badges: [{ k: "gen", v: "412" }], meters: [{ label: "CPU", pct: 18, text: "4 cores" }, { label: "MEM", pct: null, text: "n/a" }, { label: "NET\u2193", pct: null, v: 1200, text: "1.2 kB/s" }], lists: [{ title: "Failed", items: ["x.service"], tone: "bad" }] }] },
+  "gauges (3 hosts, 8 meters)": { t: "stage", v: 1, kind: "gauges", title: long, token: "c1", hosts: ["a", "b", "c"].map(n => ({ name: n.repeat(32), state: "stale", badges: Array.from({ length: 6 }, (_, i) => ({ k: "k" + i, v: long.slice(0, 60) })), meters: Array.from({ length: 8 }, (_, i) => ({ label: "M" + i, pct: i * 12, text: long.slice(0, 40) })), lists: [{ title: "L", items: Array.from({ length: 5 }, () => long.slice(0, 80)), tone: "bad" }] })) },
 };
 const show = async (fx, ox) => {                       // the frame as drawn once the window has grown the way the page asked
   await ev(`stageClose(); await new Promise(r=>setTimeout(r,320)); onEvent(${JSON.stringify(fx)}); return 1`);
@@ -258,6 +260,94 @@ const acts = () => ev("return __acts.slice()");
     return [stale, dropped, i.value, document.getElementById('locHomeSug').children.length]`);
   check(sg[0] && sg[1] && sg[2] === "Oslo" && sg[3] === 0, "settings: stale suggestions are ignored, a pick fills the field", JSON.stringify(sg));
   await ev(`settings(false); return 1`); }
+
+// the system board (#166): the term set, the in-place update and the refresh loop
+{ const G = FIX.gauges, upd = (cpu, extra = {}) => ({ ...G, t: "stage_update", hosts: [{ ...G.hosts[0], meters: [{ label: "CPU", pct: cpu, text: "4 cores" }, ...G.hosts[0].meters.slice(1)], ...extra }] });
+  const motion = v => send("Emulation.setEmulatedMedia", { features: v ? [{ name: "prefers-reduced-motion", value: v }] : [] });
+  await ev("window.__ref=[]; window.__ans={ok:true}; window.__delay=0; const of2=window.fetch; window.fetch=(u,o)=>{ if(String(u).includes('/api/stage/act')&&o&&o.body&&JSON.parse(o.body).act==='refresh'){ __ref.push(JSON.parse(o.body).token); return new Promise(r=>setTimeout(()=>r(new Response(JSON.stringify(__ans))),__delay)); } return of2(u,o); }; GAUGE_MS=600000; return 1");
+  const refs = () => ev("return __ref.length"), fast = ms => ev(`clearInterval(gaugeRef.t); gaugeRef.t=setInterval(gaugeLoop,${ms}); __ref.length=0; return 1`);
+  await motion("no-preference");
+  await show(G, w => 0);
+  const r = await ev(`const f=document.getElementById('stg'), w=f.querySelector('.tmw'); return [f.classList.contains('term'), f.getBoundingClientRect().width, f.querySelectorAll('.tmh').length, f.querySelector('.tmn').textContent, w.getAttribute('aria-label'), w.getAttribute('role'), [...f.querySelectorAll('.tmv')].map(x=>x.textContent).join(), f.querySelector('.tms').getAttribute('aria-hidden'), f.querySelector('.tmli.bad .tmit').textContent, document.getElementById('stgFn').textContent, [...f.querySelectorAll('.sb')].map(b=>b.textContent).join(), getComputedStyle(f).fontFamily.includes('JetBrains')||getComputedStyle(f).fontFamily.includes('monospace'), getComputedStyle(w).animationName, getComputedStyle(f.querySelector('.tmh')).animationName, getComputedStyle(f.querySelector('.tmbar i')).animationName]`);
+  check(r[0] && r[1] === 340 && r[2] === 1 && r[3] === "┤ p620 ├" && r[4] === "CPU 18 percent" && r[5] === "group" && r[6] === "18%,—,—" && r[7] === "true" && r[8] === "x.service" && r[9] === "Source: p620" && r[10] === "Copy" && r[11] && r[12] === "stgRow" && r[13] === "stgPow" && r[14] === "stgBar", "term: a gauges stage renders", JSON.stringify(r));
+  check(await ev(`const t=stageText(${JSON.stringify(G)}); return t.includes('System status') && t.includes('CPU: 18% · 4 cores') && t.includes('MEM: n/a')`), "term: text fallback has a line per meter");
+  check(await ev(`const t=stageText(${JSON.stringify(G)}); return t.includes('Failed: x.service')`), "term: text fallback keeps the failed-unit list");
+  // in place: the same nodes, new numbers, no entrance, focus and timers untouched
+  await ev("document.querySelector('#stg .sb').focus(); window.__row=document.querySelector('#stg .tmw'); window.__t0=[stgUse,stgQuiet,stgTimer,document.getElementById('stg').className]; return 1");
+  await ev(`onEvent(${JSON.stringify(upd(77, { badges: [{ k: "gen", v: "413" }] }))}); return 1`);
+  const u = await ev(`const f=document.getElementById('stg'); return [document.querySelector('#stg .tmw')===__row, __row.querySelector('.tmv').textContent, __row.getAttribute('aria-label'), __row.querySelector('.tms').textContent.length, f.querySelector('.tmg').textContent, document.activeElement===document.querySelector('#stg .sb'), stgUse===__t0[0]&&stgQuiet===__t0[1]&&stgTimer===__t0[2], f.className===__t0[3], f.getAnimations({subtree:true}).filter(a=>a.playState==='running').length, f.querySelectorAll('.tmh').length]`);
+  check(u[0] && u[1] === "77%" && u[2] === "CPU 77 percent" && u[3] === 2 && u[4] === "gen 413" && u[5] && u[6] && u[7] && u[8] === 0 && u[9] === 1, "term: stage_update changes values in place", JSON.stringify(u));
+  const extra = { ...G, t: 'stage_update', hosts: [{ ...G.hosts[0], meters: [...G.hosts[0].meters, { label: 'DISK', pct: 42 }] }, { name: 'razer', meters: [{ label: 'CPU', pct: 9 }] }] };
+  await ev(`onEvent(${JSON.stringify(extra)}); return 1`);
+  const added = await ev("const f=document.getElementById('stg'); return [f.querySelectorAll('.tmh').length, f.querySelector('[data-label=DISK] .tmv')?.textContent, f.classList.contains('go'), f.querySelectorAll('.sb').length, gaugeHist['p620\\0CPU'].length, stgTimer===__t0[2]]");
+  check(added[0] === 2 && added[1] === '42%' && !added[2] && added[3] === 1 && added[4] === 3 && added[5], "term: new meter and host rebuild without entrance or duplicate Copy", JSON.stringify(added));
+  await ev(`onEvent(${JSON.stringify({ ...extra, hosts: [extra.hosts[0]] })}); return 1`);
+  check(await ev("return document.querySelectorAll('#stg .tmh').length===1 && !document.getElementById('stg').classList.contains('go') && document.querySelectorAll('#stg .sb').length===1"), "term: a removed host disappears without entrance");
+  await ev(`onEvent({...${JSON.stringify(upd(5))}, refresh: "other"}); return 1`);
+  check(await ev("return __row.querySelector('.tmv').textContent") === "77%", "term: an update for another board is ignored");
+  await ev(`stageClose(); await new Promise(r=>setTimeout(r,320)); onEvent(${JSON.stringify(upd(5))}); return 1`);
+  check(await ev("return __row.querySelector('.tmv').textContent") === "77%", "term: an update with no board open is ignored");
+  await show(FIX.facts, w => 0);
+  await ev(`onEvent(${JSON.stringify(upd(5))}); return 1`);
+  check(await ev("return [document.getElementById('stgT').textContent, document.querySelectorAll('#stg .tmh').length]").then(x => x.join()) === "Tides,0", "term: an update over another kind of board changes nothing");
+  // the refresh loop
+  await ev("__ans={ok:true,skipped:true}; return 1");
+  await show(G, w => 0); await fast(40); await sleep(1800);
+  check(await refs() === 24 && await ev("return [gaugeRef===null, stgState]").then(x => x.join()) === "true,open", "loop: stops after 24 (a skipped answer carries on)", String(await refs()));
+  await ev("__ans={ok:true}; return 1");
+  await show(G, w => 0); await fast(60); await sleep(250);
+  const c0 = await ev("stageClose(); return __ref.length"); await sleep(300);
+  check(c0 > 0 && await refs() === c0 && await ev("return gaugeRef===null"), "loop: stops on close", String(c0));
+  await show(G, w => 0); await fast(200); await sleep(300);
+  await ev("stgUse=performance.now()-100000; return 1"); await sleep(1200);
+  check(await ev("return stgState") === "open", "loop: a refreshing board holds for 2 min, not 30 s");
+  await ev("stgUse=performance.now()-130000; return 1"); await sleep(1300);
+  const c1 = await refs(); await sleep(500);
+  check(await ev("return [stgState, gaugeRef===null]").then(x => x.join()) === "tab,true" && await refs() === c1, "loop: stops on collapse after 2 min", String(c1));
+  await show(G, w => 0); await fast(60); await sleep(250);
+  await ev("Object.defineProperty(document,'hidden',{get:()=>true,configurable:true}); return 1"); await sleep(150);
+  const h0 = await refs(); await sleep(400); const h1 = await refs();
+  await ev("delete document.hidden; return 1"); await sleep(300);
+  check(h0 > 0 && h1 === h0 && await refs() > h1, "loop: none while document.hidden, back when shown", JSON.stringify([h0, h1, await refs()]));
+  await show(G, w => 0); await fast(60); await sleep(250);
+  await ev("setEl.classList.add('on'); return 1"); await sleep(1200);      // Settings open: the page reports hidden, stgPosted goes false
+  const p0 = await refs(), pf = await ev("return stgPosted"); await sleep(400);
+  const p1 = await refs(); await ev("setEl.classList.remove('on'); return 1"); await sleep(1200);
+  check(p0 > 0 && pf === false && p1 === p0 && await refs() > p1, "loop: none while stgPosted is false, back after", JSON.stringify([p0, pf, p1, await refs()]));
+  await show(G, w => 0);
+  await ev("clearInterval(gaugeRef.t); __ans={ok:false,error:'locked'}; gaugeLoop(); return 1"); await sleep(40);
+  check(await ev("return gaugeRef!==null && gaugeRef.failed===1"), "loop: one failed answer keeps refreshing");
+  await ev("__ans={ok:true}; gaugeLoop(); return 1"); await sleep(40);
+  check(await ev("return gaugeRef!==null && gaugeRef.failed===0"), "loop: a successful answer resets failures");
+  await ev("__ans={ok:false,error:'locked'}; gaugeLoop(); return 1"); await sleep(40);
+  check(await ev("return gaugeRef!==null && gaugeRef.failed===1"), "loop: first failure after success keeps refreshing");
+  await ev("gaugeLoop(); return 1"); await sleep(40);
+  check(await ev("return gaugeRef===null"), "loop: stops after two consecutive failed answers");
+  check(await ev(`const g={...${JSON.stringify(G)}}; delete g.refresh; return 1`) && (await show({ ...G, refresh: undefined }, w => 0), await ev("return gaugeRef===null")), "loop: nothing without a refresh token");
+  // an answer that arrives after close changes nothing (not even a newer board's loop)
+  await ev("__ans={ok:false}; __delay=300; return 1");
+  await show(G, w => 0); await fast(60); await sleep(120);
+  await ev("stageClose(); return 1"); await show(G, w => 0); await sleep(500);
+  check(await ev("return [gaugeRef!==null, stgState]").then(x => x.join()) === "true,open", "loop: a late answer after close leaves the new board alone");
+  await ev("__delay=0; __ans={ok:true}; stageClose(); return 1"); await sleep(320);
+  // reduced motion: no animation at all
+  await motion("reduce"); await sleep(200);
+  await show(G, w => 0);
+  const m = await ev(`const f=document.getElementById('stg'); return [f.classList.contains('go'), getComputedStyle(f.querySelector('.tmw')).animationName, getComputedStyle(f.querySelector('.tmh')).animationName, getComputedStyle(f.querySelector('.tmbar i')).animationName]`);
+  check(!m[0] && m[1] === "none" && m[2] === "none" && m[3] === "none", "term: reduced motion has no animation", JSON.stringify(m));
+  await motion(null);
+  // colours: the fallbacks when the theme is off, the theme's when on
+  await ev("applyThemeVars(null); return 1"); await show(G, w => 0);
+  const col = () => ev(`const f=document.getElementById('stg'); return [getComputedStyle(f.querySelector('.tmli.bad .tmit')).color, getComputedStyle(f.querySelector('.tmn')).color, getComputedStyle(f).color, getComputedStyle(f).backgroundColor]`);
+  const c2 = await col();
+  check(c2[0] === "rgb(224, 108, 117)" && c2[1] === "rgb(97, 175, 239)" && c2[2] === "rgb(215, 218, 224)" && /0\.96|0\.9\d/.test(c2[3]), "term: fallback colours with the theme off", JSON.stringify(c2));
+  await ev("applyThemeVars({background:'#101010',foreground:'#eeeeee',darker_background:'#000000',accent:'#00ff00',red:'#ff0000',green:'#00ff00',yellow:'#ffff00'}); return 1");
+  const c3 = await col();
+  check(c3[0] === "rgb(255, 0, 0)" && c3[1] === "rgb(0, 255, 0)" && c3[2] === "rgb(238, 238, 238)", "term: the theme's colours with it on", JSON.stringify(c3));
+  await ev("applyThemeVars({background:'#fff',foreground:'#222',darker_background:'#fff',accent:'#36f',red:'#f66',green:'#6f6',yellow:'#ff6'}); return 1");
+  const c4 = await col();
+  check(c4[0] === "rgb(224, 108, 117)" && c4[2] === "rgb(215, 218, 224)" && await ev("return document.getElementById('stg').classList.contains('fixed')"), "term: a light theme gets the fixed dark palette", JSON.stringify(c4));
+  await ev("applyThemeVars(null); stageClose(); return 1"); await sleep(320); }
 
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
 console.log(fails.length ? `\n${fails.length} failed: ${fails.join(", ")}` : "\nall pass");
