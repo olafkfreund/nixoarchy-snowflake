@@ -462,7 +462,7 @@ class VideoTest(unittest.TestCase):
     def test_newest_search_uses_date_prefix(self):
         calls = []
         S.video_search("world news", self.run_fake(b'{"entries":[]}', calls), newest=True)
-        self.assertEqual(calls[0][0][-1], "ytsearchdate3:world news")
+        self.assertEqual(calls[0][0][-3:], ["--playlist-end", "6", "https://www.youtube.com/results?search_query=world+news&sp=CAI%3D"])   # (not "ytsearchdate3:": yt-dlp 2026.10 refuses it)
 
     def test_search_failures_are_empty(self):
         for out in (b"", b"{}", b"[1]", b'{"entries":[{"id":"bad id"}]}'):
