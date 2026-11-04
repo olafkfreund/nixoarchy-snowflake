@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""RSS headlines: fetch the feed named in config.json and print up to 5 titles as one `facts` stage."""
+import json
+import urllib.request
+import xml.etree.ElementTree as ET
+
+cfg = json.load(open("config.json", encoding="utf-8"))
+with urllib.request.urlopen(urllib.request.Request(cfg["url"], headers={"User-Agent": "nixi-rss"}), timeout=2) as r:   # (the sandbox kills the run at 3 s)
+    root = ET.fromstring(r.read(500_000))
+titles = [(t.text or "").strip()[:118] for t in root.iter("title")][1:6]       # (the first title is the feed's own)
+print(json.dumps({"v": 1, "kind": "facts", "title": "Headlines", "points": [t for t in titles if t] or ["The feed has no items"], "source": cfg["url"][:110]}))

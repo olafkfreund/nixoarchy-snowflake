@@ -73,11 +73,15 @@ def _str(v, n):
     return v.strip() if isinstance(v, str) and 0 < len(v.strip()) <= n and not _CTRL.search(v) else None
 
 
-def validate(obj):
-    """-> a clean stage dict built from known keys only, or None."""
+def validate(obj, plugin_ok=None):
+    """-> a clean stage dict built from known keys only, or None. kind "plugin" (the agent asks for a stage plugin; the
+    server runs it, the page never sees it) passes only for an id plugin_ok() accepts: none when plugin_ok is not given."""
     if not isinstance(obj, dict) or obj.get("v") != 1:
         return None
     kind = obj.get("kind")
+    if kind == "plugin":
+        pid = obj.get("id")
+        return {"v": 1, "kind": "plugin", "id": pid} if isinstance(pid, str) and plugin_ok and plugin_ok(pid) else None
     if kind == "commands":
         items = obj.get("items")
         if not isinstance(items, list) or not 1 <= len(items) <= 5:

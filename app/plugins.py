@@ -3,7 +3,13 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import signal
+import subprocess
+import sys
 import tempfile
+import threading
+import time
 from collections import namedtuple
 from pathlib import Path
 
@@ -20,6 +26,19 @@ STAGE_KEYS = {"phrases", "hint", "argv", "network", "cache_seconds", "reads"}
 CATEGORIES = {"mail", "chat", "feed"}
 APP_RE = re.compile(r"^[a-z0-9._-]+$")
 HOST_RE = re.compile(r"^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$")
+
+
+def norm(said):
+    """What you said, the way stages.fast_path reads it: lowercase, punctuation dropped, one space, no leading please/nixi."""
+    t = " ".join(re.sub(r"[^a-z0-9 ]", " ", (said or "").lower()).split())
+    return re.sub(r"\s+please$", "", re.sub(r"^(?:please|nixi)\s+", "", t))
+
+
+def reserved(phrase):
+    """True for a phrase Nixi answers itself: empty, close / go back / show it / what's next, and the run/copy/play/open verbs."""
+    import stages
+    t = norm(phrase)
+    return not t or t in ("close", "go back", "show it", "what s next", "what is next") or stages.fast_path(t, {"items": [0] * 5}) is not None
 
 
 def plugin_dirs():
@@ -109,7 +128,11 @@ def _check(m, d):
             return "bad stage reads"
         if not _inside(d, s["argv"][0]):
             return "stage argv[0] missing or outside the folder"
-        # TODO(slice B): argv[1:] must be checked for paths outside the folder before run_stage launches anything
+        if any(os.path.isabs(a) or ".." in a.split("/") for a in s["argv"][1:]):
+            return "stage argv may not point outside the folder"
+        for ph in s["phrases"]:
+            if reserved(ph):
+                return f"stage phrase {ph!r} clashes with one of Nixi's own"
     return None
 
 
@@ -319,6 +342,183 @@ def sanitize_svg(data):
 
     walk(root, -1, 1, 1.0)
     return nodes
+
+
+# ---- stage programs: a plugin's `run`, in a bwrap sandbox, never a shell ----
+OUT_CAP, ERR_CAP, TIME_DEFAULT, TIME_MAX = 64 * 1024, 8 * 1024, 3, 8
+CHANGED = "Changed \u2014 check it again"
+
+
+class StageError(Exception):
+    """A stage run that gave nothing: the message is what to tell the user."""
+
+
+class Busy(StageError):
+    pass
+
+
+_bwrap = [None]
+
+
+def bwrap_ok():
+    """True if bwrap exists and a throwaway sandbox starts (one test run, remembered)."""
+    if _bwrap[0] is None:
+        exe = shutil.which("bwrap")
+        try:
+            _bwrap[0] = bool(exe) and subprocess.run([exe, "--unshare-all", "--die-with-parent", "--new-session", "--ro-bind", "/", "/", "--dev", "/dev",
+                                                      "--proc", "/proc", "true"], capture_output=True, timeout=5).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            _bwrap[0] = False
+    return _bwrap[0]
+
+
+def sandbox_argv(d, stage, uid=None):
+    """The bwrap command line for a plugin folder d and its manifest's stage block (argv list; the program is /plugin/<argv>)."""
+    uid = os.getuid() if uid is None else uid
+    py = os.path.dirname(os.path.realpath(sys.executable))        # the interpreter Nixi runs on lives in the store: scripts may use it
+    path = ":".join(["/plugin", *([os.environ["PATH"]] if os.environ.get("PATH") else []), *([py] if py.startswith("/nix/store/") else [])])
+    a = ["bwrap", "--clearenv", "--unshare-all", *(["--share-net"] if stage.get("network") else []), "--die-with-parent", "--new-session",
+         "--ro-bind", "/nix/store", "/nix/store", "--ro-bind", str(d), "/plugin", "--chdir", "/plugin", "--tmpfs", "/tmp", "--proc", "/proc", "--dev", "/dev"]
+    ro = (["/usr/bin/env"] +                                       # (so `#!/usr/bin/env python3` finds PATH inside)
+          (["/etc/resolv.conf", "/etc/ssl", "/etc/static/ssl"] if stage.get("network") else []) +
+          (["/run/current-system", f"/run/user/{uid}/systemd"] if "system-status" in stage.get("reads", []) else []))
+    for x in ro:
+        if os.path.exists(x):
+            a += ["--ro-bind", x, x]
+    a += ["--setenv", "PATH", path, "--setenv", "LANG", os.environ.get("LANG") or "C.UTF-8", "--setenv", "HOME", "/tmp"]
+    return a + ["/plugin/" + stage["argv"][0], *stage["argv"][1:]]
+
+
+def _drain(f, cap, box):
+    while True:
+        try:
+            b = os.read(f.fileno(), 65536)
+        except OSError:
+            return                                                 # (closed under us after the run ended)
+        if not b:
+            return
+        if len(box[0]) + len(b) > cap:
+            box[1] = True                                          # over the cap: the run is refused and killed
+            return
+        box[0] += b
+
+
+_cache, _cache_lock, _running, _now = {}, threading.Lock(), set(), time.monotonic
+
+
+def _ago(s):
+    return f"{int(s)} s ago" if s < 90 else f"{int(s // 60)} min ago"
+
+
+def run_stage(p, query, locale="en", timeout=TIME_DEFAULT):
+    """Run a stage plugin on a query -> a `facts` stage (stages.validate'd, nothing else accepted). Raises StageError / Busy.
+    Cached per plugin and query for stage.cache_seconds; if a run fails the last good result is shown with its age."""
+    import stages
+    stg, key, now = p.manifest["stage"], (p.id, norm(query)), _now()
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit and now - hit[0] < stg.get("cache_seconds", 60):
+            return hit[1]
+        if p.id in _running:
+            raise Busy("still fetching\u2026")
+        _running.add(p.id)
+    try:
+        try:
+            out = _launch(p, query, locale, min(timeout, TIME_MAX), stages)
+        except StageError as e:
+            if hit:
+                old = dict(hit[1])
+                old["source"] = ((old.get("source") + " \u00b7 ") if old.get("source") else "")[:60] + "couldn't refresh, " + _ago(now - hit[0])
+                return old
+            raise e
+        with _cache_lock:
+            _cache[key] = (_now(), out)
+        return out
+    finally:
+        with _cache_lock:
+            _running.discard(p.id)
+
+
+def _launch(p, query, locale, timeout, stages):
+    stg = p.manifest["stage"]
+    if not bwrap_ok():
+        raise StageError("bubblewrap isn't working here")
+    try:
+        proc = subprocess.Popen(sandbox_argv(p.dir, stg), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                start_new_session=True, bufsize=0)
+    except OSError as e:
+        raise StageError(f"couldn't start it: {e.strerror}")
+    out, err = [b"", False], [b"", False]
+    ts = [threading.Thread(target=_drain, args=(f, c, b), daemon=True) for f, c, b in ((proc.stdout, OUT_CAP, out), (proc.stderr, ERR_CAP, err))]
+    for t in ts:
+        t.start()
+
+    def kill():
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except OSError:
+            pass
+        proc.kill()
+    try:
+        try:
+            proc.stdin.write(json.dumps({"v": 1, "query": query, "locale": locale}).encode())
+            proc.stdin.close()
+        except OSError:
+            pass                                                   # (it did not read its input: fine)
+        end = time.monotonic() + timeout
+        while proc.poll() is None and time.monotonic() < end and not out[1]:
+            time.sleep(0.02)
+        late = proc.poll() is None
+        if late or out[1]:
+            kill()
+        for t in ts:
+            t.join(1)
+        proc.wait(2)
+    finally:
+        kill()
+        for f in (proc.stdout, proc.stderr):
+            f.close()
+    if out[1]:
+        raise StageError("it said too much")
+    if late:
+        raise StageError("it took too long")
+    if err[0]:
+        sys.stderr.write("plugin %s: %s\n" % (p.id, err[0].decode("utf-8", "replace")[:ERR_CAP]))
+    if proc.returncode != 0:
+        raise StageError("it failed")
+    try:
+        got = stages.validate(json.loads(out[0].decode("utf-8")))
+    except (ValueError, RecursionError):
+        got = None
+    if not got or got["kind"] != "facts":
+        raise StageError("it gave something Nixi can't show")
+    return got
+
+
+def review(found, st):
+    """Hash check of the stage plugins found. A folder one whose files differ from what was allowed is turned off
+    (CHANGED); a Nix one is re-recorded ("Updated"). -> {id: note}. Writes st."""
+    notes = {}
+    for p in found:
+        rec = st.get(p.id)
+        if p.error or "stage" not in (p.manifest or {}) or not (rec["enabled"] or (p.source == "folder" and rec["sha256"])):
+            continue
+        try:
+            h = sha256_of(p.dir)
+        except (OSError, ValueError):
+            h = None
+        if h and h == rec["sha256"]:
+            continue
+        if p.source == "nix":
+            if h:
+                st.set(p.id, True, h)
+                if rec["sha256"]:
+                    notes[p.id] = "Updated"
+            continue
+        if rec["enabled"]:
+            st.set(p.id, False, rec["sha256"])
+        notes[p.id] = CHANGED
+    return notes
 
 
 def check_dir(d):

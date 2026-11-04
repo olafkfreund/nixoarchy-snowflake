@@ -1,0 +1,14 @@
+{
+  "api": 1,
+  "id": "rss-headlines",
+  "name": "RSS headlines",
+  "version": "1.0.0",
+  "description": "The top five headlines of the feed in config.json.",
+  "stage": {
+    "phrases": ["headlines", "the headlines", "what is the news"],
+    "hint": "top headlines from the configured RSS feed",
+    "argv": ["run"],
+    "network": true,
+    "cache_seconds": 300
+  }
+}

@@ -60,14 +60,6 @@ class PluginRoutesTest(_ServerEnv):
         self.assertIn("broken", S.plugins_act({"id": "bad-one", "enabled": True})["error"])
         self.assertFalse(self.state.get("bad-one")["enabled"])
 
-    def test_stage_plugin_cannot_be_switched_on(self):
-        S = self.server
-        self.mk("stage-one", stage={"phrases": ["x y"], "argv": ["run"]})
-        got = S.plugins_act({"id": "stage-one", "enabled": True})
-        self.assertIn("can't be switched on", got["error"])
-        self.assertFalse(self.state.get("stage-one")["enabled"])
-        self.assertTrue(self.items(got)["stage-one"]["stage"])
-
     def test_bad_requests(self):
         S = self.server
         self.assertIn("no such", S.plugins_act({"id": "nope-x", "enabled": True})["error"])

@@ -24,6 +24,7 @@
   wireplumber,
   pipewire,
   alsa-utils,
+  bubblewrap,
   nixiBridge ? null,
   # companion plugins (#149): folders or packages, each linked into share/nixi-companion/plugins/ (the server scans it)
   plugins ? [ ],
@@ -109,6 +110,7 @@ stdenvNoCC.mkDerivation {
           wireplumber
           pipewire
           alsa-utils
+          bubblewrap # stage plugins run in it (#149)
         ]
       } \
       "''${gappsWrapperArgs[@]}"

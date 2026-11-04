@@ -1693,6 +1693,8 @@ class Plug:
     rules = []                                                  # (kind "app"|"host", value, category)
     props = []                                                  # [{id, name, anchor, layer, nodes}] of enabled, sanitised props
     prop_errors = {}                                            # id -> why a prop was dropped (A4 shows it)
+    stage = {}                                                  # id -> Plugin of the enabled, consented stage plugins (B2)
+    updated = {}                                                # id -> "Updated": a Nix stage plugin whose hash changed since it was recorded
     SLOT = re.compile(r"\{[a-z_]+\}")
 
     @classmethod
@@ -1712,7 +1714,9 @@ class Plug:
     @classmethod
     def reload(cls):
         st = plugins.State()
-        loaded = [p for p in plugins.scan(plugins.plugin_dirs()) if not p.error and st.get(p.id)["enabled"]]
+        found = plugins.scan(plugins.plugin_dirs())
+        cls.review(found, st)                                   # (a changed Folder plugin is switched off here)
+        loaded = [p for p in found if not p.error and st.get(p.id)["enabled"]]
         quips, rules, props, errors = {}, [], [], {}               # built aside, then swapped in at once: no half-loaded state
         for p in loaded:
             m = p.manifest
@@ -1730,7 +1734,32 @@ class Plug:
                     errors[p.id] = str(e)                       # the whole prop is dropped; the plugin's other parts stay
             rules += [(k, n[k], n["category"]) for n in m.get("notifications", []) for k in ("app", "host") if k in n]
         cls.loaded, cls.quips, cls.rules, cls.props, cls.prop_errors = loaded, quips, rules, props, errors
+        cls.stage = {p.id: p for p in loaded if "stage" in p.manifest} if any("stage" in p.manifest for p in loaded) and plugins.bwrap_ok() else {}
         Quips.bags.clear()
+
+    @classmethod
+    def review(cls, found, st):
+        notes = plugins.review(found, st)
+        cls.updated.update({k: v for k, v in notes.items() if v == "Updated"})
+        return notes
+
+    @classmethod
+    def stage_enabled(cls, pid):
+        cls.ensure()
+        return pid in cls.stage
+
+    @classmethod
+    def match(cls, said):
+        """The enabled stage plugins one of whose phrases is exactly what was said."""
+        cls.ensure()
+        t = plugins.norm(said)
+        return [p for p in cls.stage.values() if t and t in {plugins.norm(x) for x in p.manifest["stage"]["phrases"]}]
+
+    @classmethod
+    def agent_lines(cls):
+        """What the spoken-reply note tells the agent: at most 8 lines of "id: what it shows", each under 80 characters."""
+        cls.ensure()
+        return [re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", f"- {p.id}: {p.manifest['stage'].get('hint') or p.manifest['name']}")[:79] for p in list(cls.stage.values())[:8]]
 
     @classmethod
     def has_prop(cls, pid):
@@ -1765,36 +1794,64 @@ def plugin_caps(m):
         out.append("Sorts notifications from some apps or sites into mail, chat or feed")
     if "stage" in m:
         out.append("Runs a program when you ask for it" + (" and uses the network" if m["stage"].get("network") else ""))
+        if "system-status" in m["stage"].get("reads", []):
+            out.append("Can read your system status")
     return out
 
 
-def plugins_api(error=None):
+def plugins_api(error=None, **extra):
     """Settings → Plugins: every plugin found, working or broken."""
     st = plugins.State()
-    items = []
-    for p in plugins.scan(plugins.plugin_dirs()):
+    items, found = [], plugins.scan(plugins.plugin_dirs())
+    notes = Plug.review(found, st)                             # (a folder plugin changed since you allowed it is switched off, with a note)
+    if any(k in Plug.stage for k in notes):
+        Plug.reload()
+    for p in found:
         m = p.manifest or {}
         on = bool(st.get(p.id)["enabled"]) and not p.error
         items.append({"id": p.id, "name": str(m.get("name") or p.dir.name), "version": str(m.get("version") or ""),
                       "source": "Nix" if p.source == "nix" else "Folder", "enabled": on, "caps": plugin_caps(m) if not p.error else [],
-                      "error": p.error or (Plug.prop_errors.get(p.id) if on else None) or "", "stage": "stage" in m})
-    return {"items": items, **({"error": error} if error else {})}
+                      "error": p.error or (Plug.prop_errors.get(p.id) if on else None) or "", "stage": "stage" in m,
+                      "note": notes.get(p.id) or (Plug.updated.get(p.id) if on else None) or ""})
+    return {"items": items, **({"error": error} if error else {}), **extra}
 
 
 def plugins_act(b):
-    """POST /api/companion-plugins: {id, enabled} or {reload: true}. Stage plugins can't be switched on yet (slice B)."""
+    """POST /api/companion-plugins: {id, enabled}, {reload: true} or {consent: true, id, sha256}. A folder stage plugin is switched
+    on only after the consent card: the first call answers needs_consent, Allow sends back the hash it showed."""
     if b.get("reload"):
         Plug.reload()
         return plugins_api()
-    pid, on = str(b.get("id") or ""), b.get("enabled")
+    pid, on = str(b.get("id") or ""), True if b.get("consent") else b.get("enabled")
     p = min((x for x in plugins.scan(plugins.plugin_dirs()) if x.id == pid), key=lambda x: bool(x.error), default=None)
     if p is None or not isinstance(on, bool):
         return plugins_api("no such plugin")
     if p.error and on:                                         # (a broken plugin can still be switched off)
         return plugins_api("it is broken: " + p.error)
-    if on and "stage" in (p.manifest or {}):
-        return plugins_api("plugins that run programs can't be switched on yet")
-    plugins.State().set(pid, on)
+    st, stg = plugins.State(), (p.manifest or {}).get("stage")
+    if not stg:
+        st.set(pid, on)
+    elif not on:
+        st.set(pid, False, st.get(pid)["sha256"])             # (the hash stays: a later edit still reads "Changed")
+        Plug.updated.pop(pid, None)
+    else:
+        if not plugins.bwrap_ok():
+            return plugins_api("plugins that run programs need bubblewrap (bwrap), and it doesn't work here")
+        try:
+            h = plugins.sha256_of(p.dir)
+        except (OSError, ValueError) as e:
+            return plugins_api("couldn't read it: " + str(e))
+        if p.source == "nix":                                  # (declared in Nix: counts as consented, its hash is recorded)
+            st.set(pid, True, h)
+        elif b.get("consent"):
+            if b.get("sha256") != h:                           # a file changed between the card and Allow
+                return plugins_api(plugins.CHANGED)
+            st.set(pid, True, h)
+        else:
+            return plugins_api(needs_consent={"id": pid, "name": str(p.manifest["name"]), "sha256": h, "network": bool(stg.get("network")),
+                                              "what": str(p.manifest.get("description") or p.manifest["name"]),
+                                              "runs": " ".join(stg["argv"]), "reads": list(stg.get("reads", []))})
+        Plug.updated.pop(pid, None)
     Plug.reload()
     return plugins_api()
 
@@ -4469,6 +4526,9 @@ def run_bridge(prompt, emit):
                             "for the weather, the calendar or the user's herdr sessions and failed services, {\"v\":1,\"kind\":\"weather\"}, {\"v\":1,\"kind\":\"calendar\"} or {\"v\":1,\"kind\":\"status\"} (the server fills them in: say only a sentence); "
                             "for the user's own home or work, say dest \"@home\" or \"@work\": the server fills in the address, never ask for it or guess it; "
                             "at most 5 items, labels and points under 120 characters, commands under 500, no line breaks inside.)\n\n")
+    if CFG.get("answer_stages", True) and ST.stage_run is None and Plug.agent_lines():
+        note = note[:-3] + (" Plugins the user installed: to run one, end with ONE last line <<stage>>{\"v\":1,\"kind\":\"plugin\",\"id\":\"ID\"} "
+                            "(the server runs it; say only a sentence):\n" + "\n".join(Plug.agent_lines()) + ")\n\n")
     cur = STAGES.current() if stages_on() and ST.stage_run is None else None
     if cur and cur["kind"] == "day" and cur.get("note") and cur.get("date") == time.strftime("%Y-%m-%d"):        # a question while the desk is open: the agent gets that desk's own summary, once, here only
         note += cur["note"] + "\n\n"
@@ -4562,6 +4622,29 @@ def desk_stage(st):
         on = CFG.get("ambient_system", True)
         return stages.status_stage(sessions, [str(u)[:60] for u in Ambient.data["sys"]] if on else [], on)
     return st
+
+
+def plugin_stage(pid, query):
+    """Run an enabled stage plugin (no agent turn) and put its facts on the stage. -> (shown, what to say). The output is for the
+    page only: it is never added to a prompt (the follow-up note only ever names a day desk)."""
+    p = Plug.stage.get(pid)
+    if p is None:
+        return False, "That plugin is off."
+    try:
+        st = plugins.run_stage(p, query)
+    except plugins.Busy as e:
+        return False, str(e)
+    except plugins.StageError as e:
+        return False, f"{p.manifest['name']}: {e}."
+    BUS.pub(t="stage", **stage_event(STAGES.put(st)))
+    return True, "Here you go."
+
+
+def plugin_stage_thread(pid, query):
+    """The agent asked for a plugin: run it off the turn; a failure shows as a one-line notebook."""
+    shown, say = plugin_stage(pid, query)
+    if not shown and stages_on():
+        BUS.pub(t="stage", **stage_event(STAGES.put({"v": 1, "kind": "facts", "title": str(Plug.stage[pid].manifest["name"])[:120] if pid in Plug.stage else "Plugin", "points": [say[:120]]})))
 
 
 def video_stage(st, before):
@@ -5143,9 +5226,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"theme": THEME})
             if p == "/api/ask":
                 return self.ask()
-            if p in ("/api/companion-plugins", "/api/companion-plugins/reload"):      # (window token only: not in TOOL_PATHS)
+            if p in ("/api/companion-plugins", "/api/companion-plugins/reload", "/api/companion-plugins/consent"):      # (window token only: not in TOOL_PATHS)
                 b = json.loads(self._body() or b"{}")
-                return self._json(plugins_act({"reload": True} if p.endswith("/reload") else b if isinstance(b, dict) else {}))
+                b = b if isinstance(b, dict) else {}
+                return self._json(plugins_act({"reload": True} if p.endswith("/reload") else {**b, "consent": True} if p.endswith("/consent") else {**b, "consent": False}))
             if p == "/api/location":
                 return self._json(location_act(json.loads(self._body() or b"{}")))
             if p == "/api/stage/act":
@@ -5617,6 +5701,12 @@ class Handler(BaseHTTPRequestHandler):
             elif fp and fp[0] in ("close", "back", "show") and (cur or fp[0] != "close"):
                 if stage_act("", fp[0])["ok"]:
                     return self._said("Done.")
+        if BRIDGED and stages_on() and said and not body.get("attach") and not body.get("stage"):      # a stage plugin's own phrase (after Nixi's)
+            hit = Plug.match(said)
+            if len(hit) > 1:
+                return self._said("Which one: " + " or ".join(str(p.manifest["name"]) for p in hit) + "?")
+            if hit:
+                return self._said(plugin_stage(hit[0].id, said)[1])
         if body.get("stage") and body.get("act") == "run":
             got = STAGES.get(str(body["stage"])) if BRIDGED and stages_on() else None
             if not got or got[0] != "command":
@@ -5724,7 +5814,11 @@ class Handler(BaseHTTPRequestHandler):
                     tail, blk = cutter.close()
                     if tail:
                         out(t="delta", text=tail)
-                    st = stages.validate(blk) if t == "result" and blk and run_cmd is None and stages_on() else None    # (a Run never replaces the board)
+                    st = stages.validate(blk, Plug.stage_enabled) if t == "result" and blk and run_cmd is None and stages_on() else None    # (a Run never replaces the board)
+                    if st and st["kind"] == "plugin":                                  # (the page never sees this kind: it gets the plugin's facts)
+                        out(**kw)
+                        threading.Thread(target=plugin_stage_thread, args=(st["id"], said), daemon=True).start()
+                        return
                     if st and st["kind"] in ("video", "day"):
                         out(**kw)                                                      # (the turn ends now; the search may take 8 s)
                         threading.Thread(target=video_stage if st["kind"] == "video" else day_stage, args=(st, STAGES.current()), daemon=True).start()

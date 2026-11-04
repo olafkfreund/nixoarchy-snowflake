@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+"""Nix status: one `facts` stage on stdout. Reads only what the sandbox lets it (reads: system-status); no network."""
+import json
+import os
+import subprocess
+
+pts = []
+try:
+    pts.append("System: " + os.path.basename(os.path.realpath("/run/current-system")).split("-", 1)[-1][:100])
+except OSError:
+    pts.append("System: unknown")
+try:
+    r = subprocess.run(["systemctl", "--user", "--failed", "--plain", "--no-legend"], capture_output=True, text=True, timeout=2)
+    failed = [ln.split()[0] for ln in r.stdout.splitlines() if ln.strip()]
+    pts.append("Failed user services: " + (", ".join(failed[:3])[:90] + (" …" if len(failed) > 3 else "") if failed else "none"))
+except (OSError, subprocess.SubprocessError):
+    pts.append("Failed user services: couldn't check")
+try:
+    r = subprocess.run(["df", "-h", "--output=used,size", "/nix/store"], capture_output=True, text=True, timeout=2)
+    used, size = r.stdout.splitlines()[1].split()
+    pts.append(f"Store: {used} used of {size}")
+except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+    pts.append("Store: couldn't check")
+print(json.dumps({"v": 1, "kind": "facts", "title": "Nix status", "points": pts, "source": "this computer"}))
