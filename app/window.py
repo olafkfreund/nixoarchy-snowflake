@@ -139,7 +139,10 @@ def log(msg):
 
 
 def token_script(tok, port):
-    return f"window.__nixiT={json.dumps(tok)};", [f"http://127.0.0.1:{port}/*"]
+    """The user script that gives the page its token. WebKit's allow-list matches the host only, never the port, so
+    the script itself checks the exact origin: no other page on 127.0.0.1 gets it."""
+    origin = f"http://127.0.0.1:{port}"
+    return f"if(location.origin==={json.dumps(origin)})window.__nixiT={json.dumps(tok)};", ["http://127.0.0.1/*"]
 
 
 def send(cmd):
@@ -1253,9 +1256,9 @@ class NixiWindow:
                 log(f"hover: moving the window failed ({e})")
 
     # ---- messages from the page
-    def _token(self):
+    def _token(self, tries=50):
         rt = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "nixi-companion", "runtime.json")
-        for _ in range(50):                                            # (a just-started server writes it in a moment)
+        for _ in range(tries):                                         # (a just-started server writes it in a moment)
             try:
                 with open(rt) as f:
                     return json.load(f)["token"]
@@ -1264,9 +1267,9 @@ class NixiWindow:
         log("couldn't read the server's token (runtime.json)")
         return ""
 
-    def _hand_token(self):
+    def _hand_token(self, tries=50):
         self.ucm.remove_all_scripts()
-        tok = self._token()
+        tok = self._token(tries)
         if tok:
             src, allow = token_script(tok, urlparse(self.url).port)
             self.ucm.add_script(WebKit2.UserScript.new(src, WebKit2.UserContentInjectedFrames.TOP_FRAME,
@@ -1277,7 +1280,7 @@ class NixiWindow:
         origin = f"http://127.0.0.1:{urlparse(self.url).port}/"
 
         def retry():
-            self._hand_token()
+            self._hand_token(tries=1)                                  # (no waiting on the main thread: it retries anyway)
             self.view.load_uri(self.url)
             return False
 

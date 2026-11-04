@@ -67,8 +67,8 @@ class WindowToken(unittest.TestCase):
         uri = self.m.view.load_uri.call_args[0][0]
         self.assertEqual(uri, URL)
         self.assertNotIn("#", uri)
-        self.assertEqual(window.WebKit2.UserScript.new.call_args[0][0], 'window.__nixiT="tok";')
-        self.assertEqual(window.WebKit2.UserScript.new.call_args[0][3], ["http://127.0.0.1:47777/*"])
+        self.assertEqual(window.WebKit2.UserScript.new.call_args[0][0], 'if(location.origin==="http://127.0.0.1:47777")window.__nixiT="tok";')
+        self.assertEqual(window.WebKit2.UserScript.new.call_args[0][3], ["http://127.0.0.1/*"])   # WebKit's allow-list ignores ports
 
     def callback(self):
         cbs = [c[0][1] for c in self.m.view.connect.call_args_list if c[0][0] == "load-failed"]
@@ -76,7 +76,8 @@ class WindowToken(unittest.TestCase):
         return cbs[0]
 
     def test_token_script(self):
-        self.assertEqual(window.token_script("abc", 47777), ('window.__nixiT="abc";', ["http://127.0.0.1:47777/*"]))
+        self.assertEqual(window.token_script("abc", 47777),
+                         ('if(location.origin==="http://127.0.0.1:47777")window.__nixiT="abc";', ["http://127.0.0.1/*"]))
         self.assertIn('\\"', window.token_script('a"b', 1)[0])
 
     def test_start_page(self):
@@ -91,6 +92,7 @@ class WindowToken(unittest.TestCase):
         window.WebKit2.UserScript.new.reset_mock()
         self.assertIs(cb(self.m.view, None, "http://127.0.0.1:47777/?native=1", mock.Mock(code=1)), True)
         self.assert_handed()
+        self.assertEqual(window.NixiWindow._token.call_args[0], (1,))   # a retry never waits on the main thread
 
     def test_load_failed_elsewhere_is_left_alone(self):
         self.w._start_page()
