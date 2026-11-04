@@ -527,6 +527,9 @@ select:focus,.pn input[type=text]:focus,.pn textarea:focus{border-color:var(--ed
 #appr.on{opacity:1;transform:none;pointer-events:auto}
 #plugCons{display:none;margin:8px 0;padding:11px 12px 12px;border-radius:16px;background:#0c0c0cf7;border:1px solid #6b4a10;box-shadow:0 6px 20px #000a,0 0 18px #ffb02a22}
 #plugCons.on{display:block}
+#set #plugCons pre{max-height:none}   /* (#175: the card sits in the scrolling tab, so show all of its text; a nested scroll box hid the first lines) */
+#plugList .tg{align-items:flex-start} #plugList .tg .sw{flex:none;margin-top:2px}   /* switch in line with the plugin's name, however long the text */
+#plugList .tg .l{min-width:0;overflow-wrap:anywhere} #plugList .tg small{display:block;overflow-wrap:anywhere}
 #appr .q,#plugCons .q{font-size:12.5px;color:#ffd38a;margin-bottom:6px;display:flex;gap:6px;align-items:flex-start;overflow-wrap:anywhere}
 #appr pre,#plugCons pre{margin:0 0 9px;padding:7px 9px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);font:11.5px/1.4 var(--mono);color:var(--text);
   max-height:var(--apprMax,60vh);overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
@@ -562,7 +565,12 @@ body.bar.mir-agent #barPill{box-shadow:0 0 0 2px #ff3b3b,0 0 12px 2px #ff3b3bcc!
 body.calm.mir-agent #mirBar{display:flex} #mirBar span{overflow:hidden;text-overflow:ellipsis} #mirBar button{font:inherit;white-space:nowrap;color:#b3141c;background:#fff;border:0;border-radius:6px;padding:3px 8px;cursor:pointer}
 .mb.off{display:none}
 /* ===== settings, take two: cards, a sliding tab pill, a live clickable preview and a proper colour picker ===== */
-#set{background:linear-gradient(180deg,var(--panel2) 0,var(--panel) 120px,var(--panel) 100%)}
+#set{--setW:560px;--setH:680px;right:auto;width:min(var(--setW),calc(100vw - 24px));height:min(var(--setH),calc(100vh - 46px));max-height:none;background:linear-gradient(180deg,var(--panel2) 0,var(--panel) 120px,var(--panel) 100%)}
+#set .sgrip{position:absolute;z-index:2;touch-action:none}
+#set .sgrip.r{right:0;top:46px;bottom:14px;width:6px;cursor:ew-resize}
+#set .sgrip.b{bottom:0;left:0;right:14px;height:6px;cursor:ns-resize}
+#set .sgrip.corner{right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;border-radius:0 0 14px 0}
+#set .sgrip.corner:focus-visible{outline:2px solid var(--hot);outline-offset:-2px}
 #set .hd{padding:12px 12px 8px 14px}
 #set .hd .logo{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%,var(--body0,#1b1b1b),var(--body2,#030303) 70%);
   box-shadow:0 0 0 1.5px var(--edge2),0 0 10px var(--accA);position:relative}
@@ -577,7 +585,7 @@ body.calm.mir-agent #mirBar{display:flex} #mirBar span{overflow:hidden;text-over
 #tabs button.on{color:#fff;background:none;box-shadow:none}
 #tabs .ind{position:absolute;z-index:0;top:3px;bottom:3px;left:3px;border-radius:10px;background:linear-gradient(180deg,var(--acc),var(--edge2));
   box-shadow:0 2px 10px var(--accB);transition:transform .45s var(--ease),width .45s var(--ease)}
-#set .bd{padding:2px 12px 14px}
+#set .bd{padding:2px 12px 14px;margin-right:6px}
 #set .tab .row{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:11px 12px;margin:0 0 8px}
 #set .tab .row:last-child{border-bottom:1px solid var(--line)}
 #set .row .t{font-size:12.8px}
@@ -597,7 +605,17 @@ body.calm.mir-agent #mirBar{display:flex} #mirBar span{overflow:hidden;text-over
 .voices button{display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;font-size:12px;transition:all .2s}
 .voices button::before{content:"";width:0;height:0;border-left:7px solid currentColor;border-top:4.5px solid transparent;border-bottom:4.5px solid transparent;opacity:.6}
 .voices button:hover{border-color:var(--edge2)} .voices button.on{border-color:var(--hot);background:var(--deep);color:#fff}
+.voices button:disabled{opacity:.4;cursor:default}
 .voices button i{font-style:normal;opacity:.6}
+.verr{color:#e8836f;margin:5px 0 0} .verr:empty,#engWhy:empty{display:none}
+.el-list{display:flex;flex-direction:column;gap:5px;max-height:180px;overflow-y:auto}
+.el-v{display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:10px;background:var(--panel);border:1px solid var(--line)}
+.el-v.on{border-color:var(--hot);background:var(--deep)}
+.el-vt{flex:1;min-width:0} .el-vt b{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.el-vt small{display:block;color:var(--dim);font-size:10.8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.el-va{flex:none;display:flex;gap:4px}
+.pn input[type=number]{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:5px 7px;font:12px var(--mono);outline:0}
+#capCloud{display:none;font:11px/1 var(--mono);color:var(--cap-dim,var(--dim))} #plate.cloud #capCloud{display:inline-block}
 /* look: preview + parts + picker */
 .lookrow{padding-top:6px!important}
 .lookbox{position:relative;display:flex;flex-direction:column;align-items:center}
@@ -786,7 +804,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 <section id="stg" role="dialog" aria-labelledby="stgT" aria-hidden="true" inert><header><button class="hb" id="stgBack" aria-label="Previous answer" hidden>←</button><h2 id="stgT"></h2><span class="prd" id="stgDt"></span><button class="hb" id="stgX" aria-label="Close">✕</button></header><svg class="ul" viewBox="0 0 160 8" aria-hidden="true"><path pathLength="1" d="M2 5 C 40 1, 90 8, 158 3"/></svg><div class="bd" id="stgBd"></div><footer><div class="fn" id="stgFn"></div><div class="acts" id="stgActs"></div></footer></section>
 <button id="stgTab" aria-label="Show the answer again" inert></button><div id="chalk" aria-hidden="true"></div><svg id="pop" viewBox="0 0 34 40" aria-hidden="true"><path d="M5 14L8 38H26L29 14Z" fill="#fff" stroke="#b3261e" stroke-width="2"/><path d="M11 14L12 38M17 14V38M23 14L22 38" stroke="#b3261e" stroke-width="2.5"/><g fill="#fff6d8" stroke="#d9b45b"><circle cx="10" cy="11" r="5"/><circle cx="18" cy="8" r="6"/><circle cx="25" cy="12" r="5"/></g></svg><svg id="wtc" viewBox="0 0 34 44" aria-hidden="true"><path d="M17 6C9 -2 3 4 9 14" fill="none" stroke="#b98b4e" stroke-width="2"/><rect x="14" y="5" width="6" height="5" rx="1" fill="#c99a5b" stroke="#6b4a2b"/><circle cx="17" cy="27" r="14" fill="#fffdf6" stroke="#6b4a2b" stroke-width="2.5"/><path d="M17 27V18M17 27L24 31" stroke="#2a2824" stroke-width="2" stroke-linecap="round"/><circle cx="17" cy="27" r="1.6" fill="#b3261e"/></svg><svg id="hat" viewBox="0 0 64 40" aria-hidden="true"><ellipse cx="32" cy="32" rx="30" ry="7" fill="#b98b4e" stroke="#6b4a2b" stroke-width="2"/><path d="M14 31C14 12 22 5 32 5S50 12 50 31Z" fill="#c99a5b" stroke="#6b4a2b" stroke-width="2"/><path d="M15 26Q32 31 49 26L50 31Q32 36 14 31Z" fill="#7a3b2a"/></svg>
 <div id="mailPop" aria-hidden="true"><div class="env"><div class="bk"></div><div class="lt"><b></b><span></span></div><div class="fr"></div><div class="fl"></div></div></div>
-<div id="cap" class="off"><div id="plate"><div id="you"></div><div id="him"></div></div></div>
+<div id="cap" class="off"><div id="plate"><i id="capCloud" title="Speaking with ElevenLabs (cloud)"></i><div id="you"></div><div id="him"></div></div></div>
 <div id="wk"></div>
 <div id="atts"></div>
 <button id="moreB" type="button" title="read the whole answer">↗ full answer</button>
@@ -798,16 +816,17 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 <!-- settings -->
 <div class="pn" id="set">
   <div class="hd"><span class="logo"></span><b>Settings</b><button class="x" data-close title="Close (Esc)">✕</button></div>
-  <div class="tabs" id="tabs">
-    <button data-tab="look" class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="9.3" cy="11" rx="1.6" ry="3"/><ellipse cx="14.7" cy="11" rx="1.6" ry="3"/></svg>Look</button>
-    <button data-tab="voice"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>Voice</button>
-    <button data-tab="brain"><svg viewBox="0 0 24 24"><path d="M12 4a3.5 3.5 0 0 0-6.6 1.6A3.5 3.5 0 0 0 4 12a3.5 3.5 0 0 0 2 5.9A3.5 3.5 0 0 0 12 19.5ZM12 4a3.5 3.5 0 0 1 6.6 1.6A3.5 3.5 0 0 1 20 12a3.5 3.5 0 0 1-2 5.9 3.5 3.5 0 0 1-6 1.6"/></svg>Brain</button>
-    <button data-tab="more"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>More</button>
+  <div class="tabs" id="tabs" role="tablist">
+    <button id="tab-look" role="tab" aria-selected="true" aria-controls="panel-look" tabindex="0" data-tab="look" class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="9.3" cy="11" rx="1.6" ry="3"/><ellipse cx="14.7" cy="11" rx="1.6" ry="3"/></svg>Look</button>
+    <button id="tab-voice" role="tab" aria-selected="false" aria-controls="panel-voice" tabindex="-1" data-tab="voice"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>Voice</button>
+    <button id="tab-brain" role="tab" aria-selected="false" aria-controls="panel-brain" tabindex="-1" data-tab="brain"><svg viewBox="0 0 24 24"><path d="M12 4a3.5 3.5 0 0 0-6.6 1.6A3.5 3.5 0 0 0 4 12a3.5 3.5 0 0 0 2 5.9A3.5 3.5 0 0 0 12 19.5ZM12 4a3.5 3.5 0 0 1 6.6 1.6A3.5 3.5 0 0 1 20 12a3.5 3.5 0 0 1-2 5.9 3.5 3.5 0 0 1-6 1.6"/></svg>Brain</button>
+    <button id="tab-plugins" role="tab" aria-selected="false" aria-controls="panel-plugins" tabindex="-1" data-tab="plugins"><svg viewBox="0 0 24 24"><path d="M19.4 13a1.65 1.65 0 0 0 0-2H18a1 1 0 0 1-1-1V7a1 1 0 0 0-1-1h-3a1 1 0 0 1-1-1V3.6a1.65 1.65 0 0 0-2 0V5a1 1 0 0 1-1 1H6a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h1.4a1.65 1.65 0 0 1 0 2H6a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1.4a1.65 1.65 0 0 1 2 0V17a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-3a1 1 0 0 1 1-1z"/></svg>Plugins</button>
+    <button id="tab-more" role="tab" aria-selected="false" aria-controls="panel-more" tabindex="-1" data-tab="more"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>More</button>
     <i class="ind" id="tabInd"></i>
   </div>
   <div class="bd">
     <!-- ================= LOOK ================= -->
-    <div class="tab on" data-tab="look">
+    <div class="tab on" id="panel-look" role="tabpanel" aria-labelledby="tab-look" data-tab="look">
       <div class="row lookrow">
         <div class="lookbox"><svg id="lookPrev" viewBox="-128 -150 256 256"></svg><div class="tapme" id="partName">tap a part of him</div></div>
         <div class="seg parts" id="partChips"></div>
@@ -854,8 +873,26 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="clickSw"><span class="sw"></span><span class="l">Click through around him<small>Clicks on the empty space around him go to the window behind. Turn off if he flickers.</small></span></label></div>
     </div>
     <!-- ================= VOICE ================= -->
-    <div class="tab" data-tab="voice">
-      <div class="row"><div class="t">His voice</div><div class="h">Tap one to hear it. <span id="voiceEng"></span></div><div class="voices" id="voiceChips"></div></div>
+    <div class="tab" id="panel-voice" role="tabpanel" aria-labelledby="tab-voice" data-tab="voice">
+      <div class="row" id="engRow"><div class="t">Speech engine</div><div class="h">Local voices run on your computer. <span id="voiceEng"></span></div><div class="seg" id="engChips"></div><div class="h" id="engWhy" style="margin:5px 0 0"></div><div class="h verr" id="voiceErr"></div></div>
+      <div class="row"><div class="t">His voice</div><div class="h">Tap one to hear it.</div><div class="voices" id="voiceChips"></div></div>
+      <div class="row" id="elevenRow">
+        <div class="t">ElevenLabs<span class="pct">cloud</span></div>
+        <div class="h" id="elevenKey"></div>
+        <div class="h" id="elevenNotice">What he says out loud is sent to ElevenLabs. That can include anything in his answers.</div>
+        <label class="tg" id="elevenConfirmRow"><input type="checkbox" id="elevenConfirm"><span class="sw"></span><span class="l">I understand — send spoken replies to ElevenLabs</span></label>
+        <label class="tg" style="margin-top:6px"><input type="checkbox" id="elevenSw"><span class="sw"></span><span class="l">Use ElevenLabs<small id="elevenOffNote">Text already sent may still count on your ElevenLabs account.</small></span></label>
+        <div class="h verr" id="elevenErr"></div>
+        <div class="t sub">Voices</div>
+        <div class="el-list" id="elevenVoices"></div>
+        <div class="t sub">Daily usage<span class="pct" id="elevenPct"></span></div>
+        <div class="ctxbar" id="elevenBar"><i></i></div>
+        <div class="h" id="elevenUsage"></div>
+        <div class="bar" style="margin-top:6px"><label class="h" for="elevenCap" style="margin:0;flex:1">Daily character cap (1,000–500,000)</label><input type="number" id="elevenCap" min="1000" max="500000" step="1000" style="width:100px"></div>
+        <div class="t sub">Fallback voice</div>
+        <div class="h">Used when ElevenLabs is off, over your daily cap, or unreachable.</div>
+        <div class="seg" id="fallbackChips"></div>
+      </div>
       <div class="row tgs">
         <label class="tg"><input type="checkbox" id="speakSw"><span class="sw"></span><span class="l">Speak replies out loud</span></label>
         <label class="tg"><input type="checkbox" id="wakeSw"><span class="sw"></span><span class="l">“Hey Nixi” wake word<small>Listens for his name. Nothing leaves your computer.</small></span></label>
@@ -877,7 +914,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><div class="t">Speech recognition</div><div class="h">Better understands you more often but takes a moment longer.</div><div class="seg" id="sttChips"></div></div>
     </div>
     <!-- ================= BRAIN ================= -->
-    <div class="tab" data-tab="brain">
+    <div class="tab" id="panel-brain" role="tabpanel" aria-labelledby="tab-brain" data-tab="brain">
       <div class="row"><div class="t">How much can he do on his own?</div><div class="opts" id="trustOpts"></div></div>
       <div class="row nx"><div class="t">Claude model</div><div class="h">Auto uses the fast model for quick questions and the full one for real work.</div><div class="seg" id="modelChips"></div>
         <div class="t sub">Thinking effort</div><div class="h">Higher thinks harder on real work, but is slower and uses more of your plan. “default” leaves it to Claude.</div><div class="seg" id="effortChips"></div>
@@ -897,18 +934,21 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row nx"><label class="tg red"><input type="checkbox" id="rootSw"><span class="sw"></span><span class="l">Root mode<small>Runs <b>anything</b>, incl. <code>sudo</code> — a password card appears next to him when he needs root.</small></span></label>
         </div>
     </div>
+    <!-- ================= PLUGINS ================= -->
+    <div class="tab" id="panel-plugins" role="tabpanel" aria-labelledby="tab-plugins" data-tab="plugins">
+      <div class="row"><div class="t">Plugins</div><div class="h">Things other people made for him. They never download anything; they only use what is on this computer.</div>
+        <label class="tg" id="peersRow" hidden style="margin-bottom:8px"><input type="checkbox" id="peersSw"><span class="sw"></span><span class="l">Other machines<small>Let plugins show your other machines' status (load, memory, disks, failed services)</small></span></label>
+        <div id="plugCons"></div><div id="plugList"></div><div class="h" id="plugErr" style="color:#e8836f"></div>
+        <div class="bar"><button class="btn" id="plugReload">Reload</button></div></div>
+    </div>
     <!-- ================= MORE ================= -->
-    <div class="tab" data-tab="more">
+    <div class="tab" id="panel-more" role="tabpanel" aria-labelledby="tab-more" data-tab="more">
       <div class="row tgs">
         <label class="tg nx"><input type="checkbox" id="autoSw"><span class="sw"></span><span class="l">Start when I log in<small>Ready and listening for “hey Nixi”.</small></span></label>
         <label class="tg"><input type="checkbox" id="notifySw"><span class="sw"></span><span class="l">Notify me when a long task finishes<small>…while he's hidden.</small></span></label>
         <label class="tg"><input type="checkbox" id="popupSw"><span class="sw"></span><span class="l">Pop back up when it's done</span></label>
         <label class="tg nx"><input type="checkbox" id="updSw"><span class="sw"></span><span class="l">Check for updates<small>Asks GitHub for the latest version when he starts, every few hours and when you open Settings. Nothing about you is sent.</small></span></label>
       </div>
-      <div class="row"><div class="t">Plugins</div><div class="h">Things other people made for him. They never download anything; they only use what is on this computer.</div>
-        <label class="tg" id="peersRow" hidden style="margin-bottom:8px"><input type="checkbox" id="peersSw"><span class="sw"></span><span class="l">Other machines<small>Let plugins show your other machines' status (load, memory, disks, failed services)</small></span></label>
-        <div id="plugCons"></div><div id="plugList"></div><div class="h" id="plugErr" style="color:#e8836f"></div>
-        <div class="bar"><button class="btn" id="plugReload">Reload</button></div></div>
       <div class="row"><div class="t">ai-mirror</div><div class="h">Shows when an agent controls your desktop through ai-mirror. Super+Shift+Esc always takes it back.</div></div>
       <div class="row"><div class="t">Memory &amp; history</div><div class="h">Say “remember …” and he keeps it for every future chat.</div>
         <div class="bar"><button class="btn nx" data-open="memory">🧠 Memory <i id="memCount"></i></button><button class="btn nx" data-open="history">🕘 History</button></div></div>
@@ -925,6 +965,9 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <div class="keys"><kbd>Space</kbd><span>hold to talk · tap to stop him</span><kbd>Enter</kbd><span>type</span><kbd>Esc</kbd><span>back / stop / hide</span><kbd>Ctrl+N</kbd><span>new chat</span><kbd>Ctrl+H</kbd><span>history</span><kbd>Ctrl+M</kbd><span>mute</span></div></div>
     </div>
   </div>
+  <div class="sgrip r" data-resize="w" aria-hidden="true"></div>
+  <div class="sgrip b" data-resize="h" aria-hidden="true"></div>
+  <div class="sgrip corner" data-resize="wh" role="separator" aria-label="Resize settings" tabindex="0"></div>
 </div>
 
 <!-- history / memory / quick actions share one panel -->
@@ -1864,6 +1907,26 @@ requestAnimationFrame(frame);
 /* ================= voice out (sentence-streamed) ================= */
 let floorOn=false, floorReq=Promise.resolve(); function floorPage(on){ if(floorOn===on) return floorReq; floorOn=on; return floorReq=floorReq.then(()=>post('/api/floor',{hold:on})).catch(()=>{}); }   // in order: a late release must not undo the next hold   // the voice floor (one speaker at a time)
 let actx=null, spkAn=null, srcs=[], curIt=null, playing=false, gen=0, nextAt=0, pumpGen=-1; const q=[];
+let replySeq=0, curReply='r1', ttsGen=0, spkEngine='';
+const nextReply=()=>{ curReply='r'+(++replySeq); return curReply; };
+function voiceEngText(){
+  if((spkEngine==='elevenlabs'&&playing)||info.tts==='elevenlabs'||info.voice_engine==='elevenlabs') return 'Speaking with ElevenLabs (cloud)';
+  return ({kokoro:'(Kokoro voices)',piper:'(piper voices — run ./install.sh for the nicer Kokoro voices)',espeak:'(robot voice only — run ./install.sh)'})[info.voice_engine]||'';
+}
+function setSpkEngine(eng){
+  spkEngine=eng||'';
+  const cl=spkEngine==='elevenlabs'&&playing, cc=$('#capCloud');
+  plate.classList.toggle('cloud',cl); if(cc) cc.textContent=cl?'☁':'';
+  const ve=$('#voiceEng'); if(ve) ve.textContent=voiceEngText();
+}
+function cutTtsGen(g){
+  if(typeof g!=='number'||g<=ttsGen) return;
+  ttsGen=g;
+  for(let i=q.length-1;i>=0;i--) if(q[i].tg<ttsGen&&q[i].engine==='elevenlabs'){ const it=q.splice(i,1)[0]; if(it&&it.cap){ karaNow(it.cap,it.fresh,true); it.cap=''; } }
+  if(curIt&&curIt.tg<ttsGen&&curIt.engine==='elevenlabs'){ if(curIt.cap){ karaNow(curIt.cap,curIt.fresh,true); curIt.cap=''; } }
+  for(const x of [...srcs]) if(x._tg<ttsGen&&x._engine==='elevenlabs'){ try{ x.stop(); }catch(e){} srcs=srcs.filter(s=>s!==x); }
+  if(!srcs.length){ nextAt=0; setSpkEngine(''); quietCheck(); }
+}
 function ac(){ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==='suspended') actx.resume(); return actx; }
 // enqueue(text, {cap:true}) also puts the words on screen, one by one, as he says them
 // When the server can play audio itself (info.voice_native), his voice doesn't go through this page at all — see
@@ -1871,18 +1934,21 @@ function ac(){ if(!actx) actx=new (window.AudioContext||window.webkitAudioContex
 const spkMap=new Map(); let spkSeq=0, spkLv=[], spkGuard=0, sayChain=Promise.resolve(), sayEpoch=0;   // sayEpoch: bumped when you cut him off
 function enqueue(text,o={}){
   text=(text||'').trim();
+  const reply=o.reply||curReply;
   if(muted||!/[a-z0-9]/i.test(text)){ if(o.cap) karaNow(o.cap===true?text:o.cap,o.fresh); return; }
   if(info.voice_native){ const id=++spkSeq; spkMap.set(id,{cap:o.cap?(o.cap===true?text:o.cap):'',fresh:!!o.fresh});
     playing=true; spkGuard=performance.now();
     const ep=sayEpoch;      // sentences still queued when you cut him off must never be sent (or played) afterwards
-    sayChain=sayChain.then(()=>ep===sayEpoch?post('/api/say',{text,id,epoch:ep,follow:o.follow}):null).catch(()=>{ const it=spkMap.get(id); spkMap.delete(id); if(it&&it.cap) karaNow(it.cap,it.fresh); quietNative(); });   // one after another: keeps them in order
+    sayChain=sayChain.then(()=>ep===sayEpoch?post('/api/say',{text,id,epoch:ep,follow:o.follow,reply}):null).catch(()=>{ const it=spkMap.get(id); spkMap.delete(id); if(it&&it.cap) karaNow(it.cap,it.fresh); quietNative(); });   // one after another: keeps them in order
     return; }
   lastFollow=o.follow!==false;   // what the page tells the server when he stops (#133)
-  const g=gen; q.push({cap:o.cap?(o.cap===true?text:o.cap):'',fresh:!!o.fresh,
-    p:post('/api/tts',{text}).then(async r=>{ if(r.status!==200) return null;
-      const rate=+(r.headers.get('X-Nixi-Rate')||1), pause=+(r.headers.get('X-Nixi-Pause')||.08);
+  const g=gen, tg=ttsGen, it={cap:o.cap?(o.cap===true?text:o.cap):'',fresh:!!o.fresh,tg,engine:''};
+  it.p=post('/api/tts',{text,reply}).then(async r=>{ if(r.status!==200||g!==gen) return null;
+      const rate=+(r.headers.get('X-Nixi-Rate')||1), pause=+(r.headers.get('X-Nixi-Pause')||.08), engine=r.headers.get('X-Nixi-Engine')||'';
+      it.engine=engine;
       let words=null; try{ words=JSON.parse(r.headers.get('X-Nixi-Words')||'null'); }catch(e){}
-      const b=await ac().decodeAudioData(await r.arrayBuffer()); return {b,rate,pause,words}; }).catch(()=>null).then(x=>g===gen?x:null)});
+      const b=await ac().decodeAudioData(await r.arrayBuffer()); return g===gen?{b,rate,pause,words,engine,tg}:null; }).catch(()=>null);
+  q.push(it);
   pump();
 }
 /* karaoke captions: each spoken sentence's words are timed across its audio (longer words and pauses after
@@ -2006,14 +2072,15 @@ async function pump(){
   if(!playing){ playing=true; speaking(true); }
   await floorPage(true); if(g!==gen) return;   // the server answers once the other voice is done
   while(q.length&&g===gen){
-    const it=curIt=q[0], item=await it.p; if(g!==gen) break; q.shift(); curIt=null;
-    if(!item){ if(it.cap) karaNow(it.cap,it.fresh); continue; }           // no audio for this one: just show it
+    const it=curIt=q[0], item=await it.p; if(g!==gen) break; const at=q.indexOf(it); if(at>=0) q.splice(at,1); curIt=null;
+    if(!item||(it.tg<ttsGen&&item.engine==='elevenlabs')){ if(it.cap) karaNow(it.cap,it.fresh); continue; }           // no audio for this one: just show it
     const a=ac(); if(!spkAn){ spkAn=a.createAnalyser(); spkAn.fftSize=1024; spkAn.connect(a.destination); }
     const src=a.createBufferSource(), gn=a.createGain(), r=item.rate||1, dur=item.b.duration/r;
-    src.buffer=item.b; src.playbackRate.value=r; src.connect(gn); gn.connect(spkAn);
+    src.buffer=item.b; src.playbackRate.value=r; src._tg=it.tg; src._engine=item.engine||''; src.connect(gn); gn.connect(spkAn);
     const when=Math.max(a.currentTime+.05,nextAt);
     gn.gain.setValueAtTime(0,when); gn.gain.linearRampToValueAtTime(1,when+.006);
     gn.gain.setValueAtTime(1,Math.max(when+.006,when+dur-.01)); gn.gain.linearRampToValueAtTime(0,when+dur);
+    setSpkEngine(item.engine||'');
     src.start(when); srcs.push(src); nextAt=when+dur+(item.pause||.08);
     src.onended=()=>{ srcs=srcs.filter(x=>x!==src); if(g===gen) quietCheck(); };
     if(it.cap){ const lat=(a.outputLatency||a.baseLatency||0); capSpeak(it.cap,dur,it.fresh,performance.now()+(when-a.currentTime+lat)*1000,item.words,r); }
@@ -2021,17 +2088,17 @@ async function pump(){
   if(pumpGen===g) pumpGen=-1;
   if(g===gen) quietCheck();
 }
-function quietNative(){ if(!spkMap.size&&playing&&info.voice_native&&!q.length){ playing=false; talk.face=null; } }
+function quietNative(){ if(!spkMap.size&&playing&&!q.length&&!srcs.length){ playing=false; talk.face=null; setSpkEngine(''); } }
 // his "mouth": the server sends each sentence's loudness (every ~40 ms) with its start time
 function spkLevel(ts){ for(const L of spkLv){ if(ts>=L.t0&&ts<L.t0+L.level.length*L.step){ return L.level[((ts-L.t0)/L.step)|0]/100; } }
   if(spkLv.length&&ts>spkLv[spkLv.length-1].t0+spkLv[spkLv.length-1].level.length*spkLv[spkLv.length-1].step+2000) spkLv=[];
   return null; }
-function quietCheck(){ if(!srcs.length&&!q.length&&pumpGen!==gen&&playing){ playing=false; speaking(false); floorPage(false); } }
+function quietCheck(){ if(!srcs.length&&!q.length&&pumpGen!==gen&&playing){ playing=false; setSpkEngine(''); speaking(false); floorPage(false); } }
 // shush: stop talking. Anything he hadn't said yet still lands on screen (mute mid-answer, or you cut in)
 function shush(){ gen++; sayEpoch++; const rest=q.splice(0), pend=curIt; curIt=null; karaFlush();
   if(info.voice_native&&(spkMap.size||playing)){ post('/api/say/stop',{epoch:sayEpoch}).catch(()=>{}); for(const it of spkMap.values()) if(it.cap) karaNow(it.cap,it.fresh,true); spkMap.clear(); spkLv=[]; }
   if(pend&&pend.cap) karaNow(pend.cap,pend.fresh,true); for(const it of rest) if(it.cap) karaNow(it.cap,it.fresh,true);
-  for(const x of srcs) try{ x.stop(); }catch(e){} srcs=[]; nextAt=0; pumpGen=-1; if(playing) speaking(false); playing=false; floorPage(false); }
+  for(const x of srcs) try{ x.stop(); }catch(e){} srcs=[]; nextAt=0; pumpGen=-1; if(playing) speaking(false); playing=false; setSpkEngine(''); floorPage(false); }
 const untilQuiet=async()=>{ for(let i=0;i<400 && (playing||q.length);i++) await sleep(100); };
 
 /* ================= his memory of the chat (context) ================= */
@@ -2127,11 +2194,14 @@ function onEvent(ev){
     if(ev.listen){ if(ev.text&&ev.text.split(/\s+/).length>=2) send(ev.text); else startRec('auto'); } else tick('okay, okay — shh'); }
   else if(ev.t==='remind'){ if(hiddenNow) native('show'); restore(12000,false); if(info.hover) comeBack(); sfx('remind'); poke('excited',1800); say(ev.text); tick('⏰ '+ev.text); }
   else if(ev.t==='spk'){ const it=spkMap.get(ev.id); if(!it) return; spkMap.delete(ev.id); spkGuard=performance.now()+ev.at+ev.dur*1000;
+    playing=true; setSpkEngine(ev.engine||'');
     const t0=performance.now()+ev.at;
     if(ev.level) spkLv.push({t0,level:ev.level,step:ev.step||40}); if(spkLv.length>12) spkLv.shift();
     if(it.cap) capSpeak(it.cap,ev.dur,it.fresh,t0,ev.words,1); }
   else if(ev.t==='spk_skip'){ const it=spkMap.get(ev.id); spkMap.delete(ev.id); if(it&&it.cap) karaNow(it.cap,it.fresh); quietNative(); }
-  else if(ev.t==='spk_done'){ quietNative(); }
+  else if(ev.t==='spk_done'){ if(ev.id!=null){ const it=spkMap.get(ev.id); spkMap.delete(ev.id); if(it&&it.cap) karaNow(it.cap,it.fresh); } quietNative(); }
+  else if(ev.t==='tts_gen'){ cutTtsGen(ev.gen); }
+  else if(ev.t==='note'){ tick(ev.text); }
   else if(ev.t==='approve'){ restore(20000,true); queueApproval(ev); }
   else if(ev.t==='attention'){                            // an agent (claude/codex/agy…) is waiting for you: `nixi-companion attention`
     const ask=ev.kind!=='done', r=(ev.text||'').replace(new RegExp('^'+ev.name+'\\s+','i'),''), pj=ev.project?' · '+ev.project:'';
@@ -2357,7 +2427,7 @@ function stageMap(ev,bd,acts,fn){
   bd.appendChild(g);
   const row=hx('div','tx');
   if(ev.unset){ row.appendChild(hx('div','lb dst','Set '+(ev.unset==='work'?'Work':'Home')+' in Nixi\u2019s settings')); bd.appendChild(row);
-    acts.appendChild(stageBtn('Settings',()=>{ stageClose(); settings(true,'voice'); setTimeout(()=>{ const r=$('#locRow'); if(r) r.scrollIntoView({block:'center'}); },60); })); return; }
+    acts.appendChild(stageBtn('Settings',()=>{ stageHide(true); settings(true,'voice'); setTimeout(()=>{ const r=$('#locRow'); if(r) r.scrollIntoView({block:'center'}); },60); })); return; }
   row.appendChild(hx('div','lb dst',ev.dest)); if(ev.mode) row.appendChild(hx('div','md',ev.mode)); bd.appendChild(row);
   fn.textContent=ev.from?'From '+ev.from+' \u00b7 a sketch, not the route':'A sketch, not the route: Google Maps picks the way and the start';
   acts.appendChild(stageBtn('Open in Google Maps',b=>post('/api/stage/act',{token:ev.open,act:'open'}).then(r=>r.json()).then(j=>stageOpened(b,fn,j,"Couldn't open it")).catch(()=>{})));
@@ -2607,7 +2677,7 @@ function workChip(){ if(chipT) return;
   const s=Math.floor((performance.now()-workT0)/1000), txt=`${workWhat||'thinking'} · ${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
   if(chip.dataset.w!==txt){ chip.dataset.w=txt; chip.innerHTML='<i class="spin"></i>'; chip.appendChild(document.createTextNode(txt)); }
   if(chip.className!=='on work') chip.className='on work'; }
-function say(t,follow){ capShow(); setYou(''); if(voiced()){ himSet(''); enqueue(t,{cap:true,fresh:true,follow}); } else { himSet(t); enqueue(t,{follow}); } capQuiet(); }
+function say(t,follow){ const reply=nextReply(); capShow(); setYou(''); if(voiced()){ himSet(''); enqueue(t,{cap:true,fresh:true,follow,reply}); } else { himSet(t); enqueue(t,{follow,reply}); } capQuiet(); }
 function sayAside(t){ if(SIT.meeting){ capShow(); himSet(t); capQuiet(); return; } say(t,false); }   // (in a meeting: words on screen only)   // said unasked: no follow-up window (#133)
 function fail(t){ capShow(); himSet(t,true); errorUntil=performance.now()+2200; capQuiet(); }
 const base=p=>String(p||'').split('/').filter(Boolean).pop()||p;
@@ -2768,11 +2838,11 @@ async function send(text,opts={}){
   const attach=opts.stage?[]:atts; if(!opts.stage){ atts=[]; renderAtts(); }
   busy=true; toolMood=null; workWhat='thinking'; workT0=performance.now(); document.body.classList.add('busy');
   const kv=voiced(); let fresh=true;        // kv: the caption follows his voice instead of racing ahead of it
-  const ep0=sayEpoch;
+  const ep0=sayEpoch, reply=nextReply();
   let buf='', spoken=0, all='', failed=false, stopped=false, ignored=false, tools=0; const t0=performance.now();
   const flush=end=>{ const rest=buf.slice(spoken); if((buf.match(/```/g)||[]).length%2 && !end) return;
     const m2=end?[rest]:(rest.match(/^[\s\S]*[.!?:](?=\s)/)||(spoken===0?rest.match(/^[\s\S]{70,}?[,;—–](?=\s)/):null)); if(m2&&m2[0].trim()){ const raw=plain(m2[0]); const cut=sayEpoch!==ep0;      // you cut him off: the rest of this answer is written, never spoken
-      if(kv){ if(cut) karaNow(raw,fresh); else enqueue(untag(raw),{cap:raw,fresh}); fresh=false; } else if(!cut) enqueue(untag(raw)); spoken+=m2[0].length; } };
+      if(kv){ if(cut) karaNow(raw,fresh); else enqueue(untag(raw),{cap:raw,fresh,reply}); fresh=false; } else if(!cut) enqueue(untag(raw),{reply}); spoken+=m2[0].length; } };
   const handle=ev=>{ switch(ev.t){
     case 'break': flush(true); if(buf.trim()) fresh=true; buf=''; spoken=0; break;
     case 'delta': CP.answer(); toolMood=null; workWhat='answering'; buf+=ev.text; all+=ev.text; if(!kv) showHim(buf); flush(false); break;
@@ -2819,16 +2889,27 @@ function whenQuiet(fn){ const t0=performance.now();
 /* ================= panels: history, memory, quick actions ================= */
 const panelEl=$('#panel'); let panelKind=null;
 const ago=ts=>{ const s=Date.now()/1000-ts; return s<60?'just now':s<3600?`${s/60|0} min ago`:s<86400?`${s/3600|0} h ago`:`${s/86400|0} d ago`; };
-let pnMoved=false;
-function closePanels(){ const was=panelEl.classList.contains('on')||setEl.classList.contains('on'); panelEl.classList.remove('on'); panelKind=null; setEl.classList.remove('on'); document.body.classList.remove('pnl'); if(was) native('wide:off');
-  reDock(); }
+let pnMoved=false, setW=0, setH=0, setWasOpen=false, setFocusBack=null;
+function setDefaultSize(){ return [Math.min(560,((screen&&screen.availWidth)||1920)-40), Math.min(680,Math.round(0.85*((screen&&screen.availHeight)||1080)))]; }
+function setSyncVars(){ if(!setW||!setH){ try{ const s=JSON.parse(localStorage.getItem('nixi.setSize')); if(Array.isArray(s)&&s.length===2&&s.every(n=>Number.isFinite(n)&&n>=420)) [setW,setH]=s; }catch(e){} if(!setW||!setH) [setW,setH]=setDefaultSize(); } setEl.style.setProperty('--setW',setW+'px'); setEl.style.setProperty('--setH',setH+'px'); }
+function panelSize(prevFocus){ const sOn=setEl.classList.contains('on'), pOn=panelEl.classList.contains('on');
+  document.body.classList.toggle('pnl',sOn||pOn);
+  if(sOn&&!setWasOpen){ setFocusBack=prevFocus!==undefined?prevFocus:document.activeElement; const b=$('#tabs button.on')||$('#tabs button'); if(b) b.focus(); }
+  else if(!sOn&&setWasOpen){ const el=setFocusBack; setFocusBack=null; if(el&&el.isConnected&&typeof el.focus==='function') el.focus(); }
+  setWasOpen=sOn;
+  if(sOn){ setSyncVars(); setWant=[Math.max(0,setW-340+24),Math.max(0,setH-460+46)]; native('wide:off'); sizeWindow(); }
+  else if(pOn){ setWant=[0,0]; sizeWindow(); native('wide:on'); }
+  else { setWant=[0,0]; native('wide:off'); sizeWindow(); reDock(); }
+  sendRegion(true); }
+function closePanels(){ const was=panelEl.classList.contains('on')||setEl.classList.contains('on');
+  panelEl.classList.remove('on'); panelKind=null; setEl.classList.remove('on'); if(was) panelSize(); }
 function reDock(){ if(!pnMoved) return; pnMoved=false;      // a panel dragged the notch away: back to its edge
   const edge=barEdge(); if(edge) native('bar:'+edge); }
 // a panel's header is a handle: drag it to move the window (in the notch, he goes back to his edge when it closes)
 $$('.pn .hd').forEach(h=>h.addEventListener('mousedown',e=>{ if(e.button!==0||e.target.closest('button,input,select')) return;
   e.preventDefault(); pnMoved=true; dragNative=true; native('pmove'); }));   // (mouseup sends dragend)
 async function openPanel(kind){
-  menu(false); hideAsk(); setEl.classList.remove('on'); panelKind=kind; panelEl.classList.add('on'); document.body.classList.add('pnl'); native('wide:on');
+  menu(false); hideAsk(); setEl.classList.remove('on'); panelKind=kind; panelEl.classList.add('on'); panelSize();
   const body=$('#pBody'), tools=$('#pTools'); tools.innerHTML='';
   if(kind==='reply'){
     $('#pTitle').textContent='Answer';
@@ -2846,7 +2927,7 @@ async function openPanel(kind){
       :'<div class="empty">Nothing yet — everything you ask shows up here,<br>so you can reread answers or pick a chat back up.</div>';
     body._items=items;
   } else if(kind==='plugins'){
-    $('#pTitle').textContent='Plug-ins';
+    $('#pTitle').textContent='Claude Code plug-ins';
     body.innerHTML='<div class="empty">loading…</div>';
     const j=await (await post('/api/plugins',{op:'list'})).json(), items=j.items||[];
     body.innerHTML=(j.lean?'<div class="h" style="color:#e89a2c;font-size:11.5px;margin:2px 0 9px">Light mode is on, so he isn’t using plug-ins right now. Turn it off in Settings → Brain to use the ones switched on here.</div>':'')
@@ -2933,7 +3014,7 @@ const ICON={
 };
 // (no top bar / blob button: you dock him by dragging him into a screen edge, and pull him out to get the blob back)
 const NX_MENU=['cd','history','look','plugins'];
-const MENU=[['talk','talk'],['cd','folder'],['history','history'],['look','show my screen'],['hover','hover mode'],['plugins','plug-ins'],['mirror','take control back'],['set','settings'],['hide','hide']];
+const MENU=[['talk','talk'],['cd','folder'],['history','history'],['look','show my screen'],['hover','hover mode'],['plugins','Claude Code plug-ins'],['mirror','take control back'],['set','settings'],['hide','hide']];
 const MENU_XY=[];
 menuEl.innerHTML=MENU.map(([a,l],i)=>{ const ang=(-168+i*(156/(MENU.length-1)))*Math.PI/180, r=122;
   MENU_XY[i]=[Math.cos(ang)*r/1.1, Math.sin(ang)*r/1.1];                 // same spot in the face's SVG units (330px = 300 units)
@@ -3133,17 +3214,51 @@ const STT=[['tiny.en','Fastest'],['base.en','Fast'],['auto','Balanced'],['medium
 const TRUST=[['ask','✋','Ask me first','Edits files on his own; asks you (out loud) before running commands or going online.'],
   ['trust','⚡','Just do it','Runs anything without asking. Fast, but you won’t get a say.'],
   ['readonly','👀','Look, don’t touch','Can read and explain things, but changes nothing.']];
-const setEl=$('#set');
-function settings(on,tab){ setEl.classList.toggle('on',on); document.body.classList.toggle('pnl',on); if(!panelEl.classList.contains('on')) native(on?'wide:on':'wide:off');
-  if(!on&&!panelEl.classList.contains('on')) reDock();
-  if(on){ menu(false); hideAsk(); panelEl.classList.remove('on'); panelKind=null; if(tab) showTab(tab); renderSettings(); loadMics(); locLoad(); plugLoad(); requestAnimationFrame(moveInd);
-    if(info.update_check!==false) post('/api/update/check',{stale:1800}).then(r=>r.json()).then(u=>{ info.update=u; renderUpdate(); }).catch(()=>{}); }   // fresh "latest" when you look
-  sendRegion(true); }
+const setEl=$('#set'), TABS=['look','voice','brain','plugins','more'];
+let setResizeFrame=0;
+function setResize(w,h){ setW=w; setH=h; setSyncVars(); setWant=[Math.max(0,w-340+24),Math.max(0,h-460+46)];
+  if(!setResizeFrame) setResizeFrame=requestAnimationFrame(()=>{ setResizeFrame=0; sizeWindow(); sendRegion(true); }); }
+function setSaveSize(){ try{ localStorage.setItem('nixi.setSize',JSON.stringify([setW,setH])); }catch(e){} }
+function setResetSize(){ try{ localStorage.removeItem('nixi.setSize'); }catch(e){} setResize(...setDefaultSize()); }
+for(const grip of $$('#set .sgrip')){
+  let drag=null;
+  grip.addEventListener('pointerdown',e=>{ if(e.button!==0) return; e.preventDefault(); grip.setPointerCapture(e.pointerId); drag=[e.pointerId,e.clientX-layoutX,e.clientY-layoutY,setW,setH]; });
+  grip.addEventListener('pointermove',e=>{ if(!drag||e.pointerId!==drag[0]||e.buttons===0) return;
+    const [,,,w,h]=drag, axis=grip.dataset.resize;
+    const maxW=Math.max(420,screen.availWidth-40), maxH=Math.max(420,Math.round(screen.availHeight*.85));
+    setResize(axis.includes('w')?Math.round(clamp(w+(e.clientX-layoutX-drag[1])/fitK,420,maxW)):w,
+      axis.includes('h')?Math.round(clamp(h+(e.clientY-layoutY-drag[2])/fitK,420,maxH)):h); });
+  for(const end of ['pointerup','pointercancel','lostpointercapture']) grip.addEventListener(end,e=>{ if(!drag||e.pointerId!==drag[0]) return;
+    const [,,,w0,h0]=drag; drag=null; if(setW!==w0||setH!==h0) setSaveSize(); });
+}
+const setCorner=$('#set .sgrip.corner');
+setCorner.addEventListener('dblclick',e=>{ e.preventDefault(); setResetSize(); });
+setCorner.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); setResetSize(); return; }
+  if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) return;
+  e.preventDefault(); const d=e.shiftKey?64:16, maxW=Math.max(420,screen.availWidth-40), maxH=Math.max(420,Math.round(screen.availHeight*.85));
+  setResize(Math.round(clamp(setW+(e.key==='ArrowLeft'?-d:e.key==='ArrowRight'?d:0),420,maxW)),
+    Math.round(clamp(setH+(e.key==='ArrowUp'?-d:e.key==='ArrowDown'?d:0),420,maxH))); setSaveSize(); });
+function settings(on,tab){ const prevFocus=on&&!setWasOpen?document.activeElement:undefined;
+  setEl.classList.toggle('on',on);
+  if(on){ menu(false); hideAsk(); panelEl.classList.remove('on'); panelKind=null;
+    if(tab) showTab(tab); else try{ showTab(localStorage.getItem('nixi.tab')||'look'); }catch(e){ showTab('look'); } }
+  panelSize(prevFocus);
+  if(on){ renderSettings(); loadMics(); locLoad(); plugLoad(); requestAnimationFrame(moveInd);
+    if(info.update_check!==false) post('/api/update/check',{stale:1800}).then(r=>r.json()).then(u=>{ info.update=u; renderUpdate(); }).catch(()=>{}); } }   // fresh "latest" when you look
 function moveInd(){ const b=$('#tabs button.on'), ind=$('#tabInd'); if(!b||!ind) return; ind.style.width=b.offsetWidth+'px'; ind.style.transform=`translateX(${b.offsetLeft-3}px)`; }
-function showTab(t){ $$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t)); $$('#set .tab').forEach(x=>x.classList.toggle('on',x.dataset.tab===t));
+function showTab(t,focus){ if(!TABS.includes(t)) t='look';
+  $$('#tabs button').forEach(b=>{ const on=b.dataset.tab===t; b.classList.toggle('on',on); b.setAttribute('aria-selected',on?'true':'false'); b.tabIndex=on?0:-1; if(on&&focus) b.focus(); });
+  $$('#set .tab').forEach(x=>x.classList.toggle('on',x.dataset.tab===t));
   moveInd(); try{ localStorage.setItem('nixi.tab',t); }catch(e){} }
 try{ const t=localStorage.getItem('nixi.tab'); if(t) showTab(t); }catch(e){}
 $('#tabs').addEventListener('click',e=>{ const b=e.target.closest('[data-tab]'); if(b) showTab(b.dataset.tab); });
+$('#tabs').addEventListener('keydown',e=>{
+  if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) return;
+  e.preventDefault();
+  const cur=Math.max(0,TABS.indexOf(($('#tabs button.on')||{}).dataset?.tab)), n=TABS.length;
+  const idx=e.key==='Home'?0:e.key==='End'?n-1:(cur+(e.key==='ArrowRight'?1:-1)+n)%n;
+  showTab(TABS[idx],true);
+});
 
 /* ---------- the colour picker: tap a part of him (or a chip), then pick ---------- */
 const PART_LABEL={body:'body',pupL:'left pupil',pupR:'right pupil',whiteL:'left eye white',whiteR:'right eye white',skin:'skin colour'};
@@ -3214,8 +3329,59 @@ function renderSettings(){
   const cur=(info.model||'default');
   $('#effortChips').innerHTML=['',...EFFORTS].map(e=>`<button data-eff="${e}" class="${(info.effort||'')===e?'on':''}">${e||'default'}</button>`).join('');
   $('#modelChips').innerHTML=MODELS.map(([id,l])=>`<button data-m="${id}" class="${cur===id?'on':''}">${l}</button>`).join('');
-  $('#voiceChips').innerHTML=(info.voices||[]).map(v=>`<button data-v="${v.id}" class="${info.voice===v.id?'on':''}">${v.label}${v.downloading?'<i>⇣</i>':''}</button>`).join('');
-  const sw={rootSw:info.root,speakSw:!muted,wakeSw:info.wake_word,autoSw:info.autostart,listenShowSw:info.listen_on_show,hoverSw:info.hover,
+  { const vc=$('#voiceChips'); if(vc){ vc.replaceChildren();
+    for(const v of info.voices||[]){
+      const b=hx('button',info.voice===v.id?'on':'',v.label); b.type='button'; b.dataset.v=v.id;
+      const robDis=v.id==='robot'&&v.ready===false;
+      b.disabled=robDis; if(robDis){ b.title='espeak voice'; b.dataset.reason='espeak voice'; }
+      if(v.downloading) b.appendChild(hx('i',null,'⇣'));
+      vc.appendChild(b);
+    } } }
+  { const ec=$('#engChips'), el=info.eleven||{}; if(ec){ ec.replaceChildren();
+    const ch=info.tts_choice||'auto';
+    for(const e of info.engines||[]){
+      const ready=e.id==='elevenlabs'?!!(e.ready&&el.on&&el.voice):!!e.ready;
+      const b=hx('button',ch===e.id?'on':'',e.label); b.type='button'; b.dataset.eng=e.id;
+      b.disabled=!ready; b.title=e.reason||''; b.dataset.reason=e.reason||'';
+      ec.appendChild(b);
+    }
+    const why=$('#engWhy');
+    if(why&&!why.dataset.hover){
+      const bad=(info.engines||[]).filter(e=>!(e.id==='elevenlabs'?(e.ready&&el.on&&el.voice):e.ready)&&e.reason).map(e=>e.label+': '+e.reason);
+      why.textContent=bad.join(' · ');
+    }
+  } }
+  { const el=info.eleven||{};
+    const ek=$('#elevenKey'); if(ek) ek.textContent=(el.key?'API key ready. ':'No API key found. ')+'Nixi reads the key from /run/agenix/api-elevenlabs (an agenix secret).';
+    const esw=$('#elevenSw'); if(esw) esw.checked=!!el.on;
+    const ecf=$('#elevenConfirm'); if(ecf) ecf.checked=!!el.on;
+    const evl=$('#elevenVoices'); if(evl){ evl.replaceChildren();
+      if(el.error) evl.appendChild(hx('div','h verr',el.error));
+      for(const v of el.voices||[]){
+        const row=hx('div','el-v'+(el.voice===v.id?' on':'')), tx=hx('div','el-vt'), ab=hx('div','el-va');
+        row.dataset.vid=v.id;
+        tx.appendChild(hx('b',null,v.name||v.id));
+        const meta=[v.accent,v.category,(v.languages||[]).join(', '),v.description].filter(Boolean).join(' · ');
+        if(meta) tx.appendChild(hx('small',null,meta));
+        const pv=hx('button','btn sm el-prev','▶ Preview'); pv.type='button'; pv.dataset.eprev=v.id;
+        const ch=hx('button','btn sm el-pick'+(el.voice===v.id?' pri':''),el.voice===v.id?'Chosen':'Choose'); ch.type='button'; ch.dataset.epick=v.id;
+        ab.append(pv,ch); row.append(tx,ab); evl.appendChild(row);
+      }
+      if(!(el.voices||[]).length&&!el.error) evl.appendChild(hx('div','h',el.key?'Turn on ElevenLabs to load voices.':'Add an API key to list voices.'));
+    }
+    const used=el.used_today||0, cap=Math.max(1,el.cap||20000), pct=Math.min(1,used/cap);
+    const eb=$('#elevenBar'); if(eb){ eb.firstElementChild.style.width=(pct*100).toFixed(1)+'%'; eb.classList.toggle('warn',pct>=.6&&pct<.85); eb.classList.toggle('full',pct>=.85); }
+    const ep=$('#elevenPct'); if(ep) ep.textContent=Math.round(pct*100)+'%';
+    const eu=$('#elevenUsage'); if(eu) eu.textContent=`${used.toLocaleString()} / ${cap.toLocaleString()} characters today`;
+    const ecIn=$('#elevenCap'); if(ecIn&&document.activeElement!==ecIn) ecIn.value=el.cap||20000;
+    const fb=$('#fallbackChips'); if(fb){ fb.replaceChildren();
+      const curFb=info.tts_fallback||'auto';
+      for(const [id,l] of [['auto','Automatic'],['kokoro','Kokoro'],['piper','Piper'],['espeak','espeak']]){
+        const b=hx('button',curFb===id?'on':'',l); b.type='button'; b.dataset.fb=id; fb.appendChild(b);
+      }
+    }
+  }
+  const sw={rootSw:info.root,speakSw:!muted&&info.tts_choice!=='off',wakeSw:info.wake_word,autoSw:info.autostart,listenShowSw:info.listen_on_show,hoverSw:info.hover,
     followSw:!!info.follow_focus,asideSw:info.step_aside!==false,stagesSw:info.answer_stages!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,proactiveSw:!!info.proactive,takeoverSw:!!info.notifications_takeover,detailsSw:!!info.notify_details,nsoundSw:info.notify_sound!==false,lookMeetSw:!!info.look_meeting,lookMusicSw:!!info.look_music,lookBeatSw:!!info.look_beat,speakSubjSw:!!info.notify_speak_subject,lookFsSw:!!info.look_fullscreen,reactLoadSw:!!info.react_load,reactBreakSw:!!info.react_break,reactWelcomeSw:!!info.react_welcome,lookCodingSw:!!info.look_coding,lookNightSw:!!info.look_night,lookWeatherSw:!!info.look_weather,lookPartySw:!!info.look_party,reactQuipsSw:!!info.react_quips,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
     updSw:info.update_check!==false,peersSw:!!info.peers_on,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
@@ -3225,7 +3391,7 @@ function renderSettings(){
   const ps=restPu();
   $('#pupChips').innerHTML=[['slit','▮ slits'],['circle','● circles'],['dot','• dots']].map(([id,l])=>`<button data-ps="${id}" class="${ps===id?'on':''}">${l}</button>`).join('');
   { const im=info.idle_mode||'shrink'; $('#idleChips').innerHTML=[['off','Stay'],['shrink','Shrink'],['doze','Shrink, then hide']].map(([id,l])=>`<button data-idle="${id}" class="${im===id?'on':''}">${l}</button>`).join(''); }
-  { const ve=$('#voiceEng'); if(ve) ve.textContent=({kokoro:'(Kokoro voices)',piper:'(piper voices — run ./install.sh for the nicer Kokoro voices)',espeak:'(robot voice only — run ./install.sh)'})[info.voice_engine]||''; }
+  { const ve=$('#voiceEng'); if(ve) ve.textContent=voiceEngText(); }
   $('#nsChips').innerHTML=['mail','chat','meeting','video','download','other'].map(c=>`<button data-ns="${c}" class="${(info.notify_speak||[]).includes(c)?'on':''}">${c==='video'?'Feeds':c}</button>`).join('');
   $('#sttChips').innerHTML=STT.map(([id,l])=>`<button data-stt="${id}" class="${(info.whisper_model||'auto')===id?'on':''}">${l}</button>`).join('');
   const tr=info.trust==='root'?'trust':(info.trust||'ask');
@@ -3362,22 +3528,63 @@ function locAsk(k,q){ const g=++locGen[k]; clearTimeout(locTm[k]); if(q.trim().l
       if(e.key==='ArrowDown'||e.key==='ArrowUp'){ if(!n) return; e.preventDefault(); locIdx[k]=(locIdx[k]+(e.key==='ArrowDown'?1:-1)+n)%n; locSugShow(k); }
       else if(e.key==='Enter'){ e.preventDefault(); if(locIdx[k]>=0) locPick(k,locIdx[k]); else if(i.value.trim()){ locDrop(k); locAct({act:'set',place:k,name:i.value.trim()}); } }
       else if(e.key==='Escape'&&n){ e.stopPropagation(); locDrop(k); } }); } }
-async function setSetting(b){ try{ info=await (await post('/api/settings',b)).json(); showInfo(); if(setEl.classList.contains('on')) renderSettings(); }catch(e){ tick('settings: '+e.message,true); } }
+let prevAudio=null, prevUrl=null;
+async function previewEleven(vid,btn){
+  const errEl=$('#elevenErr'); if(errEl) errEl.textContent='';
+  try{
+    await tokenReady;
+    const r=await fetch('/api/eleven/preview/'+encodeURIComponent(vid),{headers:hdr()});
+    if(!r.ok){ const j=await r.json().catch(()=>({})); if(errEl) errEl.textContent=j.error||'Couldn\u2019t play preview'; return; }
+    const blob=await r.blob(), url=URL.createObjectURL(blob);
+    if(prevAudio){ try{ prevAudio.pause(); }catch(e){} }
+    if(prevUrl) URL.revokeObjectURL(prevUrl);
+    const au=new Audio(url); prevAudio=au; prevUrl=url;
+    au.onended=au.onerror=()=>{ if(prevUrl===url){ URL.revokeObjectURL(url); prevUrl=null; prevAudio=null; } };
+    await au.play().catch(()=>{});
+  }catch(e){ if(errEl) errEl.textContent=e.message; }
+}
+{ const ec=$('#engChips'), why=$('#engWhy');
+  if(ec&&why){
+    const showWhy=e=>{ const b=e.target.closest('button'); if(b&&b.dataset.reason){ why.dataset.hover='1'; why.textContent=b.dataset.reason; } };
+    const clearWhy=()=>{ delete why.dataset.hover; if(setEl.classList.contains('on')) renderSettings(); };
+    ec.addEventListener('pointerover',showWhy); ec.addEventListener('focusin',showWhy);
+    ec.addEventListener('pointerleave',clearWhy); ec.addEventListener('focusout',clearWhy);
+  }
+}
+async function setSetting(b,errSel){
+  const errEl=errSel?$(errSel):('tts' in b||'voice' in b)?$('#voiceErr'):('eleven_on' in b||'eleven_voice' in b||'eleven_daily_chars' in b||'tts_fallback' in b)?$('#elevenErr'):null;
+  if(errEl) errEl.textContent='';
+  try{
+    const r=await post('/api/settings',b), j=await r.json().catch(()=>({}));
+    if(!r.ok){
+      if(errEl) errEl.textContent=j.error||r.statusText; else tick('settings: '+(j.error||r.statusText),true);
+      await refresh(); if(setEl.classList.contains('on')) renderSettings();
+      return false;
+    }
+    if(typeof j.gen==='number'&&j.gen>ttsGen) cutTtsGen(j.gen);
+    info=j; showInfo(); if(setEl.classList.contains('on')) renderSettings();
+    return true;
+  }catch(e){ if(errEl) errEl.textContent=e.message; else tick('settings: '+e.message,true); return false; }
+}
 function setLook(patch){ clearTimeout(saveT); const L={...curLook(),...patch}; info.look=L; applyLook(L); lookShown=JSON.stringify([L,info.theme]); return setSetting({look:L}); }
 setEl.addEventListener('click',e=>{
   if(e.target.closest('[data-close]')) return settings(false);
   const g=k=>e.target.closest(`[data-${k}]`);
   const be=g('eff'); if(be) return setSetting({effort:be.dataset.eff}).then(()=>tick('effort → '+be.dataset.eff));
   const bn=g('ns'); if(bn){ const l=info.notify_speak||[], c=bn.dataset.ns; return setSetting({notify_speak:l.includes(c)?l.filter(x=>x!==c):[...l,c]}); }
+  const beng=g('eng'); if(beng){ if(beng.disabled) return; return setSetting({tts:beng.dataset.eng},'#voiceErr').then(ok=>{ if(ok&&beng.dataset.eng!=='off'&&muted) toggleMute(); }); }
+  const bfb=g('fb'); if(bfb) return setSetting({tts_fallback:bfb.dataset.fb},'#elevenErr');
+  const beprev=g('eprev'); if(beprev) return previewEleven(beprev.dataset.eprev,beprev);
+  const bepick=g('epick'); if(bepick) return setSetting({eleven_voice:bepick.dataset.epick},'#elevenErr');
   const bm=g('m'), bv=g('v'), bp=g('ps'), bi=g('idle'), bs=g('stt'), bt=g('trust'), bo=g('open'), bk=g('skin'), bsw=g('sw'), bpd=g('pdel');
   const part=e.target.closest('#lookPrev [data-part], #partChips [data-part]');
   if(part&&part.dataset.part) return selectPart(part.dataset.part);
   if(bsw){ const v=bsw.dataset.sw; if(v===''){ const L=curLook(); L.skinColor=''; setLook({skinColor:''}).then(()=>selectPart('skin')); } else setPart(v); return; }
   if(bk){ setLook({skin:bk.dataset.skin}).then(()=>{ poke(bk.dataset.skin==='none'?'wink':'excited',900); }); return; }
   if(bm) setSetting({model:bm.dataset.m}).then(()=>tick('model → '+bm.textContent));
-  if(bv) setSetting({voice:bv.dataset.v}).then(()=>{ const vv=(info.voices||[]).find(x=>x.id===bv.dataset.v);
+  if(bv){ if(bv.disabled) return; setSetting({voice:bv.dataset.v},'#voiceErr').then(ok=>{ if(!ok) return; const vv=(info.voices||[]).find(x=>x.id===bv.dataset.v);
     if(vv&&!vv.ready) tick('downloading that voice… using another one till it lands');
-    if(muted) toggleMute(); shush(); say(['hi! this is my new voice.','how do i sound?','ooh, i like this one.'][Math.random()*3|0]); });
+    if(muted) toggleMute(); shush(); say(['hi! this is my new voice.','how do i sound?','ooh, i like this one.'][Math.random()*3|0]); }); }
   if(bp) setSetting({pupil_style:bp.dataset.ps}).then(()=>{ idlePu=null; idleSwapAt=performance.now()+12000; popPupils(); });
   if(bi) setSetting({idle_mode:bi.dataset.idle});
   if(bs) setSetting({whisper_model:bs.dataset.stt}).then(()=>tick('speech recognition: '+bs.textContent+' (loading…)'));
@@ -3386,7 +3593,7 @@ setEl.addEventListener('click',e=>{
   if(bpd) post('/api/projects',{op:'del',name:bpd.dataset.pdel}).then(()=>refresh()).then(renderSettings);
   if(e.target.closest('#projAdd')){ const n=$('#projName').value.trim(), p=$('#projPath').value.trim(); if(!n||!p) return tick('give it a name and a folder',true);
     post('/api/projects',{op:'add',name:n,path:p}).then(r=>r.json()).then(j=>{ if(j.error) return tick(j.error,true); $('#projName').value=''; $('#projPath').value=''; tick('added '+n); return refresh().then(renderSettings); }); }
-  if(bo){ settings(false); openPanel(bo.dataset.open); }
+  if(bo){ openPanel(bo.dataset.open); }
   if(e.target.closest('#pttSet')){ pttCapture=true; renderPtt(); }
   if(e.target.closest('#pttOff')) setSetting({ptt_hotkey:''}).then(()=>{ native('ptt:'); renderPtt(); tick('push-to-talk hotkey off'); });
   if(e.target.closest('#diagCopy')) copyDiagnostics();
@@ -3403,7 +3610,9 @@ setEl.addEventListener('input',e=>{ if(e.target.id==='costIn') costLbl(); });
 setEl.addEventListener('change',e=>{
   const id=e.target.id, on=e.target.checked;
   if(id==='rootSw') setSetting(on?{root:true}:{root:false,trust:'ask'}).then(()=>{ tick(on?'root mode ON — he can run anything (I\'ll ask for your sudo password)':'root mode off',on); poke(on?'scared':'happy',900); });
-  if(id==='speakSw' && on===muted) toggleMute();
+  if(id==='speakSw'){ if(on&&info.tts_choice==='off') setSetting({tts:'auto'},'#voiceErr'); if(on===muted) toggleMute(); }
+  if(id==='elevenSw'){ const cf=$('#elevenConfirm'); return setSetting(on?{eleven_on:true,...(cf&&cf.checked?{confirm:'cloud'}:{})}:{eleven_on:false},'#elevenErr'); }
+  if(id==='elevenCap') return setSetting({eleven_daily_chars:Number(e.target.value)},'#elevenErr');
   if(id==='autoSw') setSetting({autostart:on}).then(()=>tick(on?'I’ll start when you log in':'won’t start at login'));
   if(id==='listenShowSw') setSetting({listen_on_show:on});
   if(id==='wakeSw') setSetting({wake_word:on}).then(()=>tick(on?'say “hey Nixi” any time':'wake word off'));
@@ -3432,7 +3641,7 @@ setEl.addEventListener('change',e=>{
   if(id==='themeSw') return setLook({follow_theme:on}).then(()=>{ lookShown=''; syncLook(); renderSettings(); });
   if(id==='rndSw') setLook({random:on}).then(()=>{ if(on){ lookRolled=false; syncLook(true); } else { lookShown=''; syncLook(); } renderSettings(); });
 });
-setEl.addEventListener('keydown',e=>{ if(e.target.matches('input[type=text],input[type=number]')) e.stopPropagation(); if(e.key==='Enter'&&(e.target.id==='projPath'||e.target.id==='projName')) $('#projAdd').click(); });
+setEl.addEventListener('keydown',e=>{ if(e.key!=='Escape'&&!(e.ctrlKey&&e.key.toLowerCase()===',')) e.stopPropagation(); if(e.key==='Enter'&&(e.target.id==='projPath'||e.target.id==='projName')) $('#projAdd').click(); if(e.key==='Enter'&&e.target.id==='elevenCap') e.target.blur(); });
 setInterval(()=>{ if(setEl.classList.contains('on') && (info.voices||[]).some(v=>v.downloading)) refresh().then(renderSettings); },1500);
 
 /* ================= slash commands ================= */
@@ -3475,9 +3684,11 @@ async function slash(cmd){
 
 /* ================= wiring ================= */
 function showInfo(){ if('mirror' in info) mirSet(info.mirror); if(info.ambient){ AMB=info.ambient; renderCue(); } syncEye(); document.body.classList.toggle('fulltext',!!info.full_text); ctxRender(); input.placeholder=`ask in ${info.cwd_display||'~'}…`; const l=$('#cwdLbl'); if(l) l.textContent=info.cwd_display||'folder';
+  const ve=$('#voiceEng'); if(ve) ve.textContent=voiceEngText();
   document.body.classList.toggle('root',!!info.root); document.body.classList.toggle('nixi',!!info.bridge); }
 async function refresh(){ try{ await tokenReady; const r=await fetch('/api/state',{headers:hdr()}); const j=await r.json();
   if(!('cwd' in j)) return staleToken();      // no (or an old) token: the server only said it's running
+  if(typeof j.gen==='number'&&j.gen>ttsGen) cutTtsGen(j.gen);
   info=j; showInfo(); announceUpdate(); }catch(e){} }
 function toggleMute(){ muted=!muted; try{localStorage.setItem('nixi.muted',muted?'1':'0');}catch(e){} if(muted) shush(); tick(muted?'voice off':'voice on'); if(setEl.classList.contains('on')) renderSettings(); }
 
@@ -3507,8 +3718,8 @@ function calmCheck(){ document.body.classList.toggle('calm', setEl.classList.con
 // the page is laid out for 340×460: if the window ends up a different size, scale/centre it instead of cutting things off
 let fitK=1, layoutX=0, layoutY=0;
 // room for a long approval card / terminal sheet: ask the window for extra width and height (it shrinks back at [0,0])
-let cardWant=[0,0], sheetWant=[0,0], stageWant=[0,0];
-function sizeWindow(){ const w=Math.max(cardWant[0],sheetWant[0],popWant[0],stageWant[0]), h=Math.max(cardWant[1],sheetWant[1],popWant[1],stageWant[1]);
+let cardWant=[0,0], sheetWant=[0,0], stageWant=[0,0], setWant=[0,0];
+function sizeWindow(){ const w=Math.max(cardWant[0],sheetWant[0],popWant[0],stageWant[0],setWant[0]), h=Math.max(cardWant[1],sheetWant[1],popWant[1],stageWant[1],setWant[1]);
   native('size:'+w+','+h); }   // (sent every time: the window ignores a repeat, and a lost message would leave the card clipped)
 function fit(){ const k=Math.min(1, innerWidth/340, innerHeight/460); fitK=k>0.995?1:k; const bs=document.body.style;
   bs.transformOrigin='0 0'; bs.margin='0'; bs.marginLeft=layoutX+'px'; bs.marginTop=layoutY+'px';

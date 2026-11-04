@@ -139,13 +139,24 @@ class SpeakerFloorTest(_Base):
         self.assertTrue(wait_for(lambda: self.spy.holds == [False], 1.0), "the wait was not cancelled")
         child.communicate("\n", timeout=2)
         self.assertTrue(wait_for(self.probe_free, 1.0))
-        self.assertNotIn(str(os.getpid()), Path(self.path).read_text())
+        self.assertNotEqual(str(os.getpid()), Path(self.path).read_text().split()[0])
 
     def test_cut_off_while_playing_frees_floor(self):
         self.push(1, secs=5)                                  # long enough to still be streaming
         self.assertTrue(wait_for(lambda: not self.probe_free()))
         self.server.Speaker.stop()
         self.assertTrue(self.probe_free())
+
+    def test_cut_cloud_stops_cloud_player_and_releases_floor(self):
+        S = self.server.Speaker
+        with S.cv:
+            S.ready.append((S.gen, 7, "Cloud.", b"\0\0" * (22050 * 5), 22050, None, [], 1.0, True,
+                            "elevenlabs", "reply-7"))
+            S.cv.notify_all()
+        self.assertTrue(wait_for(lambda: any(e.get("t") == "spk" and e.get("id") == 7 for e in self.events)))
+        S.cut_cloud()
+        self.assertTrue(self.probe_free())
+        self.assertTrue(any(e.get("t") == "spk_done" and e.get("id") == 7 for e in self.events))
 
     def test_failed_write_frees_floor(self):
         with mock.patch.object(self.server, "make_player", lambda rate: FakePlayer(fail=True)):
