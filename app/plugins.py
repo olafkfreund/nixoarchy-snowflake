@@ -165,6 +165,18 @@ def _check(m, d):
     return None
 
 
+def _manifest(p):
+    """plugin.json's text, opened like _snap opens files: never blocks on a FIFO, never follows a link, a plain file of at most 64 KiB."""
+    fd = os.open(p, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_size > 64 * 1024:
+            raise ValueError("not a plain file of at most 64 KiB")
+        return os.read(fd, 64 * 1024 + 1).decode("utf-8")
+    finally:
+        os.close(fd)
+
+
 def scan(dirs):
     """Every plugin folder under dirs (the first dir counts as Nix, the rest as Folder). Never raises for one plugin."""
     out, valid = [], []
@@ -178,7 +190,7 @@ def scan(dirs):
             try:
                 err = f"contains a symlink: {_symlink(d)}" if _symlink(d) else None
                 if not err:
-                    m = json.loads((d / "plugin.json").read_text(encoding="utf-8"))
+                    m = json.loads(_manifest(d / "plugin.json"))
                     err = _check(m, d)
             except FileNotFoundError:
                 err = "plugin.json missing"
@@ -224,6 +236,8 @@ def _snap(d, dest=None):
             st = os.fstat(fd)
             if not stat.S_ISREG(st.st_mode):
                 raise ValueError(f"not a plain file: {rel.decode(errors='replace')}")
+            if st.st_nlink > 1:                      # (a hardlink may point at a file outside the folder)
+                raise ValueError(f"hard link: {rel.decode(errors='replace')}")
             total += st.st_size
             if total > SNAP_MAX:
                 raise ValueError("the plugin folder is too big")
@@ -442,7 +456,22 @@ DNS_ADDR, SHM_SIZE, NPROC = "192.0.2.53", 16 * 1024 * 1024, 64
 PASTA_EXTRA = []                                                   # (tests only: extra pasta flags; empty in production)
 LAUNCHER = ("import os, resource, sys\nresource.setrlimit(resource.RLIMIT_NPROC, (%d, %d))\nresource.setrlimit(resource.RLIMIT_CORE, (0, 0))\n"
             "os.execv(sys.argv[1], sys.argv[1:])") % (NPROC, NPROC)  # (runs inside the sandbox's user namespace: only the plugin's own processes count)
+# Runs inside pasta's namespace (full capabilities there; the plugin gets none): every address this computer owns becomes unreachable,
+# so pasta cannot forward to this computer's own services; then bwrap takes over. A route that cannot be added stops the run.
+ROUTER = ("import os, subprocess, sys\ni = sys.argv.index('--')\nfor a in sys.argv[1:i]:\n"
+          "    v6 = ':' in a\n    r = subprocess.run(['ip', '-6' if v6 else '-4', 'route', 'replace', 'unreachable', a + ('/128' if v6 else '/32')],"
+          " capture_output=True)\n    if r.returncode:\n        sys.exit('route: ' + r.stderr.decode(errors='replace'))\nos.execvp(sys.argv[i + 1], sys.argv[i + 1:])")
 _pasta = [None]
+
+
+def _host_addrs():
+    """Every IPv4 and IPv6 address this computer owns on any interface (except loopback), read before the plugin's namespace exists."""
+    try:
+        r = subprocess.run(["ip", "-j", "addr"], capture_output=True, timeout=5, check=True)
+        found = {a["local"] for i in json.loads(r.stdout) for a in i.get("addr_info", []) if a.get("scope") != "host"}
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        raise StageError("can't tell which addresses this computer has, so a plugin that uses the internet can't run safely")
+    return sorted(found)
 
 
 def pasta_ok():
@@ -460,9 +489,10 @@ def sandbox_argv(d, stage, resolv=None):
     """The command line for a plugin folder d (a private copy) and its manifest's stage block (argv list; the program is /plugin/<argv>).
     A network plugin runs in a network namespace of its own, joined to the internet by pasta; resolv is the resolv.conf it gets."""
     py = os.path.dirname(os.path.realpath(sys.executable))        # the interpreter Nixi runs on lives in the store: scripts may use it
-    path = ":".join(["/plugin", *([os.environ["PATH"]] if os.environ.get("PATH") else []), *([py] if py.startswith("/nix/store/") else [])])
+    store = [x for x in os.environ.get("PATH", "").split(":") if x.startswith("/nix/store/")]   # (never the host's /home or /etc/profiles entries)
+    path = ":".join(["/plugin", *store, *([py] if py.startswith("/nix/store/") else [])])
     net = bool(stage.get("network"))
-    a = ["bwrap", "--clearenv", "--unshare-all", *(["--share-net"] if net else []), "--die-with-parent", "--new-session",
+    a = ["bwrap", "--clearenv", "--unshare-all", "--unshare-user", "--disable-userns", "--cap-drop", "ALL", *(["--share-net"] if net else []), "--die-with-parent", "--new-session",
          "--ro-bind", "/nix/store", "/nix/store", "--ro-bind", str(d), "/plugin", "--chdir", "/plugin", "--size", str(TMP_SIZE), "--tmpfs", "/tmp",
          "--proc", "/proc", "--dev", "/dev", "--size", str(SHM_SIZE), "--tmpfs", "/dev/shm"]
     ro = ["/usr/bin/env"] + (["/etc/ssl", "/etc/static/ssl"] if net else [])   # (system-status is passed in on stdin, never bound)
@@ -475,7 +505,7 @@ def sandbox_argv(d, stage, resolv=None):
     a += [os.path.realpath(sys.executable), "-I", "-c", LAUNCHER, "/plugin/" + stage["argv"][0], *stage["argv"][1:]]
     if net:      # no host loopback or gateway mapping and no port forwarding: it reaches the internet and the LAN, not localhost-only services
         a = [shutil.which("pasta") or "pasta", "--config-net", "--quiet", "--foreground", "--no-map-gw", "-t", "none", "-u", "none", "-T", "none", "-U", "none",
-             "--dns-forward", DNS_ADDR, *PASTA_EXTRA, "--"] + a
+             "--dns-forward", DNS_ADDR, *PASTA_EXTRA, "--", os.path.realpath(sys.executable), "-I", "-c", ROUTER, *_host_addrs(), "--"] + a
     return a
 
 
@@ -700,7 +730,7 @@ def check_dir(d):
     """Build-time check (`plugins.py --check <dir>`): the reason a plugin folder is bad, or None."""
     d = Path(d)
     try:
-        m = json.loads((d / "plugin.json").read_text(encoding="utf-8"))
+        m = json.loads(_manifest(d / "plugin.json"))
     except (OSError, ValueError) as e:
         return f"plugin.json unreadable: {e}"
     try:

@@ -59,8 +59,8 @@ class SandboxTest(unittest.TestCase):
         self.assertEqual(a[0].rsplit("/", 1)[-1], "pasta")
         self.assertIn("--no-map-gw", a)
         self.assertNotIn("--map-host-loopback", a)
-        a = a[a.index("--") + 1:]
-        self.assertEqual(a[:4], ["bwrap", "--clearenv", "--unshare-all", "--share-net"])
+        a = a[a.index("bwrap"):]
+        self.assertEqual(a[:8], ["bwrap", "--clearenv", "--unshare-all", "--unshare-user", "--disable-userns", "--cap-drop", "ALL", "--share-net"])
         self.assertEqual(a[a.index("/dev/shm") - 3:a.index("/dev/shm") + 1], ["--size", str(plugins.SHM_SIZE), "--tmpfs", "/dev/shm"])
         self.assertIn("RLIMIT_NPROC", a[-2])
         for flag in ("--die-with-parent", "--new-session", "--tmpfs", "--proc", "--dev", "--chdir"):
@@ -122,6 +122,64 @@ class SandboxTest(unittest.TestCase):
                 "try:\n    s.connect(open('name').read().replace('@', '\\0'))\n    r = 'connected'\nexcept OSError:\n    r = 'refused'\n"
                 "print(json.dumps({'v':1,'kind':'facts','title':'t','points':[r]}))")
         self.assertEqual(self.facts(self.mk(body, network=True, files={"name": name.replace("\0", "@")})), ["refused"])
+
+    @unittest.skipUnless(plugins.pasta_ok() and shutil.which("ip"), "needs pasta and ip")
+    def test_network_plugins_cannot_reach_this_computers_other_addresses(self):
+        addrs = [a for a in plugins._host_addrs() if not a.startswith("fe80")]
+        self.assertTrue(addrs)
+        srv = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        srv.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        srv.bind(("::", 0))                           # every address, v4 and v6
+        srv.listen(5)
+        self.addCleanup(srv.close)
+        body = ("import json, socket\nr = []\nfor a in open('addrs').read().split():\n    s = socket.socket(socket.AF_INET6 if ':' in a else socket.AF_INET)\n"
+                "    s.settimeout(2)\n    try:\n        s.connect((a, int(open('port').read())))\n        r.append('connected ' + a)\n"
+                "    except OSError:\n        pass\nprint(json.dumps({'v':1,'kind':'facts','title':'t','points':['none'] if not r else r}))")
+        self.assertEqual(self.facts(self.mk(body, network=True, files={"addrs": "\n".join(addrs), "port": str(srv.getsockname()[1])})), ["none"])
+
+    @unittest.skipUnless(plugins.pasta_ok() and shutil.which("ip"), "needs pasta and ip")
+    def test_the_routes_cannot_be_removed_from_inside(self):
+        body = ("import json, subprocess\nr = subprocess.run([%r, 'route', 'del', 'default'], capture_output=True)\n"
+                "print(json.dumps({'v':1,'kind':'facts','title':'t','points':['removed' if r.returncode == 0 else 'refused']}))") % os.path.realpath(shutil.which("ip"))
+        self.assertEqual(self.facts(self.mk(body, network=True)), ["refused"])
+
+    def test_a_network_plugin_will_not_run_without_the_address_list(self):
+        p = self.mk("print(1)", network=True)
+        with mock.patch.object(plugins.subprocess, "run", side_effect=OSError):
+            with self.assertRaisesRegex(plugins.StageError, "addresses"):
+                plugins.sandbox_argv(p.dir, p.manifest["stage"])
+
+    HARD = ("import ctypes, json, os\nlibc = ctypes.CDLL(None, use_errno=True)\nr = []\n"
+            "r.append('userns' if libc.unshare(0x10000000) == 0 else 'no-userns')\n"
+            "r.append('mount' if libc.mount(b'none', b'/tmp', b'tmpfs', 0, None) == 0 else 'no-mount')\n"
+            "r.append('rw' if libc.mount(None, b'/plugin', None, 32 | 1 << 5, None) == 0 else 'ro')\n"
+            "r.append([l for l in open('/proc/self/status') if l.startswith('CapEff')][0].split()[1])\n"
+            "print(json.dumps({'v':1,'kind':'facts','title':'t','points':r}))")
+
+    def test_no_nested_userns_no_mounts_no_capabilities(self):
+        want = ["no-userns", "no-mount", "ro", "0" * 16]
+        self.assertEqual(self.facts(self.mk(self.HARD)), want)
+
+    @unittest.skipUnless(plugins.pasta_ok() and shutil.which("ip"), "needs pasta and ip")
+    def test_no_nested_userns_no_mounts_no_capabilities_with_pasta(self):
+        self.assertEqual(self.facts(self.mk(self.HARD, network=True)), ["no-userns", "no-mount", "ro", "0" * 16])
+
+    def test_the_path_has_only_store_entries(self):
+        with mock.patch.dict(os.environ, {"PATH": "/home/x/bin:/etc/profiles/per-user/x/bin:/nix/store/abc-x/bin"}):
+            a = plugins.sandbox_argv("/d", {"argv": ["run"]})
+        self.assertEqual(a[a.index("PATH") + 1].split(":")[:2], ["/plugin", "/nix/store/abc-x/bin"])
+        p = self.mk("import json, os\nbad = [x for x in os.environ['PATH'].split(':') if not x.startswith('/nix/store/') and x != '/plugin']\n"
+                    "print(json.dumps({'v':1,'kind':'facts','title':'t','points':['bad:' + ','.join(bad)]}))")
+        self.assertEqual(self.facts(p), ["bad:"])
+
+    def test_a_hard_link_is_refused(self):
+        outside = self.root / "outside"
+        outside.write_text("secret")
+        d = self.root / "hl"
+        d.mkdir()
+        os.link(outside, d / "x")
+        with self.assertRaisesRegex(ValueError, "hard link"):
+            plugins._snap(d)
 
     def test_a_network_plugin_will_not_run_without_pasta(self):
         p = self.mk("print(1)", network=True)

@@ -77,6 +77,15 @@ class RunnerTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             plugins.sha256_of(p.dir)
 
+    def test_a_fifo_manifest_does_not_hang_scan(self):
+        base = Path(tempfile.mkdtemp(dir=self.root))
+        (base / "bad").mkdir()
+        os.mkfifo(base / "bad" / "plugin.json")
+        t = time.monotonic()
+        got = plugins.scan([base])
+        self.assertLess(time.monotonic() - t, 2)
+        self.assertTrue(got[0].error)
+
     def test_good_output_is_facts(self):
         got = self.run_it("import json,sys\nq=json.load(sys.stdin)\nprint(json.dumps(%r))" % FACTS)
         self.assertEqual(got, FACTS)
@@ -637,7 +646,7 @@ class StageServerTest(_ServerEnv):
         self.assertEqual(c["hint"], "disk and such")
         page = (Path(__file__).resolve().parent.parent / "app/static/index.html").read_text()
         self.assertIn("'Nixi tells the agent: '+c.hint", page)
-        self.assertIn("It can use the internet and your local networks. It cannot reach services that only listen on this computer (localhost).", page)
+        self.assertIn("It can use the internet (not this computer\\'s own services).", page)
 
     def test_no_bwrap_no_stage_plugins(self):
         S = self.server
