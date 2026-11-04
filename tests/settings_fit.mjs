@@ -117,9 +117,9 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   const m3 = nonRegion(await msgs());
   const st3 = await ev("return [setEl.classList.contains('on'), panelEl.classList.contains('on'), setWant[0], setWant[1], document.body.classList.contains('pnl')]");
   check(lastSize(m1) === "size:244,266" && lastWide(m1) === "wide:off"
-    && !st2[0] && st2[1] && st2[2] === 0 && st2[3] === 0 && st2[4] && lastWide(m2) === "wide:on" && lastSize(m2) === "size:0,0"
-    && !st3[0] && !st3[1] && st3[2] === 0 && st3[3] === 0 && !st3[4] && lastWide(m3) === "wide:off" && lastSize(m3) === "size:0,0",
-    "transition: Settings -> panel -> close", JSON.stringify({ m1, m2, st2, m3, st3 }));
+    && !st2[0] && st2[1] && st2[2] === 0 && st2[3] === 0 && st2[4] && m2.join(",") === "size:0,0,wide:on"
+    && !st3[0] && !st3[1] && st3[2] === 0 && st3[3] === 0 && !st3[4] && m3.join(",") === "wide:off,size:0,0",
+    "transition: Settings -> panel -> close (shrink size:0,0 before wide:on)", JSON.stringify({ m1, m2, st2, m3, st3 }));
 }
 
 // 6b.Settings -> Memory/History via data-open button inside Settings (line 3361) -> close
@@ -129,8 +129,8 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
     await ev(`setEl.querySelector('[data-open="${kind}"]').click(); await new Promise(r=>setTimeout(r,150)); return 1`);
     const m = nonRegion(await msgs());
     const st = await ev("return [setEl.classList.contains('on'), panelEl.classList.contains('on'), panelKind, setWant[0], setWant[1]]");
-    check(!st[0] && st[1] && st[2] === kind && st[3] === 0 && st[4] === 0 && lastWide(m) === "wide:on" && lastSize(m) === "size:0,0" && !m.includes("wide:off"),
-      `transition: Settings -> ${kind} (data-open) goes straight to wide:on without wide:off`, JSON.stringify({ m, st }));
+    check(!st[0] && st[1] && st[2] === kind && st[3] === 0 && st[4] === 0 && m.join(",") === "size:0,0,wide:on",
+      `transition: Settings -> ${kind} (data-open) sends size:0,0 then wide:on`, JSON.stringify({ m, st }));
     await ev("closePanels(); return 1");
   }
 }
@@ -145,9 +145,9 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   await ev("setEl.querySelector('[data-close]').click(); return 1");
   const m2 = nonRegion(await msgs());
   const st2 = await ev("return [setEl.classList.contains('on'), panelEl.classList.contains('on'), setWant[0], setWant[1], document.body.classList.contains('pnl')]");
-  check(st1[0] && !st1[1] && st1[2] && st1[3] === 244 && st1[4] === 266 && lastWide(m1) === "wide:off" && lastSize(m1) === "size:244,266"
-    && !st2[0] && !st2[1] && st2[2] === 0 && st2[3] === 0 && !st2[4] && lastWide(m2) === "wide:off" && lastSize(m2) === "size:0,0",
-    "transition: Quick actions (#qaEditBtn) -> Settings -> ✕ close", JSON.stringify({ m1, st1, m2, st2 }));
+  check(st1[0] && !st1[1] && st1[2] && st1[3] === 244 && st1[4] === 266 && m1.join(",") === "wide:off,size:244,266"
+    && !st2[0] && !st2[1] && st2[2] === 0 && st2[3] === 0 && !st2[4] && m2.join(",") === "wide:off,size:0,0",
+    "transition: Quick actions (#qaEditBtn) -> Settings (wide:off before size:244,266) -> ✕ close", JSON.stringify({ m1, st1, m2, st2 }));
 }
 
 // 6d. Esc closes Settings and returns request to base
@@ -168,6 +168,12 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   const st = await ev("return [setEl.classList.contains('on'), setWant[0], setWant[1], document.body.classList.contains('pnl')]");
   check(!st[0] && st[1] === 0 && st[2] === 0 && !st[3] && lastSize(m) === "size:0,0" && lastWide(m) === "wide:off",
     "transition: click outside .pn closes Settings and resets size", JSON.stringify({ m, st }));
+  // 6e-guard. closePanels() when neither panel nor Settings is open does not send wide:/size:/region:
+  await clearMsgs();
+  await ev("closePanels(); document.body.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true})); showAsk(); hideAsk(); return 1");
+  const mGuard = await msgs();
+  check(!mGuard.some(x => x.startsWith("wide:") || x.startsWith("size:")),
+    "closePanels() is a no-op when neither panel nor Settings was open", JSON.stringify(mGuard));
 }
 
 // 6f. Radial menu opens and closes Settings cleanly
@@ -301,9 +307,16 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
     // disconnected element does not throw
     probe.focus(); settings(true,'look'); probe.remove(); settings(false);
     out.afterRemoved=!setEl.classList.contains('on');
+    // ask #input focused before settings(true): hideAsk() blurs #input inside settings(), so focus must be captured before hideAsk()
+    showAsk('hi');
+    out.inputFocusedBefore=document.activeElement===input;
+    settings(true,'look');
+    settings(false);
+    out.afterAskInput=document.activeElement===input;
+    hideAsk();
     return out`);
-  check(foc.open[0] === "brain" && foc.afterSettingsFalse && foc.afterX && foc.afterEsc && foc.afterOutside && foc.afterClosePanels && foc.afterRemoved,
-    "opening focuses selected tab and closing restores previous focus across all close paths", JSON.stringify(foc));
+  check(foc.open[0] === "brain" && foc.afterSettingsFalse && foc.afterX && foc.afterEsc && foc.afterOutside && foc.afterClosePanels && foc.afterRemoved && foc.inputFocusedBefore && foc.afterAskInput,
+    "opening focuses selected tab and closing restores previous focus (including #input when ask box was open)", JSON.stringify(foc));
 }
 
 // 12. setEl keydown isolation: Enter, Space, typing and Ctrl+N/H/M inside Settings do not reach showAsk, PTT or global shortcuts; Esc and Ctrl+, still reach window
@@ -358,10 +371,16 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
 
 // 14. A corner drag updates wanted size, coalesces size requests, persists, and expands the click region.
 { await view(900, 900); await ev("settings(true); info.click_through=true; return 1"); await sleep(450);
+  // Right edge strip (.sgrip.r) and #set .bd scrollbar do not overlap
+  const sb = await ev(`const bd=setEl.querySelector('.bd'), gr=setEl.querySelector('.sgrip.r');
+    const br=bd.getBoundingClientRect(), grr=gr.getBoundingClientRect();
+    return {bdRight:Math.round(br.right), gripLeft:Math.round(grr.left), gripRight:Math.round(grr.right), noOverlap:br.right<=grr.left}`);
+  check(sb.noOverlap, "right resize strip (.sgrip.r) does not overlap #set .bd scrollbar", JSON.stringify(sb));
+
   await clearMsgs();
   const drag = await ev(`const g=document.querySelector('#set .sgrip.corner'); let captured=false;
     g.setPointerCapture=()=>{ captured=true; };
-    const pointer=(type,x,y)=>g.dispatchEvent(new PointerEvent(type,{pointerId:7,button:0,clientX:x,clientY:y,bubbles:true,cancelable:true}));
+    const pointer=(type,x,y,buttons=type==='pointerup'?0:1)=>g.dispatchEvent(new PointerEvent(type,{pointerId:7,button:0,buttons,clientX:x,clientY:y,bubbles:true,cancelable:true}));
     pointer('pointerdown',560,680); pointer('pointermove',600,710); pointer('pointermove',640,750);
     const before=__msgs.filter(m=>m.startsWith('size:')).length;
     pointer('pointerup',640,750);
@@ -375,20 +394,56 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
     && drag.css[0]==='640px' && drag.css[1]==='750px' && JSON.stringify(drag.saved)==='[640,750]' && drag.covers,
     "corner drag changes wanted/CSS size, one size per frame, saves, and updates region", JSON.stringify(drag));
 
+  // Resize drag does not feed back when the window moves left/up (nixiLayout(L+d, T+d) + clientX+d / clientY+d keeps size unchanged)
+  const noFeedback = await ev(`const g=document.querySelector('#set .sgrip.corner'); g.setPointerCapture=()=>{};
+    nixiLayout(100, 80);
+    const p=(type,x,y,buttons=type==='pointerup'?0:1)=>g.dispatchEvent(new PointerEvent(type,{pointerId:11,button:0,buttons,clientX:x,clientY:y,bubbles:true}));
+    p('pointerdown',500,600);
+    p('pointermove',540,630);
+    const after1=[setW,setH];
+    nixiLayout(100+40, 80+30);
+    p('pointermove',540+40,630+30);
+    const after2=[setW,setH];
+    p('pointerup',580,660);
+    nixiLayout(0,0);
+    return {after1,after2}`);
+  check(noFeedback.after1[0]===680 && noFeedback.after1[1]===780 && noFeedback.after2[0]===noFeedback.after1[0] && noFeedback.after2[1]===noFeedback.after1[1],
+    "resize drag in layout-offset frame: nixiLayout(L+d,T+d) with clientX+d/clientY+d leaves size unchanged", JSON.stringify(noFeedback));
+
   const min = await ev(`const g=document.querySelector('#set .sgrip.corner');
-    const p=(type,x,y)=>g.dispatchEvent(new PointerEvent(type,{pointerId:8,button:0,clientX:x,clientY:y,bubbles:true}));
+    const p=(type,x,y,buttons=type==='pointerup'?0:1)=>g.dispatchEvent(new PointerEvent(type,{pointerId:8,button:0,buttons,clientX:x,clientY:y,bubbles:true}));
     p('pointerdown',640,750); p('pointermove',-100,-100); p('pointerup',-100,-100);
     return [setW,setH,JSON.parse(localStorage.getItem('nixi.setSize'))]`);
   check(min[0]===420 && min[1]===420 && JSON.stringify(min[2])==='[420,420]',
     "drag clamps both axes to 420", JSON.stringify(min));
 
   const edges = await ev(`const drag=(axis,id,dx,dy)=>{ const g=document.querySelector('#set .sgrip.'+axis); g.setPointerCapture=()=>{};
-      const p=(type,x,y)=>g.dispatchEvent(new PointerEvent(type,{pointerId:id,button:0,clientX:x,clientY:y,bubbles:true}));
+      const p=(type,x,y,buttons=type==='pointerup'?0:1)=>g.dispatchEvent(new PointerEvent(type,{pointerId:id,button:0,buttons,clientX:x,clientY:y,bubbles:true}));
       p('pointerdown',0,0); p('pointermove',dx,dy); p('pointerup',dx,dy); };
     drag('r',9,80,90); const right=[setW,setH]; drag('b',10,90,80);
     return {right,bottom:[setW,setH]}`);
   check(JSON.stringify(edges.right)==='[500,420]' && JSON.stringify(edges.bottom)==='[500,500]',
     "right and bottom strips resize only their own axes", JSON.stringify(edges));
+
+  // Grip robustness: click without movement does not save; pointermove with buttons===0 is ignored; lostpointercapture ends drag
+  const robust = await ev(`const g=document.querySelector('#set .sgrip.corner'); g.setPointerCapture=()=>{};
+    localStorage.removeItem('nixi.setSize');
+    const p=(type,x,y,buttons=1)=>g.dispatchEvent(new PointerEvent(type,{pointerId:12,button:0,buttons,clientX:x,clientY:y,bubbles:true}));
+    p('pointerdown',200,200,1); p('pointerup',200,200,0);
+    const savedAfterClick=localStorage.getItem('nixi.setSize');
+    p('pointerdown',200,200,1); p('pointermove',260,260,0);
+    const afterButtons0=[setW,setH];
+    p('pointermove',250,240,1);
+    const afterMove=[setW,setH];
+    g.dispatchEvent(new PointerEvent('lostpointercapture',{pointerId:12,bubbles:true}));
+    const savedAfterLost=JSON.parse(localStorage.getItem('nixi.setSize'));
+    p('pointermove',350,350,1);
+    const afterLostMove=[setW,setH];
+    return {savedAfterClick,afterButtons0,afterMove,savedAfterLost,afterLostMove}`);
+  check(robust.savedAfterClick===null && JSON.stringify(robust.afterButtons0)==='[500,500]'
+    && JSON.stringify(robust.afterMove)==='[550,540]' && JSON.stringify(robust.savedAfterLost)==='[550,540]'
+    && JSON.stringify(robust.afterLostMove)==='[550,540]',
+    "grip robustness: click does not save, buttons===0 move ignored, lostpointercapture ends drag", JSON.stringify(robust));
 
   const keys = await ev(`const g=document.querySelector('#set .sgrip.corner'); g.focus();
     const key=(k,shift=false)=>{ const e=new KeyboardEvent('keydown',{key:k,shiftKey:shift,bubbles:true,cancelable:true}); g.dispatchEvent(e); return e.defaultPrevented; };
@@ -396,7 +451,7 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
     const enter=key('Enter'), reset=[setW,setH,localStorage.getItem('nixi.setSize'),setEl.classList.contains('on'),ask.classList.contains('on')];
     key('ArrowLeft'); g.dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true}));
     return {right,down,enter,grown,reset,dbl:[setW,setH,localStorage.getItem('nixi.setSize')]}`);
-  check(keys.right && keys.down && keys.enter && JSON.stringify(keys.grown)==='[516,564]'
+  check(keys.right && keys.down && keys.enter && JSON.stringify(keys.grown)==='[566,604]'
     && JSON.stringify(keys.reset)==='[560,680,null,true,false]' && JSON.stringify(keys.dbl)==='[560,680,null]',
     "arrows prevent scroll and resize; Enter and double-click reset without closing", JSON.stringify(keys));
 
