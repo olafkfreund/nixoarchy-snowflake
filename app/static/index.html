@@ -741,6 +741,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
           <g id="eL"><path class="eye" id="pL"/><g clip-path="url(#clipL)"><path class="slit" id="hlL"/></g></g>
           <g id="eR"><path class="eye" id="pR"/><g clip-path="url(#clipR)"><path class="slit" id="hlR"/></g></g>
         </g>
+        <g class="ball bfront"></g>
         <g id="tears"></g>
         <!-- the glass dome: soft reflection + rim -->
         <ellipse cx="-30" cy="-46" rx="38" ry="15" transform="rotate(-30 -30 -46)" fill="url(#glossG)" pointer-events="none"/>
@@ -1051,6 +1052,7 @@ function applyLook(L){
   if(bk&&fr) SKIN_PARTS=drawSkin(bk,fr,LOOK);
   SIT_P=drawSit(LOOK);
   capColors();
+  setCharacter(LOOK.character || 'snowflake');
 }
 function randomLook(L){
   const hb=Math.random()*360, hp=Math.random()*360, hw=Math.random()*360, hp2=(hp+120+Math.random()*120)%360;
@@ -1196,8 +1198,20 @@ const LAMBDA='M-78.5 31.4L-62.4 3.5L8.1 125.6L-24.2 125.6L-40.3 97.7L-56.4 125.6
 function snowPath(core=58){ const R=core/Math.cos(Math.PI/6);
   return 'M'+[0,1,2,3,4,5].map(i=>(R*Math.cos(i*Math.PI/3)).toFixed(1)+' '+(R*Math.sin(i*Math.PI/3)).toFixed(1)).join('L')+'Z'; }
 const nixLambdas=()=>[0,1,2,3,4,5].map(i=>`<path d="${LAMBDA}" transform="rotate(${i*60})" fill="url(#nix${i%2?'L':'D'})"/>`).join('');
-document.querySelectorAll('#body>path.ball').forEach(e=>e.setAttribute('d',snowPath()));
-document.querySelectorAll('#body>.nix').forEach(g=>g.innerHTML=nixLambdas());
+const CHARACTERS={snowflake:{label:'Snowflake',ball:snowPath(),back:nixLambdas(),front:'',gloss:true,
+  faceBox:[-76,-76,152,152],anchors:{head:[0,0],face:[0,0],neck:[0,0],base:[0,0],left:[0,0],right:[0,0]},
+  pivot:76,shadow:62,fits:new Set(['none','halo','crown','sprout','bow','nightcap','beanie','party','scarf','tie','headphones','shades','glasses','chat','feed']),touch:null}};
+let BODY=CHARACTERS.snowflake;
+function setCharacter(id){
+  const next=CHARACTERS[id]||CHARACTERS.snowflake, changed=BODY!==next;
+  document.querySelectorAll('#body>path.ball').forEach(e=>e.setAttribute('d',next.ball));
+  document.querySelectorAll('#body>.nix').forEach(g=>{ g.innerHTML=next.back; if(next!==CHARACTERS.snowflake) g.classList.remove('glint'); });
+  document.querySelectorAll('#body>.bfront').forEach(g=>g.innerHTML=next.front);
+  document.querySelectorAll('#body>ellipse').forEach(e=>e.setAttribute('display',next.gloss?'':'none'));
+  BODY=next;
+  if(changed) renderCue();
+}
+setCharacter(LOOK.character || 'snowflake');
 const EYE={rx:23.5, ry:40.5, cx:27.5, cy:-4.5, tilt:0.157};
 const EYE_HALFW=Math.hypot(EYE.rx*Math.cos(EYE.tilt),EYE.ry*Math.sin(EYE.tilt));   // half the width of one leaning eye
 /* pupils morph smoothly between shapes — all flat, solid colour:
@@ -2048,7 +2062,7 @@ function renderCue(){ const k=ambKind(), g=$('#cue'), bar=document.body.classLis
   g.setAttribute('display',k&&!bar&&!AM&&!mirKind()?'':'none');   // (the agent mark stands in for the !)
   g.setAttribute('class',k);
   if(k){ $('#cueD').setAttribute('fill',CUES[k][0]); $('#cueT').textContent=CUES[k][1]; }
-  const w=!k&&!bar&&AMB.weather, fr=$('#frost');
+  const w=!k&&!bar&&AMB.weather&&BODY===CHARACTERS.snowflake, fr=$('#frost');
   if(!fr.firstChild) fr.innerHTML=[0,1,2,3,4,5].map(i=>`<g transform="rotate(${i*60})"><circle cx="-8" cy="124" r="4"/><circle cx="-24" cy="118" r="2.2"/><circle cx="-56" cy="120" r="2.6"/></g>`).join('');
   fr.setAttribute('display',w?'':'none'); fr.setAttribute('fill',AMB.weather==='cold'?'#e6f4ff':'#ffb36b'); fr.setAttribute('opacity',AMB.weather==='cold'?.9:.55); }   // frost on the tips / a slight warm thaw
 new MutationObserver(renderCue).observe(document.body,{attributes:true,attributeFilter:['class']});   // notch in / out: show or hide the mark
@@ -2121,7 +2135,7 @@ function onEvent(ev){
     SIT.weather=ev.weather||null; }
   else if(ev.t==='ambient'){ if(ev.alert) restore(12000,false); const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive) poke('confused',1500);
     if(ev.glint&&info.proactive){ poke('t_beam',1800); burstLines('#77b6e1',8); }      // a new NixOS generation: proud
-    if(ev.glint){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
+    if(ev.glint&&BODY===CHARACTERS.snowflake){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
     if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')) flash('#4d6fb7'); }   // (never spoken)
     else if(more&&document.body.classList.contains('bar')) flash('#e5a50a'); }
   else if(ev.t==='approve_done') approvalGone(ev.id);
