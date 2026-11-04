@@ -12,7 +12,8 @@ def split_room(x, y, w, h, xw, eh, side, mon):
 
     left = min(left_room, max(left, (xw + 1) // 2))
     right = min(right_room, max(right, (xw + 1) // 2))
-    missing = max(0, xw - left - right)
+    side_need = sum(side) if all(side) else 0
+    missing = max(0, xw - left - right, side_need - left - right)
     add = min(missing, left_room - left)
     left += add
     right += min(missing - add, right_room - right)

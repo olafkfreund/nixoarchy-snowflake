@@ -954,7 +954,7 @@ class NixiWindow:
             return
         if edge:
             if not self.bar:
-                self.bar_home = (self.mon_i, self.mx + self.wide_shift, self.my)
+                self.bar_home = (self.mon_i, self.mx + self.wide_shift, self.my + self.top_shift)
             self.bar = edge
             if self.layer:                                        # margins from the monitor's top-left
                 _, g = self._geom()
@@ -968,9 +968,9 @@ class NixiWindow:
             y = {"top": 0, "bottom": gh_ - H, "left": (gh_ - H) // 2, "right": (gh_ - H) // 2}[edge]
             room = None                                           # (no growing round the notch: it flickered)
             if self.layer:
-                self._glide_to(x - self.wide_shift, y, room)
+                self._glide_to(x - self.wide_shift, y - self.top_shift, room)
             else:
-                self._glide_to(ox + x - self.wide_shift, oy + y, room)
+                self._glide_to(ox + x - self.wide_shift, oy + y - self.top_shift, room)
         else:
             was, self.bar = self.bar, None
             self.set_wide(False, "bar")
@@ -988,11 +988,11 @@ class NixiWindow:
                 if self.layer and m != self.mon_i or not glide:      # (another monitor, or right now: no glide)
                     self.glide_n += 1
                     if self.layer:
-                        self._place(hx - self.wide_shift, hy, True, m)
+                        self._place(hx - self.wide_shift, hy - self.top_shift, True, m)
                     else:
-                        self._xmove(hx - self.wide_shift, hy)
+                        self._xmove(hx - self.wide_shift, hy - self.top_shift)
                 else:
-                    self._glide_to(hx - self.wide_shift, hy)
+                    self._glide_to(hx - self.wide_shift, hy - self.top_shift)
             if was:
                 GLib.timeout_add(int(GLIDE * 1000) + 150, lambda: (None if self.dragging or self.pmoving or self.dpos else (self._save_pos() if self.layer else self._save_xpos()), False)[1])
         # (pulled out by the mouse: the page just pops him out under it, nothing trailing behind)
@@ -1115,17 +1115,18 @@ class NixiWindow:
             return
         if on and self.bar:                                        # hover mode is the blob: leave the edge first
             self.set_bar(None, glide=False)                        # (at once: the cursor-following starts here)
-        if on and self.cur_w > W:
+        home = (self.mon_i, self.mx + self.wide_shift, self.my + self.top_shift) if on else None
+        self.hover = on
+        if on and (self.cur_w > W or self.cur_h > H or self.top_shift):
             self.want_code = False
             self.set_wide(False)
         log(f"hover mode {'on' if on else 'off'}")
         self.cursor_hidden(on)
-        self.hover = on
         if on:
             self.hpos = None
         self.mons = None
         if on:
-            self.home = (self.mon_i, self.mx + self.wide_shift, self.my + self.top_shift)
+            self.home = home
             threading.Thread(target=self._follow, daemon=True).start()
         elif getattr(self, "home", None):                          # glide from the cursor back to where he was parked
             threading.Thread(target=self._glide_home, daemon=True).start()
@@ -1143,12 +1144,14 @@ class NixiWindow:
                 if k >= 1:
                     break
                 time.sleep(0.008)
-            GLib.idle_add(self.win.move, int(hx), int(hy))
+            GLib.idle_add(self._xmove, int(hx), int(hy))
+            GLib.idle_add(self._rewide)
             return
         _, g = self._geom(m)
         start = self.hpos                     # global position he was at as the cursor
         if not start:
             GLib.idle_add(self._place, hx, hy, True, m)
+            GLib.idle_add(self._rewide)
             return
         sx, sy = start[0] - g.x, start[1] - g.y      # in home-monitor coordinates
         t0, dur = time.monotonic(), 0.65
@@ -1161,6 +1164,7 @@ class NixiWindow:
                 break
             time.sleep(0.008)
         GLib.idle_add(self._place, hx, hy, True, m)
+        GLib.idle_add(self._rewide)
 
     def cursor_hidden(self, hide):
         """In hover mode he *is* the mouse pointer, so hide the real one (Hyprland's cursor:invisible; elsewhere it stays)."""
