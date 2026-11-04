@@ -46,6 +46,7 @@ class T(unittest.TestCase):
     def test_reserved_voice_clips(self):
         self.assertTrue(plugins.reserved("play the first video"))
         self.assertTrue(plugins.reserved("play the second clip"))
+        self.assertTrue(plugins.reserved("play the fifth video"))   # (agy review: every ordinal _ACT parses)
         self.assertTrue(plugins.reserved("open the first one"))
 
     def test_sources(self):
