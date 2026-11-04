@@ -27,7 +27,6 @@
   bubblewrap,
   iproute2,
   passt,
-  systemd,
   nixiBridge ? null,
   # companion plugins (#149): folders or packages, each linked into share/nixi-companion/plugins/ (the server scans it)
   plugins ? [ ],
@@ -80,8 +79,6 @@ stdenvNoCC.mkDerivation {
     mkdir -p $out/share/nixi-companion $out/bin $out/share/applications $out/share/icons/hicolor/512x512/apps
     cp -r app $out/share/nixi-companion/app
     install -m755 bin/nixi-companion $out/bin/nixi-companion
-    install -m755 bin/nixi-status $out/bin/nixi-status
-    substituteInPlace $out/bin/nixi-status --replace-fail '@python@' '${python3}/bin/python3'
     install -m644 data/nixi-companion.desktop $out/share/applications/nixi-companion.desktop
     install -m644 app/static/icon.png $out/share/icons/hicolor/512x512/apps/nixi-companion.png
     mkdir -p $out/share/nixi-companion/plugins
@@ -97,8 +94,6 @@ stdenvNoCC.mkDerivation {
 
   # gappsWrapperArgs is only filled in during fixup
   postFixup = ''
-    wrapProgram $out/bin/nixi-status \
-      --prefix PATH : ${lib.makeBinPath [ systemd ]}
     wrapProgram $out/bin/nixi-companion \
       --set NIXI_COMPANION_PYTHON ${py}/bin/python \
       --set NIXI_COMPANION_APP $out/share/nixi-companion/app \
