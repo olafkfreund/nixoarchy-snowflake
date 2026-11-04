@@ -139,6 +139,41 @@ class ElevenTest(unittest.TestCase):
         self.assertEqual(got.exception.kind, "network")
         self.assertLess(time.monotonic() - start, 6)
 
+    def test_post_timed_out_waiting_for_headers_counts_as_sent(self):   # Codex review on PR #40: it may be billed
+        got_body = threading.Event()
+        class Slow(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get("Content-Length") or 0)); got_body.set()
+                time.sleep(2.5)                       # past the 1.5 s first-byte timeout
+                try:
+                    self.send_response(200); self.end_headers()
+                except BrokenPipeError:
+                    pass
+            def log_message(self, *args):
+                pass
+        try:
+            srv = http.server.HTTPServer(("127.0.0.1", 0), Slow)
+        except PermissionError:
+            self.skipTest("sandbox forbids loopback sockets")
+        self.addCleanup(srv.server_close)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        eleven.urlopen = urllib.request.urlopen       # (the real urlopen, not a fake: the bare timeout is what matters)
+        req = urllib.request.Request(f"http://127.0.0.1:{srv.server_port}/", data=b'{"text":"hi"}')
+        with self.assertRaises(eleven.ElevenError) as got:
+            eleven._request(req, time.monotonic() + 4)
+        self.assertTrue(got_body.is_set())
+        self.assertEqual(got.exception.kind, "network")
+        self.assertTrue(got.exception.sent)
+
+    def test_refused_connection_is_not_sent(self):
+        import socket
+        s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()   # (nothing listens there)
+        eleven.urlopen = urllib.request.urlopen
+        with self.assertRaises(eleven.ElevenError) as got:
+            eleven._request(urllib.request.Request(f"http://127.0.0.1:{port}/", data=b"{}"), time.monotonic() + 4)
+        self.assertFalse(got.exception.sent)
+
     def test_voices_cache_and_expiry(self):
         calls = []
         def fake(req, timeout):
