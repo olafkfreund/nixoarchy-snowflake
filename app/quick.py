@@ -333,7 +333,7 @@ def matches(text):
 
 def handle(text):
     t = " ".join((text or "").lower().replace("’", "'").split()).strip(" .!?")
-    t = re.sub(r"^(hey nixi|nixi|ok nixi|okay nixi)[,\s]+", "", t)
+    t = re.sub(r"^((?:hey|hi|okay|ok|yo|oi|hei|hallo|hej|cześć) nixi|nixi)[,\s]+", "", t)
     t = re.sub(r"^(please|can you|could you|would you|will you)\s+", "", t)
     t = re.sub(r"\s+please$", "", t)
     # a send keeps its case and its punctuation (it is typed into another session) and may be longer than other phrases (#95)

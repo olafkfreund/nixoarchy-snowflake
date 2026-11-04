@@ -33,9 +33,9 @@ HOST_RE = re.compile(r"^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$")
 
 
 def norm(said):
-    """What you said, the way stages.fast_path reads it: lowercase, punctuation dropped, one space, no leading please/nixi."""
-    t = " ".join(re.sub(r"[^a-z0-9 ]", " ", (said or "").lower()).split())
-    return re.sub(r"(?:\s+please)+$", "", re.sub(r"^(?:(?:please|nixi)\s+)+", "", t))
+    """What you said, the way stages.fast_path reads it."""
+    import stages
+    return stages.normalize(said)
 
 
 def reserved(phrase):
@@ -44,7 +44,7 @@ def reserved(phrase):
     import quick
     import stages
     t = norm(phrase)
-    if not t or t in ("close", "go back", "show it", "what s next", "what is next", "guide", "mechanic") or any(stages.fast_path(t, stage) is not None for stage in ({"items": [0] * 5}, {"kind": "headlines", "items": [0] * 5, "clips": [0] * 5})):
+    if not t or t in ("close", "go back", "show it", "what s next", "what is next", "guide", "mechanic") or any(stages.fast_path(t, stage, lang) is not None for lang in ("en", "nb", "pl") for stage in ({"items": [0] * 5}, {"kind": "headlines", "items": [0] * 5, "clips": [0] * 5})):
         return True
     try:
         return quick.matches(phrase)

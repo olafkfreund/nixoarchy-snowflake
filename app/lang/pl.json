@@ -1,0 +1,17 @@
+{
+  "words": {
+    "verbs": {"uruchom": "run", "skopiuj": "copy", "kopiuj": "copy", "otwórz": "open", "odtwórz": "play", "puść": "play"},
+    "ordinals": {
+      "pierwszy": 0, "pierwszą": 0, "pierwsze": 0, "pierwszego": 0,
+      "drugi": 1, "drugą": 1, "drugie": 1, "drugiego": 1,
+      "trzeci": 2, "trzecią": 2, "trzecie": 2, "trzeciego": 2,
+      "czwarty": 3, "czwartą": 3, "czwarte": 3, "czwartego": 3,
+      "piąty": 4, "piątą": 4, "piąte": 4, "piątego": 4
+    },
+    "cardinals": {"jeden": 0, "dwa": 1, "trzy": 2, "cztery": 3, "pięć": 4},
+    "fillers": ["numer"],
+    "it": ["to", "ten", "tę", "tą", "go"],
+    "nouns": ["wideo", "klip", "film", "artykuł"],
+    "plain": {"zamknij": "close", "wróć": "back", "pokaż": "show", "pokaż to": "show"}
+  }
+}

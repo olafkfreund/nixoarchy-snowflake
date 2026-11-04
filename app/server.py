@@ -32,6 +32,7 @@ import threading
 import time
 import unicodedata
 import wave
+from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -2860,8 +2861,18 @@ def list_mics():
                 if "\t" in ln and ".monitor" not in ln]
 
 
-STOP_RE = re.compile(r"(?:ok(?:ay)?\W+|nixi\W+|hey\W+nixi\W+)?(?:stop|wait|shush|shh+|quiet|be quiet|shut up|hold on|hang on|"
-                     r"enough|stop talking|that's enough|thanks?(?: you)?|got it)(?:\W+(?:nixi|please|now))?")
+_STOP_WORDS = (r"stop|wait|shush|shh+|quiet|be quiet|shut up|hold on|hang on|"
+               r"enough|stop talking|that's enough|thanks?(?: you)?|got it")
+_STOP_EXTRA = {"nb": r"stopp|vent|vær stille|hysj|det holder|takk|ok takk",
+               "pl": r"stop|czekaj|poczekaj|cicho|ciszej|wystarczy|dzięki|dziękuję"}
+_STOP_WRAP = r"(?:(?:ok(?:ay)?|nixi|(?:hey|hei|hej|cześć)\W+nixi)\W+)?"
+_STOP_TAIL = r"(?:\W+(?:nixi|please|now))?"
+STOP_RE = re.compile(_STOP_WRAP + r"(?:" + _STOP_WORDS + r")" + _STOP_TAIL)
+
+
+@lru_cache(maxsize=3)
+def _stop_re(lang):
+    return re.compile(_STOP_WRAP + r"(?:" + _STOP_WORDS + ("|" + _STOP_EXTRA[lang] if lang in _STOP_EXTRA else "") + r")" + _STOP_TAIL)
 # sent ahead of a follow-up (said without "hey Nixi") so Claude can tell if it was even meant for him
 FOLLOW_NOTE = ("(Voice note from Nixi: the mic picked this up a few seconds after your last reply, without \"hey Nixi\". "
                "If it is clearly not meant for you, e.g. the user thinking out loud, talking to themselves or to someone "
@@ -2933,7 +2944,7 @@ class Beat:
 
 # what the speech model "hears" in background noise — never treat these as a follow-up request
 NOISE_WORDS = {"you", "thank you", "thanks", "bye", "thanks for watching", "thank you for watching", "uh", "um", "hmm"}
-WAKE_RE = re.compile(r"^\W*(?:(?:hey|hi|hay|okay|ok|yo|oi)\W+)?(nixi's|nixi|nixie|nixy|nixey|nixee|nicksy|nicksie)\b\W*(.*)$", re.I | re.S)
+WAKE_RE = re.compile(r"^\W*(?:(?:hey|hi|hay|okay|ok|yo|oi|hei|hallo|hej|cześć)\W+)?(nixi's|nixi|nixie|nixy|nixey|nixee|nicksy|nicksie)\b\W*(.*)$", re.I | re.S)
 
 
 class Wake:
@@ -3094,10 +3105,15 @@ class Wake:
         except Exception as e:  # noqa: BLE001
             print(f"[nixi] wake word stt: {e}", file=sys.stderr)
             return
+        if cls.speaking():
+            if _stop_re(stages.lang_active()).fullmatch((text or "").strip(" .,!?").casefold()):
+                BUS.pub(t="barge", listen=False, text="")
+                cls.hush()
+                return
         m = WAKE_RE.match(text or "")
         if cls.speaking():
-            if STOP_RE.fullmatch((text or "").strip(" .,!?").lower()) or m:
-                BUS.pub(t="barge", listen=bool(m), text=(m.group(2).strip(" .,!?") if m else ""))
+            if m:
+                BUS.pub(t="barge", listen=True, text=m.group(2).strip(" .,!?"))
                 cls.hush()
             return
         if m:
