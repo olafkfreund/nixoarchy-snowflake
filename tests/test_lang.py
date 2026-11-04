@@ -1,9 +1,11 @@
 """#177 step 1: LANGS, t(), the first-run default, the language setting, and lang_clause in the four agent paths."""
 import json
+import string
 import sys
 import threading
 import urllib.request
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from test_speakable import REPO_ROOT, _ServerEnv
@@ -34,8 +36,10 @@ class LangModuleTest(unittest.TestCase):
 
     def test_t_falls_back_to_english_then_the_key(self):
         t = self.lang.t
-        self.lang.active = "pl"                       # pl.json has no lines yet
-        self.assertIn("Switching to Polski", t("lang.switching", language="Polski"))
+        self.lang.active = "pl"
+        with mock.patch.dict(self.lang.load("pl")["lines"]):
+            del self.lang.load("pl")["lines"]["lang.switching"]       # a line pl lacks: English answers
+            self.assertIn("Switching to Polski", t("lang.switching", language="Polski"))
         self.assertEqual(t("no.such.key"), "no.such.key")
         self.assertEqual(self.lang.norm("de"), "en")
 
@@ -107,6 +111,103 @@ class LangServerTest(_ServerEnv):
                     self.assertIn(word, text, (code, path))
                 else:
                     self.assertNotIn("Reply in", text, (code, path))
+
+
+class LinesTest(unittest.TestCase):
+    """#177 step 5: every English line has a Bokmål and a Polish one, with the same slots; quips per language."""
+    ALLOWED_ENGLISH = set()                              # keys that may stay English in nb/pl
+
+    def setUp(self):
+        import lang
+        self.lang = lang
+        self.addCleanup(setattr, lang, "active", lang.active)
+
+    def slots(self, s):
+        return {f for _, f, _, _ in string.Formatter().parse(s) if f}
+
+    def test_every_key_is_translated_with_the_same_slots(self):
+        en = self.lang.load("en")["lines"]
+        for code in ("nb", "pl"):
+            mine = self.lang.load(code)["lines"]
+            self.assertEqual(set(mine) - set(en), set(), code)
+            for k, v in en.items():
+                if k in self.ALLOWED_ENGLISH:
+                    continue
+                self.assertIn(k, mine, (code, k))
+                self.assertEqual(self.slots(mine[k]), self.slots(v), (code, k))
+            self.assertEqual(set(self.lang.load(code)["_review"]), set(mine), code)    # all await the native check
+
+    def test_t_speaks_the_active_language(self):
+        self.lang.active = "nb"
+        self.assertEqual(self.lang.t("approve.change", name="a.py"), "Kan jeg endre a.py?")
+        self.lang.active = "pl"
+        self.assertEqual(self.lang.t("stage.done"), "Gotowe.")
+
+
+class ServerLinesTest(_ServerEnv):
+    def setUp(self):
+        self.addCleanup(setattr, self.server.lang, "active", self.server.lang.active)
+
+    def test_the_spoken_literals_follow_the_language(self):
+        S = self.server
+        S.lang.active = "en"
+        self.assertEqual(S.say_path("/home/me/Downloads"), "your Downloads folder")
+        self.assertEqual(S.approval_say("WebSearch", {}), "Can I search the web?")
+        self.assertEqual(S.bridge_question("t", "Print the file."), "Can I print the file?")
+        S.lang.active = "nb"
+        self.assertEqual(S.say_path("/home/me/Downloads"), "Downloads-mappen din")
+        self.assertEqual(S.approval_say("WebFetch", {"url": "https://www.x.org/a"}), "Kan jeg åpne en side på x.org?")
+        self.assertEqual(S.speakable("se https://x.org nå"), "se en lenke nå")
+        S.lang.active = "pl"
+        self.assertEqual(S.say_path("~"), "Twój folder domowy")
+        self.assertEqual(S.approval_say("WebSearch", {}), "Czy mogę poszukać w sieci?")
+
+
+class QuipFilesTest(_ServerEnv):
+    EVENTS = ("break", "welcome", "ram", "cpu", "rain", "snow", "night", "party", "coding", "done")
+
+    def setUp(self):
+        S = self.server
+        self.addCleanup(setattr, S.lang, "active", S.lang.active)
+        self.addCleanup(S.Quips.bags.clear)
+
+    def test_the_shipped_files_cover_every_event(self):
+        for code in ("nb", "pl"):
+            d = json.loads((self.server.APP_DIR / f"quips.{code}.json").read_text(encoding="utf-8"))
+            self.assertEqual(set(d), set(self.EVENTS), code)
+            for event, lines in d.items():
+                self.assertTrue(3 <= len(lines) <= 5, (code, event))
+                for line in lines:
+                    line.format(n=1)
+
+    def test_quips_follow_the_active_language_with_an_english_fallback(self):
+        S = self.server
+        for code in ("nb", "pl"):
+            S.lang.active = code
+            native = json.loads((S.APP_DIR / f"quips.{code}.json").read_text(encoding="utf-8"))
+            for event in self.EVENTS:
+                self.assertTrue(set(native[event]) <= set(S.Quips.lines(event)), (code, event))
+                self.assertFalse(set(S.QUIP_FALLBACK[event]) & set(S.Quips.lines(event)), (code, event))
+        S.lang.active = "pl"
+        self.assertIn(S.quip("done"), json.loads((S.APP_DIR / "quips.pl.json").read_text(encoding="utf-8"))["done"])
+        S.lang.active = "en"
+        self.assertIn(S.quip("done"), S.Quips.lines("done"))
+        self.assertFalse(set(S.Quips.lines("done")) & set(json.loads((S.APP_DIR / "quips.pl.json").read_text(encoding="utf-8"))["done"]))
+
+    def test_a_missing_file_or_event_falls_back_to_english(self):
+        S = self.server
+        tmp = Path(self.tmp) / "q"
+        tmp.mkdir(exist_ok=True)
+        (tmp / "quips.json").write_text(json.dumps({"snow": ["en snow"], "done": ["en done"]}))
+        (tmp / "quips.pl.json").write_text(json.dumps({"snow": ["pl snow"]}))
+        with mock.patch.object(S.Quips, "path", tmp / "quips.json"):
+            S.Quips.data, S.Quips.mtime = None, None
+            self.addCleanup(setattr, S.Quips, "data", None)
+            S.lang.active = "pl"
+            self.assertEqual(S.Quips.lines("snow"), ["pl snow"])
+            self.assertEqual(S.Quips.lines("done"), ["en done"])              # event missing in pl
+            S.lang.active = "nb"
+            self.assertEqual(S.Quips.lines("snow"), ["en snow"])              # no nb file at all
 
 
 if __name__ == "__main__":

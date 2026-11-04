@@ -702,7 +702,7 @@ def summarize_command(cmd):
 def bridge_question(title, summary=""):
     """The card's question and spoken line in nixi mode: the tool's plain description ("Can I print ...?"), else the title (for Bash that is the raw command)."""
     s = " ".join(str(summary or "").split()).rstrip(".?")
-    return f"Can I {s[0].lower() + s[1:]}?" if s else title
+    return lang.t("approve.can_i", what=s[0].lower() + s[1:]) if s else title
 
 
 def approval_say(tool, inp):
@@ -714,17 +714,17 @@ def approval_say(tool, inp):
         desc = " ".join(str(inp.get("description") or "").split()) or summarize_command(str(inp.get("command") or ""))
         desc = speakable(desc or "").rstrip(".")
         if not desc:
-            return "Can I run this command?"
-        return "Can I run a command to " + desc[0].lower() + desc[1:] + "?"
+            return lang.t("approve.command")
+        return lang.t("approve.command_to", what=desc[0].lower() + desc[1:])
     if tool == "WebFetch":
         host = re.sub(r"^https?://(www\.)?", "", str(inp.get("url") or "")).split("/")[0]
-        return f"Can I open a page on {host}?" if host else "Can I open this page?"
+        return lang.t("approve.page_on", host=host) if host else lang.t("approve.page")
     if tool == "WebSearch":
-        return "Can I search the web?"
+        return lang.t("approve.search")
     if tool in EDIT_TOOLS:
         p = edit_path(inp)
-        return f"Can I change {p.name}?" if p else "Can I change this file?"
-    return f"Can I use {tool}?"
+        return lang.t("approve.change", name=p.name) if p else lang.t("approve.change_file")
+    return lang.t("approve.use", tool=tool)
 
 
 # ---------------------------------------------------------------- file edits ("Ask me first")
@@ -1920,15 +1920,23 @@ class Quips:
                 cls.data = {}                                   # broken or missing: the built-in lines
         Plug.ensure()
         extra = Plug.quips.get(event, []) if event in cls.data or event in QUIP_FALLBACK else []   # unknown events are ignored
-        return (cls.data.get(event) or list(QUIP_FALLBACK.get(event, ()))) + extra
+        base = cls.data.get(event) or list(QUIP_FALLBACK.get(event, ()))
+        if lang.active != "en":                                 # his own language's file; English for a missing file or event
+            try:
+                d = json.loads(cls.path.with_name(f"quips.{lang.active}.json").read_text(encoding="utf-8"))
+                base = [x for x in d.get(event) or [] if isinstance(x, str) and x.strip()] or base
+            except (OSError, ValueError, AttributeError):
+                pass
+        return base + extra
 
 
 def quip(event, **slots):
-    bag = Quips.bags.get(event)
+    key = (lang.active, event)                                  # (a switch starts fresh bags)
+    bag = Quips.bags.get(key)
     if not bag:
         bag = Quips.lines(event)[:]
         random.shuffle(bag)
-        Quips.bags[event] = bag
+        Quips.bags[key] = bag
     if not bag:
         return ""
     line = bag.pop()
@@ -3373,21 +3381,21 @@ def say_path(p):
     home = parts[:1] == ["~"] or parts[:1] == ["home"]
     parts = parts[1:] if parts[:1] == ["~"] else parts[2:] if parts[:1] == ["home"] else parts
     if not parts:
-        return "your home folder" if home else "the main folder"
+        return lang.t("path.home") if home else lang.t("path.root")
     last = parts[-1]
     if "." in last.strip("."):                       # a file: just its name
         return last
-    return f"your {last} folder" if home and len(parts) == 1 else f"the {last} folder"
+    return lang.t("path.home_dir", name=last) if home and len(parts) == 1 else lang.t("path.dir", name=last)
 
 
 def speakable(t: str, board: bool = False) -> str:
     """`board`: a commands stage is on screen, so a command is pointed at; otherwise there is nowhere to read it, so it is said."""
     t = untag(t)
-    t = re.sub(r"```.*?```", " I put some code on screen. ", t, flags=re.S)
-    t = re.sub(r"`(?![\w ]+(?:\s*\+\s*[\w ]+)+`)([^`]*\s[^`]*)`", "the command on the board", t) if board else t   # (S24) a key combo is still said
+    t = re.sub(r"```.*?```", lambda m: f" {lang.t('speak.code')} ", t, flags=re.S)
+    t = re.sub(r"`(?![\w ]+(?:\s*\+\s*[\w ]+)+`)([^`]*\s[^`]*)`", lambda m: lang.t("speak.command"), t) if board else t   # (S24) a key combo is still said
     t = re.sub(r"`([^`]*)`", r"\1", t)
     t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)
-    t = re.sub(r"https?://\S+", "a link", t)
+    t = re.sub(r"https?://\S+", lambda m: lang.t("speak.link"), t)
     t = PATH_RE.sub(lambda m: say_path(m.group(0).rstrip(".")) + "." * (len(m.group(0)) - len(m.group(0).rstrip("."))), t)
     t = re.sub(r"^\s*(?:[#>*+\-]+|\d+\.)\s*", "", t, flags=re.M)
     t = re.sub(r"[*_#|~]", "", t)
@@ -3396,7 +3404,7 @@ def speakable(t: str, board: bool = False) -> str:
     if len(t) > lim:
         cut = t[:lim]
         i = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
-        t = (cut[: i + 1] if i > lim // 3 else cut) + " The rest is on screen."
+        t = (cut[: i + 1] if i > lim // 3 else cut) + " " + lang.t("speak.rest")
     return t
 
 
@@ -4673,15 +4681,15 @@ def session_status(name, loose=False):
     """(say, None) when it is answered here, (None, prompt) for nixi's agent to summarise, (None, None) to fall through."""
     agents = herdr_agents()
     if not agents:
-        return (None, None) if loose else ("I can't read herdr right now.", None)
+        return (None, None) if loose else (lang.t("session.no_herdr"), None)
     hits = resolve_session(name, agents)
     if not hits:
-        return (None, None) if loose else (f"I can't find a session called {name}.", None)
+        return (None, None) if loose else (lang.t("session.not_found", name=name), None)
     if len(hits) > 1:
-        return ("Which one: " + ", ".join(_title(a) for a in hits[:4]) + "?", None)
+        return (lang.t("session.which", names=", ".join(_title(a) for a in hits[:4])), None)
     out = herdr_read(hits[0].get("pane_id"))
     if out is None:
-        return ("I can't read that session right now.", None)
+        return (lang.t("session.no_read"), None)
     return (None, status_prompt(hits[0], redact_session(out)))
 
 
@@ -4696,39 +4704,39 @@ def attach_argv(pane):
 def session_show(name):
     agents = herdr_agents()
     if not agents:
-        return "I can't read herdr right now."
+        return lang.t("session.no_herdr")
     hits = resolve_session(name, agents)
     if not hits:
-        return f"I can't find a session called {name}."
+        return lang.t("session.not_found", name=name)
     if len(hits) > 1:
-        return "Which one: " + ", ".join(_title(a) for a in hits[:4]) + "?"
+        return lang.t("session.which", names=", ".join(_title(a) for a in hits[:4]))
     try:
         subprocess.Popen(attach_argv(hits[0].get("pane_id")), start_new_session=True,
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except (OSError, ValueError):
-        return "I couldn't open that session."
-    return f"Opening the {_title(hits[0])} session."
+        return lang.t("session.open_failed")
+    return lang.t("session.opening", name=_title(hits[0]))
 
 
 def session_send(name, text):
     """Same shape as session_status. The send itself is nixi's agent's Bash call, which the bridge turns into a click-only card."""
     if not BRIDGED:
-        return ("Sending to sessions needs nixi mode.", None)
+        return (lang.t("session.send_needs_nixi"), None)
     if (nixi_conf().get("agent") or "claude") != "claude":
-        return ("Sending to sessions works with Claude as nixi's agent for now.", None)
+        return (lang.t("session.send_needs_claude"), None)
     agents = herdr_agents()
     if not agents:
-        return ("I can't read herdr right now.", None)
+        return (lang.t("session.no_herdr"), None)
     hits = resolve_session(name, agents, exact_only=True)
     if not hits:
-        return (f"I can't find a session called {name}.", None)
+        return (lang.t("session.not_found", name=name), None)
     if len(hits) > 1:
-        return ("Which one: " + ", ".join(_title(a) for a in hits[:4]) + "?", None)
+        return (lang.t("session.which", names=", ".join(_title(a) for a in hits[:4])), None)
     pane = hits[0].get("pane_id")
     if not isinstance(pane, str) or not PANE_RE.fullmatch(pane):
-        return ("I can't use that session's id.", None)
+        return (lang.t("session.bad_id"), None)
     title = _title(hits[0])
-    return (None, f"Start your reply with exactly this: I'll ask to send '{text}' to {title} — check the card. "
+    return (None, "Start your reply with exactly this: " + lang.t("session.send_say", text=text, title=title) + " "
                   f"Then run exactly this one command and nothing else: herdr agent prompt {pane} {shlex.quote(text)}\n"
                   f"(Why: the user asked by voice to send that text to the \"{title}\" session.)")
 
@@ -4887,7 +4895,7 @@ def plugin_stage(pid, query, before=_ANY):
     when it was asked for) the result is shown only if that is still the stage on screen."""
     p = Plug.stage.get(pid)
     if p is None:
-        return False, "That plugin is off."
+        return False, lang.t("plugin.off")
     try:
         st = plugins.run_stage(p, query)
     except plugins.Busy as e:
@@ -4895,22 +4903,22 @@ def plugin_stage(pid, query, before=_ANY):
     except plugins.StageError as e:
         if str(e) == plugins.CHANGED:
             Plug.reload()                                      # (switched off just now: drop it from memory too)
-        return False, f"{p.manifest['name']}: {e}."
+        return False, lang.t("plugin.failed", name=p.manifest["name"], error=e)
     if peers_withdrawn(st):
-        return False, "Other machines are off."
+        return False, lang.t("plugin.peers_off")
     if before is _ANY or (stages_on() and STAGES.current() is before):
         page = STAGES.put(st, refresh=(pid, query))
         BUS.pub(t="stage", **stage_event(page))
         if st.get("video_query") and p.manifest["stage"].get("videos"):   # (only the news plugin; never the asked words)
             threading.Thread(target=news_clips, args=(page["copy"], st["video_query"]), daemon=True).start()
-    return True, st.get("say") or "Here you go."
+    return True, st.get("say") or lang.t("plugin.done")
 
 
 def plugin_stage_thread(pid, query, before=_ANY):
     """The agent asked for a plugin: run it off the turn; a failure shows as a one-line notebook (both only if the stage on screen is still `before`)."""
     shown, say = plugin_stage(pid, query, before)
     if not shown and stages_on() and (before is _ANY or STAGES.current() is before):
-        BUS.pub(t="stage", **stage_event(STAGES.put({"v": 1, "kind": "facts", "title": str(Plug.stage[pid].manifest["name"])[:120] if pid in Plug.stage else "Plugin", "points": [say[:120]]})))
+        BUS.pub(t="stage", **stage_event(STAGES.put({"v": 1, "kind": "facts", "title": str(Plug.stage[pid].manifest["name"])[:120] if pid in Plug.stage else lang.t("plugin.title"), "points": [say[:120]]})))
 
 
 def video_stage(st, before):
@@ -6162,20 +6170,20 @@ class Handler(BaseHTTPRequestHandler):
             if fp and fp[0] == "run" and vis and vis.get("kind") == "commands" and fp[1] < len(vis.get("items") or []):
                 body["stage"], body["act"] = vis["items"][fp[1]]["token"], "run"
             elif fp and fp[0] == "ask" and vis:
-                return self._said("Which one? Say the first, second or third.")
+                return self._said(lang.t("stage.which"))
             elif fp and fp[0] in ("copy", "open", "play") and vis:
                 it = (vis["clips"] if vis.get("kind") == "headlines" and fp[0] == "play" else vis.get("items") or vis.get("sessions") or [vis])[fp[1]]         # each set names its tokens per action (map: open/copy, cinema: play, desk: a session)
                 tk = {"copy": it.get("token") or vis.get("copy"), "open": vis.get("open") or it.get("play") or it.get("open"), "play": it.get("play")}[fp[0]]
                 r = stage_act(tk or "", "session" if vis.get("kind") == "status" and fp[0] == "open" else fp[0])
-                return self._said({"copy": "Copied.", "open": "Opening it.", "play": "Playing it."}[fp[0]] if r["ok"]
-                                  else "I can't do that yet." if r.get("error") == "not yet" else "I couldn't do that.")
+                return self._said(lang.t("stage." + fp[0]) if r["ok"]
+                                  else lang.t("stage.not_yet") if r.get("error") == "not yet" else lang.t("stage.failed"))
             elif fp and fp[0] in ("close", "back", "show") and (cur or fp[0] != "close"):
                 if stage_act("", fp[0])["ok"]:
-                    return self._said("Done.")
+                    return self._said(lang.t("stage.done"))
         if BRIDGED and stages_on() and said and not body.get("attach") and not body.get("stage"):      # a stage plugin's own phrase (after Nixi's)
             hit = Plug.match(said)
             if len(hit) > 1:
-                return self._said("Which one: " + " or ".join(str(p.manifest["name"]) for p in hit) + "?")
+                return self._said(lang.t("stage.which_plugin", names=lang.t("stage.or").join(str(p.manifest["name"]) for p in hit)))
             if hit:
                 return self._said(plugin_stage(hit[0].id, said)[1])
         if body.get("stage") and body.get("act") == "run":
