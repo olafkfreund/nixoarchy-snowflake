@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""Fetch configured RSS/Atom feeds and print one Nixi stage."""
+import datetime
+import email.utils
+import html
+import json
+import re
+import sys
+import threading
+import time
+import urllib.parse
+import urllib.request
+import xml.etree.ElementTree as ET
+
+
+def url_ok(u):
+    """Copy of stages.news_url_ok: the sandbox cannot import app/stages.py."""
+    if not isinstance(u, str) or len(u) > 400 or re.search(r"[\s\x00-\x1f\x7f-\x9f]", u):
+        return False
+    try:
+        p = urllib.parse.urlsplit(u)
+        host = (p.hostname or "").lower().rstrip(".")
+    except ValueError:
+        return False
+    labels = host.split(".")
+    return (p.scheme == "https" and bool(p.netloc) and not any(c in p.netloc for c in ":@")
+            and len(labels) >= 2 and all(re.fullmatch(r"[a-z0-9-]{1,63}", x) for x in labels)
+            and bool(re.fullmatch(r"[a-z]{2,63}", labels[-1]))
+            and host != "localhost" and not host.endswith((".localhost", ".local", ".lan", ".home", ".internal", ".home.arpa", ".ts.net")))
+
+
+class SafeRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, newurl):
+        target = urllib.parse.urljoin(request.full_url, newurl)
+        if not url_ok(target):
+            raise ValueError("unsafe redirect")
+        return super().redirect_request(request, fp, code, msg, headers, target)
+
+
+def clean(s):
+    return " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", html.unescape(re.sub(r"<[^>]*>", "", s or ""))).split())
+
+
+def stamp(s, atom=False):
+    try:
+        dt = datetime.datetime.fromisoformat(s.replace("Z", "+00:00")) if atom else email.utils.parsedate_to_datetime(s)
+        return int(dt.timestamp()) if dt.tzinfo and dt.timestamp() > 0 else None
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def parse_feed(data, source):
+    """Return headline items from one RSS 2.0 or Atom document."""
+    root = ET.fromstring(data)
+    atom = root.tag == "{http://www.w3.org/2005/Atom}feed"
+    if not atom and root.tag != "rss":
+        raise ValueError("unsupported feed")
+    entries = root.findall("{http://www.w3.org/2005/Atom}entry") if atom else root.findall("./channel/item")
+    out = []
+    for entry in entries:
+        get = lambda key: entry.findtext(("{http://www.w3.org/2005/Atom}" if atom else "") + key)
+        title_node = entry.find(("{http://www.w3.org/2005/Atom}" if atom else "") + "title")
+        title = clean("".join(title_node.itertext()) if title_node is not None else "")[:160]
+        if not title:
+            continue
+        if atom:
+            links = entry.findall("{http://www.w3.org/2005/Atom}link")
+            link = next((el.get("href") for el in links if el.get("rel", "alternate") == "alternate" and el.get("href")), None)
+            at = stamp(get("updated") or get("published"), True)
+        else:
+            link = get("link")
+            at = stamp(get("pubDate"))
+        item = {"title": title, "source": source, "at": at}
+        if url_ok(link):
+            item["url"] = link
+        out.append(item)
+    return out
+
+
+def merge(feeds):
+    """Deduplicate links (without tracking or fragment), then titles; newest first."""
+    seen_links, seen_titles, out = set(), set(), []
+    for item in sorted((x for feed in feeds for x in feed), key=lambda x: x["at"] or 0, reverse=True):
+        link = item.get("url")
+        if link:
+            p = urllib.parse.urlsplit(link)
+            q = [(k, v) for k, v in urllib.parse.parse_qsl(p.query, keep_blank_values=True) if not k.lower().startswith("utm_")]
+            link = urllib.parse.urlunsplit((p.scheme.lower(), p.netloc.lower(), p.path, urllib.parse.urlencode(q), ""))
+        title = " ".join(item["title"].casefold().split())
+        if link and link in seen_links or title in seen_titles:
+            continue
+        if link:
+            seen_links.add(link)
+        seen_titles.add(title)
+        out.append(item)
+        if len(out) == 5:
+            break
+    return out
+
+
+def say_line(items):
+    line = "Top stories: " + "; ".join(f'{x["title"]} — {x["source"]}' for x in items[:3])
+    return line if len(line) <= 200 else line[:201].rsplit(" ", 1)[0].rstrip(" ;—")
+
+
+def fetch(url, source, results, index):
+    try:
+        opener = urllib.request.build_opener(SafeRedirect)
+        with opener.open(urllib.request.Request(url, headers={"User-Agent": "nixi-news/1.0"}), timeout=1.5) as response:
+            data = response.read(2 * 1024 * 1024 + 1)
+        if len(data) > 2 * 1024 * 1024:
+            raise ValueError("feed too large")
+        results[index] = parse_feed(data, source)
+    except (OSError, ValueError, ET.ParseError):
+        pass
+
+
+def main():
+    try:
+        config = json.load(sys.stdin).get("config") or {}
+    except ValueError:
+        config = {}
+    feeds = config.get("feeds") if isinstance(config, dict) else None
+    feeds = feeds[:8] if isinstance(feeds, list) else []
+    results, jobs, names = [None] * len(feeds), [], []
+    deadline = time.monotonic() + 1.5
+    for i, feed in enumerate(feeds):
+        if not isinstance(feed, dict):
+            continue
+        name, url = feed.get("name"), feed.get("url")
+        if not isinstance(name, str) or not name.strip() or not url_ok(url):
+            continue
+        name = clean(name)[:40]
+        if not name:
+            continue
+        names.append(name)
+        job = threading.Thread(target=fetch, args=(url, names[-1], results, i), daemon=True)
+        job.start()
+        jobs.append(job)
+    for job in jobs:
+        job.join(max(0, deadline - time.monotonic()))
+    failed = sum(result is None for result in results)
+    suffix = f"{failed} couldn't be reached" if failed else ""
+    items = merge(result for result in results if result is not None)
+    if not items:
+        stage = {"v": 1, "kind": "facts", "title": "News", "points": ["No news feeds could be reached." if failed else "No stories found."]}
+    else:
+        stage = {"v": 1, "kind": "headlines", "title": "News", "items": items, "say": say_line(items)}
+    source = ", ".join(names)
+    if suffix:
+        source = source[:120 - len(suffix) - 3] + " · " + suffix if source else suffix
+    if source:
+        stage["source"] = source[:120]
+    print(json.dumps(stage))
+
+
+if __name__ == "__main__":
+    main()

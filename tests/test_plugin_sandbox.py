@@ -323,7 +323,7 @@ class SandboxTest(unittest.TestCase):
         shutil.copytree(EX / "rss-headlines", d)
         (d / "config.json").write_text(json.dumps({"url": "http://10.255.255.1:%d/feed.xml" % srv.server_port}))
         self.assertIsNone(plugins.check_dir(d))
-        got = plugins.run_stage(load(d), "headlines")
+        got = plugins.run_stage(load(d), "rss headlines")
         self.assertEqual(got["points"], ["Headline %d & more" % i for i in range(1, 6)])
         d2 = self.root / "rss-off"
         shutil.copytree(d, d2)
@@ -332,12 +332,30 @@ class SandboxTest(unittest.TestCase):
         (d2 / "plugin.json").write_text(json.dumps(m))
         plugins._cache.clear()
         with self.assertRaises(plugins.StageError):             # the same program with the network off: nothing to show
-            plugins.run_stage(load(d2), "headlines")
+            plugins.run_stage(load(d2), "rss headlines")
+
+    @unittest.skipUnless(plugins.pasta_ok(), "needs pasta")
+    def test_news_refuses_unsafe_feed_urls_in_real_sandbox(self):
+        d = self.root / "news"
+        shutil.copytree(EX / "news", d)
+        config = self.root / "config"
+        path = config / "nixi-companion" / "plugin-config"
+        path.mkdir(parents=True)
+        (path / "news.json").write_text(json.dumps({"feeds": [
+            {"name": "Private", "url": "https://127.0.0.1/a"},
+            {"name": "Local", "url": "https://nas.local/b"}]}))
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(config)}):
+            start = time.monotonic()
+            got = plugins.run_stage(load(d), "news")
+        self.assertLess(time.monotonic() - start, plugins.TIME_DEFAULT)
+        self.assertEqual((got["kind"], got["title"], got["points"]),
+                         ("facts", "News", ["No news feeds could be reached."]))
+        self.assertIn("2 couldn't be reached", got["source"])
 
 
 class ExamplesCheckTest(unittest.TestCase):
     def test_check_cli_passes(self):
-        for n in ("nix-status", "rss-headlines"):
+        for n in ("nix-status", "rss-headlines", "news"):
             r = subprocess.run([sys.executable, str(REPO / "app/plugins.py"), "--check", str(EX / n)], capture_output=True, text=True)
             self.assertEqual((r.returncode, r.stdout.strip()), (0, "ok"), r.stderr)
 
