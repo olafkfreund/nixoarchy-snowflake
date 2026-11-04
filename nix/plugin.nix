@@ -15,6 +15,7 @@ stdenvNoCC.mkDerivation {
     cp ${../app/plugins.py} $TMPDIR/checker/plugins.py
     cp ${../app/stages.py} $TMPDIR/checker/stages.py
     cp ${../app/quick.py} $TMPDIR/checker/quick.py
+    cp -r ${../app/lang} $TMPDIR/checker/lang
     python3 $TMPDIR/checker/plugins.py --check .
   '';
   installPhase = ''

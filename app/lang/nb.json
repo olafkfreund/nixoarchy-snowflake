@@ -1,3 +1,45 @@
 {
+  "words": {
+    "verbs": {
+      "kjør": "run",
+      "kopier": "copy",
+      "åpne": "open",
+      "spill": "play",
+      "spill av": "play"
+    },
+    "ordinals": {
+      "første": 0,
+      "andre": 1,
+      "tredje": 2,
+      "fjerde": 3,
+      "femte": 4
+    },
+    "cardinals": {
+      "en": 0,
+      "to": 1,
+      "tre": 2,
+      "fire": 3,
+      "fem": 4
+    },
+    "fillers": [
+      "den",
+      "det",
+      "nummer"
+    ],
+    "it": [
+      "den",
+      "det"
+    ],
+    "nouns": [
+      "video",
+      "klipp"
+    ],
+    "plain": {
+      "lukk": "close",
+      "gå tilbake": "back",
+      "vis den": "show",
+      "vis det": "show"
+    }
+  },
   "lines": {}
 }
