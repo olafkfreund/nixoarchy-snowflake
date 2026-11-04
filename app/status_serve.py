@@ -28,6 +28,12 @@ class StatusServer(ThreadingHTTPServer):
         sock.settimeout(2)
         return sock, address
 
+    def verify_request(self, request, client_address):
+        return client_address[0] in self.allowed          # a stranger is dropped before it can hold a slot or a thread
+
+    def handle_error(self, request, client_address):
+        pass                                              # (the default prints the caller and a traceback to the journal)
+
     def process_request(self, request, client_address):
         if not self.slots.acquire(blocking=False):
             self.shutdown_request(request)

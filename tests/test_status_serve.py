@@ -5,6 +5,7 @@ import io
 import json
 import sys
 import tempfile
+import socket
 import threading
 import unittest
 from pathlib import Path
@@ -67,15 +68,41 @@ class StatusServe(unittest.TestCase):
         thread.start()
         try:
             with mock.patch.object(status_serve, "system_status") as status:
-                self.assertEqual(self.request(server=other), (403, status_serve.FORBIDDEN))
-                self.assertEqual(self.request(token=None, server=other), (403, status_serve.FORBIDDEN))
-                self.assertEqual(self.request(path="/", server=other), (403, status_serve.FORBIDDEN))      # a stranger can't probe paths
-                self.assertEqual(self.request("POST", server=other), (403, status_serve.FORBIDDEN))
+                for kw in ({}, {"token": None}, {"path": "/"}, {"method": "POST"}):   # a stranger gets no answer at all, not even a 403
+                    with self.assertRaises((OSError, http.client.HTTPException)):
+                        self.request(server=other, **kw)
             status.assert_not_called()
         finally:
             other.shutdown()
             other.server_close()
             thread.join(2)
+
+    def test_strangers_cant_hold_the_slots(self):            # (#168 review: they're dropped before a slot or a thread)
+        other = status_serve.StatusServer(("127.0.0.1", 0), ["127.0.0.2"], b"test-token")
+        thread = threading.Thread(target=other.serve_forever, daemon=True)
+        thread.start()
+        idle = []
+        try:
+            for _ in range(6):                                   # more strangers than slots, each sending nothing
+                c = socket.create_connection(("127.0.0.1", other.server_port), source_address=("127.0.0.1", 0))
+                idle.append(c)
+            with mock.patch.object(status_serve, "system_status", return_value=STATUS):
+                self.assertEqual(self.request(source="127.0.0.2", server=other)[0], 200)
+        finally:
+            for c in idle:
+                c.close()
+            other.shutdown()
+            other.server_close()
+            thread.join(2)
+
+    def test_a_failing_request_logs_nothing(self):
+        with mock.patch.object(status_serve, "system_status", side_effect=KeyError("boom")), \
+             contextlib.redirect_stderr(io.StringIO()) as stderr:
+            try:
+                self.request()
+            except (OSError, http.client.HTTPException):
+                pass
+        self.assertEqual(stderr.getvalue(), "")
 
     def test_oversized_status_is_fixed_500(self):
         with mock.patch.object(status_serve, "system_status", return_value={**STATUS, "host": "x" * 17000}):

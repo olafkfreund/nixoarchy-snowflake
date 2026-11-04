@@ -4637,6 +4637,11 @@ def desk_stage(st):
 _ANY = object()                                        # (plugin_stage: "no stage-on-screen check")
 
 
+def peers_withdrawn(st):
+    """A board with other machines on it while Other machines is off (a run already under way when it was switched off): never shown."""
+    return st.get("kind") == "gauges" and len(st.get("hosts") or []) > 1 and not plugins.peers_allowed()
+
+
 def plugin_stage(pid, query, before=_ANY):
     """Run an enabled stage plugin (no agent turn) and put its facts on the stage. -> (shown, what to say). The output is for the
     page only: it is never added to a prompt (the follow-up note only ever names a day desk). With `before` (the stage on screen
@@ -4652,6 +4657,8 @@ def plugin_stage(pid, query, before=_ANY):
         if str(e) == plugins.CHANGED:
             Plug.reload()                                      # (switched off just now: drop it from memory too)
         return False, f"{p.manifest['name']}: {e}."
+    if peers_withdrawn(st):
+        return False, "Other machines are off."
     if before is _ANY or (stages_on() and STAGES.current() is before):
         BUS.pub(t="stage", **stage_event(STAGES.put(st, refresh=(pid, query))))
     return True, st.get("say") or "Here you go."
@@ -4722,7 +4729,7 @@ def refresh_stage(token):
         if str(e) == plugins.CHANGED:
             Plug.reload()
         return {"ok": False}
-    if st["kind"] != "gauges" or not st.get("live"):
+    if st["kind"] != "gauges" or not st.get("live") or peers_withdrawn(st):
         return {"ok": False}
     page = STAGES.replace(token, st)
     if page is None:

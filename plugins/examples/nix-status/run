@@ -68,6 +68,16 @@ def uptime(up):
     return f"{d}d {h}h" if d else f"{h}h {m}m" if h else f"{m}m"
 
 
+CTRL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def clean(x, n=80):
+    """A peer's text as the board accepts it (no control characters, not empty), else None: one bad
+    string from another machine must not make Nixi refuse the whole board, this host included."""
+    x = CTRL.sub("", x).strip()[:n] if isinstance(x, str) else ""
+    return x or None
+
+
 def rev7(r):
     return r[:7] + " dirty" if r.endswith("-dirty") else r[:7]
 
@@ -118,7 +128,7 @@ if peers:
             pd = ps.get("disks") if isinstance(ps.get("disks"), list) else []
             pdisk = {d.get("path"): d for d in pd if isinstance(d, dict)}
             pup = num(ps.get("uptime_s"))
-            prev = ps.get("rev") if isinstance(ps.get("rev"), str) and ps.get("rev") else None
+            prev = clean(ps.get("rev"), 200)
             pb = [rev_badge(prev, my_rev), built_badge(ps.get("built"))]
             pb += [{"k": "up", "v": uptime(pup)}] if pup is not None else []
             pb.append({"k": "user", "v": "—"})
@@ -128,7 +138,7 @@ if peers:
                 lst = {"title": "Failed (system)", "items": ["unknown"], "tone": "warn"}
                 fl = []
             else:
-                fl = [str(x)[:80] for x in fl]
+                fl = [c for c in map(clean, fl) if c]
                 lst = {"title": "Failed (system)", "items": fl[:5], "tone": "bad"} if fl else {"title": "Failed (system)", "items": ["none"], "tone": "ok"}
             hosts.append({"name": n, "state": "up", "badges": pb, "meters": meters_of(ps, pdisk, False), "lists": [lst]})
             if fl:

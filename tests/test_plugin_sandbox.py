@@ -352,6 +352,12 @@ class SandboxTest(unittest.TestCase):
         self.assertEqual(got["hosts"][1]["lists"], [{"title": "Failed (system)", "items": ["unknown"], "tone": "warn"}])
         self.assertEqual(got["say"], "No problems I can see.")
 
+    def test_nix_status_fleet_a_peers_bad_text_cant_blank_the_board(self):   # (fleet() validates the whole board)
+        peer = self.up("p510", rev="b\x07" + "b" * 39, failed=["", "a\nb", "ok.service"])
+        got = self.fleet([peer])
+        self.assertEqual(got["hosts"][1]["lists"][0]["items"], ["ab", "ok.service"])
+        self.assertEqual(got["hosts"][1]["badges"][0]["v"], "≠ bbbbbbb")
+
     def test_nix_status_fleet_say_is_capped(self):
         got = self.fleet([self.up("m%d" % i + "x" * 30, failed=["a", "b"]) for i in range(5)])
         self.assertLessEqual(len(got["say"]), 200)

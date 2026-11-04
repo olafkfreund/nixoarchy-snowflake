@@ -737,6 +737,17 @@ class StageServerTest(_ServerEnv):
         self.assertEqual(pub.call_args.kwargs["t"], "stage_update")
         self.assertEqual(len(s.STAGES.current()["hosts"]), 2)
 
+    def test_a_board_with_peers_isnt_shown_once_they_are_off(self):   # a run under way when the switch went off
+        s = self.server
+        self.mk("user", "peer-one", reads=["peer-status"])
+        self.on("peer-one")
+        with mock.patch.object(s, "PEERS", [{"name": "other"}]), mock.patch.dict(s.CFG, {"peers_on": False}), \
+                mock.patch.object(plugins, "run_stage", return_value=self.gauge()) as run, mock.patch.object(s.BUS, "pub") as pub:
+            shown, _ = s.plugin_stage("peer-one", "q")
+        self.assertFalse(shown)
+        pub.assert_not_called()
+        self.assertIsNone(s.STAGES.current())
+
     def test_peer_round_refreshes_live_board_only(self):
         s = self.server
         self.mk("user", "peer-one", reads=["peer-status"])
