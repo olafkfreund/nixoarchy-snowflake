@@ -3190,6 +3190,8 @@ function plugRender(j){
     l.append(document.createTextNode(p.name+' '+p.version+' · '+p.source));
     const lines=[...p.caps||[]]; if(p.error) lines.unshift("Doesn't load: "+p.error); else if(p.note) lines.unshift(p.note);
     for(const t of lines){ const s=document.createElement('small'); s.textContent=t; if((p.error||p.note)&&t===lines[0]) s.style.color=p.error?'#e8836f':'#ffd38a'; l.appendChild(s); }
+    if(p.config){ const s=document.createElement('small'), eb=document.createElement('button'); s.textContent='Settings: '+p.config+(p.config_note?' \u00b7 '+p.config_note:''); if(p.config_note) s.style.color='#ffd38a';
+      eb.type='button'; eb.className='btn sm'; eb.textContent='Edit'; eb.addEventListener('click',e=>{ e.preventDefault(); e.stopPropagation(); plugAct({id:p.id,edit_config:true}); }); l.append(s,eb); }
     cb.addEventListener('change',()=>plugAct({id:p.id,enabled:cb.checked}));
     row.append(cb,sw,l); box.appendChild(row); }
   if(!(j.items||[]).length){ const h=document.createElement('div'); h.className='h'; h.textContent='No plugins installed.'; box.appendChild(h); }
@@ -3199,7 +3201,7 @@ function plugConsent(c){
   const box=$('#plugCons'); box.replaceChildren(); box.classList.toggle('on',!!c); if(!c) return;
   const q=document.createElement('div'), pre=document.createElement('pre'), bar=document.createElement('div'), no=document.createElement('button'), yes=document.createElement('button');
   q.className='q'; q.textContent='\u270b Let '+c.name+' run a program?';
-  pre.textContent=[c.what,'It runs: '+c.runs,...(c.hint?['Nixi tells the agent: '+c.hint]:[]),c.network?'It can use the internet and your local networks (not this computer\'s own services).':'It cannot use the network.',...(c.reads||[]).map(r=>r==='system-status'?'It can read your system status (load, memory, disks, network rates, failed services).':'It can read your '+r.replace('-',' ')+'.'),'Nixi checks it again if any of its files change.'].join('\n');
+  pre.textContent=[c.what,'It runs: '+c.runs,...(c.hint?['Nixi tells the agent: '+c.hint]:[]),c.network?'It can use the internet and your local networks (not this computer\'s own services).':'It cannot use the network.',...(c.reads||[]).map(r=>r==='system-status'?'It can read your system status (load, memory, disks, network rates, failed services).':'It can read your '+r.replace('-',' ')+'.'),(c.config?'Nixi checks it again if any of its files change. Its settings ('+c.config+') aren\'t checked: change them freely.':'Nixi checks it again if any of its files change.')].join('\n');
   bar.className='bar'; no.className='btn sm'; no.textContent='Cancel'; yes.className='btn sm yes'; yes.textContent='Allow';
   no.addEventListener('click',()=>plugConsent(null)); yes.addEventListener('click',()=>plugAct({consent:true,id:c.id,sha256:c.sha256}));
   bar.append(no,yes); box.append(q,pre,bar);

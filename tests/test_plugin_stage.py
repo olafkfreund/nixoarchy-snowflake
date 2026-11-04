@@ -162,6 +162,23 @@ class RunnerTest(unittest.TestCase):
             got = plugins.run_stage(p._replace(manifest=m), "q")
         self.assertEqual(json.loads(got["points"][0]), {"generation": "g", "failed": None})
 
+    def test_settings_go_in_on_stdin_and_editing_them_keeps_the_hash(self):
+        body = "import json,sys\nq=json.load(sys.stdin)\nprint(json.dumps({'v':1,'kind':'facts','title':'t','points':[json.dumps(q.get('config'))]}))"
+        cfg = Path(tempfile.mkdtemp())
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(cfg)}):
+            p = prog(self.root, body)
+            (p.dir / "defaults.json").write_text('{"d": 1}')
+            STATE.set(p.id, True, plugins.sha256_of(p.dir))
+            m = {**p.manifest, "stage": {**p.manifest["stage"], "config": True}}
+            q = p._replace(manifest=m)
+            self.assertEqual(json.loads(plugins.run_stage(q, "q")["points"][0]), {"d": 1})
+            before = plugins.sha256_of(p.dir)
+            plugins.config_path(p.id).parent.mkdir(parents=True)
+            plugins.config_path(p.id).write_text('{"mine": 2}')
+            self.assertEqual(plugins.sha256_of(p.dir), before)
+            self.assertEqual(json.loads(plugins.run_stage(q, "q")["points"][0]), {"mine": 2})
+            self.assertTrue(STATE.get(p.id)["enabled"])
+
     def test_system_status_says_none_never_for_a_failed_query(self):
         with mock.patch.object(plugins.subprocess, "run", side_effect=OSError):
             self.assertIsNone(plugins.system_status()["failed"])

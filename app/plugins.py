@@ -24,7 +24,7 @@ ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{2,63}$")
 REQUIRED = {"api", "id", "name", "version"}
 OPTIONAL = {"description", "quips", "prop", "notifications", "stage"}
 PROP_KEYS = {"file", "anchor", "layer"}
-STAGE_KEYS = {"phrases", "hint", "argv", "network", "cache_seconds", "reads"}
+STAGE_KEYS = {"phrases", "hint", "argv", "network", "cache_seconds", "reads", "config"}
 CATEGORIES = {"mail", "chat", "feed"}
 APP_RE = re.compile(r"^[a-z0-9._-]+$")
 HOST_RE = re.compile(r"^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$")
@@ -150,6 +150,15 @@ def _check(m, d):
             return "bad stage hint"
         if "network" in s and not isinstance(s["network"], bool):
             return "bad stage network"
+        if "config" in s:
+            if not isinstance(s["config"], bool):
+                return "bad stage config"
+            if s["config"]:
+                try:
+                    if not isinstance(json.loads(_read_small(os.path.join(d, "defaults.json"))), dict):
+                        raise ValueError
+                except (OSError, ValueError):
+                    return "stage config needs a defaults.json (a JSON object of at most 16 KiB)"
         c = s.get("cache_seconds", 60)
         if type(c) is not int or not 0 <= c <= 600:
             return "bad stage cache_seconds"
@@ -165,6 +174,52 @@ def _check(m, d):
             if reserved(ph):
                 return f"stage phrase {ph!r} clashes with one of Nixi's own"
     return None
+
+
+def _read_small(p, cap=16 * 1024):
+    """A plain file of at most cap bytes, opened without following a link or blocking on a FIFO."""
+    fd = os.open(p, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_size > cap:
+            raise ValueError("not a plain file of at most 16 KiB")
+        return os.read(fd, cap + 1).decode("utf-8")
+    finally:
+        os.close(fd)
+
+
+def config_path(pid):
+    """A plugin's settings file. XDG_CONFIG_HOME is read now, not at import."""
+    return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "nixi-companion" / "plugin-config" / (pid + ".json")
+
+
+def read_config(pid, snap_dir):
+    """-> (settings, note). The user's file when it is a good one, else the defaults from the snapshot (the hashed bytes)."""
+    try:
+        c = json.loads(_read_small(config_path(pid)))
+        if isinstance(c, dict):
+            return c, None
+        note = "settings file unreadable"
+    except FileNotFoundError:
+        note = None
+    except (OSError, ValueError):
+        note = "settings file unreadable"
+    return json.loads(_read_small(os.path.join(snap_dir, "defaults.json"))), note
+
+
+def edit_config(pid, d):
+    """Create the settings file from the plugin's defaults.json if it is missing (never through a link); -> its path."""
+    p = config_path(pid)
+    os.makedirs(p.parent, mode=0o700, exist_ok=True)
+    try:
+        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError:
+        if not stat.S_ISREG(os.lstat(p).st_mode):          # (a planted link or special file: never hand it to xdg-open)
+            raise
+        return p
+    with os.fdopen(fd, "w") as f:
+        f.write(_read_small(os.path.join(d, "defaults.json")))
+    return p
 
 
 def _manifest(p):
@@ -739,6 +794,8 @@ def _run_copy(p, query, locale, timeout, stages, tmp):
         feed = {"v": 1, "query": query, "locale": locale}
         if "system-status" in stg.get("reads", []):
             feed["system_status"] = system_status()
+        if stg.get("config"):
+            feed["config"] = read_config(p.id, os.path.join(tmp, "plugin"))[0]
         proc = subprocess.Popen(sandbox_argv(os.path.join(tmp, "plugin"), stg, os.path.join(tmp, "resolv.conf")), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 start_new_session=True, bufsize=0, preexec_fn=_limits)
     except OSError as e:

@@ -185,6 +185,61 @@ class T(unittest.TestCase):
 HAT = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g transform="translate(1 2) scale(1.5)"><path d="M50 8L88 92Z" fill="acc" stroke="#fff"/><circle cx="5" cy="5" r="2" fill="#abc" opacity=".5"/></g></svg>'
 
 
+class SettingsFile(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(self.tmp / "cfg")}).start()
+        self.addCleanup(mock.patch.stopall)
+        self.d = self.tmp / "plug"
+        self.d.mkdir()
+        (self.d / "defaults.json").write_text('{"feeds": []}')
+        self.p = plugins.config_path("cfg-plug")
+        self.p.parent.mkdir(parents=True)
+
+    def test_path_reads_the_environment_at_call_time(self):
+        self.assertEqual(self.p, self.tmp / "cfg/nixi-companion/plugin-config/cfg-plug.json")
+
+    def test_missing_gives_the_defaults(self):
+        self.assertEqual(plugins.read_config("cfg-plug", self.d), ({"feeds": []}, None))
+
+    def test_good_file_wins(self):
+        self.p.write_text('{"a": 1}')
+        self.assertEqual(plugins.read_config("cfg-plug", self.d), ({"a": 1}, None))
+
+    def test_bad_files_give_the_defaults_and_a_note(self):
+        for make in (lambda: self.p.symlink_to(self.d / "defaults.json"), lambda: os.mkfifo(self.p),
+                     lambda: self.p.write_text("[1]"), lambda: self.p.write_text('{"a": "' + "x" * 17000 + '"}'), lambda: self.p.write_text("{nope")):
+            self.p.unlink(missing_ok=True)
+            make()
+            self.assertEqual(plugins.read_config("cfg-plug", self.d), ({"feeds": []}, "settings file unreadable"))
+
+    def test_check_config_key(self):
+        m = lambda c: dict(GOOD, stage={"phrases": ["zz top"], "argv": ["run"], "config": c})
+        (self.d / "run").write_text("x")
+        self.assertIsNone(plugins._check(m(True), self.d))
+        self.assertIsNone(plugins._check(m(False), self.d))
+        self.assertEqual(plugins._check(m(1), self.d), "bad stage config")
+        (self.d / "defaults.json").unlink()
+        self.assertIn("defaults.json", plugins._check(m(True), self.d))
+        (self.d / "defaults.json").write_text("[]")
+        self.assertIn("defaults.json", plugins._check(m(True), self.d))
+
+    def test_edit_creates_0600_from_the_defaults_and_keeps_an_existing_file(self):
+        self.assertEqual(plugins.edit_config("cfg-plug", self.d), self.p)
+        self.assertEqual((self.p.read_text(), self.p.stat().st_mode & 0o777), ('{"feeds": []}', 0o600))
+        self.p.write_text('{"mine": 1}')
+        plugins.edit_config("cfg-plug", self.d)
+        self.assertEqual(self.p.read_text(), '{"mine": 1}')
+
+    def test_edit_refuses_a_planted_symlink(self):
+        victim = self.tmp / "victim"
+        self.p.symlink_to(victim)
+        with self.assertRaises(OSError):
+            plugins.edit_config("cfg-plug", self.d)
+        self.assertFalse(victim.exists())
+
+
 class Readings(unittest.TestCase):
     def setUp(self):
         self._t = tempfile.TemporaryDirectory()

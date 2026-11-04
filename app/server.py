@@ -1802,6 +1802,15 @@ def plugin_caps(m):
     return out
 
 
+def _config_note(p):
+    if p.error or not ((p.manifest or {}).get("stage") or {}).get("config"):
+        return ""
+    try:
+        return plugins.read_config(p.id, p.dir)[1] or ""
+    except (OSError, ValueError):
+        return ""
+
+
 def plugins_api(error=None, **extra):
     """Settings → Plugins: every plugin found, working or broken."""
     st = plugins.State()
@@ -1815,6 +1824,8 @@ def plugins_api(error=None, **extra):
         items.append({"id": p.id, "name": str(m.get("name") or p.dir.name), "version": str(m.get("version") or ""),
                       "source": "Nix" if p.source == "nix" else "Folder", "enabled": on, "caps": plugin_caps(m) if not p.error else [],
                       "error": p.error or (Plug.prop_errors.get(p.id) if on else None) or "", "stage": "stage" in m,
+                      "config": str(plugins.config_path(p.id)) if (m.get("stage") or {}).get("config") and not p.error else "",
+                      "config_note": _config_note(p),
                       "note": notes.get(p.id) or (Plug.updated.get(p.id) if on else None) or ""})
     return {"items": items, **({"error": error} if error else {}), **extra}
 
@@ -1827,6 +1838,15 @@ def plugins_act(b):
         return plugins_api()
     pid, on = str(b.get("id") or ""), True if b.get("consent") else b.get("enabled")
     p = min((x for x in plugins.scan(plugins.plugin_dirs()) if x.id == pid), key=lambda x: bool(x.error), default=None)
+    if b.get("edit_config"):                                   # (before the enabled guard: Edit sends no `enabled`)
+        if p is None or p.error or not ((p.manifest or {}).get("stage") or {}).get("config"):
+            return plugins_api("no such plugin")
+        try:
+            path = plugins.edit_config(pid, p.dir)
+            subprocess.Popen(["xdg-open", str(path)], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except (OSError, ValueError) as e:
+            return plugins_api("couldn't open the settings file: " + str(e))
+        return plugins_api()
     if p is None or not isinstance(on, bool):
         return plugins_api("no such plugin")
     if p.error and on:                                         # (a broken plugin can still be switched off)
@@ -1853,7 +1873,7 @@ def plugins_act(b):
         else:
             return plugins_api(needs_consent={"id": pid, "name": str(p.manifest["name"]), "sha256": h, "network": bool(stg.get("network")),
                                               "what": str(p.manifest.get("description") or p.manifest["name"]), "hint": str(stg.get("hint") or ""),
-                                              "runs": " ".join(stg["argv"]), "reads": list(stg.get("reads", []))})
+                                              "runs": " ".join(stg["argv"]), "reads": list(stg.get("reads", [])), "config": str(plugins.config_path(pid)) if stg.get("config") else ""})
         Plug.updated.pop(pid, None)
     Plug.reload()
     return plugins_api()
