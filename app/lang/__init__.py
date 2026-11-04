@@ -5,9 +5,9 @@ from pathlib import Path
 
 DIR = Path(__file__).resolve().parent
 LANGS = {
-    "en": {"name": "English", "whisper": "en", "locale": "en", "date": "en-GB", "clause": ""},
-    "nb": {"name": "Norsk", "whisper": "no", "locale": "nb", "date": "nb-NO", "clause": "Reply in Norwegian (Bokmål)."},
-    "pl": {"name": "Polski", "whisper": "pl", "locale": "pl", "date": "pl-PL", "clause": "Reply in Polish."},
+    "en": {"name": "English", "english": "English", "whisper": "en", "locale": "en", "date": "en-GB", "clause": ""},
+    "nb": {"name": "Norsk", "english": "Norwegian", "whisper": "no", "locale": "nb", "date": "nb-NO", "clause": "Reply in Norwegian (Bokmål)."},
+    "pl": {"name": "Polski", "english": "Polish", "whisper": "pl", "locale": "pl", "date": "pl-PL", "clause": "Reply in Polish."},
 }
 active = "en"
 _cache = {}

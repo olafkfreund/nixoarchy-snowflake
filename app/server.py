@@ -173,6 +173,7 @@ DEFAULTS = {
     # voice preset: girl | cute | guy | deep | british | story | robot
     # (engine: Kokoro if installed, else piper — piper voices download on first use)
     "voice": "girl",
+    "voice_by_lang": {},     # the preset chosen in each language: {"pl": "guy"}; the switcher restores it
     # root mode: Claude may run anything, incl. sudo (you get a password box each time it needs root)
     "root_mode": False,
     "cpu_split": True,       # face (window) and voice/brain (server) on separate CPU cores (4+ cores only)
@@ -3348,7 +3349,7 @@ def tts_engine(local=False):
         return None
     if mode == "elevenlabs":
         return None if eleven_why() else "elevenlabs"
-    if mode in ("auto", "kokoro") and kokoro_ready():
+    if mode in ("auto", "kokoro") and kokoro_ready() and lang.active == "en":      # (Kokoro has no Norwegian or Polish voice)
         return "kokoro"
     if mode in ("auto", "piper") and piper_bin() and piper_voice():
         return "piper"
@@ -3413,6 +3414,53 @@ VOICES = {
     "robot":    {"label": "Robot",       "espeak": "en-us+m3",   "pitch": 0.9},
 }
 
+# nb and pl have piper voices only (no Kokoro): each preset speaks with one of them, and Robot with espeak's own
+LANG_PIPER = {"nb": {"*": "no_NO-talesyntese-medium"},
+              "pl": {"girl": "pl_PL-gosia-medium", "cute": "pl_PL-gosia-medium", "guy": "pl_PL-darkman-medium",
+                     "deep": "pl_PL-darkman-medium", "british": "pl_PL-mc_speech-medium", "story": "pl_PL-mc_speech-medium"}}
+
+
+def localize(v, code=None, key=None):
+    """A voice preset as it speaks in this language (English: as is)."""
+    code = code or lang.active
+    if code == "en" or code not in LANG_PIPER:
+        return v
+    if v.get("espeak"):                                    # Robot
+        return {**v, "espeak": f"{code}+m3"}
+    names = LANG_PIPER[code]
+    key = key or next((k for k, x in VOICES.items() if x is v), "girl")
+    return {"label": v["label"], "piper": names.get(key) or names.get("*") or names["girl"],
+            "pitch": v.get("pitch", 1.0), "lang_espeak": code}
+
+
+def lang_voice_name(code):
+    """The piper voice to download so `code` can speak with the chosen preset (None: English or Robot)."""
+    return localize(VOICES.get(CFG.get("voice_by_lang", {}).get(code) or CFG.get("voice") or "girl", VOICES["girl"]), code).get("piper") if code != "en" else None
+
+
+def restore_voice(code):
+    """The switcher calls this when `code` becomes active: the preset last chosen in that language comes back."""
+    v = (CFG.get("voice_by_lang") or {}).get(code)
+    if v in VOICES:
+        save_config(voice=v)
+
+
+def voice_ready_for(code):
+    """Can `code` speak now with the chosen engine? (If not, fetch_voice_sync(lang_voice_name(code)) fetches the piper voice.)"""
+    mode = tts_mode(True)
+    if mode == "off":
+        return True
+    if code == "en":
+        return tts_engine(local=True) is not None
+    if mode == "kokoro":
+        return False
+    name, es = lang_voice_name(code), bool(shutil.which("espeak-ng"))
+    piper_ok = bool(piper_bin()) and bool(name) and voice_file(name).exists()
+    if name is None:                                       # Robot
+        return es
+    return es if mode == "espeak" else piper_ok if mode == "piper" else piper_ok or (es and not piper_bin())
+
+
 # ---- Kokoro (kokoro-onnx): a much more natural voice than piper, still fully local. Small int8 model (~120 MB total).
 KOKORO_DIR = DATA_DIR / "voices" / "kokoro"
 KOKORO_FILES = {"kokoro-v1.0.int8.onnx": "model", "voices-v1.0.bin": "voices"}
@@ -3465,7 +3513,8 @@ def kokoro_synth(text, voice, speed):
 
 
 def voice_preset():
-    return VOICES.get(CFG.get("voice") or "girl", VOICES["girl"])
+    k = CFG.get("voice") or "girl"
+    return localize(VOICES.get(k, VOICES["girl"]), key=k)
 
 
 def voice_file(name):
@@ -3494,6 +3543,39 @@ def fetch_voice(name):
         finally:
             _downloading.discard(name)
     threading.Thread(target=go, daemon=True).start()
+
+
+def fetch_voice_sync(name, timeout=300):
+    """Download a piper voice in this thread → (ok, reason). Waits for a download already running instead of starting a second."""
+    if voice_file(name).exists():
+        return True, ""
+    end = time.monotonic() + timeout
+    if name in _downloading:
+        while name in _downloading and time.monotonic() < end:
+            time.sleep(0.5)
+        return (True, "") if voice_file(name).exists() else (False, "The voice download didn't finish")
+    _downloading.add(name)
+    try:
+        import urllib.request
+        loc, spk, q = name.split("-")
+        base = f"https://huggingface.co/rhasspy/piper-voices/resolve/main/{loc.split('_')[0]}/{loc}/{spk}/{q}/{name}"
+        d = DATA_DIR / "voices"
+        d.mkdir(parents=True, exist_ok=True)
+        for ext, dest in ((".onnx.json", d / f"{name}.onnx.json"), (".onnx", d / f"{name}.onnx.part")):
+            with urllib.request.urlopen(base + ext, timeout=30) as r, open(dest, "wb") as f:
+                while True:
+                    if time.monotonic() > end:
+                        raise TimeoutError("timed out")
+                    chunk = r.read(1 << 16)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+        (d / f"{name}.onnx.part").rename(d / f"{name}.onnx")
+        return True, ""
+    except Exception as e:  # noqa: BLE001
+        return False, f"Couldn't download the voice {name}: {e}"[:200]
+    finally:
+        _downloading.discard(name)
 
 
 _piper_speed_flag = None
@@ -4122,6 +4204,8 @@ def synth(text: str, engine=None, local=False):
     auto = tts_mode(local) == "auto"
     eng = engine or tts_engine(local=local)
     if not eng or eng == "elevenlabs":                       # (the cloud voice is spoken by the speaker path, not here)
+        if tts_mode(local) == "kokoro" and lang.active != "en":
+            raise NoVoice(f"Kokoro has no {lang.LANGS[lang.active]['english']} voice")
         raise NoVoice((not local and tts_mode() == "elevenlabs" and eleven_why()) or "No voice engine is ready (install espeak-ng or piper)")
     vp = voice_preset()
     if not auto and eng in ("kokoro", "piper") and not vp.get(eng):
@@ -4137,12 +4221,13 @@ def synth(text: str, engine=None, local=False):
     os.close(fd)
     try:
         model = None
-        if eng == "piper" and not vp.get("espeak") and not CFG["piper_voice"]:
+        pinned = CFG["piper_voice"] if lang.active == "en" else ""         # (a pinned voice is the user's English one)
+        if eng == "piper" and not vp.get("espeak") and not pinned:
             if voice_file(vp["piper"]).exists():
                 model = str(voice_file(vp["piper"]))
             else:
                 fetch_voice(vp["piper"])          # use whatever we have until it lands
-        if eng == "piper" and not vp.get("espeak") and model is None:
+        if eng == "piper" and not vp.get("espeak") and model is None and lang.active == "en":
             model = piper_voice()
         if eng == "piper" and not auto and not model:
             raise NoVoice("No piper voice is downloaded yet")
@@ -4154,7 +4239,7 @@ def synth(text: str, engine=None, local=False):
             piper_run(model, text, out, pitch)
             rate = pitch
         elif shutil.which("espeak-ng") and (auto or eng == "espeak"):
-            ev = vp.get("espeak") or CFG["espeak_voice"]
+            ev = vp.get("espeak") or vp.get("lang_espeak") or CFG["espeak_voice"]
             subprocess.run(["espeak-ng", "-v", ev, "-s", "160", "-p", str(int(clamp01(pitch / 2) * 99)), "-w", out, text],
                            capture_output=True, timeout=90, check=True)
             rate = 1.0
@@ -4889,7 +4974,7 @@ def plugin_stage(pid, query, before=_ANY):
     if p is None:
         return False, "That plugin is off."
     try:
-        st = plugins.run_stage(p, query)
+        st = plugins.run_stage(p, query, locale=lang.LANGS[lang.active]["locale"])
     except plugins.Busy as e:
         return False, str(e)
     except plugins.StageError as e:
@@ -4981,7 +5066,7 @@ def refresh_stage(token):
     if p is None:
         return {"ok": False}
     try:
-        st = plugins.run_stage(p, got[1]["query"], fresh=True)
+        st = plugins.run_stage(p, got[1]["query"], locale=lang.LANGS[lang.active]["locale"], fresh=True)
     except plugins.Busy:
         return {"ok": True, "skipped": True}
     except plugins.StageError as e:
@@ -5467,7 +5552,7 @@ def eleven_voices():
 
 
 def engine_list():
-    why = {"kokoro": "" if kokoro_ready() else "Kokoro isn't installed yet",
+    why = {"kokoro": ("" if kokoro_ready() else "Kokoro isn't installed yet") if lang.active == "en" else f"Kokoro has no {lang.LANGS[lang.active]['english']} voice",
            "piper": "" if piper_bin() and piper_voice() else "Piper or its voice isn't installed",
            "espeak": "" if shutil.which("espeak-ng") else "espeak-ng isn't installed",
            "elevenlabs": eleven_why()}
@@ -5480,16 +5565,21 @@ def engine_list():
 def voice_ready(v):
     """Can this preset speak with the chosen engine? (Robot is espeak only; the others also have an espeak voice.)"""
     mode = tts_mode(True)
+    if lang.active != "en" and mode == "kokoro":
+        return False
     if mode == "espeak":
         return bool(shutil.which("espeak-ng"))
     if v.get("espeak") and mode in ("kokoro", "piper"):
         return False
+    v = localize(v)
     return (bool(v.get("espeak")) or (bool(v.get("kokoro")) and tts_engine(local=True) == "kokoro")
             or voice_file(v.get("piper", "")).exists())
 
 
 def state_info():
     evoices, eerr = eleven_voices()
+    wl = lang.LANGS[lang.active]["whisper"]
+    evoices = sorted(evoices, key=lambda v: not any(str(c).lower().split("-")[0] == wl for c in v.get("languages") or []))   # (voices speaking the language first)
     return {
         "bridge": BRIDGED, "theme": THEME,
         "version": VERSION, "update": Updates.status(), "update_check": bool(CFG.get("update_check", True)),
@@ -5526,7 +5616,7 @@ def state_info():
         "voice": CFG.get("voice") or "girl", "voice_pitch": voice_preset().get("pitch", 1.0),
         "voices": [{"id": k, "label": v["label"],
                     "ready": voice_ready(v),
-                    "downloading": v.get("piper") in _downloading or (bool(v.get("kokoro")) and "kokoro" in _downloading)}
+                    "downloading": localize(v).get("piper") in _downloading or (bool(v.get("kokoro")) and "kokoro" in _downloading)}
                    for k, v in VOICES.items()],
         "voice_engine": tts_engine() or "none",
         "claude": BRIDGED or bool(claude_bin()), "busy": ST.lock.locked(), "config": str(CONF_PATH),
@@ -5791,8 +5881,9 @@ class Handler(BaseHTTPRequestHandler):
                     upd["effort"] = b["effort"]
                 if "voice" in b and b["voice"] in VOICES:
                     upd["voice"] = b["voice"]
+                    upd["voice_by_lang"] = {**(CFG.get("voice_by_lang") or {}), lang.active: b["voice"]}
                     if VOICES[b["voice"]].get("piper"):
-                        fetch_voice(VOICES[b["voice"]]["piper"])
+                        fetch_voice(localize(VOICES[b["voice"]], key=b["voice"])["piper"])
                 bad = voice_settings(b, upd)
                 if bad:
                     return self._json({"error": bad}, 400)

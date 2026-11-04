@@ -781,7 +781,7 @@ def run_stage(p, query, locale="en", timeout=TIME_DEFAULT, fresh=False):
     Cached per plugin and query for stage.cache_seconds; if a run fails the last good result is shown with its age."""
     import stages
     stg, now = p.manifest["stage"], _now()
-    key = (p.id, norm(query), "peer-status" in stg.get("reads", []) and peers_allowed())   # (a board with peers is never served once they're off)
+    key = (p.id, norm(query), "peer-status" in stg.get("reads", []) and peers_allowed(), locale)   # (a board with peers is never served once they're off)
     _consented(p)                                                  # (before the cache too: a changed plugin shows nothing, old or new)
     user = None
     if stg.get("config"):                                          # (one read of the settings: the key and the plugin's stdin both come from it)
