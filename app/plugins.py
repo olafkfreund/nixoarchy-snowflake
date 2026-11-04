@@ -202,36 +202,54 @@ def scan(dirs):
     return [p._replace(error=p.error or "duplicate id") if id(p) in dup else p for p in out]
 
 
+SNAP_MAX = 64 * 1024 * 1024                          # a plugin folder bigger than this is refused (hashing never holds it in memory)
+
+
 def _snap(d, dest=None):
     """Hash of every file's relative path and content, sorted. With dest, the same bytes that were hashed are written there (a copy
-    for the sandbox to mount: what runs is what was hashed). Raises ValueError for a symlink or a special file anywhere inside."""
+    for the sandbox to mount: what runs is what was hashed). One file at a time, in chunks, so a big folder never sits in memory.
+    Raises ValueError for a symlink or a special file anywhere inside, a file that changes while it is read, or a folder over SNAP_MAX."""
     if _symlink(d):
         raise ValueError(f"contains a symlink: {_symlink(d)}")
-    root, h = os.path.realpath(d), hashlib.sha256()
-    found = []
+    root, h, total, paths = os.path.realpath(d), hashlib.sha256(), 0, []
     for dirpath, dirs, files in os.walk(root, onerror=_raise):
         for n in dirs:
             if dest:
                 os.makedirs(os.path.join(dest, os.path.relpath(os.path.join(dirpath, n), root)), mode=0o700, exist_ok=True)
-        for f in files:
-            p = os.path.join(dirpath, f)
-            fd = os.open(p, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)   # (never follows a link swapped in since the walk)
+        paths += [os.path.join(dirpath, f) for f in files]
+    for p in sorted(paths, key=lambda q: os.path.relpath(q, root).encode()):
+        rel = os.path.relpath(p, root).encode()
+        fd = os.open(p, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)   # (never follows a link swapped in since the walk)
+        try:
+            st = os.fstat(fd)
+            if not stat.S_ISREG(st.st_mode):
+                raise ValueError(f"not a plain file: {rel.decode(errors='replace')}")
+            total += st.st_size
+            if total > SNAP_MAX:
+                raise ValueError("the plugin folder is too big")
+            h.update(b"%d:%s%d:" % (len(rel), rel, st.st_size))
+            out, left = None, st.st_size
+            if dest:
+                q = os.path.join(dest, os.fsdecode(rel))
+                os.makedirs(os.path.dirname(q), mode=0o700, exist_ok=True)
+                out = open(q, "wb")
             try:
-                st = os.fstat(fd)
-                if not stat.S_ISREG(st.st_mode):
-                    raise ValueError(f"not a plain file: {os.path.relpath(p, root)}")
-                with os.fdopen(fd, "rb", closefd=False) as fh:
-                    found.append((os.path.relpath(p, root).encode(), fh.read(), st.st_mode))
+                while left:
+                    chunk = os.read(fd, min(left, 1 << 20))
+                    if not chunk:
+                        break
+                    h.update(chunk)
+                    if out:
+                        out.write(chunk)
+                    left -= len(chunk)
+                if left or os.read(fd, 1):           # (shorter or longer than when we looked: it changed under us)
+                    raise ValueError(f"changed while being read: {rel.decode(errors='replace')}")
             finally:
-                os.close(fd)
-    for rel, data, mode in sorted(found, key=lambda x: x[0]):
-        h.update(b"%d:%s%d:" % (len(rel), rel, len(data)) + data)
-        if dest:
-            q = os.path.join(dest, os.fsdecode(rel))
-            os.makedirs(os.path.dirname(q), mode=0o700, exist_ok=True)
-            with open(q, "wb") as out:
-                out.write(data)
-            os.chmod(q, 0o500 if mode & 0o111 else 0o400)
+                if out:
+                    out.close()
+                    os.chmod(q, 0o500 if st.st_mode & 0o111 else 0o400)
+        finally:
+            os.close(fd)
     return h.hexdigest()
 
 
@@ -455,7 +473,7 @@ def sandbox_argv(d, stage, resolv=None):
         a += ["--ro-bind", str(resolv), "/etc/resolv.conf"]
     a += ["--setenv", "PATH", path, "--setenv", "LANG", os.environ.get("LANG") or "C.UTF-8", "--setenv", "HOME", "/tmp"]
     a += [os.path.realpath(sys.executable), "-I", "-c", LAUNCHER, "/plugin/" + stage["argv"][0], *stage["argv"][1:]]
-    if net:      # no host loopback or gateway mapping and no port forwarding: it reaches the internet, not this computer's own services
+    if net:      # no host loopback or gateway mapping and no port forwarding: it reaches the internet and the LAN, not localhost-only services
         a = [shutil.which("pasta") or "pasta", "--config-net", "--quiet", "--foreground", "--no-map-gw", "-t", "none", "-u", "none", "-T", "none", "-U", "none",
              "--dns-forward", DNS_ADDR, *PASTA_EXTRA, "--"] + a
     return a

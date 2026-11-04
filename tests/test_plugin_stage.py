@@ -637,7 +637,7 @@ class StageServerTest(_ServerEnv):
         self.assertEqual(c["hint"], "disk and such")
         page = (Path(__file__).resolve().parent.parent / "app/static/index.html").read_text()
         self.assertIn("'Nixi tells the agent: '+c.hint", page)
-        self.assertIn("It can use the internet (not this computer\\'s own services).", page)
+        self.assertIn("It can use the internet and your local networks. It cannot reach services that only listen on this computer (localhost).", page)
 
     def test_no_bwrap_no_stage_plugins(self):
         S = self.server
@@ -650,3 +650,19 @@ class StageServerTest(_ServerEnv):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SnapLimits(unittest.TestCase):
+    """Codex on the second round: hashing a plugin never holds the folder in memory, and a huge folder is refused."""
+
+    def test_a_folder_over_the_cap_is_refused_and_the_hash_is_unchanged_by_streaming(self):
+        d = Path(tempfile.mkdtemp())
+        (d / "run").write_bytes(b"#!/bin/sh\necho hi\n")
+        (d / "big.bin").write_bytes(b"x" * 4096)
+        h1 = plugins.sha256_of(d)
+        dest = Path(tempfile.mkdtemp())
+        self.assertEqual(plugins._snap(d, dest), h1)                       # the copy is what was hashed
+        self.assertEqual((dest / "big.bin").read_bytes(), b"x" * 4096)
+        with mock.patch.object(plugins, "SNAP_MAX", 1024):
+            with self.assertRaises(ValueError):
+                plugins.sha256_of(d)
