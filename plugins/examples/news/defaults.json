@@ -3,5 +3,17 @@
     {"name": "BBC News", "url": "https://feeds.bbci.co.uk/news/rss.xml"},
     {"name": "The Guardian", "url": "https://www.theguardian.com/uk/rss"},
     {"name": "Hacker News", "url": "https://hnrss.org/frontpage"}
-  ]
+  ],
+  "videos": true,
+  "default_topic": "world",
+  "topics": {
+    "world": "world news",
+    "uk": "UK news",
+    "tech": "technology news",
+    "technology": "technology news",
+    "business": "business news",
+    "science": "science news",
+    "sport": "sport news",
+    "sports": "sport news"
+  }
 }
