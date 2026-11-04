@@ -560,7 +560,7 @@ body.bar.mir-agent #barPill{box-shadow:0 0 0 2px #ff3b3b,0 0 12px 2px #ff3b3bcc!
 body.calm.mir-agent #mirBar{display:flex} #mirBar span{overflow:hidden;text-overflow:ellipsis} #mirBar button{font:inherit;white-space:nowrap;color:#b3141c;background:#fff;border:0;border-radius:6px;padding:3px 8px;cursor:pointer}
 .mb.off{display:none}
 /* ===== settings, take two: cards, a sliding tab pill, a live clickable preview and a proper colour picker ===== */
-#set{background:linear-gradient(180deg,var(--panel2) 0,var(--panel) 120px,var(--panel) 100%)}
+#set{--setW:560px;--setH:680px;right:auto;width:min(var(--setW),calc(100vw - 24px));height:min(var(--setH),calc(100vh - 46px));max-height:none;background:linear-gradient(180deg,var(--panel2) 0,var(--panel) 120px,var(--panel) 100%)}
 #set .hd{padding:12px 12px 8px 14px}
 #set .hd .logo{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%,var(--body0,#1b1b1b),var(--body2,#030303) 70%);
   box-shadow:0 0 0 1.5px var(--edge2),0 0 10px var(--accA);position:relative}
@@ -2329,7 +2329,7 @@ function stageMap(ev,bd,acts,fn){
   bd.appendChild(g);
   const row=hx('div','tx');
   if(ev.unset){ row.appendChild(hx('div','lb dst','Set '+(ev.unset==='work'?'Work':'Home')+' in Nixi\u2019s settings')); bd.appendChild(row);
-    acts.appendChild(stageBtn('Settings',()=>{ stageClose(); settings(true,'voice'); setTimeout(()=>{ const r=$('#locRow'); if(r) r.scrollIntoView({block:'center'}); },60); })); return; }
+    acts.appendChild(stageBtn('Settings',()=>{ stageHide(true); settings(true,'voice'); setTimeout(()=>{ const r=$('#locRow'); if(r) r.scrollIntoView({block:'center'}); },60); })); return; }
   row.appendChild(hx('div','lb dst',ev.dest)); if(ev.mode) row.appendChild(hx('div','md',ev.mode)); bd.appendChild(row);
   fn.textContent=ev.from?'From '+ev.from+' \u00b7 a sketch, not the route':'A sketch, not the route: Google Maps picks the way and the start';
   acts.appendChild(stageBtn('Open in Google Maps',b=>post('/api/stage/act',{token:ev.open,act:'open'}).then(r=>r.json()).then(j=>stageOpened(b,fn,j,"Couldn't open it")).catch(()=>{})));
@@ -2791,16 +2791,23 @@ function whenQuiet(fn){ const t0=performance.now();
 /* ================= panels: history, memory, quick actions ================= */
 const panelEl=$('#panel'); let panelKind=null;
 const ago=ts=>{ const s=Date.now()/1000-ts; return s<60?'just now':s<3600?`${s/60|0} min ago`:s<86400?`${s/3600|0} h ago`:`${s/86400|0} d ago`; };
-let pnMoved=false;
-function closePanels(){ const was=panelEl.classList.contains('on')||setEl.classList.contains('on'); panelEl.classList.remove('on'); panelKind=null; setEl.classList.remove('on'); document.body.classList.remove('pnl'); if(was) native('wide:off');
-  reDock(); }
+let pnMoved=false, setW=0, setH=0;
+function setDefaultSize(){ return [Math.min(560,((screen&&screen.availWidth)||1920)-40), Math.min(680,Math.round(0.85*((screen&&screen.availHeight)||1080)))]; }
+function setSyncVars(){ if(!setW||!setH) [setW,setH]=setDefaultSize(); setEl.style.setProperty('--setW',setW+'px'); setEl.style.setProperty('--setH',setH+'px'); }
+function panelSize(){ const sOn=setEl.classList.contains('on'), pOn=panelEl.classList.contains('on');
+  document.body.classList.toggle('pnl',sOn||pOn);
+  if(sOn){ setSyncVars(); setWant=[Math.max(0,setW-340+24),Math.max(0,setH-460+46)]; native('wide:off'); sizeWindow(); }
+  else if(pOn){ setWant=[0,0]; native('wide:on'); sizeWindow(); }
+  else { setWant=[0,0]; native('wide:off'); sizeWindow(); reDock(); }
+  sendRegion(true); }
+function closePanels(){ panelEl.classList.remove('on'); panelKind=null; setEl.classList.remove('on'); panelSize(); }
 function reDock(){ if(!pnMoved) return; pnMoved=false;      // a panel dragged the notch away: back to its edge
   const edge=barEdge(); if(edge) native('bar:'+edge); }
 // a panel's header is a handle: drag it to move the window (in the notch, he goes back to his edge when it closes)
 $$('.pn .hd').forEach(h=>h.addEventListener('mousedown',e=>{ if(e.button!==0||e.target.closest('button,input,select')) return;
   e.preventDefault(); pnMoved=true; dragNative=true; native('pmove'); }));   // (mouseup sends dragend)
 async function openPanel(kind){
-  menu(false); hideAsk(); setEl.classList.remove('on'); panelKind=kind; panelEl.classList.add('on'); document.body.classList.add('pnl'); native('wide:on');
+  menu(false); hideAsk(); setEl.classList.remove('on'); panelKind=kind; panelEl.classList.add('on'); panelSize();
   const body=$('#pBody'), tools=$('#pTools'); tools.innerHTML='';
   if(kind==='reply'){
     $('#pTitle').textContent='Answer';
@@ -3106,11 +3113,11 @@ const TRUST=[['ask','✋','Ask me first','Edits files on his own; asks you (out 
   ['trust','⚡','Just do it','Runs anything without asking. Fast, but you won’t get a say.'],
   ['readonly','👀','Look, don’t touch','Can read and explain things, but changes nothing.']];
 const setEl=$('#set');
-function settings(on,tab){ setEl.classList.toggle('on',on); document.body.classList.toggle('pnl',on); if(!panelEl.classList.contains('on')) native(on?'wide:on':'wide:off');
-  if(!on&&!panelEl.classList.contains('on')) reDock();
-  if(on){ menu(false); hideAsk(); panelEl.classList.remove('on'); panelKind=null; if(tab) showTab(tab); renderSettings(); loadMics(); locLoad(); plugLoad(); requestAnimationFrame(moveInd);
-    if(info.update_check!==false) post('/api/update/check',{stale:1800}).then(r=>r.json()).then(u=>{ info.update=u; renderUpdate(); }).catch(()=>{}); }   // fresh "latest" when you look
-  sendRegion(true); }
+function settings(on,tab){ setEl.classList.toggle('on',on);
+  if(on){ menu(false); hideAsk(); panelEl.classList.remove('on'); panelKind=null; }
+  panelSize();
+  if(on){ if(tab) showTab(tab); renderSettings(); loadMics(); locLoad(); plugLoad(); requestAnimationFrame(moveInd);
+    if(info.update_check!==false) post('/api/update/check',{stale:1800}).then(r=>r.json()).then(u=>{ info.update=u; renderUpdate(); }).catch(()=>{}); } }   // fresh "latest" when you look
 function moveInd(){ const b=$('#tabs button.on'), ind=$('#tabInd'); if(!b||!ind) return; ind.style.width=b.offsetWidth+'px'; ind.style.transform=`translateX(${b.offsetLeft-3}px)`; }
 function showTab(t){ $$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t)); $$('#set .tab').forEach(x=>x.classList.toggle('on',x.dataset.tab===t));
   moveInd(); try{ localStorage.setItem('nixi.tab',t); }catch(e){} }
@@ -3358,7 +3365,7 @@ setEl.addEventListener('click',e=>{
   if(bpd) post('/api/projects',{op:'del',name:bpd.dataset.pdel}).then(()=>refresh()).then(renderSettings);
   if(e.target.closest('#projAdd')){ const n=$('#projName').value.trim(), p=$('#projPath').value.trim(); if(!n||!p) return tick('give it a name and a folder',true);
     post('/api/projects',{op:'add',name:n,path:p}).then(r=>r.json()).then(j=>{ if(j.error) return tick(j.error,true); $('#projName').value=''; $('#projPath').value=''; tick('added '+n); return refresh().then(renderSettings); }); }
-  if(bo){ settings(false); openPanel(bo.dataset.open); }
+  if(bo){ openPanel(bo.dataset.open); }
   if(e.target.closest('#pttSet')){ pttCapture=true; renderPtt(); }
   if(e.target.closest('#pttOff')) setSetting({ptt_hotkey:''}).then(()=>{ native('ptt:'); renderPtt(); tick('push-to-talk hotkey off'); });
   if(e.target.closest('#diagCopy')) copyDiagnostics();
@@ -3479,8 +3486,8 @@ function calmCheck(){ document.body.classList.toggle('calm', setEl.classList.con
 // the page is laid out for 340×460: if the window ends up a different size, scale/centre it instead of cutting things off
 let fitK=1, layoutX=0, layoutY=0;
 // room for a long approval card / terminal sheet: ask the window for extra width and height (it shrinks back at [0,0])
-let cardWant=[0,0], sheetWant=[0,0], stageWant=[0,0];
-function sizeWindow(){ const w=Math.max(cardWant[0],sheetWant[0],popWant[0],stageWant[0]), h=Math.max(cardWant[1],sheetWant[1],popWant[1],stageWant[1]);
+let cardWant=[0,0], sheetWant=[0,0], stageWant=[0,0], setWant=[0,0];
+function sizeWindow(){ const w=Math.max(cardWant[0],sheetWant[0],popWant[0],stageWant[0],setWant[0]), h=Math.max(cardWant[1],sheetWant[1],popWant[1],stageWant[1],setWant[1]);
   native('size:'+w+','+h); }   // (sent every time: the window ignores a repeat, and a lost message would leave the card clipped)
 function fit(){ const k=Math.min(1, innerWidth/340, innerHeight/460); fitK=k>0.995?1:k; const bs=document.body.style;
   bs.transformOrigin='0 0'; bs.margin='0'; bs.marginLeft=layoutX+'px'; bs.marginTop=layoutY+'px';
