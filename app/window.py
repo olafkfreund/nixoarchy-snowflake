@@ -28,6 +28,7 @@ import threading
 import time
 
 import aside
+from room import split_room
 import screens
 
 # He's an overlay (a layer-shell surface, like a bar or a notification), which only works when GTK talks Wayland.
@@ -481,7 +482,7 @@ class NixiWindow:
                 p = json.load(open(POS_FILE))
             except (OSError, ValueError):
                 p = {}
-            p.update(gx=self.mx, gy=self.my)
+            p.update(gx=self.mx + self.wide_shift, gy=self.my + self.top_shift)
             os.makedirs(os.path.dirname(POS_FILE), exist_ok=True)
             json.dump(p, open(POS_FILE, "w"))
         except OSError:
@@ -497,7 +498,7 @@ class NixiWindow:
             except (OSError, ValueError):
                 p = {}
             name = next((n for n, i, _ in self._hmons() if i == self.mon_i), None) if self.hypr.ok() else None
-            screens.pos_dict(p, self.mon_i, self.mx + self.wide_shift, self.my, name, self.bar)
+            screens.pos_dict(p, self.mon_i, self.mx + self.wide_shift, self.my + self.top_shift, name, self.bar)
             json.dump(p, open(POS_FILE, "w"))
         except OSError:
             pass
@@ -505,7 +506,7 @@ class NixiWindow:
 
     def _send_corner(self):
         """Tell the page which corner of his screen he sits in (tl/tr/bl/br), from the middle of his own 340px strip."""
-        cx, cy = self.mx + self.wide_shift + W / 2, self.my + H / 2
+        cx, cy = self.mx + self.wide_shift + W / 2, self.my + self.top_shift + H / 2
         if self.layer:                                   # layer mode: mx/my are margins from this monitor's top-left
             g = self._geom()[1]
         else:                                            # X11: mx/my are global screen coordinates
@@ -555,34 +556,28 @@ class NixiWindow:
         L = max(WIDE - W if self.want_panel else 0, CODE_SIDE if self.want_code else 0, BAR_SIDE if self.want_bar else 0)
         R = max(CODE_SIDE if self.want_code else 0, BAR_SIDE if self.want_bar else 0)
         xw, eh = (0, 0) if (self.hover or self.want_bar) else (self.want_xw, self.want_h)
-        L, R = max(L, (xw + 1) // 2), max(R, (xw + 1) // 2)
         if self.hover:
             L = R = 0
-        base = self.mx + self.wide_shift                 # where his own 340px strip starts on the monitor
+        base, basey = self.mx + self.wide_shift, self.my + self.top_shift
         if self.layer:
-            gw = self._geom()[1].width
-            aL, aR = max(0, base), max(0, gw - base - W)
-            if xw:                                   # next to a screen edge: what doesn't fit on one side goes to the other
-                L, R = L + max(0, R - aR), R + max(0, L - aL)
-            L, R = min(L, aL), min(R, aR)
-        elif not (self.want_bar and not (self.want_panel or self.want_code)):
-            L, R = 0, L + R                              # a normal window only grows to the right (it isn't moved)…
-        # height: grow downward as far as the monitor allows, then upward (the page is shifted down by T so he stays put)
-        basey, T, B = self.my + self.top_shift, 0, 0
-        if eh:
-            gh = self._geom()[1].height
-            B = min(eh, max(0, gh - (basey + H)))
-            T = min(eh - B, max(0, basey)) if self.layer else 0
-        if W + L + R == self.cur_w and L == self.wide_shift and H + T + B == self.cur_h and T == self.top_shift:
+            g = self._geom()[1]
+            mon = (0, 0, g.width, g.height)
+        else:
+            g = Gdk.Display.get_default().get_monitor_at_point(base, basey).get_geometry()
+            mon = (g.x, g.y, g.width, g.height)
+        L, R, T, extra_h = split_room(base, basey, W, H, xw, eh, (L, R), mon)
+        if self.hover:
+            L = R = 0
+        if W + L + R == self.cur_w and L == self.wide_shift and H + extra_h == self.cur_h and T == self.top_shift:
             return
-        old = self.wide_shift
-        self.wide_shift, self.cur_w, self.top_shift, self.cur_h = L, W + L + R, T, H + T + B
+        old, old_top = self.wide_shift, self.top_shift
+        self.wide_shift, self.cur_w, self.top_shift, self.cur_h = L, W + L + R, T, H + extra_h
         self.win.set_size_request(self.cur_w, self.cur_h)
         self.win.resize(self.cur_w, self.cur_h)
         if self.layer:
             self._place(base - L, basey - T)
-        elif L != old:                                   # …except round the notch, where we place it ourselves
-            self._xmove(base - L, self.my)
+        elif (L, T) != (old, old_top):
+            self._xmove(base - L, basey - T)
         if not self.layer and self.hypr.ok() and self.hypr.addr:
             try:
                 self.hypr.dispatch(f"resizewindowpixel exact {self.cur_w} {self.cur_h},address:{self.hypr.addr}")
@@ -613,7 +608,8 @@ class NixiWindow:
         """Move him to another screen, to the spot he had there last (bottom-right the first time). Docked, he re-docks on
         the same edge. False if there is nowhere to go."""
         ms = self._hmons() if self.hypr.ok() else []
-        cur = self.mon_i if self.layer else self._mon_at(self.mx + W // 2, self.my + H // 2)[0]
+        cur = self.mon_i if self.layer else self._mon_at(self.mx + self.wide_shift + W // 2,
+                                                        self.my + self.top_shift + H // 2)[0]
         k = next((j for j, m in enumerate(ms) if m[1] == cur), 0)
         arg = (arg or "").strip()
         if arg in ("next", "prev") and len(ms) > 1:
@@ -641,11 +637,11 @@ class NixiWindow:
                 self.bar_home = (tgt[1], x, y)
             bx = {"top": (gw - W) // 2, "bottom": (gw - W) // 2, "left": 0, "right": gw - W}[self.bar]
             by = {"top": 0, "bottom": gh - H, "left": (gh - H) // 2, "right": (gh - H) // 2}[self.bar]
-            self._place(bx - self.wide_shift, by, True, tgt[1])
+            self._place(bx - self.wide_shift, by - self.top_shift, True, tgt[1])
         elif self.layer:
-            self._place(x - self.wide_shift, y, True, tgt[1])
+            self._place(x - self.wide_shift, y - self.top_shift, True, tgt[1])
         else:
-            self._xmove(g.x + x - self.wide_shift, g.y + y)
+            self._xmove(g.x + x - self.wide_shift, g.y + y - self.top_shift)
         self._rewide()
         self._send_corner()
         GLib.timeout_add(100, lambda: (self._save_pos() if self.layer else self._save_xpos(), False)[1])
@@ -1129,7 +1125,7 @@ class NixiWindow:
             self.hpos = None
         self.mons = None
         if on:
-            self.home = (self.mon_i, self.mx, self.my)
+            self.home = (self.mon_i, self.mx + self.wide_shift, self.my + self.top_shift)
             threading.Thread(target=self._follow, daemon=True).start()
         elif getattr(self, "home", None):                          # glide from the cursor back to where he was parked
             threading.Thread(target=self._glide_home, daemon=True).start()
