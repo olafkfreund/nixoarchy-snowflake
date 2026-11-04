@@ -263,12 +263,16 @@ def search_url(query):
 def video_search(query, run=subprocess.run, newest=False):
     """-> up to 3 {id,title,channel,duration} from yt-dlp, or [] on any failure. argv list, one query argument, 8 s."""
     try:
-        r = run(["yt-dlp", "--ignore-config", "--flat-playlist", "-J", ("ytsearchdate3:" if newest else "ytsearch3:") + query], capture_output=True, timeout=8, check=False)
+        # newest: YouTube's own results page sorted by upload date (sp=CAI=); yt-dlp 2026.10 dropped the "ytsearchdate" prefix
+        what = ["--playlist-end", "6", search_url(query) + "&sp=CAI%3D"] if newest else ["ytsearch3:" + query]
+        r = run(["yt-dlp", "--ignore-config", "--flat-playlist", "-J", *what], capture_output=True, timeout=8, check=False)
         entries = json.loads(r.stdout.decode("utf-8", "replace")).get("entries") or []
     except (OSError, subprocess.SubprocessError, ValueError, AttributeError):
         return []
     out = []
-    for e in entries[:3]:
+    for e in entries:
+        if len(out) == 3:
+            break
         if not isinstance(e, dict) or not isinstance(e.get("id"), str) or not _VID.fullmatch(e["id"]):
             continue
         d = e.get("duration")
