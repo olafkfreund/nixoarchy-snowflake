@@ -308,7 +308,7 @@ class LinesTest(unittest.TestCase):
                     continue
                 self.assertIn(k, mine, (code, k))
                 self.assertEqual(self.slots(mine[k]), self.slots(v), (code, k))
-            self.assertEqual(set(self.lang.load(code)["_review"]), set(mine), code)    # all await the native check
+            self.assertEqual(self.lang.load(code)["_review"], [], code)    # (the user's native check cleared them, 2026-11-04)
 
     def test_t_speaks_the_active_language(self):
         self.lang.active = "nb"
@@ -355,7 +355,7 @@ class QuipFilesTest(_ServerEnv):
     def test_the_shipped_files_cover_every_event(self):
         for code in ("nb", "pl"):
             d = json.loads((self.server.APP_DIR / f"quips.{code}.json").read_text(encoding="utf-8"))
-            self.assertEqual(set(d.pop("_review")), set(self.EVENTS), code)    # the native check covers every event
+            self.assertNotIn("_review", d, code)    # (the user's native check cleared them, 2026-11-04)
             self.assertEqual(set(d), set(self.EVENTS), code)
             for event, lines in d.items():
                 self.assertTrue(3 <= len(lines) <= 5, (code, event))
