@@ -942,13 +942,12 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 </form>
 
 <script>
-// The server never writes its token into this page (anyone on the computer can load it). His window reads the token
-// from runtime.json, which only you can read, and passes it in the address after '#' (that part is never sent over
-// the network); the browser fallback passes a one-time ticket instead. Kept for reloads in sessionStorage.
+// The server never writes its token into this page (anyone on the computer can load it). His window supplies it
+// through a user script; tests can use #t= and the browser fallback uses #ticket=. Kept for reloads in sessionStorage.
 let TOKEN='';
 const tokenReady=(async()=>{
   const h=new URLSearchParams(location.hash.slice(1));
-  if(h.get('t')) TOKEN=h.get('t');
+  if(window.__nixiT){ TOKEN=String(window.__nixiT); delete window.__nixiT; } else if(h.get('t')) TOKEN=h.get('t');
   else if(h.get('ticket')){ try{ const r=await fetch('/api/claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticket:h.get('ticket')})}); TOKEN=(await r.json()).token||''; }catch(e){} }
   if(TOKEN){ try{ sessionStorage.setItem('nixi-t',TOKEN); }catch(e){} }
   else{ try{ TOKEN=sessionStorage.getItem('nixi-t')||''; }catch(e){} }

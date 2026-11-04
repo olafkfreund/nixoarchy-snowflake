@@ -26,6 +26,7 @@ import socket
 import sys
 import threading
 import time
+from urllib.parse import urlparse
 
 import aside
 import screens
@@ -135,6 +136,13 @@ def log(msg):
     if msg not in _logged:
         _logged.add(msg)
         print(f"[nixi] {msg}", file=sys.stderr, flush=True)
+
+
+def token_script(tok, port):
+    """The user script that gives the page its token. WebKit's allow-list matches the host only, never the port, so
+    the script itself checks the exact origin: no other page on 127.0.0.1 gets it."""
+    origin = f"http://127.0.0.1:{port}"
+    return f"if(location.origin==={json.dumps(origin)})window.__nixiT={json.dumps(tok)};", ["http://127.0.0.1/*"]
 
 
 def send(cmd):
@@ -364,7 +372,7 @@ class NixiWindow:
             self.save_t = None
             w.connect("configure-event", self._moved)
 
-        ucm = WebKit2.UserContentManager()
+        ucm = self.ucm = WebKit2.UserContentManager()
         ucm.register_script_message_handler("nixiui")
         ucm.connect("script-message-received::nixiui", self._on_msg)
         v = self.view = WebKit2.WebView.new_with_user_content_manager(ucm)
@@ -388,8 +396,7 @@ class NixiWindow:
         except TypeError:
             pass
         self.url = url
-        v.connect("load-changed", lambda _v, ev: self._send_corner() if ev == WebKit2.LoadEvent.FINISHED else None)
-        v.load_uri(self._authed_url())
+        self._start_page()
         w.add(v)
         w.connect("delete-event", lambda *a: (self.hide(), True)[1])
         if not self.layer:
@@ -1249,18 +1256,44 @@ class NixiWindow:
                 log(f"hover: moving the window failed ({e})")
 
     # ---- messages from the page
-    def _authed_url(self):
-        """The page's address with the server's token after '#': read from runtime.json (only you can read it) and
-        never on a command line or in the page the server hands out; the part after '#' is never sent anywhere."""
+    def _token(self, tries=50):
         rt = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "nixi-companion", "runtime.json")
-        for _ in range(50):                                            # (a just-started server writes it in a moment)
+        for _ in range(tries):                                         # (a just-started server writes it in a moment)
             try:
                 with open(rt) as f:
-                    return self.url + "#t=" + json.load(f)["token"]
+                    return json.load(f)["token"]
             except (OSError, ValueError, KeyError):
                 time.sleep(0.1)
         log("couldn't read the server's token (runtime.json)")
-        return self.url
+        return ""
+
+    def _hand_token(self, tries=50):
+        self.ucm.remove_all_scripts()
+        tok = self._token(tries)
+        if tok:
+            src, allow = token_script(tok, urlparse(self.url).port)
+            self.ucm.add_script(WebKit2.UserScript.new(src, WebKit2.UserContentInjectedFrames.TOP_FRAME,
+                                                       WebKit2.UserScriptInjectionTime.START, allow, None))
+
+    def _start_page(self):
+        self.view.connect("load-changed", lambda _v, ev: self._send_corner() if ev == WebKit2.LoadEvent.FINISHED else None)
+        origin = f"http://127.0.0.1:{urlparse(self.url).port}/"
+
+        def retry():
+            self._hand_token(tries=1)                                  # (no waiting on the main thread: it retries anyway)
+            self.view.load_uri(self.url)
+            return False
+
+        def failed(_view, _ev, uri, err):
+            if not uri.startswith(origin) or (err is not None and err.matches(WebKit2.network_error_quark(),
+                                                                                WebKit2.NetworkError.CANCELLED)):
+                return False                                       # (a newer load replaced this one: not a failure)
+            GLib.timeout_add(1000, retry)
+            return True
+
+        self.view.connect("load-failed", failed)
+        self._hand_token()
+        self.view.load_uri(self.url)
 
     def _on_msg(self, _ucm, res):
         try:
@@ -1268,7 +1301,8 @@ class NixiWindow:
         except AttributeError:
             msg = res.to_string()
         if msg == "reauth":                                            # the server restarted: hand over its new token
-            self.view.load_uri(self._authed_url())
+            self._hand_token()
+            self.view.load_uri(self.url)
             return
         if msg.startswith("region:"):
             try:
