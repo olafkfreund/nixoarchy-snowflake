@@ -245,6 +245,18 @@ class SandboxTest(unittest.TestCase):
         self.assertEqual(h["badges"][0], {"k": "gen", "v": "system-h-1"})
         self.assertTrue(all(m["pct"] is None for m in h["meters"][:2]))      # unknown is null, never 0
 
+    def test_nix_status_partial_failure_is_not_all_fine(self):
+        for failed, failed_system, items, tone, say in (
+            (None, [], ["not all checked"], "warn", "I couldn't check all the services."),
+            (["a.service"], None, ["a.service"], "bad", "One failed service: a.service. I couldn't check all of them."),
+        ):
+            with self.subTest(failed=failed, failed_system=failed_system), \
+                    mock.patch.object(plugins, "system_status", return_value={"failed": failed, "failed_system": failed_system}):
+                got = plugins.run_stage(load(EX / "nix-status"), "nixi status", fresh=True)
+                self.assertEqual(got["hosts"][0]["lists"][0]["items"], items)
+                self.assertEqual(got["hosts"][0]["lists"][0]["tone"], tone)
+                self.assertEqual(got["say"], say)
+
     def test_a_file_over_64_mib_cannot_be_written(self):
         p = self.mk("import json\ntry:\n    with open('/tmp/big', 'wb') as f:\n        for _ in range(80):\n            f.write(b'x' * (1 << 20))\n    r = 'wrote'\n"
                     "except OSError:\n    r = 'refused'\nprint(json.dumps({'v':1,'kind':'facts','title':'t','points':[r]}))")

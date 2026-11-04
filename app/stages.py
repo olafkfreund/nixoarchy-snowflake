@@ -424,6 +424,8 @@ class Store:
 
     def replace(self, refresh_token, stage):
         """Update the current gauges page while preserving its tokens and age."""
+        if stage.get("kind") != "gauges":
+            return None
         with self.lock:
             e = self._live(self.cur)
             if not e or e[0].get("refresh") != refresh_token or e[1].get(refresh_token, (None,))[0] != "refresh":

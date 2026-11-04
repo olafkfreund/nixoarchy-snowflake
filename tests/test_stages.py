@@ -157,6 +157,8 @@ class StoreTest(unittest.TestCase):
         self.assertIn("CPU: 23%", self.s.get(copy)[1]["text"])
         self.assertNotIn("CPU: 18%", self.s.get(copy)[1]["text"])
         self.assertEqual(self.s.cur[2], 0)
+        self.assertIsNone(self.s.replace(refresh, S.validate(FACTS)))
+        self.assertEqual(self.s.current()["kind"], "gauges")
         self.s.close()
         self.assertIsNone(self.s.replace(refresh, updated))
         page = self.s.put(stage, refresh=("nix-status", "system status"))

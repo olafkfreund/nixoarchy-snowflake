@@ -59,10 +59,13 @@ if up is not None:
     d, h, m = int(up // 86400), int(up % 86400 // 3600), int(up % 3600 // 60)
     badges.append({"k": "up", "v": f"{d}d {h}h" if d else f"{h}h {m}m" if h else f"{m}m"})
 fu, fs_ = ss.get("failed"), ss.get("failed_system")
-lists_ok = isinstance(fu, list) or isinstance(fs_, list)
+lists_ok = isinstance(fu, list) and isinstance(fs_, list)
 units = [str(x)[:80] for q in (fu, fs_) if isinstance(q, list) for x in q]
-if not lists_ok:
+if fu is None and fs_ is None:
     flist, say = {"title": "Failed", "items": ["unavailable"], "tone": "warn"}, "I couldn't check the services."
+elif not lists_ok:
+    flist, say = ({"title": "Failed", "items": units[:5] or ["not all checked"], "tone": "bad" if units else "warn"},
+                  (f"{len(units)} failed services." if len(units) > 1 else "One failed service: " + units[0] + ".") + " I couldn't check all of them." if units else "I couldn't check all the services.")
 elif units:
     flist, say = {"title": "Failed", "items": units[:5], "tone": "bad"}, f"One failed service: {units[0][:60]}." if len(units) == 1 else f"{len(units)} failed services."
 else:

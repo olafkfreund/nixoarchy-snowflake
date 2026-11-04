@@ -989,7 +989,7 @@ function applyThemeVars(t){   // the desktop theme's colours for the notch, pane
     '--dim':t.dark_foreground||t.muted||t.foreground,'--line':t.selection||t.lighter_background,
     '--tbg':t.background,'--ink':t.foreground,'--inksh':t.darker_background,'--tacc':t.accent,'--tred':t.red,'--tgreen':t.green,'--tyellow':t.yellow}:{};   // the bubble: the terminal's own colours
   for(const k of ['--notch','--panel','--panel2','--text','--dim','--line','--tbg','--ink','--inksh','--tacc','--tred','--tgreen','--tyellow']) v[k]?st.setProperty(k,v[k]):st.removeProperty(k);
-  NOTCH_COL=v['--notch']||'#000000'; }
+  NOTCH_COL=v['--notch']||'#000000'; if(stgState==='open'&&stg?.kind==='gauges') termContrast(); }
 function applyLook(L){
   const fl=L.follow_theme!==false&&info&&info.theme; applyLambdas(fl&&!L.random?info.theme:null); applyThemeVars(fl?info.theme:null); L=themed(L);
   LOOK={...LOOK_DEFAULT,...L};
@@ -2378,26 +2378,32 @@ function gaugeHostFill(p,h){ p.className='tmh '+(h.state||'up'); p.querySelector
   (h.badges||[]).forEach(x=>{ const s=hx('span','tmg'+(x.tone?' '+x.tone:'')); s.appendChild(hx('em',null,x.k)); s.appendChild(document.createTextNode(' '+x.v)); b.appendChild(s); });
   const ls=p.querySelector('.tmls'); ls.textContent='';
   (h.lists||[]).forEach(l=>{ const d=hx('div','tmli'+(l.tone?' '+l.tone:'')); d.appendChild(hx('div','tmlt',l.title)); (l.items||[]).forEach(t=>d.appendChild(hx('div','tmit',t))); ls.appendChild(d); }); }
-function stageGauges(ev,bd,acts,fn){ gaugeHist={}; gaugeHistAdd(ev); let n=0;
+function stageGauges(ev,bd,acts,fn,reset=true){ if(reset) gaugeHist={}; gaugeHistAdd(ev); let n=0;
   (ev.hosts||[]).forEach(h=>{ const p=hx('section'); p.dataset.host=h.name; p.appendChild(hx('span','tmn')); p.appendChild(hx('div','tmb')); const rs=hx('div','tmr');
     (h.meters||[]).forEach(m=>{ const r=hx('div'); r.setAttribute('role','group'); r.dataset.label=m.label; r.style.setProperty('--i',n++);
       r.appendChild(hx('span','tml',m.label)); const bar=hx('span','tmbar'); bar.appendChild(hx('i')); r.appendChild(bar); r.appendChild(hx('span','tmv'));
       const x=hx('div','tmx'); x.appendChild(hx('span','tmt')); const s=hx('span','tms'); s.setAttribute('aria-hidden','true'); x.appendChild(s); r.appendChild(x); gaugeFill(r,h,m); rs.appendChild(r); });
     p.appendChild(rs); p.appendChild(hx('div','tmls')); gaugeHostFill(p,h); bd.appendChild(p); });
   fn.textContent=ev.source?'Source: '+ev.source:''; if(ev.token) acts.appendChild(stageBtn('Copy',b=>stageAct('copy',ev.token,b))); termContrast(); }
-function lumOf(c){ const m=String(c).trim().match(/^#([0-9a-f]{6})$/i); if(!m) return null;
-  const v=[0,2,4].map(i=>parseInt(m[1].slice(i,i+2),16)/255).map(x=>x<=.03928?x/12.92:((x+.055)/1.055)**2.4); return .2126*v[0]+.7152*v[1]+.0722*v[2]; }
-function termContrast(){ stgEl.classList.remove('fixed'); const cs=getComputedStyle(stgEl), bg=lumOf(cs.getPropertyValue('--tbg')), fg=lumOf(cs.getPropertyValue('--ink'));
+function lumOf(c){ c=String(c).trim(); const hex=c.match(/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i), rgb=c.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  const v=hex?(hex[1].length<=4?[...hex[1].slice(0,3)].map(x=>parseInt(x+x,16)):[0,2,4].map(i=>parseInt(hex[1].slice(i,i+2),16))):rgb?rgb.slice(1,4).map(Number):null;
+  if(!v) return null; const l=v.map(x=>x/255).map(x=>x<=.03928?x/12.92:((x+.055)/1.055)**2.4); return .2126*l[0]+.7152*l[1]+.0722*l[2]; }
+function termContrast(){ stgEl.classList.remove('fixed'); const cs=getComputedStyle(stgEl), bg=lumOf(cs.getPropertyValue('--tbg')), fg=lumOf(cs.color);
   if(bg==null||fg==null) return;                     // (the theme is off: the fallbacks are already the dark palette)
   if(bg>.2||(Math.max(bg,fg)+.05)/(Math.min(bg,fg)+.05)<4.5) stgEl.classList.add('fixed'); }   // light background, or text under 4.5:1
-function gaugeUpdate(ev){ if(!stgOpen()||!stg||stg.kind!=='gauges'||ev.kind!=='gauges'||ev.refresh!==stg.refresh) return;   // in place: no rebuild, entrance, focus move or timer reset
-  stg=Object.assign({},stg,ev); gaugeHistAdd(ev);
+function gaugeUpdate(ev){ if(!stgOpen()||!stg||stg.kind!=='gauges'||ev.kind!=='gauges'||ev.refresh!==stg.refresh) return;
+  stg=Object.assign({},stg,ev);
+  const panels=[...stgEl.querySelectorAll('.tmh')], hosts=ev.hosts||[];
+  if(panels.length!==hosts.length||hosts.some((h,i)=>panels[i].dataset.host!==h.name||[...panels[i].querySelectorAll('.tmw')].map(r=>r.dataset.label).join('\0')!==(h.meters||[]).map(m=>m.label).join('\0'))){
+    stgEl.classList.remove('go'); const bd=$('#stgBd'), acts=$('#stgActs'), fn=$('#stgFn'); bd.textContent=''; acts.textContent=''; fn.textContent='';
+    stageGauges(ev,bd,acts,fn,false); return; }
+  gaugeHistAdd(ev);
   for(const h of ev.hosts||[]){ const p=[...stgEl.querySelectorAll('.tmh')].find(e=>e.dataset.host===h.name); if(!p) continue; gaugeHostFill(p,h);
     for(const m of h.meters||[]){ const r=[...p.querySelectorAll('.tmw')].find(e=>e.dataset.label===m.label); if(r) gaugeFill(r,h,m); } } }
 function gaugeStop(){ if(gaugeRef){ clearInterval(gaugeRef.t); gaugeRef=null; stgUse=performance.now(); } }   // (a board that stops updating gets the usual 30 s from now)
 function gaugeLoop(){ const r=gaugeRef; if(!r) return;   // paused (not stopped) while hidden or not shown
   if(stgState!=='open') return gaugeStop(); if(!stgPosted||document.hidden) return;
-  post('/api/stage/act',{token:r.tok,act:'refresh'}).then(x=>x.json()).then(j=>{ if(gaugeRef===r&&!j.ok) gaugeStop(); }).catch(()=>{ if(gaugeRef===r) gaugeStop(); });
+  post('/api/stage/act',{token:r.tok,act:'refresh'}).then(x=>x.json()).then(j=>{ if(gaugeRef===r){ r.failed=j.ok?0:r.failed+1; if(r.failed>=2) gaugeStop(); } }).catch(()=>{ if(gaugeRef===r) gaugeStop(); });
   if(++r.n>=24) gaugeStop(); }
 function stageText(ev){ if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))))).join('\n'); } const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
@@ -2413,7 +2419,7 @@ function stageShow(ev){
     if(ev.kind==='commands'&&!REDUCED.matches){ chalkEl.classList.add('on'); at(250,()=>{ chalkEl.classList.add('pt'); const r=stgEl.querySelector('.it'); if(r) r.classList.add('pt'); }); } });
   at(500,()=>sendRegion(true));
   clearInterval(stgTimer); stgTimer=setInterval(stageTick,1000);
-  if(ev.kind==='gauges'&&ev.refresh) gaugeRef={tok:ev.refresh,n:0,t:setInterval(gaugeLoop,GAUGE_MS)};
+  if(ev.kind==='gauges'&&ev.refresh) gaugeRef={tok:ev.refresh,n:0,failed:0,t:setInterval(gaugeLoop,GAUGE_MS)};
 }
 function stageHide(toTab){
   stgTm.forEach(clearTimeout); stgTm=[]; clearInterval(stgTimer); stgTimer=null; gaugeStop(); if(!toTab) gaugeHist={};

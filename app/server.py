@@ -4731,6 +4731,8 @@ def stage_act(token, act):
             if str(e) == plugins.CHANGED:
                 Plug.reload()
             return {"ok": False}
+        if st["kind"] != "gauges" or not st.get("live"):
+            return {"ok": False}
         page = STAGES.replace(token, st)
         if page is None:
             return {"ok": False, "error": "gone"}

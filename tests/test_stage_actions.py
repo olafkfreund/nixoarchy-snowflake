@@ -173,6 +173,20 @@ class StageActionsTest(unittest.TestCase):
             self.assertEqual(self.s.stage_act(page["token"], "copy"), {"ok": True})
             self.assertIn(b"83", copy.call_args.kwargs["input"])
 
+    def test_refresh_rejects_plugin_changing_kind_or_live(self):
+        _, page = self.refresh_page()
+        facts = self.stages.validate({"v": 1, "kind": "facts", "title": "Status", "points": ["changed"]})
+        inactive = self.stages.validate({"v": 1, "kind": "gauges", "title": "Status", "live": False,
+                                         "hosts": [{"name": "p620", "meters": [{"label": "CPU", "pct": 12}]}]})
+        with mock.patch.object(self.s.Plug, "stage", {"status": object()}), \
+                mock.patch.object(self.s.Desk, "locked", return_value=False), \
+                mock.patch.object(self.s.plugins, "run_stage", side_effect=[facts, inactive]), \
+                mock.patch.object(self.s.BUS, "pub") as pub:
+            self.assertEqual(self.s.stage_act(page["refresh"], "refresh"), {"ok": False})
+            self.assertEqual(self.s.stage_act(page["refresh"], "refresh"), {"ok": False})
+            pub.assert_not_called()
+        self.assertEqual(self.s.STAGES.current()["kind"], "gauges")
+
     def test_open_play_not_yet_and_unknown(self):
         self.assertEqual(self.s.stage_act(self.tok, "open")["error"], "not yet")
         self.assertFalse(self.s.stage_act(self.tok, "run")["ok"])
