@@ -2225,22 +2225,25 @@ async function startRec(mode){
     const res=await post('/api/listen',{mode:mode==='approve'?'auto':mode});
     if(!res.ok){ const j=await res.json().catch(()=>({})); throw new Error(j.error||res.statusText); }
     await readSSE(res,ev=>{ switch(ev.t){
-      case 'open': r.opened=true; if(mode!=='approve'){ setYou('listening…'); sfx('wake'); } if(r.stopping) post('/api/listen/stop',{cancel:r.cancelled}); break;
+      case 'open': r.opened=true; if(mode!=='approve'&&!r.cancelled){ setYou('listening…'); sfx('wake'); } if(r.stopping) post('/api/listen/stop',{cancel:r.cancelled}); break;
       case 'lvl': micRaw=ev.v; break;
-      case 'speech': if(mode!=='approve') setYou('…'); break;
-      case 'note': tick(ev.text,true); break;
+      case 'speech': if(mode!=='approve'&&!r.cancelled) setYou('…'); break;
+      case 'note': if(!r.cancelled) tick(ev.text,true); break;
       case 'transcribing': r.stopping=true; transcribing=true; break;
       case 'text': text=ev.text; break;
       case 'error': err=ev.text; break; } });
   }catch(e){ err=e.message; }
   if(rec===r) rec=null; transcribing=false; micRaw=0;
+  if(r.cancelled) return mode==='approve'?'':null;
   if(mode==='approve') return text||'';
   if(err){ fail('mic: '+err); return null; }
   if(text) send(text);
-  else { setYou(''); if(!r.cancelled){ himSet("didn't catch that"); poke('confused',1600); } capQuiet(); }
+  else { setYou(''); himSet("didn't catch that"); poke('confused',1600); capQuiet(); }
   return text;
 }
-function stopRec(cancel){ const r=rec; if(!r) return; r.stopping=true; if(cancel) r.cancelled=true; if(r.opened) post('/api/listen/stop',{cancel:!!cancel}); }
+function stopRec(cancel){ const r=rec; if(!r) return; r.stopping=true;
+  if(cancel){ r.cancelled=true; rec=null; if(r.mode!=='approve'){ setYou(''); capQuiet(); } }
+  if(r.opened) post('/api/listen/stop',{cancel:!!cancel}); }
 
 /* ================= caption ================= */
 // Claude tags how it means each sentence ("[proud] Fixed it.") — see VOICE_PROMPT in server.py. The tags drive his face
