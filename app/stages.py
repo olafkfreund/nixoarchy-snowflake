@@ -502,7 +502,7 @@ class Store:
             e = self._live(self.cur)
             if not items or not e or e[0].get("kind") != "headlines" or e[0].get("copy") != slip or "clips" in e[0]:
                 return None
-            page, toks = dict(e[0]), dict(e[1])
+            page, toks = e[0], e[1]           # (in place: callers waiting on `STAGES.current() is before` must still see the same stage)
             page["clips"] = []
             lines = []
             for it in items:
@@ -513,7 +513,6 @@ class Store:
                 parts = [it[k] for k in ("channel", "duration") if it[k]]
                 lines.append(it["title"] + (" — " + ", ".join(parts) if parts else ""))
             toks[slip] = ("facts", {"text": e[1][slip][1]["text"] + "\nWatch:\n" + "\n".join(lines)})
-            self.cur = (page, toks, e[2])
             return page
 
     def _day(self, stage, page, toks):

@@ -485,7 +485,7 @@ const acts = () => ev("return __acts.slice()");
   const cons = await ev(`plugConsent({id:'news',name:'News',sha256:'abc',what:'Headlines',runs:'run',network:true,videos:true,reads:[],config:'/tmp/news.json'}); const t1=document.querySelector('#plugCons pre').textContent;
     plugConsent({id:'news',name:'News',sha256:'abc',what:'Headlines',runs:'run',network:true,videos:false,reads:[],config:''}); const t2=document.querySelector('#plugCons pre').textContent;
     plugConsent(null); return [t1, t2]`);
-  check(cons[0].includes("Can search YouTube for news clips (off in its settings)") && !cons[1].includes("Can search YouTube"), "press: consent card shows the YouTube line when videos is true", JSON.stringify(cons));
+  check(cons[0].includes("Searches YouTube for news clips (on by default; turn off in its settings)") && !cons[1].includes("Searches YouTube"), "press: consent card shows the YouTube line when videos is true", JSON.stringify(cons));
   await motion(null); await ev("stageClose(); return 1"); await sleep(320); }
 
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});

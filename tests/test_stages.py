@@ -228,9 +228,8 @@ class StoreTest(unittest.TestCase):
         self.t[0] = 5
         items = [{"id": "abcdefghijk", "title": "Clip", "channel": "BBC", "duration": "1:23"}]
         updated = self.s.add_clips(page["copy"], items)
-        self.assertEqual(self.s.current(), updated)
-        self.assertIsNot(updated, page)
-        self.assertNotIn("clips", page)
+        self.assertIs(self.s.current(), page)   # (Codex review: same object, so a pending `current() is before` still matches)
+        self.assertIs(updated, page)
         self.assertEqual(self.s.prev[0], previous)
         self.assertTrue(self.s.visible())
         self.assertEqual(self.s.cur[2], 0)

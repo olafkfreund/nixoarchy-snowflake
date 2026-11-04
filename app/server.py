@@ -1807,7 +1807,7 @@ def plugin_caps(m):
         if "peer-status" in m["stage"].get("reads", []):
             out.append("It can read your other machines' status (load, memory, disks, failed services)")
         if m["stage"].get("videos"):
-            out.append("Can search YouTube for news clips (off in its settings)")
+            out.append("Searches YouTube for news clips (on by default; turn off in its settings)")
     return out
 
 
