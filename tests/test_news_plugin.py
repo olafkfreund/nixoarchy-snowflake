@@ -43,6 +43,10 @@ class NewsTest(unittest.TestCase):
         rss = news.parse_feed(RSS.replace(b"Wed, 04 Nov 2026 10:00:00 GMT", b"Thu, 01 Jan 2099 00:00:00 GMT"), "BBC")
         self.assertIsNone(rss[0]["at"])
 
+    def test_rss_link_wrapped_in_whitespace_keeps_open(self):   # Opus review: pretty-printed feeds
+        got = news.parse_feed(b"<rss><channel><item><title>T</title><link>\n  https://a.com/x\n</link></item></channel></rss>", "F")
+        self.assertEqual(got[0]["url"], "https://a.com/x")
+
     def test_merge_newest_and_dedupes_link_then_title(self):
         old = news.parse_feed(RSS, "BBC")
         new = news.parse_feed(ATOM, "Guardian")

@@ -3,6 +3,7 @@
 import datetime
 import email.utils
 import html
+import http.client
 import json
 import re
 import sys
@@ -68,7 +69,7 @@ def parse_feed(data, source):
             link = next((el.get("href") for el in links if el.get("rel", "alternate") == "alternate" and el.get("href")), None)
             at = stamp(get("updated") or get("published"), True)
         else:
-            link = get("link")
+            link = (get("link") or "").strip()   # (pretty-printed feeds wrap the link in whitespace)
             at = stamp(get("pubDate"))
         item = {"title": title, "source": source, "at": at}
         if url_ok(link):
@@ -111,7 +112,7 @@ def fetch(url, source, results, index):
         if len(data) > 2 * 1024 * 1024:
             raise ValueError("feed too large")
         results[index] = parse_feed(data, source)
-    except (OSError, ValueError, ET.ParseError):
+    except (OSError, ValueError, ET.ParseError, http.client.HTTPException):
         pass
 
 
@@ -139,6 +140,7 @@ def main():
         jobs.append(job)
     for job in jobs:
         job.join(max(0, deadline - time.monotonic()))
+    results = list(results)   # (a late thread must not change the list between counting and merging)
     failed = sum(result is None for result in results)
     suffix = f"{failed} couldn't be reached" if failed else ""
     items = merge(result for result in results if result is not None)

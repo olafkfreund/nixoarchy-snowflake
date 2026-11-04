@@ -209,7 +209,7 @@ def read_config(pid, snap_dir):
 
 def edit_config(pid, d):
     """Create the settings file from the plugin's defaults.json if it is missing (never through a link); -> its path."""
-    p = config_path(pid)
+    p, text = config_path(pid), _read_small(os.path.join(d, "defaults.json"))   # (read first: a failed read leaves no empty file)
     os.makedirs(p.parent, mode=0o700, exist_ok=True)
     try:
         fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
@@ -218,7 +218,7 @@ def edit_config(pid, d):
             raise
         return p
     with os.fdopen(fd, "w") as f:
-        f.write(_read_small(os.path.join(d, "defaults.json")))
+        f.write(text)
     return p
 
 
