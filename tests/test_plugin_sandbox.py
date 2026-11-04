@@ -303,6 +303,66 @@ class SandboxTest(unittest.TestCase):
         self.assertEqual([m["pct"] for m in h["meters"]], [18.0, 93.8, 50.0, 25.0, None, None])
         self.assertEqual((h["meters"][4]["text"], h["meters"][5]["text"], h["badges"][1]), ("1.4 MB/s", "unavailable", {"k": "up", "v": "1d 1h"}))
 
+    def fleet(self, peers, ss=None, rev="a" * 40):
+        import peers as peers_mod
+        import stages
+        ss = ss if ss is not None else {"generation": "nixos-system-h-1", "failed": [], "failed_system": [], "host": "p620", "rev": rev, "built": "2026-11-04T11:56:52.893078+00:00"}
+        with mock.patch.object(plugins, "system_status", return_value=ss), mock.patch.object(plugins, "peers_allowed", lambda: True), \
+                mock.patch.object(peers_mod, "snapshot", return_value=peers):
+            got = plugins.run_stage(load(EX / "nix-status"), "nixi status", fresh=True)
+        self.assertIsNotNone(stages.validate(got))
+        return got
+
+    @staticmethod
+    def up(name, rev="a" * 40, failed=()):
+        return {"name": name, "state": "up", "last_ok": 1.0, "status": {"rev": rev, "built": "2026-11-03T08:01:02+00:00", "failed": None, "failed_system": list(failed),
+                "cpu_pct": 5.0, "uptime_s": 3600, "mem": {"total": 100, "available": 50}, "disks": [{"path": "/", "total": 100, "used": 10}]}}
+
+    def test_nix_status_fleet_shows_every_machine(self):
+        got = self.fleet([self.up("p510", failed=["secret.service"]), {"name": "evo", "state": "asking", "status": None, "last_ok": None},
+                          {"name": "razer", "state": "down", "status": None, "last_ok": None}])
+        self.assertEqual([(h["name"], h["state"]) for h in got["hosts"]], [("p620", "up"), ("p510", "up"), ("evo", "stale"), ("razer", "down")])
+        self.assertEqual([m["label"] for m in got["hosts"][1]["meters"]], ["CPU", "MEM", "/", "STORE"])
+        self.assertEqual(got["hosts"][3]["badges"], [{"k": "last", "v": "not seen yet"}])
+        self.assertEqual(got["say"], "p510 has one failed service. razer is off.")
+        self.assertNotIn("secret", got["say"])
+        self.assertEqual({"k": "rev", "v": "aaaaaaa"}, got["hosts"][0]["badges"][1])
+        # built is the date of system_status's full ISO 8601 time, on this host and on peers
+        self.assertIn({"k": "built", "v": "2026-11-04"}, got["hosts"][0]["badges"])
+        self.assertIn({"k": "built", "v": "2026-11-03"}, got["hosts"][1]["badges"])
+
+    def test_nix_status_fleet_without_peers_is_the_one_host_board(self):
+        got = self.fleet([])
+        self.assertEqual((len(got["hosts"]), got["say"]), (1, "All fine."))
+
+    def test_nix_status_fleet_all_fine(self):
+        self.assertEqual(self.fleet([self.up("p510"), {"name": "evo", "state": "asking", "status": None, "last_ok": None}])["say"], "All machines look fine.")
+
+    def test_nix_status_fleet_revisions(self):
+        got = self.fleet([self.up("p510", rev="b" * 40)])
+        self.assertEqual(got["hosts"][1]["badges"][0], {"k": "rev", "v": "≠ bbbbbbb", "tone": "warn"})
+        self.assertEqual(got["say"], "p510 is on another revision.")
+        got = self.fleet([self.up("p510", rev="c" * 40 + "-dirty")])
+        self.assertIn("dirty", got["hosts"][1]["badges"][0]["v"])
+
+    def test_nix_status_fleet_unknown_failed_units_are_not_none(self):   # failed_system null: the check failed on that machine
+        peer = self.up("p510")
+        peer["status"]["failed_system"] = None
+        got = self.fleet([peer])
+        self.assertEqual(got["hosts"][1]["lists"], [{"title": "Failed (system)", "items": ["unknown"], "tone": "warn"}])
+        self.assertEqual(got["say"], "No problems I can see.")
+
+    def test_nix_status_fleet_a_peers_bad_text_cant_blank_the_board(self):   # (fleet() validates the whole board)
+        peer = self.up("p510", rev="b\x07" + "b" * 39, failed=["", "a\nb", "ok.service"])
+        got = self.fleet([peer])
+        self.assertEqual(got["hosts"][1]["lists"][0]["items"], ["ab", "ok.service"])
+        self.assertEqual(got["hosts"][1]["badges"][0]["v"], "≠ bbbbbbb")
+
+    def test_nix_status_fleet_say_is_capped(self):
+        got = self.fleet([self.up("m%d" % i + "x" * 30, failed=["a", "b"]) for i in range(5)])
+        self.assertLessEqual(len(got["say"]), 200)
+        self.assertRegex(got["say"], r"and \d+ more\.$")
+
     @unittest.skipUnless(plugins.pasta_ok(), "needs pasta")
     def test_rss_headlines_example_against_a_local_feed(self):
         # the fixture listens on the host's loopback, which the sandbox cannot see; this test alone maps 10.255.255.1 to it (production never does)

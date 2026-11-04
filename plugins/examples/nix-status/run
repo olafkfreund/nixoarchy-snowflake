@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Nix status: one live `gauges` stage on stdout. The sandbox shows it nothing of the system: Nixi passes system_status on stdin (reads: system-status); no network."""
+"""Nix status: one live `gauges` stage on stdout. The sandbox shows it nothing of the system: Nixi passes system_status on stdin (reads: system-status, peer-status); no network."""
 import json
 import os
 import re
 import sys
+import time
 
 
 def num(x):
@@ -30,9 +31,11 @@ def rate_meter(label, bps):
 
 
 try:
-    ss = json.load(sys.stdin).get("system_status") or {}
+    feed = json.load(sys.stdin)
 except ValueError:
-    ss = {}
+    feed = {}
+feed = feed if isinstance(feed, dict) else {}
+ss = feed.get("system_status") or {}
 if not isinstance(ss, dict):
     ss = {}
 disks = ss.get("disks") if isinstance(ss.get("disks"), list) else None
@@ -43,21 +46,59 @@ if disks is None:                                   # an older Nixi sends no dis
         disk["/nix/store"] = {"total": fs.f_blocks * fs.f_frsize, "used": (fs.f_blocks - fs.f_bfree) * fs.f_frsize}
     except OSError:
         pass
-mem = ss.get("mem") if isinstance(ss.get("mem"), dict) else {}
-tot, avail = num(mem.get("total")), num(mem.get("available"))
-net = ss.get("net") if isinstance(ss.get("net"), dict) else {}
-cpu = num(ss.get("cpu_pct"))
-meters = [{"label": "CPU", "pct": None if cpu is None else min(100.0, cpu), "text": "" if cpu is not None else "unavailable"},
+
+
+def meters_of(ss, disk, with_net=True):
+    mem = ss.get("mem") if isinstance(ss.get("mem"), dict) else {}
+    tot, avail = num(mem.get("total")), num(mem.get("available"))
+    net = ss.get("net") if isinstance(ss.get("net"), dict) else {}
+    cpu = num(ss.get("cpu_pct"))
+    ms = [{"label": "CPU", "pct": None if cpu is None else min(100.0, cpu), "text": "" if cpu is not None else "unavailable"},
           used_meter("MEM", tot, None if tot is None or avail is None else tot - avail),
           used_meter("/", (disk.get("/") or {}).get("total"), (disk.get("/") or {}).get("used")),
-          used_meter("STORE", (disk.get("/nix/store") or {}).get("total"), (disk.get("/nix/store") or {}).get("used")),
-          rate_meter("NET ↓", net.get("rx_bps")), rate_meter("NET ↑", net.get("tx_bps"))]
-meters[0] = {k: v for k, v in meters[0].items() if v != ""}
+          used_meter("STORE", (disk.get("/nix/store") or {}).get("total"), (disk.get("/nix/store") or {}).get("used"))]
+    if with_net:
+        ms += [rate_meter("NET ↓", net.get("rx_bps")), rate_meter("NET ↑", net.get("tx_bps"))]
+    ms[0] = {k: v for k, v in ms[0].items() if v != ""}
+    return ms
+
+
+def uptime(up):
+    d, h, m = int(up // 86400), int(up % 86400 // 3600), int(up % 3600 // 60)
+    return f"{d}d {h}h" if d else f"{h}h {m}m" if h else f"{m}m"
+
+
+CTRL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def clean(x, n=80):
+    """A peer's text as the board accepts it (no control characters, not empty), else None: one bad
+    string from another machine must not make Nixi refuse the whole board, this host included."""
+    x = CTRL.sub("", x).strip()[:n] if isinstance(x, str) else ""
+    return x or None
+
+
+def rev7(r):
+    return r[:7] + " dirty" if r.endswith("-dirty") else r[:7]
+
+
+def rev_badge(r, mine):
+    if not r or not mine:
+        return {"k": "rev", "v": "—"}
+    return {"k": "rev", "v": rev7(r)} if r == mine else {"k": "rev", "v": "≠ " + rev7(r), "tone": "warn"}
+
+
+def built_badge(b):
+    return {"k": "built", "v": b[:10] if isinstance(b, str) and re.match(r"\d{4}-\d\d-\d\d(T|$)", b) else "—"}   # system_status gives full ISO 8601
+
+
+meters = meters_of(ss, disk)
 gen, up = ss.get("generation"), num(ss.get("uptime_s"))
 badges = [{"k": "gen", "v": gen.split("-", 1)[-1][:60] if isinstance(gen, str) and gen else "unknown"}]
 if up is not None:
-    d, h, m = int(up // 86400), int(up % 86400 // 3600), int(up % 3600 // 60)
-    badges.append({"k": "up", "v": f"{d}d {h}h" if d else f"{h}h {m}m" if h else f"{m}m"})
+    badges.append({"k": "up", "v": uptime(up)})
+my_rev = ss.get("rev") if isinstance(ss.get("rev"), str) and ss.get("rev") else None
+badges += [{"k": "rev", "v": rev7(my_rev) if my_rev else "—"}, built_badge(ss.get("built"))]
 fu, fs_ = ss.get("failed"), ss.get("failed_system")
 lists_ok = isinstance(fu, list) and isinstance(fs_, list)
 units = [str(x)[:80] for q in (fu, fs_) if isinstance(q, list) for x in q]
@@ -73,5 +114,50 @@ else:
 if meters[1]["pct"] is not None and meters[1]["pct"] >= 90:
     say += " Memory is high."
 host = ss.get("host") if isinstance(ss.get("host"), str) and re.fullmatch(r"[A-Za-z0-9._-]{1,32}", ss["host"]) else "this-computer"
-print(json.dumps({"v": 1, "kind": "gauges", "title": "Nix status", "say": say, "source": "this computer", "live": True,
-                  "hosts": [{"name": host, "state": "up", "badges": badges, "meters": meters, "lists": [flist]}]}))
+hosts = [{"name": host, "state": "up", "badges": badges, "meters": meters, "lists": [flist]}]
+peers = feed.get("peers") if isinstance(feed.get("peers"), list) else []
+if peers:
+    probs = [x for x in re.split(r"(?<=\.) (?=[A-Z])", say) if x != "All fine."]
+    anyup = unknown = False
+    for p in peers[:5]:
+        if not isinstance(p, dict) or not isinstance(p.get("name"), str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,32}", p["name"]):
+            continue
+        n, st, ps = p["name"], p.get("state"), p.get("status")
+        if st == "up" and isinstance(ps, dict):
+            anyup = True
+            pd = ps.get("disks") if isinstance(ps.get("disks"), list) else []
+            pdisk = {d.get("path"): d for d in pd if isinstance(d, dict)}
+            pup = num(ps.get("uptime_s"))
+            prev = clean(ps.get("rev"), 200)
+            pb = [rev_badge(prev, my_rev), built_badge(ps.get("built"))]
+            pb += [{"k": "up", "v": uptime(pup)}] if pup is not None else []
+            pb.append({"k": "user", "v": "—"})
+            fl = ps.get("failed_system")
+            if not isinstance(fl, list):                      # the check failed on that machine: unknown, never "none"
+                unknown = True
+                lst = {"title": "Failed (system)", "items": ["unknown"], "tone": "warn"}
+                fl = []
+            else:
+                fl = [c for c in map(clean, fl) if c]
+                lst = {"title": "Failed (system)", "items": fl[:5], "tone": "bad"} if fl else {"title": "Failed (system)", "items": ["none"], "tone": "ok"}
+            hosts.append({"name": n, "state": "up", "badges": pb, "meters": meters_of(ps, pdisk, False), "lists": [lst]})
+            if fl:
+                probs.append(f"{n} has one failed service." if len(fl) == 1 else f"{n} has {len(fl)} failed services.")
+            if prev and my_rev and prev != my_rev:
+                probs.append(f"{n} is on another revision.")
+        elif st == "asking":
+            hosts.append({"name": n, "state": "stale", "badges": [{"k": "state", "v": "asking…"}]})
+        else:
+            lo = num(p.get("last_ok"))
+            hosts.append({"name": n, "state": "down", "badges": [{"k": "last", "v": time.strftime("%H:%M", time.localtime(lo)) if lo is not None else "not seen yet"}]})
+            probs.append(f"{n} is off.")
+    if anyup or len(hosts) > 1:
+        if not probs:
+            say = ("No problems I can see." if unknown else "All machines look fine.") if anyup else say
+        else:
+            say = " ".join(probs)
+            k = len(probs)
+            while len(say) > 200:
+                k -= 1
+                say = " ".join(probs[:k] + [f"and {len(probs) - k} more."])
+print(json.dumps({"v": 1, "kind": "gauges", "title": "Nix status", "say": say, "source": "this computer", "live": True, "hosts": hosts}))

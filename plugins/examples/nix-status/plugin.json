@@ -10,6 +10,6 @@
     "argv": ["run"],
     "network": false,
     "cache_seconds": 4,
-    "reads": ["system-status"]
+    "reads": ["system-status", "peer-status"]
   }
 }
