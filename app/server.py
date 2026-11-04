@@ -42,6 +42,7 @@ import plugins  # noqa: E402
 import peers  # noqa: E402
 from floor import FLOOR, pdeathsig_preexec  # noqa: E402
 import day  # noqa: E402
+import lang  # noqa: E402
 import eleven  # noqa: E402
 import quick  # noqa: E402
 import recall  # noqa: E402
@@ -255,12 +256,14 @@ def load_config():
         except Exception as e:  # noqa: BLE001
             print(f"[nixi] could not parse {CONF_PATH}: {e}", file=sys.stderr)
     else:
+        cfg["language"] = lang.detect(os.environ)       # first run only: written now, so the next start doesn't re-detect
         CONF_PATH.parent.mkdir(parents=True, exist_ok=True)
-        CONF_PATH.write_text(json.dumps(DEFAULTS, indent=2) + "\n")
+        CONF_PATH.write_text(json.dumps(cfg, indent=2) + "\n")
     return cfg
 
 
 CFG = load_config()
+lang.active = lang.norm(CFG.get("language"))     # the one in use; `language` is what was asked for (only the switcher changes this)
 eleven.CFG, eleven.DATA_DIR = CFG, DATA_DIR      # (one config and one data folder for the cloud voice)
 PEERS = peers.load()
 plugins.peers_allowed = lambda: CFG.get("peers_on") is True and bool(PEERS)
@@ -685,7 +688,7 @@ def summarize_command(cmd):
         return None
     ask = ("In 3 to 10 plain words, for someone who isn't technical, say what this shell command does. Start with a "
            "verb, e.g. \"restart Firefox\" or \"delete the old download in your Downloads folder\". Only say what it "
-           "does, never guess why. Reply with only that phrase.\n\nCommand:\n" + cmd[:2000])
+           "does, never guess why. Reply with only that phrase." + (" " + lang.clause() if lang.clause() else "") + "\n\nCommand:\n" + cmd[:2000])
     try:
         out = subprocess.run([binary, "-p", "--model", "haiku", "--tools", "", "--no-session-persistence"],
                              input=ask, capture_output=True, text=True, timeout=15, cwd=str(DATA_DIR)).stdout
@@ -2554,7 +2557,7 @@ def run_whisper(audio, beam=None, hint=None) -> str:
 
     def go():
         segs, _ = whisper().transcribe(
-            audio, language=CFG["language"] or None, beam_size=int(beam or CFG.get("whisper_beam") or 5),
+            audio, language=lang.LANGS[lang.active]["whisper"], beam_size=int(beam or CFG.get("whisper_beam") or 5),
             vad_filter=True, vad_parameters={"min_silence_duration_ms": 600, "speech_pad_ms": 300},
             condition_on_previous_text=False, initial_prompt=(hint if hint is not None else CFG.get("stt_hint")) or None,
             no_speech_threshold=0.5)
@@ -2866,6 +2869,10 @@ STOP_RE = re.compile(r"(?:ok(?:ay)?\W+|nixi\W+|hey\W+nixi\W+)?(?:stop|wait|shush
 FOLLOW_NOTE = ("(Voice note from Nixi: the mic picked this up a few seconds after your last reply, without \"hey Nixi\". "
                "If it is clearly not meant for you, e.g. the user thinking out loud, talking to themselves or to someone "
                "else, reply with exactly [ignore] and nothing else, and use no tools. Otherwise just answer it normally.)\n\n")
+
+
+def follow_prompt(said):
+    return FOLLOW_NOTE[:-3] + ((" " + lang.clause()) if lang.clause() else "") + ")\n\n" + said
 IGNORE = "[ignore]"
 
 class Beat:
@@ -4312,6 +4319,8 @@ def build_cmd(binary, partial):
     mp = memory_prompt(fresh=not ST.session)
     if mp:
         sp += "\n\n" + mp
+    if lang.clause():
+        sp += "\n\n" + lang.clause()
     if sp:
         c += ["--append-system-prompt", sp]
     if ST.session:
@@ -4751,6 +4760,8 @@ def run_bridge(prompt, emit):
     if CFG.get("answer_stages", True) and ST.stage_run is None and Plug.agent_lines():
         note = note[:-3] + (" Plugins the user installed: to run one, end with ONE last line <<stage>>{\"v\":1,\"kind\":\"plugin\",\"id\":\"ID\"} "
                             "(the server runs it; say only a sentence):\n" + "\n".join(Plug.agent_lines()) + ")\n\n")
+    if lang.clause():
+        note = note[:-3] + " " + lang.clause() + ")\n\n"
     cur = STAGES.current() if stages_on() and ST.stage_run is None else None
     if cur and cur["kind"] == "day" and cur.get("note") and cur.get("date") == time.strftime("%Y-%m-%d"):        # a question while the desk is open: the agent gets that desk's own summary, once, here only
         note += cur["note"] + "\n\n"
@@ -5490,6 +5501,7 @@ def state_info():
         "projects": quick.projects(),
         **{k: bool(CFG.get(k, k == "notify_sound")) for k in NOTIFY_FLAGS}, "notify_speak": CFG.get("notify_speak", ["meeting"]),
         "quick_actions": CFG.get("quick_actions") or [], "memory_count": len(mem_load()),
+        "language": lang.norm(CFG.get("language")), "lang_active": lang.active, "lang_status": "", "lines": lang.lines(),
         "mic_device": CFG.get("mic_device") or "", "whisper_model": CFG.get("whisper_model") or "auto",
         "can_shoot": any(shutil.which(t) for t in ("grim", "spectacle", "gnome-screenshot", "maim", "scrot", "import")),
         "eye_color": CFG.get("eye_color") or "#3e5993", "eye_white": CFG.get("eye_white") or "#ffffff",
@@ -5820,6 +5832,8 @@ class Handler(BaseHTTPRequestHandler):
                     upd["code_face"] = b["code_face"]
                 if "mic_device" in b:
                     upd["mic_device"] = str(b["mic_device"] or "")
+                if b.get("language") in lang.LANGS:      # asked for; lang.active follows only through the switcher
+                    upd["language"] = b["language"]
                 if b.get("whisper_model") in ("auto", "tiny.en", "base.en", "small.en", "medium.en"):
                     upd["whisper_model"] = b["whisper_model"]
                 if isinstance(b.get("quick_actions"), list):
@@ -6159,7 +6173,7 @@ class Handler(BaseHTTPRequestHandler):
         prompt = (extra + "\n\n" + said).strip() if extra else said
         follow = bool(body.get("follow")) and not extra and run_cmd is None
         if follow:
-            prompt = FOLLOW_NOTE + said
+            prompt = follow_prompt(said)
         if not prompt:
             return self._json({"error": "empty prompt"}, 400)
         with Speaker.cv:
