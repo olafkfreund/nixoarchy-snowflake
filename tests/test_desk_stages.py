@@ -81,10 +81,10 @@ class DeskStagesTest(unittest.TestCase):
         self.assertFalse(run.called or uo.called)
 
     # ---- calendar
-    def fetch(self):
+    def fetch(self, ids=("cal",)):
         conf = self.s.NIXI_CONF.parent / "calendars.json"
         conf.parent.mkdir(parents=True, exist_ok=True)
-        conf.write_text(json.dumps([{"enabled": True, "googleCalendarId": "cal"}]))
+        conf.write_text(json.dumps([{"enabled": True, "googleCalendarId": i} for i in ids]))
         self.addCleanup(conf.unlink)
         with mock.patch.object(self.s.Ambient, "run", return_value=json.dumps(GOG)) as run:
             self.s.Ambient.fetch("cal")
@@ -93,6 +93,10 @@ class DeskStagesTest(unittest.TestCase):
     def test_the_gog_call_looks_two_days_ahead(self):
         argv = self.fetch().call_args[0][0]
         self.assertEqual(argv[argv.index("--days") + 1], "2")
+
+    def test_each_calendar_is_its_own_cal_flag(self):           # gog takes one positional id at most (#144 step 19)
+        argv = self.fetch(("a@x", "b@x")).call_args[0][0]
+        self.assertEqual(argv[argv.index("events") + 1:argv.index("--from")], ["--cal=a@x", "--cal=b@x"])
 
     def test_links_only_from_hangout_or_conference_data(self):
         self.fetch()
