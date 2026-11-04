@@ -371,6 +371,19 @@ class StageServerTest(_ServerEnv):
         self.assertEqual(pub.call_args[1]["t"], "stage")
         self.assertEqual(evs[0]["text"], "Here you go.")
 
+    def test_phrase_says_cached_stage_say_without_publishing_it(self):
+        self.mk("user", "disk-one")
+        self.on("disk-one")
+        stage = {**FACTS, "say": "All fine."}
+        with mock.patch.object(plugins, "_launch", return_value=stage) as launch, mock.patch.object(self.server.BUS, "pub") as pub:
+            first, prompts = self.ask({"prompt": "nixi status"})
+            second, cached_prompts = self.ask({"prompt": "nixi status"})
+        self.assertEqual((prompts, cached_prompts), ([], []))
+        self.assertEqual((first[0]["text"], second[0]["text"]), ("All fine.", "All fine."))
+        self.assertEqual(launch.call_count, 1)
+        self.assertNotIn("say", pub.call_args.kwargs)
+        self.assertNotIn("say", self.server.STAGES.current())
+
     def test_off_plugin_does_not_match_and_two_matches_ask(self):
         self.mk("user", "disk-one")
         self.mk("user", "disk-two")

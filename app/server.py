@@ -4645,7 +4645,7 @@ def plugin_stage(pid, query, before=_ANY):
         return False, f"{p.manifest['name']}: {e}."
     if before is _ANY or (stages_on() and STAGES.current() is before):
         BUS.pub(t="stage", **stage_event(STAGES.put(st)))
-    return True, "Here you go."
+    return True, st.get("say") or "Here you go."
 
 
 def plugin_stage_thread(pid, query, before=_ANY):

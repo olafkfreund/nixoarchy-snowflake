@@ -58,6 +58,11 @@ class ValidateTest(unittest.TestCase):
     def test_facts_ok(self):
         self.assertEqual(S.validate(FACTS), FACTS)
 
+    def test_facts_say_is_optional_and_checked(self):
+        self.assertEqual(S.validate({**FACTS, "say": " All fine. "})["say"], "All fine.")
+        self.assertNotIn("say", S.validate(FACTS))
+        self.assertIsNone(S.validate({**FACTS, "say": "x" * 201}))
+
     def test_drops(self):
         def bad(o):
             self.assertIsNone(S.validate(o))
@@ -94,6 +99,12 @@ class StoreTest(unittest.TestCase):
     def test_facts_token_copies_text(self):
         page = self.s.put(S.validate(FACTS))
         self.assertEqual(self.s.get(page["token"])[1]["text"], "Tide\na\nb")
+
+    def test_say_stays_off_page_and_on_stage(self):
+        stage = S.validate({**FACTS, "say": "All fine."})
+        page = self.s.put(stage)
+        self.assertNotIn("say", page)
+        self.assertEqual(stage["say"], "All fine.")
 
     def test_token_of_old_stage_refused(self):
         old = self.s.put(S.validate(CMDS))["items"][0]["token"]

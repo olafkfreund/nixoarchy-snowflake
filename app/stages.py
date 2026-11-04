@@ -111,6 +111,11 @@ def validate(obj, plugin_ok=None):
         out = {"v": 1, "kind": "facts", "title": title, "points": pts}
         if src is not None:
             out["source"] = _str(src, 120)
+        if "say" in obj:
+            say = _str(obj["say"], 200)
+            if say is None:
+                return None
+            out["say"] = say
         return out
     if kind == "place":
         dest, mode = _str(obj.get("dest"), 160), obj.get("mode")
@@ -274,6 +279,7 @@ class Store:
     def put(self, stage):
         """-> the stage for the page: items (or the stage) carry a token, nothing else added."""
         toks, page = {}, dict(stage)
+        page.pop("say", None)
         if stage["kind"] == "commands":
             page["items"] = []
             for it in stage["items"]:
