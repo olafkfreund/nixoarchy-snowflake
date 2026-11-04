@@ -6,6 +6,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 import plugins  # noqa: E402
@@ -18,6 +20,8 @@ class T(unittest.TestCase):
         self._t = tempfile.TemporaryDirectory()
         self.addCleanup(self._t.cleanup)
         self.root = Path(self._t.name)
+        mock.patch.object(plugins, "_in_store", lambda d: True).start()      # (the first dir stands in for the store)
+        self.addCleanup(mock.patch.stopall)
 
     def mk(self, name, manifest, base="a", files=()):
         d = self.root / base / name

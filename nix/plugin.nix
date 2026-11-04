@@ -10,7 +10,12 @@ stdenvNoCC.mkDerivation {
   doCheck = true;
   nativeCheckInputs = [ python3 ];
   checkPhase = ''
-    python3 ${../app/plugins.py} --check .
+    # plugins.py imports stages.py (the phrases Nixi keeps for itself), and so does quick.py, so both are copied next to each other
+    mkdir -p $TMPDIR/checker
+    cp ${../app/plugins.py} $TMPDIR/checker/plugins.py
+    cp ${../app/stages.py} $TMPDIR/checker/stages.py
+    cp ${../app/quick.py} $TMPDIR/checker/quick.py
+    python3 $TMPDIR/checker/plugins.py --check .
   '';
   installPhase = ''
     runHook preInstall

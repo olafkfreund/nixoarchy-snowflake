@@ -15,7 +15,7 @@ class PluginRoutesTest(_ServerEnv):
         S = self.server
         self.root = Path(tempfile.mkdtemp(dir=self.tmp))
         self.state = S.plugins.State(self.root / "st.json")
-        for target, val in (("plugin_dirs", lambda: [self.root / "pk"]), ("State", lambda *a: self.state)):
+        for target, val in (("plugin_dirs", lambda: [self.root / "pk"]), ("State", lambda *a: self.state), ("_in_store", lambda d: True)):
             mock.patch.object(S.plugins, target, val).start()
         self.addCleanup(mock.patch.stopall)
         self.addCleanup(lambda: setattr(S.Plug, "loaded", None))
@@ -59,14 +59,6 @@ class PluginRoutesTest(_ServerEnv):
         self.assertIn("plugin.json missing", self.items(got)["nojson"]["error"])
         self.assertIn("broken", S.plugins_act({"id": "bad-one", "enabled": True})["error"])
         self.assertFalse(self.state.get("bad-one")["enabled"])
-
-    def test_stage_plugin_cannot_be_switched_on(self):
-        S = self.server
-        self.mk("stage-one", stage={"phrases": ["x y"], "argv": ["run"]})
-        got = S.plugins_act({"id": "stage-one", "enabled": True})
-        self.assertIn("can't be switched on", got["error"])
-        self.assertFalse(self.state.get("stage-one")["enabled"])
-        self.assertTrue(self.items(got)["stage-one"]["stage"])
 
     def test_bad_requests(self):
         S = self.server

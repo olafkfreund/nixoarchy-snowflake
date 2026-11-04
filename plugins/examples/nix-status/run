@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""Nix status: one `facts` stage on stdout. The sandbox shows it nothing of the system: Nixi passes system_status on stdin (reads: system-status); no network."""
+import json
+import subprocess
+import sys
+
+try:
+    ss = json.load(sys.stdin).get("system_status") or {}
+except ValueError:
+    ss = {}
+pts = []
+gen, failed = ss.get("generation"), ss.get("failed")
+pts.append("System: " + (gen.split("-", 1)[-1][:100] if isinstance(gen, str) and gen else "unknown"))
+if isinstance(failed, list):
+    failed = [str(x) for x in failed]
+    pts.append("Failed user services: " + (", ".join(failed[:3])[:90] + (" …" if len(failed) > 3 else "") if failed else "none"))
+else:
+    pts.append("Failed user services: unavailable")
+try:
+    r = subprocess.run(["df", "-h", "--output=used,size", "/nix/store"], capture_output=True, text=True, timeout=2)
+    used, size = r.stdout.splitlines()[1].split()
+    pts.append(f"Store: {used} used of {size}")
+except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+    pts.append("Store: couldn't check")
+print(json.dumps({"v": 1, "kind": "facts", "title": "Nix status", "points": pts, "source": "this computer"}))

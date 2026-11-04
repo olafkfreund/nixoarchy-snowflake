@@ -2,8 +2,16 @@
 import hashlib
 import json
 import os
+import resource
 import re
+import shutil
+import signal
+import stat
+import subprocess
+import sys
 import tempfile
+import threading
+import time
 from collections import namedtuple
 from pathlib import Path
 
@@ -22,6 +30,26 @@ APP_RE = re.compile(r"^[a-z0-9._-]+$")
 HOST_RE = re.compile(r"^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$")
 
 
+def norm(said):
+    """What you said, the way stages.fast_path reads it: lowercase, punctuation dropped, one space, no leading please/nixi."""
+    t = " ".join(re.sub(r"[^a-z0-9 ]", " ", (said or "").lower()).split())
+    return re.sub(r"(?:\s+please)+$", "", re.sub(r"^(?:(?:please|nixi)\s+)+", "", t))
+
+
+def reserved(phrase):
+    """True for a phrase Nixi answers itself: empty, close / go back / show it / what's next, guide / mechanic, the run/copy/play/open
+    verbs, and anything the quick matcher handles."""
+    import quick
+    import stages
+    t = norm(phrase)
+    if not t or t in ("close", "go back", "show it", "what s next", "what is next", "guide", "mechanic") or stages.fast_path(t, {"items": [0] * 5}) is not None:
+        return True
+    try:
+        return quick.matches(phrase)
+    except Exception:                                  # (the matcher needs the server's config for some phrases: those are Nixi's own)
+        return True
+
+
 def plugin_dirs():
     """The package's plugin folder (store or git checkout, both next to app/), then the user's."""
     return [APP_DIR.parent / "plugins", DATA_DIR / "plugins"]
@@ -36,13 +64,30 @@ def _inside(base, rel):
     return not os.path.islink(q) and os.path.isfile(p) and os.path.commonpath([os.path.realpath(base), p]) == os.path.realpath(base)
 
 
+def _raise(e):
+    raise e
+
+
+def _in_store(d):
+    return os.path.realpath(d).startswith("/nix/store/")
+
+
 def _symlink(d):
     """The first symlink anywhere inside the folder (a plugin may not contain any), or None."""
-    for dirpath, dirs, files in os.walk(d):
+    for dirpath, dirs, files in os.walk(d, onerror=_raise):   # (an unlistable folder is an error, not "nothing in it")
         for n in dirs + files:
             if os.path.islink(os.path.join(dirpath, n)):
                 return os.path.relpath(os.path.join(dirpath, n), d)
     return None
+
+
+_FORMAT = re.compile("[\u2028\u2029\u200b-\u200f\u202a-\u202e\u2066-\u2069]")   # (line separators and invisible direction marks: they could fake the consent card)
+
+
+def _bad(s):
+    """True if s holds a control character or a Unicode format / line separator."""
+    import stages
+    return bool(stages._CTRL.search(s) or _FORMAT.search(s))
 
 
 def _in(v, allowed):
@@ -55,6 +100,7 @@ def _strs(v, n=None):
 
 def _check(m, d):
     """Return the reason the manifest is bad, or None."""
+    import stages
     if not isinstance(m, dict):
         return "plugin.json is not an object"
     if "api" not in m:
@@ -67,8 +113,8 @@ def _check(m, d):
         return f"unknown key: {k}"
     if not isinstance(m["id"], str) or not ID_RE.fullmatch(m["id"]):
         return "bad id"
-    for k in ("name", "version", "description"):
-        if k in m and not (isinstance(m[k], str) and m[k]):
+    for k, n in (("name", 60), ("version", 1000), ("description", 200)):
+        if k in m and not (isinstance(m[k], str) and 0 < len(m[k]) <= n and not _bad(m[k])):
             return f"bad {k}"
     if "quips" in m and not _inside(d, m["quips"]):
         return "quips file missing or outside the folder"
@@ -98,7 +144,9 @@ def _check(m, d):
             return "bad stage"
         if not _strs(s["phrases"]) or not _strs(s["argv"]):
             return "bad stage phrases or argv"
-        if "hint" in s and not isinstance(s["hint"], str):
+        if len(s["argv"]) > 8 or any(len(a) > 80 or _bad(a) for a in s["argv"]):
+            return "bad stage argv (at most 8 words of 80 plain characters)"
+        if "hint" in s and not (isinstance(s["hint"], str) and len(s["hint"]) <= 79 and not _bad(s["hint"])):
             return "bad stage hint"
         if "network" in s and not isinstance(s["network"], bool):
             return "bad stage network"
@@ -109,8 +157,24 @@ def _check(m, d):
             return "bad stage reads"
         if not _inside(d, s["argv"][0]):
             return "stage argv[0] missing or outside the folder"
-        # TODO(slice B): argv[1:] must be checked for paths outside the folder before run_stage launches anything
+        if any(a.startswith("/") or "=/" in a or ".." in re.split(r"[/=]", a) for a in s["argv"][1:]):
+            return "stage argv may not point outside the folder"
+        for ph in s["phrases"]:
+            if reserved(ph):
+                return f"stage phrase {ph!r} clashes with one of Nixi's own"
     return None
+
+
+def _manifest(p):
+    """plugin.json's text, opened like _snap opens files: never blocks on a FIFO, never follows a link, a plain file of at most 64 KiB."""
+    fd = os.open(p, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_size > 64 * 1024:
+            raise ValueError("not a plain file of at most 64 KiB")
+        return os.read(fd, 64 * 1024 + 1).decode("utf-8")
+    finally:
+        os.close(fd)
 
 
 def scan(dirs):
@@ -126,7 +190,7 @@ def scan(dirs):
             try:
                 err = f"contains a symlink: {_symlink(d)}" if _symlink(d) else None
                 if not err:
-                    m = json.loads((d / "plugin.json").read_text(encoding="utf-8"))
+                    m = json.loads(_manifest(d / "plugin.json"))
                     err = _check(m, d)
             except FileNotFoundError:
                 err = "plugin.json missing"
@@ -136,7 +200,7 @@ def scan(dirs):
                 err = f"plugin.json not understood: {type(e).__name__}"
             if isinstance(m, dict) and isinstance(m.get("id"), str) and ID_RE.fullmatch(m["id"]):
                 vid = m["id"]
-            out.append(Plugin(vid or d.name, d, m if isinstance(m, dict) else None, "nix" if i == 0 else "folder", err))
+            out.append(Plugin(vid or d.name, d, m if isinstance(m, dict) else None, "nix" if i == 0 and _in_store(d) else "folder", err))
             valid.append(vid is not None)
     groups = {}
     for p, ok in zip(out, valid):
@@ -150,22 +214,62 @@ def scan(dirs):
     return [p._replace(error=p.error or "duplicate id") if id(p) in dup else p for p in out]
 
 
-def sha256_of(d):
-    """Hash of every file's relative path and content, sorted. Raises ValueError if the folder holds any symlink."""
+SNAP_MAX = 64 * 1024 * 1024                          # a plugin folder bigger than this is refused (hashing never holds it in memory)
+
+
+def _snap(d, dest=None):
+    """Hash of every file's relative path and content, sorted. With dest, the same bytes that were hashed are written there (a copy
+    for the sandbox to mount: what runs is what was hashed). One file at a time, in chunks, so a big folder never sits in memory.
+    Raises ValueError for a symlink or a special file anywhere inside, a file that changes while it is read, or a folder over SNAP_MAX."""
     if _symlink(d):
         raise ValueError(f"contains a symlink: {_symlink(d)}")
-    root, h = os.path.realpath(d), hashlib.sha256()
-    found = []
-    for dirpath, _, files in os.walk(root):
-        for f in files:
-            p = os.path.join(dirpath, f)
-            r = os.path.realpath(p)
-            if os.path.commonpath([root, r]) == root and os.path.isfile(r):
-                found.append((os.path.relpath(p, root).encode(), r))
-    for rel, r in sorted(found):
-        data = Path(r).read_bytes()
-        h.update(b"%d:%s%d:" % (len(rel), rel, len(data)) + data)
+    root, h, total, paths = os.path.realpath(d), hashlib.sha256(), 0, []
+    store = _in_store(root)                          # (the store is read-only; nix-store --optimise hard-links identical files there)
+    for dirpath, dirs, files in os.walk(root, onerror=_raise):
+        for n in dirs:
+            if dest:
+                os.makedirs(os.path.join(dest, os.path.relpath(os.path.join(dirpath, n), root)), mode=0o700, exist_ok=True)
+        paths += [os.path.join(dirpath, f) for f in files]
+    for p in sorted(paths, key=lambda q: os.path.relpath(q, root).encode()):
+        rel = os.path.relpath(p, root).encode()
+        fd = os.open(p, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)   # (never follows a link swapped in since the walk)
+        try:
+            st = os.fstat(fd)
+            if not stat.S_ISREG(st.st_mode):
+                raise ValueError(f"not a plain file: {rel.decode(errors='replace')}")
+            if st.st_nlink > 1 and not store:        # (in a folder plugin a hardlink may point at a file outside it)
+                raise ValueError(f"hard link: {rel.decode(errors='replace')}")
+            total += st.st_size
+            if total > SNAP_MAX:
+                raise ValueError("the plugin folder is too big")
+            h.update(b"%d:%s%d:" % (len(rel), rel, st.st_size))
+            out, left = None, st.st_size
+            if dest:
+                q = os.path.join(dest, os.fsdecode(rel))
+                os.makedirs(os.path.dirname(q), mode=0o700, exist_ok=True)
+                out = open(q, "wb")
+            try:
+                while left:
+                    chunk = os.read(fd, min(left, 1 << 20))
+                    if not chunk:
+                        break
+                    h.update(chunk)
+                    if out:
+                        out.write(chunk)
+                    left -= len(chunk)
+                if left or os.read(fd, 1):           # (shorter or longer than when we looked: it changed under us)
+                    raise ValueError(f"changed while being read: {rel.decode(errors='replace')}")
+            finally:
+                if out:
+                    out.close()
+                    os.chmod(q, 0o500 if st.st_mode & 0o111 else 0o400)
+        finally:
+            os.close(fd)
     return h.hexdigest()
+
+
+def sha256_of(d):
+    return _snap(d)
 
 
 class State:
@@ -321,14 +425,331 @@ def sanitize_svg(data):
     return nodes
 
 
+# ---- stage programs: a plugin's `run`, in a bwrap sandbox, never a shell ----
+OUT_CAP, ERR_CAP, TIME_DEFAULT, TIME_MAX, TMP_SIZE = 64 * 1024, 8 * 1024, 3, 8, 64 * 1024 * 1024
+CHANGED = "Changed \u2014 check it again"
+
+
+class StageError(Exception):
+    """A stage run that gave nothing: the message is what to tell the user."""
+
+
+class Busy(StageError):
+    pass
+
+
+_bwrap = [None]
+
+
+def bwrap_ok():
+    """True if bwrap exists and a throwaway sandbox starts (one test run, remembered)."""
+    if _bwrap[0] is None:
+        exe = shutil.which("bwrap")
+        try:
+            _bwrap[0] = bool(exe) and subprocess.run([exe, "--unshare-all", "--die-with-parent", "--new-session", "--ro-bind", "/", "/", "--dev", "/dev",
+                                                      "--proc", "/proc", "true"], capture_output=True, timeout=5).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            _bwrap[0] = False
+    return _bwrap[0]
+
+
+DNS_ADDR, SHM_SIZE, NPROC = "192.0.2.53", 16 * 1024 * 1024, 64
+PASTA_EXTRA = []                                                   # (tests only: extra pasta flags; empty in production)
+LAUNCHER = ("import os, resource, sys\nresource.setrlimit(resource.RLIMIT_NPROC, (%d, %d))\nresource.setrlimit(resource.RLIMIT_CORE, (0, 0))\n"
+            "os.execv(sys.argv[1], sys.argv[1:])") % (NPROC, NPROC)  # (runs inside the sandbox's user namespace: only the plugin's own processes count)
+# Runs inside pasta's namespace (full capabilities there; the plugin gets none): every address this computer owns becomes unreachable,
+# so pasta cannot forward to this computer's own services; then bwrap takes over. A route that cannot be added stops the run.
+ROUTER = ("import os, subprocess, sys\ni = sys.argv.index('--')\nfor a in sys.argv[1:i]:\n"
+          "    v6 = ':' in a\n    r = subprocess.run(['ip', '-6' if v6 else '-4', 'route', 'replace', 'unreachable', a if '/' in a else a + ('/128' if v6 else '/32')],"
+          " capture_output=True)\n    if r.returncode:\n        sys.exit('route: ' + r.stderr.decode(errors='replace'))\nos.execvp(sys.argv[i + 1], sys.argv[i + 1:])")
+_pasta = [None]
+
+
+# Tailscale's own resolver and web page live inside tailscaled on this computer but aren't one of its addresses
+HOST_EXTRA = ["100.100.100.100", "fd7a:115c:a1e0::53"]
+
+
+def _host_addrs():
+    """Everything this computer delivers to itself (the kernel's local tables, so ranges and scope-host addresses too), except loopback,
+    plus HOST_EXTRA. Read before each run: an address that appears mid-run is open for at most that run (capped at TIME_MAX)."""
+    import ipaddress
+    found = set(HOST_EXTRA)
+    try:
+        for fam in ("-4", "-6"):
+            r = subprocess.run(["ip", fam, "-j", "route", "show", "table", "local", "type", "local"], capture_output=True, timeout=5, check=True)
+            for e in json.loads(r.stdout or b"[]"):
+                dst = e["dst"]
+                net = ipaddress.ip_network(dst if "/" in dst else dst + ("/128" if ":" in dst else "/32"), strict=False)
+                if not net.is_loopback:
+                    found.add(str(net) if net.num_addresses > 1 else str(net.network_address))
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        raise StageError("can't tell which addresses this computer has, so a plugin that uses the internet can't run safely")
+    return sorted(found)
+
+
+def pasta_ok():
+    """True if pasta exists and starts a throwaway network namespace (one test run, remembered)."""
+    if _pasta[0] is None:
+        exe = shutil.which("pasta")
+        try:
+            _pasta[0] = bool(exe) and subprocess.run([exe, "--quiet", "--foreground", "--", "true"], capture_output=True, timeout=5).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            _pasta[0] = False
+    return _pasta[0]
+
+
+def sandbox_argv(d, stage, resolv=None):
+    """The command line for a plugin folder d (a private copy) and its manifest's stage block (argv list; the program is /plugin/<argv>).
+    A network plugin runs in a network namespace of its own, joined to the internet by pasta; resolv is the resolv.conf it gets."""
+    py = os.path.dirname(os.path.realpath(sys.executable))        # the interpreter Nixi runs on lives in the store: scripts may use it
+    store = [x for x in os.environ.get("PATH", "").split(":") if x.startswith("/nix/store/")]   # (never the host's /home or /etc/profiles entries)
+    path = ":".join(["/plugin", *store, *([py] if py.startswith("/nix/store/") else [])])
+    net = bool(stage.get("network"))
+    a = ["bwrap", "--clearenv", "--unshare-all", "--unshare-user", "--disable-userns", "--cap-drop", "ALL", *(["--share-net"] if net else []), "--die-with-parent", "--new-session",
+         "--ro-bind", "/nix/store", "/nix/store", "--ro-bind", str(d), "/plugin", "--chdir", "/plugin", "--size", str(TMP_SIZE), "--tmpfs", "/tmp",
+         "--proc", "/proc", "--dev", "/dev", "--size", str(SHM_SIZE), "--tmpfs", "/dev/shm"]
+    ro = ["/usr/bin/env"] + (["/etc/ssl", "/etc/static/ssl"] if net else [])   # (system-status is passed in on stdin, never bound)
+    for x in ro:
+        if os.path.exists(x):
+            a += ["--ro-bind", x, x]
+    if net and resolv:
+        a += ["--ro-bind", str(resolv), "/etc/resolv.conf"]
+    a += ["--setenv", "PATH", path, "--setenv", "LANG", os.environ.get("LANG") or "C.UTF-8", "--setenv", "HOME", "/tmp"]
+    a += [os.path.realpath(sys.executable), "-I", "-c", LAUNCHER, "/plugin/" + stage["argv"][0], *stage["argv"][1:]]
+    if net:      # no host loopback or gateway mapping and no port forwarding: it reaches the internet and the LAN, not localhost-only services
+        a = [shutil.which("pasta") or "pasta", "--config-net", "--quiet", "--foreground", "--no-map-gw", "-t", "none", "-u", "none", "-T", "none", "-U", "none",
+             "--dns-forward", DNS_ADDR, *PASTA_EXTRA, "--", os.path.realpath(sys.executable), "-I", "-c", ROUTER, *_host_addrs(), "--"] + a
+    return a
+
+
+def _drain(f, cap, box, fatal=True):
+    while True:
+        try:
+            b = os.read(f.fileno(), 65536)
+        except OSError:
+            return                                                 # (closed under us after the run ended)
+        if not b:
+            return
+        if len(box[0]) + len(b) > cap:
+            box[1] = True                                          # over the cap: stdout refuses and kills the run; stderr keeps reading, keeping nothing
+            if fatal:
+                return
+            continue
+        box[0] += b
+
+
+_cache, _cache_lock, _running, _now = {}, threading.Lock(), set(), time.monotonic
+
+
+def _ago(s):
+    return f"{int(s)} s ago" if s < 90 else f"{int(s // 60)} min ago"
+
+
+def forget():
+    """Drop every remembered result (a plugin was switched off, changed or reloaded)."""
+    with _cache_lock:
+        _cache.clear()
+
+
+def system_status():
+    """What a plugin with reads: [system-status] gets on stdin, collected here, outside its sandbox: the running generation
+    (null if unknown) and the failed user units (null if the query failed: never an empty list on failure)."""
+    try:
+        gen = os.path.basename(os.readlink("/run/current-system")) or None
+    except OSError:
+        gen = None
+    try:
+        r = subprocess.run(["systemctl", "--user", "--failed", "--plain", "--no-legend"], capture_output=True, text=True, timeout=2)
+        failed = [ln.split()[0][:80] for ln in r.stdout.splitlines() if ln.strip()][:20] if r.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError):
+        failed = None
+    return {"generation": gen, "failed": failed}
+
+
+def _consented(p, h=None):
+    """A folder plugin runs only if its files (h: the hash of the very bytes about to run) are still the ones the user allowed; otherwise it is switched off here and now."""
+    if p.source != "folder":
+        return
+    st = State()
+    rec = st.get(p.id)
+    try:
+        h = h or sha256_of(p.dir)
+    except (OSError, ValueError):
+        h = None
+    if not rec["enabled"]:
+        raise StageError("that plugin is off")
+    if not h or h != rec["sha256"]:
+        st.set(p.id, False, rec["sha256"])
+        forget()
+        raise StageError(CHANGED)
+
+
+def run_stage(p, query, locale="en", timeout=TIME_DEFAULT):
+    """Run a stage plugin on a query -> a `facts` stage (stages.validate'd, nothing else accepted). Raises StageError / Busy.
+    Cached per plugin and query for stage.cache_seconds; if a run fails the last good result is shown with its age."""
+    import stages
+    stg, key, now = p.manifest["stage"], (p.id, norm(query)), _now()
+    _consented(p)                                                  # (before the cache too: a changed plugin shows nothing, old or new)
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit and now - hit[0] < stg.get("cache_seconds", 60):
+            return hit[1]
+        if p.id in _running:
+            raise Busy("still fetching\u2026")
+        _running.add(p.id)
+    try:
+        try:
+            out = _launch(p, query, locale, min(timeout, TIME_MAX), stages)
+        except StageError as e:
+            if hit and str(e) != CHANGED:
+                old = dict(hit[1])
+                old["source"] = ((old.get("source") + " \u00b7 ") if old.get("source") else "")[:60] + "couldn't refresh, " + _ago(now - hit[0])
+                return old
+            raise e
+        with _cache_lock:
+            _cache[key] = (_now(), out)
+        return out
+    finally:
+        with _cache_lock:
+            _running.discard(p.id)
+
+
+def _limits():
+    """In the child, before bwrap starts: 1 GiB of memory, files of at most 64 MiB."""
+    resource.setrlimit(resource.RLIMIT_AS, (1 << 30, 1 << 30))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (TMP_SIZE, TMP_SIZE))
+
+
+def _launch(p, query, locale, timeout, stages):
+    stg = p.manifest["stage"]
+    if not bwrap_ok():
+        raise StageError("bubblewrap isn't working here")
+    if stg.get("network") and not pasta_ok():                       # (never fall back to sharing this computer's network)
+        raise StageError("plugins that use the internet need pasta (passt), and it doesn't work here")
+    if p.source == "folder" and os.path.islink(p.dir):
+        raise StageError(CHANGED)
+    tmp = tempfile.mkdtemp(prefix="nixi-plugin-")
+    try:
+        return _run_copy(p, query, locale, timeout, stages, tmp)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _run_copy(p, query, locale, timeout, stages, tmp):
+    stg = p.manifest["stage"]
+    try:
+        try:
+            h = _snap(p.dir, os.path.join(tmp, "plugin"))           # (the copy is what runs, and these are the bytes that were hashed)
+        except (OSError, ValueError):
+            h = None
+        _consented(p, h or "-")
+        if not h:
+            raise StageError(CHANGED)
+        with open(os.path.join(tmp, "resolv.conf"), "w") as f:
+            f.write(f"nameserver {DNS_ADDR}\n")
+        feed = {"v": 1, "query": query, "locale": locale}
+        if "system-status" in stg.get("reads", []):
+            feed["system_status"] = system_status()
+        proc = subprocess.Popen(sandbox_argv(os.path.join(tmp, "plugin"), stg, os.path.join(tmp, "resolv.conf")), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                start_new_session=True, bufsize=0, preexec_fn=_limits)
+    except OSError as e:
+        raise StageError(f"couldn't start it: {e.strerror}")
+    out, err = [b"", False], [b"", False]
+    ts = [threading.Thread(target=_drain, args=(f, c, b, fatal), daemon=True) for f, c, b, fatal in ((proc.stdout, OUT_CAP, out, True), (proc.stderr, ERR_CAP, err, False))]
+    for t in ts:
+        t.start()
+
+    def feed_it():                                                 # (a thread: a plugin that never reads stdin must not hold us past the deadline)
+        try:
+            proc.stdin.write(json.dumps(feed).encode())
+            proc.stdin.close()
+        except (OSError, ValueError):
+            pass
+    threading.Thread(target=feed_it, daemon=True).start()
+
+    def kill():
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except OSError:
+            pass
+        proc.kill()
+    try:
+        end = time.monotonic() + timeout
+        while proc.poll() is None and time.monotonic() < end and not out[1]:
+            time.sleep(0.02)
+        late = proc.poll() is None
+        if late or out[1]:
+            kill()
+        for t in ts:
+            t.join(1)
+        proc.wait(2)
+    finally:
+        kill()
+        for f in (proc.stdout, proc.stderr):
+            f.close()
+    if out[1]:
+        raise StageError("it said too much")
+    if late:
+        raise StageError("it took too long")
+    if err[0]:
+        sys.stderr.write("plugin %s: %s\n" % (p.id, stages._CTRL.sub(" ", err[0].decode("utf-8", "replace")[:ERR_CAP])))
+    if proc.returncode != 0:
+        raise StageError("it failed")
+    try:
+        got = stages.validate(json.loads(out[0].decode("utf-8")))
+    except (ValueError, RecursionError):
+        got = None
+    if not got or got["kind"] != "facts":
+        raise StageError("it gave something Nixi can't show")
+    return got
+
+
+def review(found, st):
+    """Hash check of the stage plugins found. A folder one whose files differ from what was allowed is turned off
+    (CHANGED); a Nix one is re-recorded ("Updated"). -> {id: note}. Writes st."""
+    notes = {}
+    for p in found:
+        rec = st.get(p.id)
+        if p.error and rec["enabled"] and rec["sha256"] and not any(q.id == p.id and not q.error for q in found):   # no longer loads (broken, or a duplicate nobody won): off
+            st.set(p.id, False, rec["sha256"])
+            notes[p.id] = CHANGED
+            continue
+        if p.error or "stage" not in (p.manifest or {}) or not (rec["enabled"] or (p.source == "folder" and rec["sha256"])):
+            continue
+        try:
+            h = sha256_of(p.dir)
+        except (OSError, ValueError):
+            h = None
+        if h and h == rec["sha256"]:
+            continue
+        if p.source == "nix":
+            if h:
+                st.set(p.id, True, h)
+                if rec["sha256"]:
+                    notes[p.id] = "Updated"
+            continue
+        if rec["enabled"]:
+            st.set(p.id, False, rec["sha256"])
+        notes[p.id] = CHANGED
+    here = {p.id for p in found}
+    for pid, rec in list(st.data.items()):                         # one that vanished (deleted, or its folder became a symlink): off
+        if pid not in here and isinstance(rec, dict) and rec.get("enabled") and rec.get("sha256"):
+            st.set(pid, False, rec["sha256"])
+            notes[pid] = CHANGED
+    return notes
+
+
 def check_dir(d):
     """Build-time check (`plugins.py --check <dir>`): the reason a plugin folder is bad, or None."""
     d = Path(d)
     try:
-        m = json.loads((d / "plugin.json").read_text(encoding="utf-8"))
+        m = json.loads(_manifest(d / "plugin.json"))
     except (OSError, ValueError) as e:
         return f"plugin.json unreadable: {e}"
-    err = _check(m, d)
+    try:
+        err = f"contains a symlink: {_symlink(d)}" if _symlink(d) else _check(m, d)
+    except OSError as e:
+        err = f"couldn't read it: {e}"
     if not err and "prop" in m:
         try:
             sanitize_svg((d / m["prop"]["file"]).read_bytes())

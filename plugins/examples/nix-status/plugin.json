@@ -1,0 +1,15 @@
+{
+  "api": 1,
+  "id": "nix-status",
+  "name": "Nix status",
+  "version": "1.0.0",
+  "description": "Which system generation is running, which user services failed, and how big the store is.",
+  "stage": {
+    "phrases": ["nixi status", "system status"],
+    "hint": "NixOS generation, failed user services, store size",
+    "argv": ["run"],
+    "network": false,
+    "cache_seconds": 30,
+    "reads": ["system-status"]
+  }
+}

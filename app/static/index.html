@@ -453,12 +453,14 @@ select:focus,.pn input[type=text]:focus,.pn textarea:focus{border-color:var(--ed
   border:1px solid #6b4a10;box-shadow:0 6px 20px #000a,0 0 18px #ffb02a22;z-index:7;
   opacity:0;transform:translateY(12px) scale(.95);pointer-events:none;transition:opacity .4s var(--ease),transform .6s var(--ease)}
 #appr.on{opacity:1;transform:none;pointer-events:auto}
-#appr .q{font-size:12.5px;color:#ffd38a;margin-bottom:6px;display:flex;gap:6px;align-items:flex-start;overflow-wrap:anywhere}
-#appr pre{margin:0 0 9px;padding:7px 9px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);font:11.5px/1.4 var(--mono);color:var(--text);
+#plugCons{display:none;margin:8px 0;padding:11px 12px 12px;border-radius:16px;background:#0c0c0cf7;border:1px solid #6b4a10;box-shadow:0 6px 20px #000a,0 0 18px #ffb02a22}
+#plugCons.on{display:block}
+#appr .q,#plugCons .q{font-size:12.5px;color:#ffd38a;margin-bottom:6px;display:flex;gap:6px;align-items:flex-start;overflow-wrap:anywhere}
+#appr pre,#plugCons pre{margin:0 0 9px;padding:7px 9px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);font:11.5px/1.4 var(--mono);color:var(--text);
   max-height:var(--apprMax,60vh);overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
-#appr .bar{justify-content:flex-end}
-#appr .yes{background:#2f7d4f;border-color:#55c285;color:#fff}
-#appr .hint{flex:1;color:var(--dim);font-size:11px}
+#appr .bar,#plugCons .bar{justify-content:flex-end}
+#appr .yes,#plugCons .yes{background:#2f7d4f;border-color:#55c285;color:#fff}
+#appr .hint,#plugCons .hint{flex:1;color:var(--dim);font-size:11px}
 #pwbox{position:absolute;left:14px;right:14px;top:256px;padding:11px 12px 10px;border-radius:16px;background:#0c0c0cf7;margin:0;
   border:1px solid #7a1414;box-shadow:0 6px 20px #000a,0 0 18px #ff2a2a22;z-index:23;
   opacity:0;transform:translateY(12px) scale(.95);pointer-events:none;transition:opacity .4s var(--ease),transform .6s var(--ease)}
@@ -831,7 +833,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <label class="tg nx"><input type="checkbox" id="updSw"><span class="sw"></span><span class="l">Check for updates<small>Asks GitHub for the latest version when he starts, every few hours and when you open Settings. Nothing about you is sent.</small></span></label>
       </div>
       <div class="row"><div class="t">Plugins</div><div class="h">Things other people made for him. They never download anything; they only use what is on this computer.</div>
-        <div id="plugList"></div><div class="h" id="plugErr" style="color:#e8836f"></div>
+        <div id="plugCons"></div><div id="plugList"></div><div class="h" id="plugErr" style="color:#e8836f"></div>
         <div class="bar"><button class="btn" id="plugReload">Reload</button></div></div>
       <div class="row"><div class="t">ai-mirror</div><div class="h">Shows when an agent controls your desktop through ai-mirror. Super+Shift+Esc always takes it back.</div></div>
       <div class="row"><div class="t">Memory &amp; history</div><div class="h">Say “remember …” and he keeps it for every future chat.</div>
@@ -3113,14 +3115,24 @@ function plugRender(j){
     const row=document.createElement('label'), cb=document.createElement('input'), sw=document.createElement('span'), l=document.createElement('span');
     row.className='tg'; cb.type='checkbox'; cb.checked=!!p.enabled; cb.disabled=!!p.error&&!p.enabled; sw.className='sw'; l.className='l';   // (one that is on can always be switched off)
     l.append(document.createTextNode(p.name+' '+p.version+' · '+p.source));
-    const lines=[...p.caps||[]]; if(p.error) lines.unshift("Doesn't load: "+p.error);
-    for(const t of lines){ const s=document.createElement('small'); s.textContent=t; if(p.error&&t===lines[0]) s.style.color='#e8836f'; l.appendChild(s); }
+    const lines=[...p.caps||[]]; if(p.error) lines.unshift("Doesn't load: "+p.error); else if(p.note) lines.unshift(p.note);
+    for(const t of lines){ const s=document.createElement('small'); s.textContent=t; if((p.error||p.note)&&t===lines[0]) s.style.color=p.error?'#e8836f':'#ffd38a'; l.appendChild(s); }
     cb.addEventListener('change',()=>plugAct({id:p.id,enabled:cb.checked}));
     row.append(cb,sw,l); box.appendChild(row); }
   if(!(j.items||[]).length){ const h=document.createElement('div'); h.className='h'; h.textContent='No plugins installed.'; box.appendChild(h); }
+  plugConsent(j.needs_consent);
+}
+function plugConsent(c){
+  const box=$('#plugCons'); box.replaceChildren(); box.classList.toggle('on',!!c); if(!c) return;
+  const q=document.createElement('div'), pre=document.createElement('pre'), bar=document.createElement('div'), no=document.createElement('button'), yes=document.createElement('button');
+  q.className='q'; q.textContent='\u270b Let '+c.name+' run a program?';
+  pre.textContent=[c.what,'It runs: '+c.runs,...(c.hint?['Nixi tells the agent: '+c.hint]:[]),c.network?'It can use the internet and your local networks (not this computer\'s own services).':'It cannot use the network.',...(c.reads||[]).map(r=>'It can read your '+r.replace('-',' ')+'.'),'Nixi checks it again if any of its files change.'].join('\n');
+  bar.className='bar'; no.className='btn sm'; no.textContent='Cancel'; yes.className='btn sm yes'; yes.textContent='Allow';
+  no.addEventListener('click',()=>plugConsent(null)); yes.addEventListener('click',()=>plugAct({consent:true,id:c.id,sha256:c.sha256}));
+  bar.append(no,yes); box.append(q,pre,bar);
 }
 async function plugLoad(){ try{ await tokenReady; plugRender(await (await fetch('/api/companion-plugins',{headers:hdr()})).json()); }catch(e){} }
-async function plugAct(b){ try{ plugRender(await (await post(b.reload?'/api/companion-plugins/reload':'/api/companion-plugins',b)).json()); await refresh(); lookShown=''; syncLook(); if(setEl.classList.contains('on')) renderSettings(); }catch(e){ $('#plugErr').textContent='Couldn\u2019t reach Nixi'; } }
+async function plugAct(b){ try{ plugRender(await (await post(b.reload?'/api/companion-plugins/reload':b.consent?'/api/companion-plugins/consent':'/api/companion-plugins',b)).json()); await refresh(); lookShown=''; syncLook(); if(setEl.classList.contains('on')) renderSettings(); }catch(e){ $('#plugErr').textContent='Couldn\u2019t reach Nixi'; } }
 $('#plugReload').addEventListener('click',()=>plugAct({reload:true}));
 async function locLoad(){ try{ await tokenReady; loc=await (await fetch('/api/location',{headers:hdr()})).json(); locAt=Date.now(); locRender(); }catch(e){} }
 function locAct(b){ $('#locErr').textContent=''; return post('/api/location',b).then(r=>r.json()).then(j=>{ if(j.ok){ loc=j; locAt=Date.now(); } else $('#locErr').textContent=j.error||'That didn\u2019t work'; locRender(); }).catch(()=>{ $('#locErr').textContent='Couldn\u2019t reach Nixi'; }); }
