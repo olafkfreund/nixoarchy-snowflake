@@ -18,9 +18,9 @@
     "speak.command": "kommandoen på tavlen",
     "speak.link": "en lenke",
     "speak.rest": "Resten står på skjermen.",
-    "plugin.off": "Det tillegget er av.",
+    "plugin.off": "Det tillegget er slått av.",
     "plugin.failed": "{name}: {error}.",
-    "plugin.peers_off": "Andre maskiner er av.",
+    "plugin.peers_off": "Andre maskiner er slått av.",
     "plugin.done": "Vær så god.",
     "plugin.title": "Tillegg",
     "stage.which": "Hvilken? Si den første, andre eller tredje.",
@@ -43,9 +43,9 @@
     "session.bad_id": "Jeg kan ikke bruke id-en til den økten.",
     "session.send_say": "Jeg ber om å sende '{text}' til {title}. Sjekk kortet.",
     "page.control_back": "Kontrollen er tilbake hos deg.",
-    "page.live_on": "Greit, jeg følger med. Si «stop watching» når du er ferdig.",
-    "page.live_off": "Greit, jeg sluttet å se.",
-    "page.live_wasnt": "Jeg så ikke på.",
+    "page.live_on": "Greit, jeg følger med. Si ifra når du er ferdig.",
+    "page.live_off": "Greit, nå følger jeg ikke med lenger.",
+    "page.live_wasnt": "Jeg fulgte ikke med.",
     "page.tidy": "Greit, rydder opp.",
     "page.voice_1": "hei! dette er den nye stemmen min.",
     "page.voice_2": "hvordan høres jeg ut?",
@@ -136,7 +136,10 @@
     ],
     "nouns": [
       "video",
-      "klipp"
+      "klipp",
+      "klippet",
+      "videoen",
+      "artikkelen"
     ],
     "plain": {
       "lukk": "close",

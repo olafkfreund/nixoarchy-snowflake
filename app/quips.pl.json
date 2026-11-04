@@ -1,9 +1,9 @@
 {
   "break": [
-    "Już godzina! Wstań i się przeciągnij?",
+    "Już godzina! Może wstaniesz i się przeciągniesz?",
     "Czas na rozprostowanie kości. Plecy ci podziękują.",
-    "Długo już pracujesz. Wody i krótki spacer?",
-    "Oderwij wzrok na chwilę? Popatrz na coś daleko."
+    "Długo już pracujesz. Łyk wody i krótki spacer?",
+    "Może oderwiesz wzrok na chwilę? Popatrz na coś w oddali."
   ],
   "welcome": [
     "Witaj z powrotem!",
@@ -34,7 +34,7 @@
   "night": [
     "Robi się późno. Nie zapomnij o odpoczynku.",
     "Już głęboka noc. Sen to też dobry pomysł.",
-    "Późny wieczór. Przyciszę światło."
+    "Późny wieczór. Przyciemnię światło."
   ],
   "party": [
     "Dziś jest co świętować!",
@@ -42,13 +42,25 @@
     "Wyjątkowy dzień. Hurra!"
   ],
   "coding": [
-    "{n} godz. kodowania. Łyk wody?",
-    "{n} godz. za nami. Rozprostujesz dłonie?",
-    "Długa sesja kodowania: {n} godz. Odpoczną oczy?"
+    "Długo już kodujesz. Łyk wody?",
+    "Czas na przerwę. Rozprostujesz dłonie?",
+    "Długa sesja kodowania. Dasz odpocząć oczom?"
   ],
   "done": [
     "Gotowe!",
     "Skończone!",
     "Zrobione."
+  ],
+  "_review": [
+    "break",
+    "welcome",
+    "ram",
+    "cpu",
+    "rain",
+    "snow",
+    "night",
+    "party",
+    "coding",
+    "done"
   ]
 }

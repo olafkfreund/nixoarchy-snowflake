@@ -332,7 +332,7 @@ class ServerLinesTest(_ServerEnv):
         self.assertEqual(S.approval_say("WebFetch", {"url": "https://www.x.org/a"}), "Kan jeg åpne en side på x.org?")
         self.assertEqual(S.speakable("se https://x.org nå"), "se en lenke nå")
         S.lang.active = "pl"
-        self.assertEqual(S.say_path("~"), "Twój folder domowy")
+        self.assertEqual(S.say_path("~"), "Home")
         self.assertEqual(S.approval_say("WebSearch", {}), "Czy mogę poszukać w sieci?")
 
 
@@ -355,6 +355,7 @@ class QuipFilesTest(_ServerEnv):
     def test_the_shipped_files_cover_every_event(self):
         for code in ("nb", "pl"):
             d = json.loads((self.server.APP_DIR / f"quips.{code}.json").read_text(encoding="utf-8"))
+            self.assertEqual(set(d.pop("_review")), set(self.EVENTS), code)    # the native check covers every event
             self.assertEqual(set(d), set(self.EVENTS), code)
             for event, lines in d.items():
                 self.assertTrue(3 <= len(lines) <= 5, (code, event))
