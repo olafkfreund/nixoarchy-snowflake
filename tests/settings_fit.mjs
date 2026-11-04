@@ -463,6 +463,17 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   await ev("settings(false); localStorage.removeItem('nixi.setSize'); setW=0; setH=0; return 1"); await view(340,460);
 }
 
+// #187: the weather cloud moves aside while a notification mark shows, and comes back after
+{ await ev("for(const k of ['snow','clear','partly','cloudy']) sitOn[k]=false; sitOn.rain=true; return 1"); await sleep(400);
+  const box = id => `(()=>{ const r=document.querySelector('${id}').getBoundingClientRect(); return [r.left,r.right]; })()`;
+  await ev("agentMark('claude','ask'); return 1"); await sleep(1600);
+  const on = await ev(`return [${box("#wx")}, ${box("#agentMark")}, +(/translate\\((-?[\\d.]+)/.exec(wxEl.getAttribute('transform'))||[0,0])[1]]`);
+  check(on[2] < -60 && on[0][1] <= on[1][0] + 1, "weather: the cloud stands clear of the notification mark", JSON.stringify(on));
+  await ev("AM.until=0; renderCue(); return 1"); await sleep(1600);
+  const off = await ev("return Math.abs(+(/translate\\((-?[\\d.]+)/.exec(wxEl.getAttribute('transform'))||[0,0])[1])+''");
+  check(Math.abs(+off) < 12, "weather: the cloud comes back when the mark goes", String(off));
+  await ev("sitOn.rain=false; return 1"); }
+
 check(exc.size === 0, "no page exceptions", [...exc].join(" ;; "));
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
 console.log(fails.length ? `\n${fails.length} failed: ${fails.join(", ")}` : "\nall pass");

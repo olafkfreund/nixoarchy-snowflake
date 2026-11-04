@@ -1411,7 +1411,7 @@ class Spring{   // f = natural frequency (Hz), z = damping ratio (1 = no oversho
 const S={L:{},R:{}}; for(const k of EYE_KEYS){ S.L[k]=new Spring(val(MOODS.idle[k],0),2.1,.82); S.R[k]=new Spring(val(MOODS.idle[k],1),2.1,.82); }
 const SP={L:{},R:{}}; for(const k of PUP_KEYS){ SP.L[k]=new Spring(val(PUP.slit[k],0),2.3,.78); SP.R[k]=new Spring(val(PUP.slit[k],1),2.3,.78); }
 const G={ sz:new Spring(1,2,.75), tilt:new Spring(0,.8,.85), dx:new Spring(0,2.4,.55),
-  wob:new Spring(0,1.7,.22),
+  wob:new Spring(0,1.7,.22), wxAside:new Spring(0,1.6,.86),
   gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), sit:new Spring(0,2.4,.55), sitShade:new Spring(0,2.4,.55), sitGl:new Spring(0,2.4,.55), sitP:new Spring(0,2.4,.55), sitN:new Spring(0,2.4,.55), sitBn:new Spring(0,2.4,.55), sitSc:new Spring(0,2.4,.55), wind:new Spring(0,1.2,.8), sitLift:new Spring(0,3,.8), sitMusic:new Spring(0,2.4,.55), sitW:new Spring(0,1.7,.22), zoom:new Spring(1,1.6,.7),
   appear:new Spring(.2,1.5,.55), open:new Spring(0,1.8,.55), think:new Spring(0,1.6,.6), anger:new Spring(0,1.8,.55), qm:new Spring(0,1.8,.55),
   agent:new Spring(0,2.6,.5), sitChat:new Spring(0,2.6,.5), sitFeed:new Spring(0,2.6,.5), mic:new Spring(0,2.6,.7), rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
@@ -1525,7 +1525,7 @@ let FID=null, nextFidAt=performance.now()+6000, lastFid='';
 const paintEl=document.getElementById('paint');
 const REDUCED=matchMedia('(prefers-reduced-motion: reduce)');
 const wxAlpha=p=>.85*Math.sin(Math.PI*p);
-const wxEl=$('#wx');
+const wxEl=$('#wx'), WX_ASIDE=-90;
 // the weather marks (#157): built once, every group display="none" until wxStep shows it; flat colours only. Particles are children of their cloud's group.
 function drawMarks(){ const W={}, d=sv('defs',{},wxEl), R=at=>({...at,'stroke-linecap':'round','stroke-linejoin':'round'});
   const grad=(id,a,b)=>{ const lg=sv('linearGradient',{id,x1:0,y1:0,x2:0,y2:1},d); sv('stop',{offset:0,'stop-color':a},lg); sv('stop',{offset:1,'stop-color':b},lg); };
@@ -1840,6 +1840,8 @@ function frame(ts){
         for(const [s,cu] of [[-1,SIT_P.cL],[1,SIT_P.cR]]) cu.setAttribute('transform',`translate(${(s*X-s*lx*.6).toFixed(2)} -8) rotate(${(s*8+(s<0?-12*L:0)).toFixed(2)}) scale(${(1+.07*k).toFixed(3)})`);
         SIT_P.bd.setAttribute('transform',`translate(0 ${(-1.5*k).toFixed(2)})`);
         if(k>.6&&ts-nodAt>=200){ nodAt=ts; G.jelly.kick(.015*k); } } } }   // (nothing to write while all are off)
+  { const on=(AM&&ts<AM.until)||mirKind()||$('#cue').getAttribute('display')!=='none', dx=REDUCED.matches?(on?WX_ASIDE:0):G.wxAside.to(on?WX_ASIDE:0,dt);   // (#187: a notification mark must never sit under the cloud)
+    wxEl.setAttribute('transform',`translate(${dx.toFixed(1)} 0)`); }
   wxStep(t,dt);
   { const k=mirKind(), bar=document.body.classList.contains('bar');       // the ai-mirror mark (nothing to write while it is gone)
     if(k||mirV>0){ if(k&&k!==mirLast){ mirLast=k; MX.ring.setAttribute('r','12'); MX.ring.setAttribute('stroke',k==='agent'?'#ff3b3b':k==='pending'?'#ffb02a':'#9ecbff'); MX.ring.setAttribute('display',k==='watch'?'none':'');
