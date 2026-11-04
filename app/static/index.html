@@ -242,6 +242,33 @@ body.bar #mailPop,body.hover #mailPop,body.calm #mailPop{display:none}
 #stg .pw{flex:none;position:relative;width:96px;aspect-ratio:16/9;border-radius:5px;overflow:hidden;background:#0008;border:1px solid var(--sline)}
 #stg .pw::before{content:'▶';position:absolute;inset:0;display:grid;place-items:center;color:#ffffff33;font-size:20px}
 #stg .po{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#stg.term{--bg:var(--tbg,#14161b);--fg:var(--ink,#d7dae0);--a:var(--tacc,#61afef);--r:var(--tred,#e06c75);--g:var(--tgreen,#98c379);--y:var(--tyellow,#e5c07b);
+  --dm:color-mix(in srgb,var(--fg) 72%,var(--bg));--sbg:var(--bg);--sfg:var(--fg);--sdim:var(--dm);--sline:color-mix(in srgb,var(--fg) 28%,transparent);
+  width:340px;min-height:0;border-radius:6px;font:12px/1.5 var(--mono);background:color-mix(in srgb,var(--bg) 96%,transparent);box-shadow:0 10px 28px #000a,0 0 0 1px var(--sline)}
+#stg.term h2{font:600 14px/1.2 var(--mono);letter-spacing:0}#stg.term .ul{display:none}#stg.term .bd{padding:8px 12px 4px}
+#stg.term .sb{border-color:var(--a);font-family:var(--mono)}#stg.term .sb:hover:not(:disabled){background:var(--a);color:var(--bg)}
+#stg.term .tmh{position:relative;margin:10px 0 8px;padding:12px 10px 6px;border:1px solid var(--sline);border-radius:4px;transform-origin:50% 0}
+#stg.term .tmn{position:absolute;top:-.8em;left:10px;padding:0 4px;background:var(--bg);font-weight:600;color:var(--a)}
+#stg.term .tmh.down .tmn{color:var(--r)}#stg.term .tmh.stale .tmn{color:var(--dm)}
+#stg.term .tmb{display:flex;flex-wrap:wrap;gap:2px 12px;margin-bottom:4px}#stg.term .tmb:empty{display:none}
+#stg.term .tmg em{font-style:normal;color:var(--dm)}#stg.term .tmg.bad,#stg.term .tmli.bad .tmit,#stg.term .tmw.bad .tmv{color:var(--r)}
+#stg.term .tmg.warn,#stg.term .tmli.warn .tmit,#stg.term .tmw.warn .tmv{color:var(--y)}#stg.term .tmg.ok,#stg.term .tmli.ok .tmit,#stg.term .tmw.ok .tmv{color:var(--g)}
+#stg.term .tmr{max-height:276px;overflow:auto}
+#stg.term .tmw{display:grid;grid-template-columns:50px 1fr 40px;gap:0 8px;align-items:center;margin:2px 0}
+#stg.term .tml{color:var(--dm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#stg.term .tmv{text-align:right}
+#stg.term .tmbar{height:8px;border-radius:2px;overflow:hidden;background:color-mix(in srgb,var(--fg) 16%,transparent)}
+#stg.term .tmbar i{display:block;height:100%;width:var(--w,0%);background:var(--a);transition:width .3s}
+#stg.term .tmw.ok .tmbar i{background:var(--g)}#stg.term .tmw.warn .tmbar i{background:var(--y)}#stg.term .tmw.bad .tmbar i{background:var(--r)}
+#stg.term .tmw.nul .tmbar{background:repeating-linear-gradient(90deg,var(--sline) 0 2px,transparent 2px 5px)}
+#stg.term .tmx{grid-column:1/-1;display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--dm)}
+#stg.term .tmt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#stg.term .tms{flex:none;letter-spacing:0;color:var(--a)}
+#stg.term .tmls{margin-top:6px}#stg.term .tmlt{color:var(--dm);margin-top:4px}#stg.term .tmit{overflow-wrap:anywhere}
+#stg.term.go .tmh{animation:stgPow .18s var(--ease) both}
+#stg.term.go .tmw{animation:stgRow .2s ease-out both;animation-delay:calc(var(--i,0)*30ms + 180ms)}
+#stg.term.go .tmbar i{animation:stgBar .2s ease-out both;animation-delay:calc(var(--i,0)*30ms + 180ms)}
+@keyframes stgPow{from{transform:scaleY(.02)}to{transform:none}}@keyframes stgRow{from{opacity:0}to{opacity:1}}@keyframes stgBar{from{width:0}}
+@media (prefers-reduced-motion:reduce){#stg.term *{animation:none!important;transition:none!important}}
+#stg.term.fixed{--bg:#14161b;--fg:#d7dae0;--a:#61afef;--r:#e06c75;--g:#98c379;--y:#e5c07b}   /* a light or low-contrast theme: a fixed dark palette (#166) */
 #stg.bare{min-height:0}
 #stg .vm{font-size:12px;color:var(--sdim)}
 body.appr #stg{opacity:.35;pointer-events:none}
@@ -2056,6 +2083,7 @@ function onEvent(ev){
     else if(more&&document.body.classList.contains('bar')) flash('#e5a50a'); }
   else if(ev.t==='approve_done') approvalGone(ev.id);
   else if(ev.t==='stage'){ if(stageShow(ev)===false) himSet(((himEl.textContent||'').trim()+'\n'+stageText(ev)).trim()); }
+  else if(ev.t==='stage_update') gaugeUpdate(ev);
   else if(ev.t==='stage_status') stageStatus(ev);
   else if(ev.t==='stage_close') stageClosedByServer();
   else if(ev.t==='askpass'){ restore(20000,true); askPass(ev); }
@@ -2205,6 +2233,7 @@ function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.c
   at(5000,()=>{ el.classList.remove('on'); sendRegion(true); }); at(5400,()=>{ popWant=[0,0]; sizeWindow(); }); }
 /* ================= answer stages (#144): the page only draws what the server sends, every field via textContent; Run, Copy and the rest go back as a token ================= */
 const stgEl=$('#stg'), stgTab=$('#stgTab'), chalkEl=$('#chalk'), hatEl=$('#hat'), popEl=$('#pop'), wtcEl=$('#wtc');
+let gaugeRef=null, gaugeHist={}, GAUGE_MS=5000;   // the live board's refresh loop and the last 24 readings per host+meter
 let stgPosted=false, stg=null, stgState='closed', stgSide='r', stgUse=0, stgQuiet=0, stgTimer=null, stgOffT=null, stgRunTok=null, stgTm=[];
 const hx=(tag,cls,txt)=>{ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; };
 const stgOpen=()=>stgState==='open';
@@ -2218,11 +2247,12 @@ function stagePlace(){ if(stgState==='closed') return;
 function stageBtn(label,fn,dis){ const b=hx('button','sb',label); b.type='button'; b.disabled=!!dis; b.addEventListener('click',e=>{ e.stopPropagation(); stgUse=performance.now(); fn(b); }); return b; }
 function stageBuild(ev){
   const bd=$('#stgBd'), acts=$('#stgActs'), fn=$('#stgFn'); bd.textContent=''; acts.textContent=''; fn.textContent='';
-  const board=ev.kind==='commands', map=ev.kind==='place', film=ev.kind==='video', sky=ev.kind==='weather', cal=ev.kind==='calendar', stat=ev.kind==='status', dy=ev.kind==='day', tr=ev.trust, guide=tr==='guide';
+  const board=ev.kind==='commands', map=ev.kind==='place', film=ev.kind==='video', sky=ev.kind==='weather', cal=ev.kind==='calendar', stat=ev.kind==='status', dy=ev.kind==='day', gau=ev.kind==='gauges', tr=ev.trust, guide=tr==='guide';
   $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':film?'Now showing':sky?'Sky':cal?'Coming up':stat?'Sessions':dy?'Your day':''));
-  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat||dy?'desk':'notebook')+(stgEl.classList.contains('l')?' l':'');
+  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat||dy?'desk':gau?'term':'notebook')+(stgEl.classList.contains('l')?' l':'');
   if(sky) stageSky(ev,bd,fn);
   else if(dy) stageDay(ev,bd,acts,fn);
+  else if(gau) stageGauges(ev,bd,acts,fn);
   else if(cal) stageCal(ev,bd,acts,fn);
   else if(stat) stageStat(ev,bd,acts,fn);
   else if(film) stageFilm(ev,bd,acts,fn);
@@ -2333,10 +2363,46 @@ function stageStat(ev,bd,acts,fn){
   bd.appendChild(hx('div',F.length?'src bad':'src',!ev.sys_on?'Services not checked (Ambient system is off)':F.length?'Failed services: '+F.join(', ')+(more>0?' +'+more+' more':''):'No failed services'));
   acts.appendChild(stageBtn('Open terminal',b=>stageOpen(b,fn,ev.term,'terminal')));
 }
-function stageText(ev){ if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
+const BRL='\u2800\u28c0\u28c4\u28e4\u28e6\u28f6\u28f7\u28ff';   // 8 braille levels, empty to full
+function gaugeSpark(a,pct){ const mx=pct?100:Math.max(1e-9,...a); return a.map(x=>BRL[Math.min(7,Math.max(0,Math.round(x/mx*7)))]).join(''); }
+function gaugeHistAdd(ev){ for(const h of ev.hosts||[]) for(const m of h.meters||[]){ const x=m.pct!=null?m.pct:m.v; if(typeof x!=='number') continue;
+  const k=h.name+'\0'+m.label, a=gaugeHist[k]||(gaugeHist[k]=[]); a.push(x); if(a.length>24) a.shift(); } }
+function gaugeFill(row,h,m){ const p=m.pct, a=gaugeHist[h.name+'\0'+m.label]||[];   // fills a meter row; also the in-place update
+  row.className='tmw'+(m.tone?' '+m.tone:'')+(p==null?' nul':'');
+  row.setAttribute('aria-label',m.label+' '+(p==null?(m.text||'no reading'):Math.round(p)+' percent'));
+  row.querySelector('.tmbar i').style.setProperty('--w',(p==null?0:p)+'%');
+  row.querySelector('.tmv').textContent=p==null?'\u2014':Math.round(p)+'%';
+  row.querySelector('.tmt').textContent=m.text||''; row.querySelector('.tms').textContent=a.length?gaugeSpark(a,p!=null):''; }
+function gaugeHostFill(p,h){ p.className='tmh '+(h.state||'up'); p.querySelector('.tmn').textContent='\u2524 '+h.name+(h.state&&h.state!=='up'?' \u00b7 '+h.state:'')+' \u251c';
+  const b=p.querySelector('.tmb'); b.textContent='';
+  (h.badges||[]).forEach(x=>{ const s=hx('span','tmg'+(x.tone?' '+x.tone:'')); s.appendChild(hx('em',null,x.k)); s.appendChild(document.createTextNode(' '+x.v)); b.appendChild(s); });
+  const ls=p.querySelector('.tmls'); ls.textContent='';
+  (h.lists||[]).forEach(l=>{ const d=hx('div','tmli'+(l.tone?' '+l.tone:'')); d.appendChild(hx('div','tmlt',l.title)); (l.items||[]).forEach(t=>d.appendChild(hx('div','tmit',t))); ls.appendChild(d); }); }
+function stageGauges(ev,bd,acts,fn){ gaugeHist={}; gaugeHistAdd(ev); let n=0;
+  (ev.hosts||[]).forEach(h=>{ const p=hx('section'); p.dataset.host=h.name; p.appendChild(hx('span','tmn')); p.appendChild(hx('div','tmb')); const rs=hx('div','tmr');
+    (h.meters||[]).forEach(m=>{ const r=hx('div'); r.setAttribute('role','group'); r.dataset.label=m.label; r.style.setProperty('--i',n++);
+      r.appendChild(hx('span','tml',m.label)); const bar=hx('span','tmbar'); bar.appendChild(hx('i')); r.appendChild(bar); r.appendChild(hx('span','tmv'));
+      const x=hx('div','tmx'); x.appendChild(hx('span','tmt')); const s=hx('span','tms'); s.setAttribute('aria-hidden','true'); x.appendChild(s); r.appendChild(x); gaugeFill(r,h,m); rs.appendChild(r); });
+    p.appendChild(rs); p.appendChild(hx('div','tmls')); gaugeHostFill(p,h); bd.appendChild(p); });
+  fn.textContent=ev.source?'Source: '+ev.source:''; if(ev.token) acts.appendChild(stageBtn('Copy',b=>stageAct('copy',ev.token,b))); termContrast(); }
+function lumOf(c){ const m=String(c).trim().match(/^#([0-9a-f]{6})$/i); if(!m) return null;
+  const v=[0,2,4].map(i=>parseInt(m[1].slice(i,i+2),16)/255).map(x=>x<=.03928?x/12.92:((x+.055)/1.055)**2.4); return .2126*v[0]+.7152*v[1]+.0722*v[2]; }
+function termContrast(){ stgEl.classList.remove('fixed'); const cs=getComputedStyle(stgEl), bg=lumOf(cs.getPropertyValue('--tbg')), fg=lumOf(cs.getPropertyValue('--ink'));
+  if(bg==null||fg==null) return;                     // (the theme is off: the fallbacks are already the dark palette)
+  if(bg>.2||(Math.max(bg,fg)+.05)/(Math.min(bg,fg)+.05)<4.5) stgEl.classList.add('fixed'); }   // light background, or text under 4.5:1
+function gaugeUpdate(ev){ if(!stgOpen()||!stg||stg.kind!=='gauges'||ev.kind!=='gauges'||ev.refresh!==stg.refresh) return;   // in place: no rebuild, entrance, focus move or timer reset
+  stg=Object.assign({},stg,ev); gaugeHistAdd(ev);
+  for(const h of ev.hosts||[]){ const p=[...stgEl.querySelectorAll('.tmh')].find(e=>e.dataset.host===h.name); if(!p) continue; gaugeHostFill(p,h);
+    for(const m of h.meters||[]){ const r=[...p.querySelectorAll('.tmw')].find(e=>e.dataset.label===m.label); if(r) gaugeFill(r,h,m); } } }
+function gaugeStop(){ if(gaugeRef){ clearInterval(gaugeRef.t); gaugeRef=null; stgUse=performance.now(); } }   // (a board that stops updating gets the usual 30 s from now)
+function gaugeLoop(){ const r=gaugeRef; if(!r) return;   // paused (not stopped) while hidden or not shown
+  if(stgState!=='open') return gaugeStop(); if(!stgPosted||document.hidden) return;
+  post('/api/stage/act',{token:r.tok,act:'refresh'}).then(x=>x.json()).then(j=>{ if(gaugeRef===r&&!j.ok) gaugeStop(); }).catch(()=>{ if(gaugeRef===r) gaugeStop(); });
+  if(++r.n>=24) gaugeStop(); }
+function stageText(ev){ if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))))).join('\n'); } const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
-  stgPosted=false;
+  stgPosted=false; gaugeStop();
   if(hiddenNow||document.body.classList.contains('bar')||document.body.classList.contains('calm')||info.hover||SIT.fullscreen||SIT.locked||rec||pendingAppr){ if(stgState!=='closed') stageHide(false); return false; }
   stgTm.forEach(clearTimeout); stgTm=[]; clearTimeout(stgOffT);
   stg=ev; stageBuild(ev); stgState='open'; stgRunTok=null; stgUse=stgQuiet=performance.now();
@@ -2347,9 +2413,10 @@ function stageShow(ev){
     if(ev.kind==='commands'&&!REDUCED.matches){ chalkEl.classList.add('on'); at(250,()=>{ chalkEl.classList.add('pt'); const r=stgEl.querySelector('.it'); if(r) r.classList.add('pt'); }); } });
   at(500,()=>sendRegion(true));
   clearInterval(stgTimer); stgTimer=setInterval(stageTick,1000);
+  if(ev.kind==='gauges'&&ev.refresh) gaugeRef={tok:ev.refresh,n:0,t:setInterval(gaugeLoop,GAUGE_MS)};
 }
 function stageHide(toTab){
-  stgTm.forEach(clearTimeout); stgTm=[]; clearInterval(stgTimer); stgTimer=null;
+  stgTm.forEach(clearTimeout); stgTm=[]; clearInterval(stgTimer); stgTimer=null; gaugeStop(); if(!toTab) gaugeHist={};
   stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on'); popEl.classList.remove('on'); wtcEl.classList.remove('on'); stgEl.setAttribute('aria-hidden','true'); stgEl.inert=true; stgTab.inert=!toTab;
   if(!toTab) stgPosted=false;
   if(toTab){ stagePost(false); stgState='tab'; stgTab.textContent=$('#stgT').textContent; stagePlace(); stgSize(300); void stgTab.offsetWidth; stgTab.classList.add('on'); }
@@ -2364,7 +2431,7 @@ function stageTick(){ const now=performance.now(), hov=stgEl.matches(':hover');
   if(playing||busy||hov||pendingAppr) stgQuiet=now;
   const ro=stg&&(stg.kind==='facts'||stg.kind==='weather');
   if(ro&&now-stgQuiet>20000) return stageClose();
-  if(stg&&!ro&&now-stgUse>30000&&!busy) stageHide(true); }
+  if(stg&&!ro&&now-stgUse>(gaugeRef?120000:30000)&&!busy) stageHide(true); }
 function stageAct(act,token,btn){ post('/api/stage/act',{token,act}).then(r=>r.json()).then(j=>{ if(btn&&act==='copy'){ const t=btn.textContent; btn.textContent=j.ok?'Copied ✓':"Couldn't copy"; setTimeout(()=>{ btn.textContent=t; },1400); } }).catch(()=>{}); }
 function stageRun(it){ stgRunTok=it.token; send(it.label,{stage:it.token,claude:true}); }
 function stageStatus(ev){ if(!stgOpen()&&stgState!=='tab') return;
@@ -3369,7 +3436,7 @@ function idleActive(){ const on=el=>el.classList.contains('on'), B=document.body
     ||B.contains('hover')||B.contains('bar')||!!downAt||hiddenNow||MIR.owner==='pending'||MIR.owner==='agent'; }
 function idleShowing(){ const now=performance.now();
   return playing||capOn||!!notifyRow||chip.classList.contains('act')||!!AM||(!!attnPend&&now-attnPend.at<60000)
-    ||$('#mailPop').classList.contains('on')||(!!propOn&&now<propOn.until); }
+    ||$('#mailPop').classList.contains('on')||(!!propOn&&now<propOn.until)||(!!gaugeRef&&stgOpen()); }
 function setIdle(st){ if(st===idleSt) return;
   const was=idleSt; idleSt=st; document.body.classList.toggle('peek',st!=='full');
   if(st==='doze') dozing=native('doze:hide');          // (no host, no pause)
