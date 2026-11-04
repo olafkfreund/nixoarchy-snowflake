@@ -58,6 +58,11 @@ class WindowToken(unittest.TestCase):
         window.WebKit2.UserScript.new.reset_mock()
         window.WebKit2.NetworkError.CANCELLED = 302      # a distinct int, so a MagicMock never equals it by accident
 
+    def err(self, cancelled):
+        """A GLib.Error stand-in: matches() is true only for (WebKit's network domain, CANCELLED)."""
+        q = window.WebKit2.network_error_quark.return_value
+        return mock.Mock(**{"matches.side_effect": lambda d, c: cancelled and d is q and c == 302})
+
     def order(self):
         names = [c[0] for c in self.m.mock_calls]
         return [n for n in names if n in ("ucm.remove_all_scripts", "ucm.add_script", "view.load_uri")]
@@ -90,7 +95,7 @@ class WindowToken(unittest.TestCase):
         cb = self.callback()
         self.m.reset_mock()
         window.WebKit2.UserScript.new.reset_mock()
-        self.assertIs(cb(self.m.view, None, "http://127.0.0.1:47777/?native=1", mock.Mock(code=1)), True)
+        self.assertIs(cb(self.m.view, None, "http://127.0.0.1:47777/?native=1", self.err(False)), True)
         self.assert_handed()
         self.assertEqual(window.NixiWindow._token.call_args[0], (1,))   # a retry never waits on the main thread
 
@@ -106,7 +111,7 @@ class WindowToken(unittest.TestCase):
         self.w._start_page()
         cb = self.callback()
         self.m.reset_mock()
-        self.assertIs(cb(self.m.view, None, URL, mock.Mock(code=302)), False)
+        self.assertIs(cb(self.m.view, None, URL, self.err(True)), False)
         self.assertEqual(self.order(), [])
 
     def test_reauth(self):

@@ -55,8 +55,11 @@ class WebKitTokenScript(unittest.TestCase):
                                capture_output=True, text=True, timeout=60)
         except subprocess.TimeoutExpired:
             self.skipTest("WebKit didn't answer in 60 s")
-        if not r.stdout.strip():            # no gi, no typelibs, or no GL: nothing to measure here
-            self.skipTest("WebKit2 4.1 unavailable to this Python: " + (r.stderr.strip().splitlines() or ["?"])[-1][:200])
+        env_missing = ("No module named 'gi'", "Namespace", "not available", "cannot open display",
+                       "Failed to open display", "GL context", "Gtk couldn't be initialized")
+        if not r.stdout.strip() and any(m in r.stderr for m in env_missing):
+            self.skipTest("WebKit2 4.1 unavailable to this Python: " + r.stderr.strip().splitlines()[-1][:200])
+        self.assertTrue(r.stdout.strip(), "the WebKit probe printed nothing:\n" + r.stderr[-2000:])
         out = json.loads(r.stdout.strip().splitlines()[-1])
         self.assertEqual(out, {"right": "TESTTOKEN", "other": "undefined"}, r.stderr[-2000:])
 

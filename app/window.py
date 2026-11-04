@@ -1285,7 +1285,8 @@ class NixiWindow:
             return False
 
         def failed(_view, _ev, uri, err):
-            if not uri.startswith(origin) or getattr(err, "code", None) == WebKit2.NetworkError.CANCELLED:
+            if not uri.startswith(origin) or (err is not None and err.matches(WebKit2.network_error_quark(),
+                                                                                WebKit2.NetworkError.CANCELLED)):
                 return False                                       # (a newer load replaced this one: not a failure)
             GLib.timeout_add(1000, retry)
             return True
