@@ -147,5 +147,109 @@ class AgentVoiceTest(_ServerEnv):
         say.assert_called_once_with("Hello.", 17, None, True, None, strict=True)
 
 
+class AgentEndpointsTest(_ServerEnv):
+    TURN = "0123abcd-4567-89ef-0123-456789abcdef"
+
+    def setUp(self):
+        s = self.server
+        saved = dict(s.CFG)
+        self.addCleanup(lambda: (s.CFG.clear(), s.CFG.update(saved)))
+        s.CFG["agent_voice_mute"] = []
+        self.events = []
+        for obj, name, value in ((s.BUS, "pub", None), (s.Wake, "asleep", False), (s.Ambient, "meeting", False),
+                                 (s.BUS, "subs", [object()])):
+            p = mock.patch.object(obj, name, **({"side_effect": lambda **e: self.events.append(e)} if name == "pub" else {"new": value}))
+            p.start()
+            self.addCleanup(p.stop)
+
+    def body(self, **kw):
+        return {"from": "claude", "name": "proj", "turn": self.TURN, "text": "Done.", "kind": "short", **kw}
+
+    def post(self, path, body, token=None):
+        s = self.server
+        h = object.__new__(s.Handler)
+        h.path = path
+        h.headers = {"X-Nixi-Token": token or s.TOKEN}
+        h._host_ok = lambda: True
+        h._body = lambda: json.dumps(body).encode()
+        h._json = mock.Mock()
+        h.do_POST()
+        return h._json.call_args.args
+
+    def test_ready_reasons(self):
+        s = self.server
+        self.assertEqual(s.agent_say_ready("claude"), {"speak": True})
+        s.CFG["agent_voice_mute"] = ["codex"]
+        self.assertEqual(s.agent_say_ready("codex")["reason"], "muted-agent")
+        with mock.patch.object(s.Wake, "asleep", True):
+            self.assertEqual(s.agent_say_ready("claude")["reason"], "hidden")
+        with mock.patch.object(s.Ambient, "meeting", True):
+            self.assertEqual(s.agent_say_ready("claude")["reason"], "meeting")
+        self.assertFalse(s.agent_say_ready("x")["speak"])
+
+    def test_accept_publishes_and_each_reason(self):
+        s = self.server
+        self.assertEqual(self.post("/api/agent-say", self.body())[0], {"accepted": True})
+        self.assertEqual([e["t"] for e in self.events], ["agent_say"])
+        self.assertEqual(self.events[0]["turn"], self.TURN)
+        self.events.clear()
+        s.CFG["agent_voice_mute"] = ["claude"]
+        self.assertEqual(self.post("/api/agent-say", self.body())[0]["reason"], "muted-agent")
+        s.CFG["agent_voice_mute"] = []
+        with mock.patch.object(s.Wake, "asleep", True):
+            self.assertEqual(self.post("/api/agent-say", self.body())[0]["reason"], "hidden")
+        with mock.patch.object(s.Ambient, "meeting", True):
+            self.assertEqual(self.post("/api/agent-say", self.body())[0]["reason"], "meeting")
+        with mock.patch.object(s.BUS, "subs", []):
+            self.assertEqual(self.post("/api/agent-say", self.body())[0]["reason"], "no-page")
+        self.assertFalse(self.events)
+
+    def test_bad_input_and_secret(self):
+        for kw in ({"from": "bob"}, {"kind": "long"}, {"turn": "../x"}, {"turn": 5}, {"name": "n" * 81},
+                   {"text": "t" * 2001}, {"text": ""}, {"text": 5}):
+            self.assertEqual(self.post("/api/agent-say", self.body(**kw))[0]["reason"], "bad-input", kw)
+        self.assertEqual(self.post("/api/agent-say", self.body(text="password: hunter2"))[0]["reason"], "secret")
+        self.assertFalse(self.events)
+
+    def test_token_reach(self):
+        s = self.server
+        tool = s.TOOL_TOKEN
+        self.assertEqual(self.post("/api/agent-say/ready", {"from": "claude"}, tool)[0], {"speak": True})
+        self.assertEqual(self.post("/api/agent-say", self.body(), tool)[0], {"accepted": True})
+        for path in ("/api/agent-say/check", "/api/agent-say/more", "/api/say"):
+            self.assertEqual(self.post(path, {"text": "x"}, tool), ({"error": "forbidden"}, 403), path)
+
+    def test_check_fails_closed_and_more_starts_without_shell(self):
+        s = self.server
+        with mock.patch.object(s.shutil, "which", return_value=None):
+            self.assertEqual(self.post("/api/agent-say/check", {})[0], {"go": False})
+            self.assertEqual(self.post("/api/agent-say/more", {})[0], {"ok": False})
+        with mock.patch.object(s.shutil, "which", return_value="/bin/agent-say"), \
+             mock.patch.object(s.subprocess, "run", side_effect=s.subprocess.TimeoutExpired("x", 3)) as run:
+            self.assertEqual(self.post("/api/agent-say/check", {})[0], {"go": False})
+            self.assertEqual(run.call_args.args[0], ["/bin/agent-say", "held"])
+            self.assertEqual(run.call_args.kwargs["timeout"], 3)
+            self.assertNotIn("shell", run.call_args.kwargs)
+        with mock.patch.object(s.shutil, "which", return_value="/bin/agent-say"), \
+             mock.patch.object(s.subprocess, "run", return_value=mock.Mock(returncode=0)):
+            self.assertEqual(self.post("/api/agent-say/check", {})[0], {"go": True})
+        with mock.patch.object(s.shutil, "which", return_value="/bin/agent-say"), \
+             mock.patch.object(s.subprocess, "run", return_value=mock.Mock(returncode=1)):
+            self.assertEqual(self.post("/api/agent-say/check", {})[0], {"go": False})
+        with mock.patch.object(s.shutil, "which", return_value="/bin/agent-say"), \
+             mock.patch.object(s.subprocess, "Popen") as popen:
+            self.assertEqual(self.post("/api/agent-say/more", {})[0], {"ok": True})
+            self.assertEqual(popen.call_args.args[0], ["/bin/agent-say", "more"])
+            self.assertNotIn("shell", popen.call_args.kwargs)
+
+    def test_mute_setting_default_and_validation(self):
+        s = self.server
+        self.assertEqual(s.DEFAULTS["agent_voice_mute"], [])
+        self.post("/api/settings", {"agent_voice_mute": ["codex", "codex"]}, token=s.TOKEN)
+        self.assertEqual(s.CFG["agent_voice_mute"], ["codex"])
+        self.post("/api/settings", {"agent_voice_mute": ["nobody"]}, token=s.TOKEN)
+        self.assertEqual(s.CFG["agent_voice_mute"], ["codex"])
+
+
 if __name__ == "__main__":
     unittest.main()

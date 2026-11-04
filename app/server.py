@@ -62,7 +62,7 @@ STATE_PATH = DATA_DIR / "state.json"
 # password helper) and only works for those: asking you to approve, looking at the screen, and the sudo card in root mode.
 TOKEN = secrets.token_urlsafe(24)
 TOOL_TOKEN = secrets.token_urlsafe(24)
-TOOL_PATHS = {"/api/approve", "/api/capture", "/api/askpass", "/api/theme"}   # /api/theme: the omarchy theme hook
+TOOL_PATHS = {"/api/approve", "/api/capture", "/api/askpass", "/api/theme", "/api/agent-say/ready", "/api/agent-say"}   # /api/theme: the omarchy theme hook
 
 VOICE_PROMPT = (
     "You are being driven from Nixi, a small voice-first desktop shell for Claude Code. "
@@ -215,7 +215,7 @@ DEFAULTS = {
     "idle_mode": "shrink",                  # when idle: off (stay) | shrink (peek at the edge) | doze
     "ambient_system": True, "ambient_calendar": False, "ambient_weather": False,
     # desktop awareness (#133): all off but the per-category sound and the spoken categories
-    "proactive": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"],
+    "proactive": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"], "agent_voice_mute": [],
     "notify_sound": True, "look_meeting": False, "look_music": False,
     "look_beat": False, "notify_speak_subject": False,
     "look_fullscreen": False, "react_load": False, "react_break": False, "react_welcome": False,
@@ -1189,6 +1189,55 @@ def attention_parse(frm, hook):
             return None
     proj = os.path.basename(g("cwd").rstrip("/"))
     return kind, proj if re.fullmatch(r"[\w.@+-]{1,40}", proj) else "", why
+
+
+AGENT_NAMES = ("claude", "codex", "agy")
+_AGENT_TURN = re.compile(r"[0-9a-fA-F][0-9a-fA-F-]{7,63}")
+
+
+def agent_say_ready(frm):
+    """{speak: True}, or {speak: False, reason} when the summary needn't even be written."""
+    if frm not in AGENT_NAMES:
+        return {"speak": False, "reason": "bad-agent"}
+    if frm in (CFG.get("agent_voice_mute") or []):
+        return {"speak": False, "reason": "muted-agent"}
+    if Wake.asleep:
+        return {"speak": False, "reason": "hidden"}
+    if Ambient.meeting:
+        return {"speak": False, "reason": "meeting"}
+    return {"speak": True}
+
+
+def agent_say_accept(b):
+    """Validate an agent summary and hand it to the page; returns at once. Never the old-voice fallback: he is running."""
+    text, name = b.get("text"), b.get("name")
+    if b.get("from") not in AGENT_NAMES or b.get("kind") not in ("short", "more") or not isinstance(b.get("turn"), str) \
+            or not _AGENT_TURN.fullmatch(b["turn"]) or not isinstance(name, str) or len(name) > 80 \
+            or not isinstance(text, str) or not text.strip() or len(text) > 2000:
+        return {"accepted": False, "reason": "bad-input"}
+    if SECRET_LINE.search(text) or SECRET_LINE.search(name):
+        return {"accepted": False, "reason": "secret"}
+    r = agent_say_ready(b["from"])
+    if not r["speak"]:
+        return {"accepted": False, "reason": r["reason"]}
+    if not BUS.subs:
+        return {"accepted": False, "reason": "no-page"}
+    BUS.pub(t="agent_say", **{"from": b["from"], "name": name, "turn": b["turn"], "text": text, "kind": b["kind"]})
+    return {"accepted": True}
+
+
+def agent_say_run(args, timeout):
+    """`agent-say <args>`, no shell. With a timeout: True only on exit 0 (fails closed). Without: started or not."""
+    exe = shutil.which("agent-say")
+    if not exe:
+        return False
+    try:
+        if timeout is None:
+            subprocess.Popen([exe, *args], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True
+        return subprocess.run([exe, *args], stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def attention_accept(frm, text, now=None, target=None, hook=None):
@@ -5797,6 +5846,7 @@ def state_info():
         **{k: bool(CFG.get(k, k == "ambient_system")) for k in Ambient.FLAG.values()},
         "projects": quick.projects(),
         **{k: bool(CFG.get(k, k == "notify_sound")) for k in NOTIFY_FLAGS}, "notify_speak": CFG.get("notify_speak", ["meeting"]),
+        "agent_voice_mute": CFG.get("agent_voice_mute") or [],
         "quick_actions": CFG.get("quick_actions") or [], "memory_count": len(mem_load()),
         "language": lang.norm(CFG.get("language")), "lang_active": lang.active, "lang_status": lang_status, "date_locale": lang.LANGS[lang.active]["date"], "lines": lang.lines(),
         "mic_device": CFG.get("mic_device") or "", "whisper_model": CFG.get("whisper_model") or "auto",
@@ -6112,6 +6162,9 @@ class Handler(BaseHTTPRequestHandler):
                         upd[key] = bool(b[key])
                 if "answer_stages" in b and not b["answer_stages"]:
                     stages_off()
+                am = b.get("agent_voice_mute")
+                if isinstance(am, list) and all(x in AGENT_NAMES for x in am):
+                    upd["agent_voice_mute"] = list(dict.fromkeys(am))
                 ns = b.get("notify_speak")
                 if isinstance(ns, list) and len(ns) <= 6 and all(x in NOTIFY_CATS for x in ns):
                     upd["notify_speak"] = list(dict.fromkeys(ns))
@@ -6282,6 +6335,17 @@ class Handler(BaseHTTPRequestHandler):
                 b = json.loads(self._body() or b"{}")
                 return self._json({"ok": True, "shown": attention_accept(b.get("from"), b.get("text"), target=b.get("target"),
                                                                   hook=b.get("hook") if isinstance(b.get("hook"), dict) and len(b["hook"]) <= 12 else None)})
+            if p in ("/api/agent-say/ready", "/api/agent-say"):
+                b = json.loads(self._body() or b"{}")
+                if not isinstance(b, dict):
+                    return self._json({"error": "bad request"}, 400)
+                if p.endswith("/ready"):
+                    return self._json(agent_say_ready(b.get("from")))
+                return self._json(agent_say_accept(b))
+            if p == "/api/agent-say/check":          # full token only: runs `agent-say held`; anything but exit 0 is stop
+                return self._json({"go": agent_say_run(["held"], 3)})
+            if p == "/api/agent-say/more":           # full token only
+                return self._json({"ok": agent_say_run(["more"], None)})
             if p == "/api/attention/focus":
                 f = json.loads(self._body() or b"{}").get("from")
                 return self._json({"ok": attention_focus(f) if isinstance(f, str) else False})
