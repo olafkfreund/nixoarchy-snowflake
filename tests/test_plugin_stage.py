@@ -210,6 +210,18 @@ class RunnerTest(unittest.TestCase):
             with self.assertRaises(plugins.StageError):
                 plugins.run_stage(p, "never seen")                 # nothing cached: the error
 
+    def test_fresh_skips_cache_and_stale_fallback_but_updates_cache(self):
+        p = prog(self.root, "")
+        p.manifest["stage"]["cache_seconds"] = 60
+        newer = {**FACTS, "points": ["new"]}
+        with mock.patch.object(plugins, "_launch", side_effect=[FACTS, newer, plugins.StageError("failed")]) as launch:
+            self.assertEqual(plugins.run_stage(p, "q"), FACTS)
+            self.assertEqual(plugins.run_stage(p, "q", fresh=True), newer)
+            self.assertEqual(plugins.run_stage(p, "q"), newer)
+            with self.assertRaisesRegex(plugins.StageError, "failed"):
+                plugins.run_stage(p, "q", fresh=True)
+            self.assertEqual(launch.call_count, 3)
+
     def test_one_run_per_plugin_at_a_time(self):
         p, go, seen = prog(self.root, ""), threading.Event(), []
 
@@ -221,7 +233,7 @@ class RunnerTest(unittest.TestCase):
             t.start()
             time.sleep(0.2)
             with self.assertRaises(plugins.Busy) as e:
-                plugins.run_stage(p, "b")
+                plugins.run_stage(p, "b", fresh=True)
             self.assertIn("still fetching", str(e.exception))
             go.set()
             t.join()

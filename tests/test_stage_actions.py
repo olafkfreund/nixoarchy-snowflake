@@ -108,6 +108,71 @@ class StageActionsTest(unittest.TestCase):
                 self.assertFalse(self.s.stage_act(tk, "copy")["ok"])
         self.assertFalse(run.called)
 
+    def refresh_page(self):
+        stage = {"v": 1, "kind": "gauges", "title": "System", "live": True,
+                 "hosts": [{"name": "p620", "meters": [{"label": "CPU", "pct": 12}]}]}
+        stage = self.stages.validate(stage)
+        page = self.s.STAGES.put(stage, refresh=("status", "system status"))
+        return stage, page
+
+    def test_refresh_only_current_enabled_plugin_and_unlocked_desk(self):
+        stage, page = self.refresh_page()
+        p = object()
+        with mock.patch.object(self.s.Plug, "stage", {"status": p}), \
+                mock.patch.object(self.s.Desk, "locked", return_value=None), \
+                mock.patch.object(self.s.plugins, "run_stage", return_value=stage) as run, \
+                mock.patch.object(self.s.BUS, "pub") as pub:
+            self.assertEqual(self.s.stage_act(page["refresh"], "refresh"), {"ok": True})
+            run.assert_called_once_with(p, "system status", fresh=True)
+            self.assertEqual(pub.call_args.kwargs["t"], "stage_update")
+            pub.reset_mock()
+            for token in (page["token"], self.tok, "forged"):
+                self.assertEqual(self.s.stage_act(token, "refresh"), {"ok": False})
+            with mock.patch.object(self.s.Desk, "locked", return_value=True):
+                self.assertEqual(self.s.stage_act(page["refresh"], "refresh"), {"ok": False})
+            self.assertFalse(pub.called)
+        with mock.patch.object(self.s.Plug, "stage", {}), mock.patch.object(self.s.Desk, "locked", return_value=False), \
+                mock.patch.object(self.s.plugins, "run_stage") as run:
+            self.assertEqual(self.s.stage_act(page["refresh"], "refresh"), {"ok": False})
+            run.assert_not_called()
+
+    def test_refresh_busy_and_changed_send_nothing(self):
+        _, page = self.refresh_page()
+        with mock.patch.object(self.s.Plug, "stage", {"status": object()}), \
+                mock.patch.object(self.s.Desk, "locked", return_value=False), \
+                mock.patch.object(self.s.BUS, "pub") as pub, \
+                mock.patch.object(self.s.Plug, "reload") as reload, \
+                mock.patch.object(self.s.plugins, "run_stage", side_effect=[self.s.plugins.Busy("busy"), self.s.plugins.StageError(self.s.plugins.CHANGED)]):
+            self.assertEqual(self.s.stage_act(page["refresh"], "refresh"), {"ok": True, "skipped": True})
+            self.assertEqual(self.s.stage_act(page["refresh"], "refresh"), {"ok": False})
+            reload.assert_called_once_with()
+            pub.assert_not_called()
+
+    def test_refresh_lost_after_close_or_another_put(self):
+        stage, page = self.refresh_page()
+        with mock.patch.object(self.s.Plug, "stage", {"status": object()}), \
+                mock.patch.object(self.s.Desk, "locked", return_value=False), \
+                mock.patch.object(self.s.BUS, "pub") as pub:
+            for change in (self.s.STAGES.close, lambda: self.s.STAGES.put(self.stages.validate(stage), refresh=("status", "system status"))):
+                page = self.s.STAGES.put(self.stages.validate(stage), refresh=("status", "system status"))
+                def late(*args, **kwargs):
+                    change()
+                    return stage
+                with mock.patch.object(self.s.plugins, "run_stage", side_effect=late):
+                    self.assertEqual(self.s.stage_act(page["refresh"], "refresh"), {"ok": False, "error": "gone"})
+                pub.assert_not_called()
+
+    def test_refresh_updates_copy_text(self):
+        stage, page = self.refresh_page()
+        newer = self.stages.validate({**stage, "hosts": [{"name": "p620", "meters": [{"label": "CPU", "pct": 83}]}]})
+        with mock.patch.object(self.s.Plug, "stage", {"status": object()}), \
+                mock.patch.object(self.s.Desk, "locked", return_value=False), \
+                mock.patch.object(self.s.plugins, "run_stage", return_value=newer), \
+                mock.patch.object(self.s.BUS, "pub"), mock.patch.object(self.s.subprocess, "run", return_value=mock.Mock(returncode=0)) as copy:
+            self.assertEqual(self.s.stage_act(page["refresh"], "refresh"), {"ok": True})
+            self.assertEqual(self.s.stage_act(page["token"], "copy"), {"ok": True})
+            self.assertIn(b"83", copy.call_args.kwargs["input"])
+
     def test_open_play_not_yet_and_unknown(self):
         self.assertEqual(self.s.stage_act(self.tok, "open")["error"], "not yet")
         self.assertFalse(self.s.stage_act(self.tok, "run")["ok"])

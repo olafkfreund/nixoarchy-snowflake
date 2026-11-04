@@ -4716,7 +4716,26 @@ def stage_act(token, act):
         if page:
             BUS.pub(t="stage", **stage_event(page))
         return {"ok": bool(page)}
-    got = STAGES.get(token) if act in ("copy", "open", "play", "session", "terminal") else None
+    got = STAGES.get(token) if act in ("copy", "open", "play", "session", "terminal", "refresh") else None
+    if act == "refresh":
+        if not got or got[0] != "refresh" or Desk.locked() is True:
+            return {"ok": False}
+        p = Plug.stage.get(got[1]["pid"])
+        if p is None:
+            return {"ok": False}
+        try:
+            st = plugins.run_stage(p, got[1]["query"], fresh=True)
+        except plugins.Busy:
+            return {"ok": True, "skipped": True}
+        except plugins.StageError as e:
+            if str(e) == plugins.CHANGED:
+                Plug.reload()
+            return {"ok": False}
+        page = STAGES.replace(token, st)
+        if page is None:
+            return {"ok": False, "error": "gone"}
+        BUS.pub(t="stage_update", **stage_event(page))
+        return {"ok": True}
     if act in ("session", "terminal") and got and got[0] == act:    # the desk: a herdr session's window, or a fresh terminal
         try:
             argv = attach_argv(got[1]["pane"]) if act == "session" else ["xdg-terminal-exec"]

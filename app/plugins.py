@@ -673,7 +673,7 @@ def _consented(p, h=None):
         raise StageError(CHANGED)
 
 
-def run_stage(p, query, locale="en", timeout=TIME_DEFAULT):
+def run_stage(p, query, locale="en", timeout=TIME_DEFAULT, fresh=False):
     """Run a stage plugin on a query -> a `facts` stage (stages.validate'd, nothing else accepted). Raises StageError / Busy.
     Cached per plugin and query for stage.cache_seconds; if a run fails the last good result is shown with its age."""
     import stages
@@ -681,7 +681,7 @@ def run_stage(p, query, locale="en", timeout=TIME_DEFAULT):
     _consented(p)                                                  # (before the cache too: a changed plugin shows nothing, old or new)
     with _cache_lock:
         hit = _cache.get(key)
-        if hit and now - hit[0] < stg.get("cache_seconds", 60):
+        if not fresh and hit and now - hit[0] < stg.get("cache_seconds", 60):
             return hit[1]
         if p.id in _running:
             raise Busy("still fetching\u2026")
@@ -690,7 +690,7 @@ def run_stage(p, query, locale="en", timeout=TIME_DEFAULT):
         try:
             out = _launch(p, query, locale, min(timeout, TIME_MAX), stages)
         except StageError as e:
-            if hit and str(e) != CHANGED:
+            if not fresh and hit and str(e) != CHANGED:
                 old = dict(hit[1])
                 old["source"] = ((old.get("source") + " \u00b7 ") if old.get("source") else "")[:60] + "couldn't refresh, " + _ago(now - hit[0])
                 return old
