@@ -319,7 +319,7 @@ def _find_project(name):
 
 
 # ---------------------------------------------------------------- the matcher
-NIXI = r"(?:nixi's|nixi|nixie|nixy|nixey|nixee|nicksy|nicksie)"   # how speech-to-text spells him (as WAKE_RE)
+NIXI = r"(?:nixi's|nixi|nixie|nixy|nixey|nixee|nicksy|nicksie|niksi)"   # how speech-to-text spells him (as WAKE_RE)
 
 
 def matches(text):

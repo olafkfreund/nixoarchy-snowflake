@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import unicodedata
+import lang as language
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -639,8 +640,7 @@ _EN = {"verbs": {x: x for x in ("run", "copy", "play", "open")},
 
 
 def lang_active():
-    server = sys.modules.get("server") or sys.modules.get("__main__")
-    return getattr(server, "lang_active", getattr(server, "CFG", {}).get("language", "en"))
+    return language.active
 
 
 def normalize(said):
@@ -657,11 +657,11 @@ def _pattern(words):
 def _words(lang):
     words = {k: v.copy() for k, v in _EN.items()}
     if lang in ("nb", "pl"):
-        extra = json.loads((Path(__file__).parent / "lang" / f"{lang}.json").read_text(encoding="utf-8"))["words"]
+        extra = language.load(lang).get("words", {})
         for k in ("verbs", "ordinals", "cardinals", "plain"):
-            words[k].update(extra[k])
+            words[k].update(extra.get(k, {}))
         for k in ("fillers", "it", "nouns"):
-            words[k] += extra[k]
+            words[k] += extra.get(k, [])
     words["ordinals"].update(words["cardinals"])
     words["ordinals"].update({str(i): i - 1 for i in range(1, 6)})
     act = re.compile(rf"(?P<verb>{_pattern(words['verbs'])})\s+(?:(?:{_pattern(words['fillers'])})\s+)*(?:(?P<num>{_pattern(words['ordinals'])})|(?P<it>{_pattern(words['it'])}))(?:\s+(?P<noun>{_pattern(words['nouns'])}))?")

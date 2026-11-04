@@ -1,6 +1,7 @@
 """Language switches keep speech recognition and speech output on one active language."""
 import threading
 import time
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -45,6 +46,7 @@ class WhisperSwitchTest(_ServerEnv):
              mock.patch.object(self.s, "fetch_voice_sync", side_effect=fetch), mock.patch.object(self.s, "lang_voice_name", side_effect=lambda c: "voice-" + c), \
              mock.patch.object(self.s, "restore_voice"), mock.patch.object(self.s, "voice_ready_for", return_value=True), mock.patch.object(self.s.Speaker, "say"):
             self.s.request_language(code)
+            wait_until(lambda: self.s.lang_status in ("download failed", "") or self.s.lang.active == code)
             return self.s.lang_status
 
     def test_old_language_while_voice_downloads_then_switches(self):
@@ -55,14 +57,15 @@ class WhisperSwitchTest(_ServerEnv):
             return True, ""
         with mock.patch.object(self.s, "_load", return_value=FakeModel("base")), mock.patch.object(self.s, "_gpu_ok", return_value=False), \
              mock.patch.object(self.s, "fetch_voice_sync", side_effect=fetch), mock.patch.object(self.s, "lang_voice_name", return_value="voice-pl"), \
-             mock.patch.object(self.s, "restore_voice"), mock.patch.object(self.s, "voice_ready_for", return_value=True), mock.patch.object(self.s.Speaker, "say") as say:
+             mock.patch.object(self.s, "restore_voice"), mock.patch.object(self.s, "voice_ready_for", return_value=True), mock.patch.object(self.s.Speaker, "say") as say, mock.patch.object(self.s.BUS, "pub") as pub:
             self.s.request_language("pl")
             self.assertTrue(waiting.wait(2))
             self.assertIn("Switching to Polski", self.s.lang_status)
             self.assertEqual(self.s.run_whisper("audio"), "heard")
             self.assertEqual(self.old.languages, ["en"])
             self.assertEqual(self.s.lang.active, "en")
-            say.assert_called_once()
+            say.assert_not_called()
+            self.assertEqual(pub.call_args.kwargs["t"], "remind")
             release.set()
             self.assertTrue(wait_until(lambda: self.s.lang.active == "pl"))
             self.assertEqual(self.s.run_whisper("audio"), "heard")
@@ -94,6 +97,79 @@ class WhisperSwitchTest(_ServerEnv):
         self.assertTrue(wait_until(lambda: self.s.lang_status == "download failed"))
         self.assertIs(self.s._stt[0], self.old)
         self.assertEqual(self.s.lang.active, "en")
+
+    def test_failed_request_is_not_replayed_on_restart(self):
+        s = self.s
+        path = s.CONF_PATH.parent / "failed-switch.json"
+        with mock.patch.object(s, "CONF_PATH", path), mock.patch.object(s, "_load", return_value=FakeModel("base")), \
+             mock.patch.object(s, "_gpu_ok", return_value=False), mock.patch.object(s, "fetch_voice_sync", return_value=(False, "offline")), \
+             mock.patch.object(s, "lang_voice_name", return_value="voice-pl"):
+            path.write_text(json.dumps({"language": "pl", "lang_good": "en"}))
+            s.CFG.update(language="pl", lang_good="en")
+            s.request_language("pl")
+            self.assertTrue(wait_until(lambda: s.lang_status == "offline"))
+            self.assertEqual((s.load_config()["language"], s.load_config()["lang_good"]), ("en", "en"))
+
+    def test_active_choice_is_no_op_and_cancels_pending_switch(self):
+        s = self.s
+        with mock.patch.object(s, "_load") as load, mock.patch.object(s.BUS, "pub") as pub:
+            s.request_language("en")
+            load.assert_not_called()
+            pub.assert_not_called()
+            self.assertEqual(s.lang_status, "")
+
+    def test_kokoro_rejects_polish_before_voice_fetch(self):
+        s = self.s
+        s.CFG["tts"] = "kokoro"
+        with mock.patch.object(s, "_load", return_value=FakeModel("base")) as load, mock.patch.object(s, "_gpu_ok", return_value=False), \
+             mock.patch.object(s, "fetch_voice_sync") as fetch:
+            s.request_language("pl")
+            self.assertTrue(wait_until(lambda: s.lang_status == "Kokoro has no Polish voice"))
+            load.assert_not_called()
+            fetch.assert_not_called()
+
+    def test_switch_back_restores_english_preset(self):
+        s = self.s
+        s.CFG.update(tts="off", voice="girl", voice_by_lang={})
+        with mock.patch.object(s, "_load", return_value=FakeModel("base")), mock.patch.object(s, "_gpu_ok", return_value=False):
+            s.request_language("pl")
+            self.assertTrue(wait_until(lambda: s.lang.active == "pl"))
+            s.save_config(voice="guy", voice_by_lang={**s.CFG["voice_by_lang"], "pl": "guy"})
+            s.request_language("en")
+            self.assertTrue(wait_until(lambda: s.lang.active == "en"))
+            self.assertEqual(s.CFG["voice"], "girl")
+
+    def test_off_switch_never_fetches_piper(self):
+        s = self.s
+        s.CFG["tts"] = "off"
+        with mock.patch.object(s, "_load", return_value=FakeModel("base")), mock.patch.object(s, "_gpu_ok", return_value=False), \
+             mock.patch.object(s, "fetch_voice_sync") as fetch:
+            s.request_language("pl")
+            self.assertTrue(wait_until(lambda: s.lang.active == "pl"))
+            fetch.assert_not_called()
+
+    def test_voice_click_during_switch_keeps_both_presets(self):
+        s = self.s
+        loading, release = threading.Event(), threading.Event()
+        s.CFG.update(tts="off", voice="girl", voice_by_lang={"pl": "girl"})
+        def load(*_):
+            loading.set()
+            release.wait(2)
+            return FakeModel("base")
+        with mock.patch.object(s, "_load", side_effect=load), mock.patch.object(s, "_gpu_ok", return_value=False), \
+             mock.patch.object(s.Wake, "ensure"), mock.patch.object(s, "state_info", return_value={}), \
+             mock.patch.object(s.quick, "projects", return_value={}):
+            s.request_language("pl")
+            self.assertTrue(loading.wait(2))
+            handler = s.Handler.__new__(s.Handler)
+            handler.path = "/api/settings"
+            handler.headers = {"X-Nixi-Token": s.TOKEN, "Host": "localhost"}
+            with mock.patch.object(handler, "_body", return_value=b'{"voice":"guy"}'), \
+                 mock.patch.object(handler, "_json", side_effect=lambda obj, code=200: obj):
+                handler.do_POST()
+            release.set()
+            self.assertTrue(wait_until(lambda: s.lang.active == "pl"))
+            self.assertEqual((s.CFG["voice_by_lang"]["en"], s.CFG["voice"]), ("guy", "girl"))
 
     def test_snapshot_survives_switch_and_cpu_retry_cannot_replace_new_pair(self):
         started, release = threading.Event(), threading.Event()
@@ -134,6 +210,14 @@ class WhisperSwitchTest(_ServerEnv):
             self.assertEqual(self.s.run_whisper("audio"), "")
             self.assertEqual(model.languages, [self.s.lang.LANGS[code]["whisper"]])
 
+    def test_english_prompt_has_one_wake_phrase(self):
+        model = FakeModel("base.en")
+        self.s._stt = (model, "en", "cpu")
+        self.s._whisper = model
+        self.s.CFG["stt_hint"] = self.s.DEFAULTS["stt_hint"]
+        self.s.run_whisper("audio")
+        self.assertEqual(model.prompts[-1], self.s.DEFAULTS["stt_hint"])
+
     def test_quip_bag_is_per_language(self):
         root = Path(self.tmp) / "quips-test"
         root.mkdir(exist_ok=True)
@@ -153,10 +237,12 @@ class FakeModel:
         self.name, self.text, self.fail_cuda = name, text, fail_cuda
         self.started, self.release = started, release
         self.languages = []
+        self.prompts = []
         self._nixi_name, self._nixi_dev, self._nixi_ct = name, device, compute_type
 
     def transcribe(self, audio, **kw):
         self.languages.append(kw["language"])
+        self.prompts.append(kw["initial_prompt"])
         if self.started:
             self.started.set()
             self.release.wait(2)

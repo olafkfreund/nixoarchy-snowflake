@@ -14,6 +14,24 @@ from test_speakable import _ServerEnv
 class WordsTest(unittest.TestCase):
     stage = {"kind": "headlines", "items": [0] * 5, "clips": [0] * 5}
 
+    def test_active_language_controls_shortcuts_even_when_requested_differs(self):
+        import lang
+        old = lang.active
+        try:
+            lang.active = "pl"
+            self.assertEqual(stages.fast_path("otwórz pierwszy", self.stage), ("open", 0))
+            lang.active = "en"
+            self.assertIsNone(stages.fast_path("otwórz pierwszy", self.stage))
+        finally:
+            lang.active = old
+
+    def test_broken_language_table_keeps_english_shortcuts(self):
+        import lang
+        stages._words.cache_clear()
+        with mock.patch.object(lang, "load", return_value={}):
+            self.assertEqual(stages.fast_path("open the first", self.stage, "pl"), ("open", 0))
+        stages._words.cache_clear()
+
     def test_normalization(self):
         self.assertEqual(plugins.norm("Hei Nixi, ÅPNE æøå ąęłśżźćńó!"), "åpne æøå ąęłśżźćńó")
         self.assertEqual(plugins.norm("Hej Nixi, OPEN_the first?"), "open the first")
@@ -68,11 +86,12 @@ class WakeWordsTest(_ServerEnv):
     def test_wake_greetings(self):
         for greeting in ("hei", "hej", "cześć"):
             self.assertIsNotNone(self.server.WAKE_RE.match(f"{greeting} Nixi, otwórz drugi"))
+        self.assertIsNotNone(self.server.WAKE_RE.match("hallo niksi, hello"))
 
     def test_stop_before_wake_while_speaking(self):
         s = self.server
         for lang, phrase in (("en", "stop"), ("nb", "hei nixi stopp"), ("nb", "vær stille"),
-                             ("pl", "hej nixi cicho"), ("pl", "cicho"), ("pl", "cześć nixi stop")):
+                             ("pl", "hej nixi cicho"), ("pl", "cicho"), ("pl", "hallo nixi cicho"), ("pl", "cześć nixi stop")):
             with self.subTest(lang=lang, phrase=phrase), mock.patch.object(s.stages, "lang_active", return_value=lang), \
                  mock.patch.object(s.FLOOR, "floor_overlaps", return_value=False), \
                  mock.patch.object(s.Wake, "speaking", return_value=True), \

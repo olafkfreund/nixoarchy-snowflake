@@ -66,21 +66,40 @@ class LangServerTest(_ServerEnv):
             with mock.patch.dict(s.os.environ, {"LC_ALL": "nb_NO.UTF-8"}):
                 self.assertEqual(s.load_config()["language"], "en")
 
+    def test_saved_request_starts_from_last_good_language(self):
+        s = self.server
+        path = s.CONF_PATH.parent / "restart-config.json"
+        with mock.patch.object(s, "CONF_PATH", path):
+            path.write_text(json.dumps({"language": "pl", "lang_good": "en"}))
+            self.assertEqual((s.load_config()["language"], s.load_config()["lang_good"]), ("pl", "en"))
+            path.write_text(json.dumps({"language": "pl", "whisper_model": "small.en"}))
+            cfg = s.load_config()
+            self.assertEqual((cfg["language"], cfg["lang_good"], cfg["whisper_model"]), ("pl", "en", "auto"))
+
+    def test_requested_words_wait_for_active_switch(self):
+        s = self.server
+        s.CFG["language"] = "en"
+        s.lang.active = "pl"
+        self.assertEqual(s.stages.fast_path("otwórz pierwszy", {"kind": "headlines", "items": [0]}, None), ("open", 0))
+        self.assertIsNotNone(s._stop_re(s.stages.lang_active()).fullmatch("cicho"))
+        s.lang.active = "en"
+        self.assertIsNone(s.stages.fast_path("otwórz pierwszy", {"kind": "headlines", "items": [0]}, None))
+        self.assertIsNone(s._stop_re(s.stages.lang_active()).fullmatch("cicho"))
+
     def test_language_is_saved_but_active_stays(self):
         s = self.server
         s.lang.active = "en"
         with mock.patch.object(s.quick, "projects", return_value={}), mock.patch.object(s, "save_config", side_effect=lambda **kw: s.CFG.update(kw)), \
-             mock.patch.object(s, "request_language") as request:
-            srv = s.ThreadingHTTPServer(("127.0.0.1", 0), s.Handler)
-            threading.Thread(target=srv.serve_forever, daemon=True).start()
-            self.addCleanup(srv.server_close)
-            self.addCleanup(srv.shutdown)
+             mock.patch.object(s, "request_language") as request, mock.patch.object(s.Wake, "ensure"):
+            handler = s.Handler.__new__(s.Handler)
+            handler.path = "/api/settings"
+            handler.headers = {"X-Nixi-Token": s.TOKEN, "Host": "localhost"}
             for lg in ("de", "pl"):             # an unknown language is ignored, a known one saved
-                req = urllib.request.Request(f"http://127.0.0.1:{srv.server_port}/api/settings", data=json.dumps({"language": lg}).encode(),
-                                             headers={"Content-Type": "application/json", "X-Nixi-Token": s.TOKEN})
-                info = json.load(urllib.request.urlopen(req))
+                with mock.patch.object(handler, "_body", return_value=json.dumps({"language": lg}).encode()), \
+                     mock.patch.object(handler, "_json", side_effect=lambda obj, code=200: obj):
+                    info = handler.do_POST()
                 self.assertEqual((info["language"], info["lang_active"]), ("en" if lg == "de" else "pl", "en"))
-            request.assert_called_once_with("pl")
+            request.assert_called_once_with("pl", force=False)
         self.assertIn("lines", info)
 
     def _fake_bridge(self, emit):
@@ -199,6 +218,49 @@ class LangVoiceTest(_ServerEnv):
         self.assertIn("offline", why)
         self.assertNotIn("pl_PL-nobody-medium", s._downloading)
 
+    def test_switch_voice_depends_on_selected_engine(self):
+        s = self.server
+        with mock.patch.object(s, "piper_bin", return_value=None), mock.patch.object(s.shutil, "which", return_value="/bin/espeak-ng"):
+            for mode in ("espeak", "off"):
+                s.CFG["tts"] = mode
+                self.assertIsNone(s.lang_voice_name("pl"))
+                self.assertTrue(s.voice_ready_for("pl"))
+            s.CFG.update(tts="elevenlabs", eleven_on=True, eleven_voice="abcdefghij1234")
+            with mock.patch.object(s.eleven, "has_key", return_value=True):
+                self.assertIsNone(s.lang_voice_name("pl"))
+                self.assertTrue(s.voice_ready_for("pl"))
+                self.assertTrue(s.voice_ready_for("en"))
+            s.CFG["tts"] = "kokoro"
+            self.assertIsNone(s.lang_voice_name("pl"))
+            self.assertFalse(s.voice_ready_for("pl"))
+            s.CFG["tts"] = "auto"
+            self.assertIsNone(s.lang_voice_name("en"))
+            self.assertTrue(s.voice_ready_for("en"))
+
+    def test_parallel_voice_fetch_starts_once(self):
+        s = self.server
+        name = "pl_PL-gosia-medium"
+        s._downloading.discard(name)
+        fake = mock.Mock()
+        fake.exists.side_effect = lambda: (threading.Event().wait(.03), False)[1]
+        a = threading.Thread(target=s.fetch_voice, args=(name,))
+        b = threading.Thread(target=s.fetch_voice, args=(name,))
+        with mock.patch.object(s, "voice_file", return_value=fake), mock.patch.object(s.threading, "Thread") as worker:
+            a.start(); b.start(); a.join(); b.join()
+            worker.assert_called_once()
+        s._downloading.discard(name)
+
+    def test_approval_falls_back_when_english_description_is_all_we_have(self):
+        s = self.server
+        s.lang.active = "pl"
+        with mock.patch.object(s, "summarize_command", return_value=None):
+            self.assertEqual(s.approval_say("Bash", {"description": "delete the file", "command": "rm x"}), s.lang.t("approve.command"))
+        self.assertEqual(s.bridge_question("rm x", "delete the file"), s.lang.t("approve.command"))
+        with mock.patch.object(s, "claude_bin", return_value="claude"), mock.patch.object(s.subprocess, "run") as run:
+            run.return_value.stdout = "usuń plik"
+            s.summarize_command("rm x")
+            self.assertIn("infinitive verb in the reply language", run.call_args.kwargs["input"])
+
     def test_plugin_stage_passes_the_locale(self):
         s = self.server
         s.lang.active = "pl"
@@ -280,6 +342,14 @@ class QuipFilesTest(_ServerEnv):
     def setUp(self):
         S = self.server
         self.addCleanup(setattr, S.lang, "active", S.lang.active)
+
+    def test_refill_uses_the_cached_merged_file(self):
+        S = self.server
+        S.lang.active = "pl"
+        S.Quips.data = None
+        first = S.Quips.lines("done")
+        with mock.patch.object(Path, "read_text", side_effect=AssertionError("second read")):
+            self.assertEqual(S.Quips.lines("done"), first)
         self.addCleanup(S.Quips.bags.clear)
 
     def test_the_shipped_files_cover_every_event(self):
