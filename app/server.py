@@ -4682,7 +4682,10 @@ def plugin_stage(pid, query, before=_ANY):
     if peers_withdrawn(st):
         return False, "Other machines are off."
     if before is _ANY or (stages_on() and STAGES.current() is before):
-        BUS.pub(t="stage", **stage_event(STAGES.put(st, refresh=(pid, query))))
+        page = STAGES.put(st, refresh=(pid, query))
+        BUS.pub(t="stage", **stage_event(page))
+        if st.get("video_query") and p.manifest["stage"].get("videos"):   # (only the news plugin; never the asked words)
+            threading.Thread(target=news_clips, args=(page["copy"], st["video_query"]), daemon=True).start()
     return True, st.get("say") or "Here you go."
 
 
@@ -4698,6 +4701,23 @@ def video_stage(st, before):
     st = {**st, "items": stages.video_search(st["query"])}      # (the agent only said what to look for)
     if stages_on() and STAGES.current() is before:
         BUS.pub(t="stage", **stage_event(STAGES.put(st)))
+
+
+_CLIPS = threading.Lock()                               # (one YouTube search at a time: a newer slip waits, then drops the older slip's clips)
+
+
+def news_clips(slip, search):
+    """Add recent clips to the news slip `slip` (its copy token) once they are found, if it is still the one on screen."""
+    with _CLIPS:
+        cur = STAGES.current()
+        if not cur or cur.get("copy") != slip:
+            return
+        items = stages.video_search(search, newest=True)
+        if not items:
+            return
+        page = STAGES.add_clips(slip, items)
+        if page:
+            BUS.pub(t="stage_update", **stage_event(page))
 
 
 DAY_LOCK = threading.Lock()
