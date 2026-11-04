@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """Nix status: one `facts` stage on stdout. The sandbox shows it nothing of the system: Nixi passes system_status on stdin (reads: system-status); no network."""
 import json
-import subprocess
+import os
 import sys
+
+
+def human(n):
+    for unit in "BKMGTPE":
+        if round(n, 1) < 1024 or unit == "E":
+            return f"{n:.1f}".rstrip("0").rstrip(".") + unit
+        n /= 1024
 
 try:
     ss = json.load(sys.stdin).get("system_status") or {}
@@ -17,9 +24,8 @@ if isinstance(failed, list):
 else:
     pts.append("Failed user services: unavailable")
 try:
-    r = subprocess.run(["df", "-h", "--output=used,size", "/nix/store"], capture_output=True, text=True, timeout=2)
-    used, size = r.stdout.splitlines()[1].split()
-    pts.append(f"Store: {used} used of {size}")
-except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+    fs = os.statvfs("/nix/store")
+    pts.append(f"Store: {human((fs.f_blocks - fs.f_bfree) * fs.f_frsize)} used of {human(fs.f_blocks * fs.f_frsize)}")
+except OSError:
     pts.append("Store: couldn't check")
 print(json.dumps({"v": 1, "kind": "facts", "title": "Nix status", "points": pts, "source": "this computer"}))

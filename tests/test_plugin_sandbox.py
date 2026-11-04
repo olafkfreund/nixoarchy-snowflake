@@ -266,10 +266,13 @@ class SandboxTest(unittest.TestCase):
     # ---- the two examples, as shipped
     def test_nix_status_example(self):
         self.assertIsNone(plugins.check_dir(EX / "nix-status"))
-        got = plugins.run_stage(load(EX / "nix-status"), "nixi status")
+        bins = {str(Path(x).resolve().parent) for x in (sys.executable, shutil.which("bwrap"))}   # the packaged PATH has no coreutils (#149 B5)
+        with mock.patch.dict(os.environ, {"PATH": ":".join(bins)}):
+            self.assertFalse(any(os.path.exists(os.path.join(b, "df")) for b in bins if b.startswith("/nix/store/")))   # (the sandbox keeps only these)
+            got = plugins.run_stage(load(EX / "nix-status"), "nixi status")
         self.assertEqual((got["kind"], got["title"], len(got["points"])), ("facts", "Nix status", 3))
         self.assertTrue(got["points"][0].startswith("System: "))
-        self.assertTrue(got["points"][2].startswith("Store: "))
+        self.assertRegex(got["points"][2], r"^Store: \S+ used of \S+$")
 
     @unittest.skipUnless(plugins.pasta_ok(), "needs pasta")
     def test_rss_headlines_example_against_a_local_feed(self):
