@@ -95,6 +95,8 @@ a blue ring with a dot for agy.
 Each kind has its own 30-second limit, so a finish never hides a question. Nothing the agents say is saved or logged,
 and anything that looks like a password or key is dropped from the reason.
 
+**Spoken summaries.** If your system runs `agent-say` with `speaker = "nixi"`, long turns also get a short spoken summary in his own voice, with his face and captions, and no second alert. Click, Space or Esc stops only the speech: it doesn't stop any work and doesn't open the mic. Settings → Voice → Agents mutes each agent and replays the last 5 summaries, which are held in memory only and are gone when he restarts. He stays quiet when hidden, in a meeting, or under Do Not Disturb, and if his voice is unavailable the summary stays as text.
+
 Put these in the agents' own settings. Nixi must be running; if it is not, the lines do nothing and the agent carries on.
 
 ```sh

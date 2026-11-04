@@ -1425,7 +1425,7 @@ class Spring{   // f = natural frequency (Hz), z = damping ratio (1 = no oversho
 const S={L:{},R:{}}; for(const k of EYE_KEYS){ S.L[k]=new Spring(val(MOODS.idle[k],0),2.1,.82); S.R[k]=new Spring(val(MOODS.idle[k],1),2.1,.82); }
 const SP={L:{},R:{}}; for(const k of PUP_KEYS){ SP.L[k]=new Spring(val(PUP.slit[k],0),2.3,.78); SP.R[k]=new Spring(val(PUP.slit[k],1),2.3,.78); }
 const G={ sz:new Spring(1,2,.75), tilt:new Spring(0,.8,.85), dx:new Spring(0,2.4,.55),
-  wob:new Spring(0,1.7,.22),
+  wob:new Spring(0,1.7,.22), wxAside:new Spring(0,1.6,.86),
   gx:new Spring(0,1.6,.86), gy:new Spring(0,1.6,.86), jelly:new Spring(0,2.2,.45), sit:new Spring(0,2.4,.55), sitShade:new Spring(0,2.4,.55), sitGl:new Spring(0,2.4,.55), sitP:new Spring(0,2.4,.55), sitN:new Spring(0,2.4,.55), sitBn:new Spring(0,2.4,.55), sitSc:new Spring(0,2.4,.55), wind:new Spring(0,1.2,.8), sitLift:new Spring(0,3,.8), sitMusic:new Spring(0,2.4,.55), sitW:new Spring(0,1.7,.22), zoom:new Spring(1,1.6,.7),
   appear:new Spring(.2,1.5,.55), open:new Spring(0,1.8,.55), think:new Spring(0,1.6,.6), anger:new Spring(0,1.8,.55), qm:new Spring(0,1.8,.55),
   agent:new Spring(0,2.6,.5), sitChat:new Spring(0,2.6,.5), sitFeed:new Spring(0,2.6,.5), mic:new Spring(0,2.6,.7), rays:new Spring(0,.6,1), spd:new Spring(.5,.5,1), rad:new Spring(1,.9,.8), oa:new Spring(.5,.7,1), ha:new Spring(.45,.8,1) };
@@ -1539,7 +1539,10 @@ let FID=null, nextFidAt=performance.now()+6000, lastFid='';
 const paintEl=document.getElementById('paint');
 const REDUCED=matchMedia('(prefers-reduced-motion: reduce)');
 const wxAlpha=p=>.85*Math.sin(Math.PI*p);
-const wxEl=$('#wx');
+const wxAside=ts=>!sitOn.clear&&!!((AM&&ts<AM.until)||mirKind()||$('#cue').getAttribute('display')!=='none');   // (a clear sky is only the sun, which doesn't overlap)
+const wxHat=()=>LOOK.skin!=='none'||sitOn.party||sitOn.cold2||sitOn.night;   // (his hat takes the head slot, so the cloud already sits left at x≈-76, clear of the marks)
+let wxOn=false;
+const wxEl=$('#wx'), WX_ASIDE=90;   // (to the right: the cloud clears the marks at x≈8, and a sun at x≈98 slides off rather than onto them)
 // the weather marks (#157): built once, every group display="none" until wxStep shows it; flat colours only. Particles are children of their cloud's group.
 function drawMarks(){ const W={}, d=sv('defs',{},wxEl), R=at=>({...at,'stroke-linecap':'round','stroke-linejoin':'round'});
   const grad=(id,a,b)=>{ const lg=sv('linearGradient',{id,x1:0,y1:0,x2:0,y2:1},d); sv('stop',{offset:0,'stop-color':a},lg); sv('stop',{offset:1,'stop-color':b},lg); };
@@ -1580,11 +1583,11 @@ const wxOpacity=new Map(wxGroups.map(g=>[g,0]));
 function wxStep(t,dt){
   if(document.body.classList.contains('bar')||document.body.classList.contains('hover')||document.body.classList.contains('calm')||document.body.classList.contains('goohide')) return;
   const kind=['snow','rain','clear','partly','cloudy'].find(k=>sitOn[k])||'', still=REDUCED.matches;
-  const hat=LOOK.skin!=='none'||sitOn.party||sitOn.cold2||sitOn.night, slot=hat?'hat':'head', night=!SIT.day;
-  const key=[kind,slot,SIT.day,SIT.heavy,lowFx,sitOn.windy,SIT.lean].join(':');
+  const hat=wxHat(), slot=hat?'hat':'head', night=!SIT.day;
+  const key=[kind,slot,SIT.day,SIT.heavy,lowFx,sitOn.windy,SIT.lean,wxOn].join(':');
   if(still&&wxWasReduced&&key===wxReducedKey) return;
   wxWasReduced=still; wxReducedKey=key; t=typeof WXT==='number'?WXT:t;
-  const windy=sitOn.windy, dir=windy&&SIT.lean?-SIT.lean:1, extra=kind==='rain'&&SIT.heavy&&!lowFx;
+  const windy=sitOn.windy, dir=windy&&SIT.lean?-SIT.lean:1, extra=kind==='rain'&&SIT.heavy&&!lowFx&&!wxOn;   // (a mark is up: the small extra clouds would land on it, with or without a hat)
   const scale=hat?.95:.92, cloudY=hat?-106:-108;
   const cloudX=(phase=0,speed=1,L=63.5,R=56.5,s=scale)=>{
     if(still) return {x:hat?-76:0,fade:1};
@@ -1854,6 +1857,8 @@ function frame(ts){
         for(const [s,cu] of [[-1,SIT_P.cL],[1,SIT_P.cR]]) cu.setAttribute('transform',`translate(${(s*X-s*lx*.6).toFixed(2)} -8) rotate(${(s*8+(s<0?-12*L:0)).toFixed(2)}) scale(${(1+.07*k).toFixed(3)})`);
         SIT_P.bd.setAttribute('transform',`translate(0 ${(-1.5*k).toFixed(2)})`);
         if(k>.6&&ts-nodAt>=200){ nodAt=ts; G.jelly.kick(.015*k); } } } }   // (nothing to write while all are off)
+  { wxOn=wxAside(ts); const on=wxOn&&!wxHat(), dx=REDUCED.matches?(on?WX_ASIDE:0):G.wxAside.to(on?WX_ASIDE:0,dt);   // (#187: a notification mark must never sit under the cloud)
+    wxEl.setAttribute('transform',`translate(${dx.toFixed(1)} 0)`); }
   wxStep(t,dt);
   { const k=mirKind(), bar=document.body.classList.contains('bar');       // the ai-mirror mark (nothing to write while it is gone)
     if(k||mirV>0){ if(k&&k!==mirLast){ mirLast=k; MX.ring.setAttribute('r','12'); MX.ring.setAttribute('stroke',k==='agent'?'#ff3b3b':k==='pending'?'#ffb02a':'#9ecbff'); MX.ring.setAttribute('display',k==='watch'?'none':'');
@@ -2920,7 +2925,10 @@ const ago=ts=>{ const s=Date.now()/1000-ts; return s<60?'just now':s<3600?`${s/6
 let pnMoved=false, setW=0, setH=0, setWasOpen=false, setFocusBack=null;
 function setDefaultSize(){ return [Math.min(560,((screen&&screen.availWidth)||1920)-40), Math.min(680,Math.round(0.85*((screen&&screen.availHeight)||1080)))]; }
 function setSyncVars(){ if(!setW||!setH){ try{ const s=JSON.parse(localStorage.getItem('nixi.setSize')); if(Array.isArray(s)&&s.length===2&&s.every(n=>Number.isFinite(n)&&n>=420)) [setW,setH]=s; }catch(e){} if(!setW||!setH) [setW,setH]=setDefaultSize(); } setEl.style.setProperty('--setW',setW+'px'); setEl.style.setProperty('--setH',setH+'px'); }
+function panelTrace(m){ const r=setEl.getBoundingClientRect(), c=getComputedStyle(setEl), at=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);   // shortcut: temporary trace for the two-click Settings bug, remove with the fix
+  console.log(`[nixi] panel ${m} set=${setEl.classList.contains('on')} pn=${panelEl.classList.contains('on')} win=${innerWidth}x${innerHeight} layout=${layoutX},${layoutY} rect=${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)} opacity=${c.opacity} vis=${c.visibility} disp=${c.display} at=${at&&at.id||at&&at.tagName} hidden=${hiddenNow} idle=${idleSt} body=${document.body.className}`); }
 function panelSize(prevFocus){ const sOn=setEl.classList.contains('on'), pOn=panelEl.classList.contains('on');
+  panelTrace('size '+(new Error().stack||'').split('\n').slice(1,4).map(l=>l.trim().split(' ')[0]).join('<')); setTimeout(()=>panelTrace('size+1s'),1000);
   document.body.classList.toggle('pnl',sOn||pOn);
   if(sOn&&!setWasOpen){ setFocusBack=prevFocus!==undefined?prevFocus:document.activeElement; const b=$('#tabs button.on')||$('#tabs button'); if(b) b.focus(); }
   else if(!sOn&&setWasOpen){ const el=setFocusBack; setFocusBack=null; if(el&&el.isConnected&&typeof el.focus==='function') el.focus(); }
@@ -3071,7 +3079,7 @@ function menu(on){ if(on) layoutMenu(); if(!on&&menuOn) menuShutAt=performance.n
 menuEl.addEventListener('click',e=>{ const b=e.target.closest('.mb'); if(!b) return; menu(false);
   ({talk:()=>startRec('auto'), bar:()=>toggleBar(), cd:()=>showAsk('/cd '), history:()=>openPanel('history'), plugins:()=>openPanel('plugins'),
     look:()=>shoot('screen').then(j=>{ if(j) showAsk(''); }), hover:toggleHover, mirror:mirRevoke, hide:dismiss, set:()=>settings(true)})[b.dataset.a](); });
-function dismiss(){ menu(false); hideAsk(); closePanels(); endListening(); if(!native('hide')) poke('sleepy',1200); }
+function dismiss(){ panelTrace('dismiss'); menu(false); hideAsk(); closePanels(); endListening(); if(!native('hide')) poke('sleepy',1200); }
 // Esc / hiding him: he stops listening — a recording in progress is dropped and the "just keep talking" window closes
 function endListening(){ if(rec&&rec.mode!=='approve') stopRec(true); post('/api/follow',{act:'cancel'}).catch(()=>{}); follow=false; hearRaw=0; }
 
@@ -3765,8 +3773,8 @@ function toggleMute(){ muted=!muted; try{localStorage.setItem('nixi.muted',muted
 
 // hidden (Esc, hide, closing him) = fully off: he stops talking and the server closes the mic — no "hey Nixi" until
 // he's shown again (Start menu, your hotkey, or `nixi-companion`)
-window.nixiHidden=()=>{ hiddenNow=true; endListening(); menu(false); hideAsk(); agentStop(); post('/api/sleep',{on:true}).catch(()=>{}); };
-window.nixiShown=()=>{ hiddenNow=false; dozing=false; restore(15000);   // (the host showed him: leave doze without another native message)
+window.nixiHidden=()=>{ panelTrace('nixiHidden'); hiddenNow=true; endListening(); menu(false); hideAsk(); agentStop(); post('/api/sleep',{on:true}).catch(()=>{}); };
+window.nixiShown=()=>{ panelTrace('nixiShown'); hiddenNow=false; dozing=false; restore(15000);   // (the host showed him: leave doze without another native message)
   post('/api/sleep',{on:false}).catch(()=>{}); entrance(); wake(); refresh().then(()=>{ syncEye(true); if(pendingAppr||busy) return;
   if(info.listen_on_show&&!info.hover) setTimeout(()=>startRec('auto'),450); else setTimeout(()=>poke('wink',900),350); }); };
 async function comeBack(){ if(!info.hover) return; await toggleHover(false); await sleep(700); }
@@ -3797,7 +3805,7 @@ function fit(){ const k=Math.min(1, innerWidth/340, innerHeight/460); fitK=k>0.9
   bs.transform=fitK===1?'':`scale(${fitK})`;
   if(NATIVE&&fitK<1) console.log(`[nixi] window is ${innerWidth}x${innerHeight} (expected 340x460) — scaling the page to fit`); }
 // the window widened for a panel: it grew to the left by ox px, so shift the page back and he stays exactly where he was
-window.nixiLayout=(ox,oy)=>{ layoutX=ox|0; layoutY=oy|0; fit(); cardPlace(); stagePlace(); sendRegion(true); requestAnimationFrame(moveInd); };
+window.nixiLayout=(ox,oy)=>{ panelTrace(`layout ${ox},${oy}`); layoutX=ox|0; layoutY=oy|0; fit(); cardPlace(); stagePlace(); sendRegion(true); requestAnimationFrame(moveInd); };
 addEventListener('resize',()=>{ fit(); cardPlace(); sendRegion(true); moveInd(); }); fit();
 function sendRegion(force){
   calmCheck();
