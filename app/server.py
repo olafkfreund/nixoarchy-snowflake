@@ -4644,7 +4644,7 @@ def plugin_stage(pid, query, before=_ANY):
             Plug.reload()                                      # (switched off just now: drop it from memory too)
         return False, f"{p.manifest['name']}: {e}."
     if before is _ANY or (stages_on() and STAGES.current() is before):
-        BUS.pub(t="stage", **stage_event(STAGES.put(st)))
+        BUS.pub(t="stage", **stage_event(STAGES.put(st, refresh=(pid, query))))
     return True, st.get("say") or "Here you go."
 
 

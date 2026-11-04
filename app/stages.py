@@ -6,6 +6,7 @@ caption). The page only ever sees tokens; the server alone builds URLs and looks
 """
 import datetime
 import json
+import math
 import re
 import secrets
 import subprocess
@@ -73,6 +74,30 @@ def _str(v, n):
     return v.strip() if isinstance(v, str) and 0 < len(v.strip()) <= n and not _CTRL.search(v) else None
 
 
+def _finite(v):
+    try:
+        return type(v) in (int, float) and math.isfinite(v)
+    except OverflowError:
+        return False
+
+
+def _gauges_text(stage):
+    lines = [stage["title"]]
+    for host in stage["hosts"]:
+        lines.append(f'{host["name"]} ({host["state"]})')
+        lines.extend(f'{b["k"]}: {b["v"]}' for b in host["badges"])
+        for meter in host["meters"]:
+            value = "—" if meter["pct"] is None else f'{meter["pct"]}%'
+            parts = [f'{meter["label"]}: {value}']
+            if "v" in meter:
+                parts.append(str(meter["v"]))
+            if "text" in meter:
+                parts.append(meter["text"])
+            lines.append(" ".join(parts))
+        lines.extend(f'{item["title"]}: {", ".join(item["items"])}' for item in host["lists"])
+    return "\n".join(lines)
+
+
 def validate(obj, plugin_ok=None):
     """-> a clean stage dict built from known keys only, or None. kind "plugin" (the agent asks for a stage plugin; the
     server runs it, the page never sees it) passes only for an id plugin_ok() accepts: none when plugin_ok is not given."""
@@ -116,6 +141,70 @@ def validate(obj, plugin_ok=None):
             if say is None:
                 return None
             out["say"] = say
+        return out
+    if kind == "gauges":
+        title, src = _str(obj.get("title"), 80), obj.get("source")
+        hosts = obj.get("hosts")
+        if title is None or ("source" in obj and _str(src, 120) is None) or not isinstance(hosts, list) or not 1 <= len(hosts) <= 6:
+            return None
+        if "live" in obj and type(obj["live"]) is not bool:
+            return None
+        out = {"v": 1, "kind": "gauges", "title": title, "hosts": []}
+        if "source" in obj:
+            out["source"] = _str(src, 120)
+        if "live" in obj:
+            out["live"] = obj["live"]
+        if "say" in obj:
+            say = _str(obj["say"], 200)
+            if say is None:
+                return None
+            out["say"] = say
+        for host in hosts:
+            if not isinstance(host, dict) or not isinstance(host.get("name"), str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,32}", host["name"]):
+                return None
+            if host.get("state", "up") not in ("up", "down", "stale"):
+                return None
+            h = {"name": host["name"], "state": host.get("state", "up")}
+            for key, limit in (("badges", 6), ("meters", 8), ("lists", 2)):
+                items = host.get(key, [])
+                if not isinstance(items, list) or len(items) > limit:
+                    return None
+                h[key] = []
+                for item in items:
+                    if not isinstance(item, dict) or ("tone" in item and item["tone"] not in ("ok", "warn", "bad")):
+                        return None
+                    if key == "badges":
+                        k, v = _str(item.get("k"), 16), _str(item.get("v"), 60)
+                        if k is None or v is None:
+                            return None
+                        clean = {"k": k, "v": v}
+                    elif key == "meters":
+                        label, pct = _str(item.get("label"), 12), item.get("pct")
+                        if label is None or "pct" not in item or (pct is not None and (not _finite(pct) or not 0 <= pct <= 100)):
+                            return None
+                        clean = {"label": label, "pct": pct}
+                        if "v" in item:
+                            v = item["v"]
+                            if not _finite(v) or v < 0:
+                                return None
+                            clean["v"] = v
+                        if "text" in item:
+                            value = _str(item["text"], 40)
+                            if value is None:
+                                return None
+                            clean["text"] = value
+                    else:
+                        heading, values = _str(item.get("title"), 24), item.get("items")
+                        if heading is None or not isinstance(values, list) or len(values) > 5:
+                            return None
+                        values = [_str(v, 80) for v in values]
+                        if None in values:
+                            return None
+                        clean = {"title": heading, "items": values}
+                    if "tone" in item:
+                        clean["tone"] = item["tone"]
+                    h[key].append(clean)
+            out["hosts"].append(h)
         return out
     if kind == "place":
         dest, mode = _str(obj.get("dest"), 160), obj.get("mode")
@@ -276,7 +365,7 @@ class Store:
     def _live(self, e):
         return e if e and self.now() - e[2] < self.ttl else None
 
-    def put(self, stage):
+    def put(self, stage, refresh=None):
         """-> the stage for the page: items (or the stage) carry a token, nothing else added."""
         toks, page = {}, dict(stage)
         page.pop("say", None)
@@ -317,6 +406,12 @@ class Store:
                 t = secrets.token_urlsafe(12)
                 toks[t] = ("session", {"pane": x["pane"]})
                 page["sessions"].append({"title": x["title"], "status": x["status"], "open": t})
+        elif stage["kind"] == "gauges":
+            page["token"] = secrets.token_urlsafe(12)
+            toks[page["token"]] = ("facts", {"text": _gauges_text(stage)})
+            if stage.get("live") and refresh is not None:
+                page["refresh"] = secrets.token_urlsafe(12)
+                toks[page["refresh"]] = ("refresh", {"pid": refresh[0], "query": refresh[1]})
         else:  # facts: one token, Copy takes the whole text
             t = secrets.token_urlsafe(12)
             toks[t] = ("facts", {"text": "\n".join([stage["title"], *stage["points"]])})
@@ -326,6 +421,19 @@ class Store:
         if self.on_new:
             self.on_new()
         return page
+
+    def replace(self, refresh_token, stage):
+        """Update the current gauges page while preserving its tokens and age."""
+        with self.lock:
+            e = self._live(self.cur)
+            if not e or e[0].get("refresh") != refresh_token or e[1].get(refresh_token, (None,))[0] != "refresh":
+                return None
+            page, toks = dict(stage), dict(e[1])
+            page.pop("say", None)
+            page["token"], page["refresh"] = e[0]["token"], refresh_token
+            toks[page["token"]] = ("facts", {"text": _gauges_text(stage)})
+            self.cur = (page, toks, e[2])
+            return page
 
     def _day(self, stage, page, toks):
         def tok(url, ok):
