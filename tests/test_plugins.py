@@ -43,6 +43,12 @@ class T(unittest.TestCase):
         self.assertIsNone(p.error)
         self.assertEqual((p.id, p.source), ("pirate-quips", "nix"))
 
+    def test_reserved_voice_clips(self):
+        self.assertTrue(plugins.reserved("play the first video"))
+        self.assertTrue(plugins.reserved("play the second clip"))
+        self.assertTrue(plugins.reserved("play the fifth video"))   # (agy review: every ordinal _ACT parses)
+        self.assertTrue(plugins.reserved("open the first one"))
+
     def test_sources(self):
         self.mk("p", GOOD, "a")
         self.mk("q", dict(GOOD, id="other-one"), "b")
@@ -207,7 +213,28 @@ class SettingsFile(unittest.TestCase):
 
     def test_good_file_wins(self):
         self.p.write_text('{"a": 1}')
-        self.assertEqual(plugins.read_config("cfg-plug", self.d), ({"a": 1}, None))
+        self.assertEqual(plugins.read_config("cfg-plug", self.d), ({"feeds": [], "a": 1}, None))
+
+    def test_a_file_with_only_some_keys_keeps_the_other_defaults(self):
+        (self.d / "defaults.json").write_text('{"feeds": [], "videos": true}')
+        self.p.write_text('{"feeds": ["x"]}')
+        self.assertEqual(plugins.read_config("cfg-plug", self.d), ({"feeds": ["x"], "videos": True}, None))
+
+    def test_read_user_config_opens_only_the_users_file(self):
+        self.assertEqual(plugins.read_user_config("cfg-plug"), (None, None))
+        self.p.write_text("[1]")
+        self.assertEqual(plugins.read_user_config("cfg-plug"), (None, "settings file unreadable"))
+        self.p.write_text('{"a": 1}')
+        self.assertEqual(plugins.read_user_config("cfg-plug"), ({"a": 1}, None))
+        self.assertEqual(plugins.read_config("cfg-plug", self.d, ({"b": 2}, None)), ({"feeds": [], "b": 2}, None))  # a result in hand is not re-read
+
+    def test_check_videos_key(self):
+        (self.d / "run").write_text("x")
+        m = lambda i, v: dict(GOOD, id=i, stage={"phrases": ["zz top"], "argv": ["run"], "videos": v})
+        self.assertIsNone(plugins._check(m("news", True), self.d))
+        self.assertIsNone(plugins._check(m("other-one", False), self.d))
+        self.assertEqual(plugins._check(m("news", 1), self.d), "bad stage videos")
+        self.assertEqual(plugins._check(m("other-one", True), self.d), "only the news plugin can search YouTube")
 
     def test_bad_files_give_the_defaults_and_a_note(self):
         for make in (lambda: self.p.symlink_to(self.d / "defaults.json"), lambda: os.mkfifo(self.p),

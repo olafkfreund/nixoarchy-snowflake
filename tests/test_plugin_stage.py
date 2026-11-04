@@ -177,8 +177,37 @@ class RunnerTest(unittest.TestCase):
             plugins.config_path(p.id).parent.mkdir(parents=True)
             plugins.config_path(p.id).write_text('{"mine": 2}')
             self.assertEqual(plugins.sha256_of(p.dir), before)
-            self.assertEqual(json.loads(plugins.run_stage(q, "q")["points"][0]), {"mine": 2})
+            self.assertEqual(json.loads(plugins.run_stage(q, "q")["points"][0]), {"d": 1, "mine": 2})
             self.assertTrue(STATE.get(p.id)["enabled"])
+
+    def test_changed_settings_run_the_plugin_again_and_the_file_is_read_once(self):
+        body = "import json,sys\nq=json.load(sys.stdin)\nprint(json.dumps({'v':1,'kind':'facts','title':'t','points':[json.dumps(q.get('config'))]}))"
+        cfg = Path(tempfile.mkdtemp())
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(cfg)}):
+            p = prog(self.root, body)
+            (p.dir / "defaults.json").write_text('{"d": 1}')
+            STATE.set(p.id, True, plugins.sha256_of(p.dir))
+            q = p._replace(manifest={**p.manifest, "stage": {**p.manifest["stage"], "config": True, "cache_seconds": 60}})
+            plugins.config_path(p.id).parent.mkdir(parents=True)
+            plugins.config_path(p.id).write_text('{"mine": 1}')
+            with mock.patch.object(plugins, "read_user_config", wraps=plugins.read_user_config) as spy:
+                self.assertEqual(json.loads(plugins.run_stage(q, "q")["points"][0]), {"d": 1, "mine": 1})
+                self.assertEqual(spy.call_count, 1)                         # (key and stdin share one read)
+                self.assertEqual(json.loads(plugins.run_stage(q, "q")["points"][0]), {"d": 1, "mine": 1})   # cached
+            plugins.config_path(p.id).write_text('{"mine": 2}')
+            self.assertEqual(json.loads(plugins.run_stage(q, "q")["points"][0]), {"d": 1, "mine": 2})   # not the cached one
+
+    def test_a_changed_defaults_file_is_changed_not_an_oserror(self):
+        cfg = Path(tempfile.mkdtemp())
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(cfg)}):
+            p = prog(self.root, "")
+            (p.dir / "defaults.json").write_text('{"d": 1}')
+            STATE.set(p.id, True, plugins.sha256_of(p.dir))
+            q = p._replace(manifest={**p.manifest, "stage": {**p.manifest["stage"], "config": True}})
+            (p.dir / "defaults.json").write_text('{"d": 2}')
+            with self.assertRaises(plugins.StageError) as cm:
+                plugins.run_stage(q, "q")
+            self.assertEqual(str(cm.exception), plugins.CHANGED)
 
     def test_peer_feed_needs_declaration_consent_and_configuration(self):
         body = "import json,sys\nq=json.load(sys.stdin)\nprint(json.dumps({'v':1,'kind':'facts','title':'t','points':[json.dumps(q.get('peers'))]}))"
@@ -242,7 +271,7 @@ class RunnerTest(unittest.TestCase):
         now = [100.0]
         calls = []
 
-        def launch(p, q, loc, to, st):
+        def launch(p, q, loc, to, st, user=None):
             calls.append(q)
             if len(calls) == 3:
                 raise plugins.StageError("it took too long")
@@ -620,6 +649,115 @@ class StageServerTest(_ServerEnv):
         self.mk("user", "stat-one", reads=["system-status"])
         c = self.server.plugins_act({"id": "stat-one", "enabled": True})["needs_consent"]
         self.assertEqual((c["network"], c["reads"]), (False, ["system-status"]))
+
+    def test_consent_card_carries_the_youtube_flag(self):
+        self.mk("user", "news", videos=True)
+        self.assertIs(self.server.plugins_act({"id": "news", "enabled": True})["needs_consent"]["videos"], True)
+        self.mk("user", "stat-two", reads=[])
+        self.assertIs(self.server.plugins_act({"id": "stat-two", "enabled": True})["needs_consent"]["videos"], False)
+
+    # ---- news clips (#174)
+    HEAD = {"v": 1, "kind": "headlines", "title": "News", "items": [{"title": "A", "source": "S", "at": None}], "video_query": "world news"}
+    CLIP = {"id": "abc123", "title": "Clip", "channel": "Ch", "duration": "1:00"}
+
+    class Inline:
+        """threading.Thread stand-in: records the start and runs the target at once."""
+        started = []
+
+        def __init__(self, target, args=(), daemon=None):
+            self.target, self.args = target, args
+
+        def start(self):
+            self.started.append(self.args)
+            self.target(*self.args)
+
+    def news(self, **stage):
+        self.mk("user", "news", phrases=("the news",), videos=True, **stage)
+        self.on("news")
+
+    def test_clip_thread_gets_the_video_query_not_the_words(self):
+        S = self.server
+        self.news()
+        self.Inline.started = []
+        with mock.patch.object(plugins, "run_stage", return_value=self.HEAD), mock.patch.object(S.threading, "Thread", self.Inline), \
+                mock.patch.object(S.stages, "video_search", return_value=[self.CLIP]) as vs, mock.patch.object(S.BUS, "pub") as pub:
+            S.plugin_stage("news", "tell me about my secret bank")
+        self.assertEqual(vs.call_args[0], ("world news",))
+        self.assertTrue(vs.call_args[1]["newest"])
+        self.assertEqual(pub.call_args_list[-1][1]["t"], "stage_update")
+        self.assertEqual(pub.call_args_list[-1][1]["clips"][0]["title"], "Clip")
+        self.assertEqual(len(self.Inline.started), 1)
+
+    def test_no_clip_thread_without_videos_or_when_not_shown_or_empty(self):
+        S = self.server
+        self.news()
+        self.mk("user", "plain-one")
+        self.on("plain-one")
+        self.Inline.started = []
+        with mock.patch.object(plugins, "run_stage", return_value=self.HEAD), mock.patch.object(S.threading, "Thread", self.Inline), \
+                mock.patch.object(S.stages, "video_search", return_value=[]) as vs, mock.patch.object(S.BUS, "pub") as pub, \
+                mock.patch.object(S.STAGES, "add_clips") as add:
+            S.plugin_stage("plain-one", "q")                       # no videos: true in its manifest
+            self.assertEqual(self.Inline.started, [])
+            S.plugin_stage("news", "q", before=object())           # the slip wasn't shown
+            self.assertEqual(self.Inline.started, [])
+            S.plugin_stage("news", "q")                            # shown, but the search finds nothing
+            self.assertEqual(len(self.Inline.started), 1)
+        vs.assert_called_once()
+        add.assert_not_called()
+        self.assertNotIn("stage_update", [c[1]["t"] for c in pub.call_args_list])
+
+    def test_searches_run_one_at_a_time_and_an_older_slip_gets_no_clips(self):
+        S = self.server
+        first, release, live, peak, seen = threading.Event(), threading.Event(), [0], [0], []
+
+        def search(q, run=None, newest=False):
+            live[0] += 1
+            peak[0] = max(peak[0], live[0])
+            seen.append(q)
+            first.set()
+            release.wait(5)
+            live[0] -= 1
+            return [self.CLIP]
+        with mock.patch.object(S.stages, "video_search", search), mock.patch.object(S.BUS, "pub"):
+            one = S.STAGES.put(dict(self.HEAD))["copy"]
+            t1 = threading.Thread(target=S.news_clips, args=(one, "world news"))
+            t1.start()
+            first.wait(5)
+            two = S.STAGES.put(dict(self.HEAD, title="News 2", video_query="tech news"))["copy"]
+            t2 = threading.Thread(target=S.news_clips, args=(two, "technology news"))
+            t2.start()
+            time.sleep(0.2)
+            self.assertEqual(seen, ["world news"])                 # the second waits
+            release.set()
+            t1.join(5)
+            t2.join(5)
+        self.assertEqual(peak[0], 1)
+        self.assertEqual(seen, ["world news", "technology news"])
+        self.assertNotIn("clips", S.STAGES.back() or {})           # the first slip got none
+        self.assertEqual(len(S.STAGES.current().get("clips") or [0]), 1)
+
+    def test_videos_off_in_the_settings_within_the_cache_window_means_no_clip_search(self):
+        S = self.server
+        self.news(config=True, cache_seconds=60)
+        d = self.find("news")
+        (d / "defaults.json").write_text('{"videos": true}')
+        self.on("news")                                            # (consent again: the folder changed)
+        cfg = Path(tempfile.mkdtemp())
+
+        def launch(p, q, loc, to, st, user=None):
+            on = ((user or (None, None))[0] or {}).get("videos", True)
+            return dict(self.HEAD) if on else {k: v for k, v in self.HEAD.items() if k != "video_query"}
+        self.Inline.started = []
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(cfg)}), mock.patch.object(plugins, "_launch", launch), \
+                mock.patch.object(S.threading, "Thread", self.Inline), mock.patch.object(S.stages, "video_search", return_value=[self.CLIP]) as vs, \
+                mock.patch.object(S.BUS, "pub"):
+            S.plugin_stage("news", "q")
+            self.assertEqual((len(self.Inline.started), vs.call_count), (1, 1))
+            plugins.config_path("news").parent.mkdir(parents=True)
+            plugins.config_path("news").write_text('{"videos": false}')
+            S.plugin_stage("news", "q")
+        self.assertEqual((len(self.Inline.started), vs.call_count), (1, 1))
 
     def test_a_forged_consent_for_the_wrong_plugin_or_hash_is_refused(self):
         S = self.server

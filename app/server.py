@@ -1806,6 +1806,8 @@ def plugin_caps(m):
             out.append("Can read your system status")
         if "peer-status" in m["stage"].get("reads", []):
             out.append("It can read your other machines' status (load, memory, disks, failed services)")
+        if m["stage"].get("videos"):
+            out.append("Searches YouTube for news clips (on by default; turn off in its settings)")
     return out
 
 
@@ -1880,7 +1882,7 @@ def plugins_act(b):
         else:
             return plugins_api(needs_consent={"id": pid, "name": str(p.manifest["name"]), "sha256": h, "network": bool(stg.get("network")),
                                               "what": str(p.manifest.get("description") or p.manifest["name"]), "hint": str(stg.get("hint") or ""),
-                                              "runs": " ".join(stg["argv"]), "reads": list(stg.get("reads", [])), "config": str(plugins.config_path(pid)) if stg.get("config") else ""})
+                                              "runs": " ".join(stg["argv"]), "reads": list(stg.get("reads", [])), "config": str(plugins.config_path(pid)) if stg.get("config") else "", "videos": bool(stg.get("videos"))})
         Plug.updated.pop(pid, None)
     Plug.reload()
     return plugins_api()
@@ -4680,7 +4682,10 @@ def plugin_stage(pid, query, before=_ANY):
     if peers_withdrawn(st):
         return False, "Other machines are off."
     if before is _ANY or (stages_on() and STAGES.current() is before):
-        BUS.pub(t="stage", **stage_event(STAGES.put(st, refresh=(pid, query))))
+        page = STAGES.put(st, refresh=(pid, query))
+        BUS.pub(t="stage", **stage_event(page))
+        if st.get("video_query") and p.manifest["stage"].get("videos"):   # (only the news plugin; never the asked words)
+            threading.Thread(target=news_clips, args=(page["copy"], st["video_query"]), daemon=True).start()
     return True, st.get("say") or "Here you go."
 
 
@@ -4696,6 +4701,23 @@ def video_stage(st, before):
     st = {**st, "items": stages.video_search(st["query"])}      # (the agent only said what to look for)
     if stages_on() and STAGES.current() is before:
         BUS.pub(t="stage", **stage_event(STAGES.put(st)))
+
+
+_CLIPS = threading.Lock()                               # (one YouTube search at a time: a newer slip waits, then drops the older slip's clips)
+
+
+def news_clips(slip, search):
+    """Add recent clips to the news slip `slip` (its copy token) once they are found, if it is still the one on screen."""
+    with _CLIPS:
+        cur = STAGES.current()
+        if not cur or cur.get("copy") != slip:
+            return
+        items = stages.video_search(search, newest=True)
+        if not items:
+            return
+        page = STAGES.add_clips(slip, items)
+        if page:
+            BUS.pub(t="stage_update", **stage_event(page))
 
 
 DAY_LOCK = threading.Lock()
@@ -5807,7 +5829,7 @@ class Handler(BaseHTTPRequestHandler):
             elif fp and fp[0] == "ask" and vis:
                 return self._said("Which one? Say the first, second or third.")
             elif fp and fp[0] in ("copy", "open", "play") and vis:
-                it = (vis.get("items") or vis.get("sessions") or [vis])[fp[1]]         # each set names its tokens per action (map: open/copy, cinema: play, desk: a session)
+                it = (vis["clips"] if vis.get("kind") == "headlines" and fp[0] == "play" else vis.get("items") or vis.get("sessions") or [vis])[fp[1]]         # each set names its tokens per action (map: open/copy, cinema: play, desk: a session)
                 tk = {"copy": it.get("token") or vis.get("copy"), "open": vis.get("open") or it.get("play") or it.get("open"), "play": it.get("play")}[fp[0]]
                 r = stage_act(tk or "", "session" if vis.get("kind") == "status" and fp[0] == "open" else fp[0])
                 return self._said({"copy": "Copied.", "open": "Opening it.", "play": "Playing it."}[fp[0]] if r["ok"]

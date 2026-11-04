@@ -152,6 +152,11 @@ def validate(obj, plugin_ok=None):
         if title is None or not isinstance(items, list) or not 1 <= len(items) <= 5:
             return None
         out = {"v": 1, "kind": "headlines", "title": title, "items": []}
+        if "video_query" in obj:
+            q = _str(obj["video_query"], 60)
+            if q is None or not re.fullmatch(r"[A-Za-z0-9 '-]{3,60}", q):
+                return None
+            out["video_query"] = q
         for key, limit in (("source", 120), ("say", 200)):
             if key in obj:
                 value = _str(obj[key], limit)
@@ -255,10 +260,10 @@ def search_url(query):
     return "https://www.youtube.com/results?search_query=" + quote_plus(query)
 
 
-def video_search(query, run=subprocess.run):
+def video_search(query, run=subprocess.run, newest=False):
     """-> up to 3 {id,title,channel,duration} from yt-dlp, or [] on any failure. argv list, one query argument, 8 s."""
     try:
-        r = run(["yt-dlp", "--ignore-config", "--flat-playlist", "-J", "ytsearch3:" + query], capture_output=True, timeout=8, check=False)
+        r = run(["yt-dlp", "--ignore-config", "--flat-playlist", "-J", ("ytsearchdate3:" if newest else "ytsearch3:") + query], capture_output=True, timeout=8, check=False)
         entries = json.loads(r.stdout.decode("utf-8", "replace")).get("entries") or []
     except (OSError, subprocess.SubprocessError, ValueError, AttributeError):
         return []
@@ -412,6 +417,7 @@ class Store:
         """-> the stage for the page: items (or the stage) carry a token, nothing else added."""
         toks, page = {}, dict(stage)
         page.pop("say", None)
+        page.pop("video_query", None)
         if stage["kind"] == "commands":
             page["items"] = []
             for it in stage["items"]:
@@ -488,6 +494,25 @@ class Store:
             page["token"], page["refresh"] = e[0]["token"], refresh_token
             toks[page["token"]] = ("facts", {"text": _gauges_text(stage)})
             self.cur = (page, toks, e[2])
+            return page
+
+    def add_clips(self, slip, items):
+        """Add video rows to the current headlines slip, preserving its tokens and age."""
+        with self.lock:
+            e = self._live(self.cur)
+            if not items or not e or e[0].get("kind") != "headlines" or e[0].get("copy") != slip or "clips" in e[0]:
+                return None
+            page, toks = e[0], e[1]           # (in place: callers waiting on `STAGES.current() is before` must still see the same stage)
+            rows, lines = [], []
+            for it in items:
+                pt, tt = secrets.token_urlsafe(12), secrets.token_urlsafe(12)
+                toks[pt] = ("video", {"url": "https://www.youtube.com/watch?v=" + it["id"]})
+                toks[tt] = ("thumb", {"id": it["id"]})
+                rows.append({"title": it["title"], "channel": it["channel"], "duration": it["duration"], "play": pt, "thumb": tt})
+                parts = [it[k] for k in ("channel", "duration") if it[k]]
+                lines.append(it["title"] + (" — " + ", ".join(parts) if parts else ""))
+            toks[slip] = ("facts", {"text": e[1][slip][1]["text"] + "\nWatch:\n" + "\n".join(lines)})
+            page["clips"] = rows               # (one assignment: a reader outside the lock never sees a half-filled list)
             return page
 
     def _day(self, stage, page, toks):
@@ -601,7 +626,7 @@ _ORD = {"first": 0, "second": 1, "third": 2, "fourth": 3, "fifth": 4,
         "one": 0, "two": 1, "three": 2, "four": 3, "five": 4,
         "1": 0, "2": 1, "3": 2, "4": 3, "5": 4}
 _N = "|".join(_ORD)
-_ACT = re.compile(r"(run|copy|play|open)\s+(?:(?:the|number|option|item)\s+)*(?:(%s)(?:\s+one)?|(it|that|this)(?:\s+one)?)" % _N)
+_ACT = re.compile(r"(run|copy|play|open)\s+(?:(?:the|number|option|item)\s+)*(?:(%s)|(it|that|this))(?:\s+(one|video|clip))?" % _N)
 _PLAIN = {"close": "close", "go back": "back", "show it": "show"}
 
 
@@ -618,7 +643,14 @@ def fast_path(said, stage):
     m = _ACT.fullmatch(t)
     if not m or not stage or stage.get("kind") == "day":  # (the day desk is clicked in v1: no voice-numbered opening)
         return None
-    n = len(stage.get("items") or stage.get("sessions") or [None])  # facts: one target; a status stage: its sessions
+    if m.group(4) in ("video", "clip") and (stage.get("kind") not in ("headlines", "video") or m.group(1) != "play"):
+        return None
+    if stage.get("kind") == "headlines" and m.group(1) == "play":
+        n = len(stage.get("clips") or [])
+        if not n:
+            return None
+    else:
+        n = len(stage.get("items") or stage.get("sessions") or [None])  # facts: one target; a status stage: its sessions
     if stage.get("kind") == "headlines" and m.group(1) == "copy":
         return "copy", 0
     if stage.get("kind") == "status" and not stage.get("sessions"):

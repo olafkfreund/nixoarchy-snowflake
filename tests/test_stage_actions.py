@@ -353,6 +353,23 @@ class StageActionsTest(unittest.TestCase):
             self.assertEqual((prompts, evs[0]["text"]), ([], "Copied."))
             self.assertEqual(run.call_args.kwargs["input"], b"First \xe2\x80\x94 BBC\nSecond \xe2\x80\x94 Guardian")
 
+    def test_headlines_voice_plays_clip_but_opens_story(self):
+        stage = {"v": 1, "kind": "headlines", "title": "News", "items": [
+            {"title": "First", "source": "BBC", "at": None, "url": "https://www.bbc.co.uk/news/first"},
+            {"title": "Second", "source": "Guardian", "at": None, "url": "https://www.theguardian.com/world/second"}]}
+        page = self.s.STAGES.put(self.stages.validate(stage))
+        self.s.STAGES.add_clips(page["copy"], [
+            {"id": "abcdefghijk", "title": "One", "channel": "A", "duration": "1:00"},
+            {"id": "lmnopqrstuv", "title": "Two", "channel": "B", "duration": "2:00"}])
+        self.s.STAGES.set_visible(True)
+        with mock.patch.object(self.s.subprocess, "Popen") as po, mock.patch.object(self.s.shutil, "which", return_value="/bin/mpv"):
+            evs, prompts, _ = self.ask({"prompt": "play the second video"})
+            self.assertEqual((prompts, evs[0]["text"], po.call_args[0][0]),
+                             ([], "Playing it.", ["mpv", "https://www.youtube.com/watch?v=lmnopqrstuv"]))
+            evs, prompts, _ = self.ask({"prompt": "open the first one"})
+            self.assertEqual((prompts, evs[0]["text"], po.call_args[0][0]),
+                             ([], "Opening it.", ["xdg-open", "https://www.bbc.co.uk/news/first"]))
+
     def test_fast_path_reaches_map_and_cinema_tokens(self):           # Codex review: voice used .token, which these sets lack
         page = self.s.STAGES.put(self.stages.validate({"v": 1, "kind": "place", "dest": "Oslo S"})); self.s.STAGES.set_visible(True)
         with mock.patch.object(self.s.subprocess, "Popen") as po:

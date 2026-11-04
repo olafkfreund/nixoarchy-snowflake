@@ -287,6 +287,9 @@ body.bar #mailPop,body.hover #mailPop,body.calm #mailPop{display:none}
 #stg.press .ul{display:none}#stg.press .bd{padding:4px 12px 6px;transform-origin:50% 0}
 #stg.press .prw{padding:6px 0;gap:10px;align-items:center;border-bottom:1px solid var(--sline)}
 #stg.press .prw:last-child{border-bottom:0}
+#stg.press .prw .pw{background:#1c1a1714}#stg.press .prw .pw::before{color:#1c1a1733}
+#stg.press .prw.pvc .prt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#stg.press .prwh{margin-top:6px;padding:4px 0 2px;font:600 11px/1.2 "Inter",system-ui,sans-serif;font-variant:small-caps;letter-spacing:.06em;color:var(--sdim);border-bottom:1px solid var(--sline)}
 #stg.press .prt{font:600 14px/1.28 Georgia,serif;color:var(--sfg);overflow-wrap:anywhere}
 #stg.press .prm{margin-top:2px;font:600 11.5px/1.2 "Inter",system-ui,sans-serif;font-variant:small-caps;letter-spacing:.04em;color:var(--sdim)}
 #stg.press .sb{flex:none;border-color:#1c1a1766;color:var(--sfg);padding:3px 9px;font-size:12px;border-radius:4px}
@@ -294,7 +297,8 @@ body.bar #mailPop,body.hover #mailPop,body.calm #mailPop{display:none}
 #stg.press .fn:empty{display:none}
 #stg.press.go{animation:stgSlip .22s var(--ease) both}
 #stg.press.go .bd{animation:stgUnfold .26s var(--ease) .22s both}
-#stg.press.go .prw{animation:stgRow .2s ease-out both;animation-delay:calc(var(--i,0)*40ms + 260ms)}
+#stg.press.go .prw,#stg.press .prws.go .prw{animation:stgRow .2s ease-out both;animation-delay:calc(var(--i,0)*40ms + 260ms)}
+#stg.press .prws.go .prw{animation-delay:calc(var(--i,0)*40ms)}
 @keyframes stgSlip{from{opacity:0;transform:translateX(var(--sx,-14px)) scaleY(.06)}to{opacity:1;transform:none}}
 @keyframes stgUnfold{from{transform:perspective(600px) rotateX(70deg);opacity:0}to{transform:none;opacity:1}}
 @media (prefers-reduced-motion:reduce){#stg.press,#stg.press *{animation:none!important;transition:none!important}}
@@ -2113,7 +2117,7 @@ function onEvent(ev){
     else if(more&&document.body.classList.contains('bar')) flash('#e5a50a'); }
   else if(ev.t==='approve_done') approvalGone(ev.id);
   else if(ev.t==='stage'){ if(stageShow(ev)===false) himSet(((himEl.textContent||'').trim()+'\n'+stageText(ev)).trim()); }
-  else if(ev.t==='stage_update') gaugeUpdate(ev);
+  else if(ev.t==='stage_update'){ if(ev.kind==='headlines') pressUpdate(ev); else gaugeUpdate(ev); }
   else if(ev.t==='stage_status') stageStatus(ev);
   else if(ev.t==='stage_close') stageClosedByServer();
   else if(ev.t==='toast') tick(ev.text);
@@ -2463,15 +2467,26 @@ function gaugeLoop(){ const r=gaugeRef; if(!r) return;   // paused (not stopped)
   if(++r.n>=24) gaugeStop(); }
 function pressAge(at){ if(typeof at!=='number'||!(at>0)) return 'time unknown';
   const s=Math.max(0,Date.now()/1000-at); return s<60?'just now':s<3600?`${s/60|0} min ago`:s<86400?`${s/3600|0} h ago`:`${s/86400|0} d ago`; }
-function pressAges(){ const I=(stg&&stg.items)||[]; stgEl.querySelectorAll('.prm').forEach((m,i)=>{ const it=I[i], a=it&&'at' in it?it.at:(m.dataset.at?+m.dataset.at:null), s=(it&&it.source)||m.dataset.source||'', t=(s?s+' \u00b7 ':'')+pressAge(a); if(m.textContent!==t) m.textContent=t; }); }
+function pressAges(){ const I=(stg&&stg.items)||[]; stgEl.querySelectorAll('.prw:not(.pvc) .prm').forEach((m,i)=>{ const it=I[i], a=it&&'at' in it?it.at:(m.dataset.at?+m.dataset.at:null), s=(it&&it.source)||m.dataset.source||'', t=(s?s+' \u00b7 ':'')+pressAge(a); if(m.textContent!==t) m.textContent=t; }); }
+function pressWatch(clips,bd,fn,anim){ stgEl.querySelector('.prws')?.remove(); if(!clips||!clips.length) return;
+  const sec=hx('div','prws'+(anim&&!REDUCED.matches?' go':'')); sec.appendChild(hx('div','prwh','Watch'));
+  clips.forEach((c,i)=>{ const row=hx('div','it prw pvc'), pw=hx('div','pw'), im=hx('img','po'), tx=hx('div','tx'); row.style.setProperty('--i',i);
+    im.alt=''; im.src='/api/stage/thumb/'+encodeURIComponent(c.thumb); im.addEventListener('error',()=>im.remove()); pw.appendChild(im); row.appendChild(pw);
+    tx.appendChild(hx('div','prt',c.title)); tx.appendChild(hx('div','prm',[c.channel,c.duration].filter(Boolean).join(' \u00b7 '))); row.appendChild(tx);
+    const b=stageBtn('Play',b=>stageOpen(b,fn,c.play,'play',"Couldn't play it")); b.setAttribute('aria-label','Play: '+c.title); row.appendChild(b);
+    sec.appendChild(row); });
+  bd.appendChild(sec); }
+function pressUpdate(ev){ if(!stg||stg.kind!=='headlines'||ev.kind!=='headlines'||ev.copy!==stg.copy||stgState==='closed') return;
+  stg.clips=ev.clips; stgUse=performance.now(); pressWatch(ev.clips,$('#stgBd'),$('#stgFn'),true); }
 function stagePress(ev,bd,acts,fn){
   $('#stgDt').textContent=new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
   (ev.items||[]).forEach((it,i)=>{ const row=hx('div','it prw'), tx=hx('div','tx'), m=hx('div','prm'); row.style.setProperty('--i',i);
     tx.appendChild(hx('div','prt',it.title)); m.dataset.source=it.source||''; m.dataset.at=typeof it.at==='number'&&it.at>0?String(it.at):''; tx.appendChild(m); row.appendChild(tx);
     if(it.open){ const b=stageBtn('Open',b=>stageOpen(b,fn,it.open,'open')); b.setAttribute('aria-label','Open: '+it.title); row.appendChild(b); }
     bd.appendChild(row); });
-  pressAges(); fn.textContent=ev.source||''; if(ev.copy) acts.appendChild(stageBtn('Copy',b=>stageAct('copy',ev.copy,b))); }
-function stageText(ev){ if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>{ const st=h.state||'up'; if(st==='down'||st==='stale') return [h.name+': '+gaugeOneText(h)]; return [...(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))), ...(h.badges||[]).map(b=>(many?h.name+' ':'')+b.k+': '+b.v), ...(h.lists||[]).map(l=>(many?h.name+' ':'')+l.title+': '+(l.items||[]).join(', '))]; })).join('\n'); } if(ev.kind==='headlines') return [ev.title||'News',...(ev.items||[]).map(it=>it.title+' \u2014 '+it.source+', '+pressAge(it.at)),...(ev.source?[ev.source]:[])].join('\n'); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
+  pressAges(); pressWatch(ev.clips,bd,fn,false); fn.textContent=ev.source||''; if(ev.copy) acts.appendChild(stageBtn('Copy',b=>stageAct('copy',ev.copy,b))); }
+const clipLine=c=>{ const m=[c.channel,c.duration].filter(Boolean).join(', '); return c.title+(m?' \u2014 '+m:''); };
+function stageText(ev){ if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>{ const st=h.state||'up'; if(st==='down'||st==='stale') return [h.name+': '+gaugeOneText(h)]; return [...(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))), ...(h.badges||[]).map(b=>(many?h.name+' ':'')+b.k+': '+b.v), ...(h.lists||[]).map(l=>(many?h.name+' ':'')+l.title+': '+(l.items||[]).join(', '))]; })).join('\n'); } if(ev.kind==='headlines') return [ev.title||'News',...(ev.items||[]).map(it=>it.title+' \u2014 '+it.source+', '+pressAge(it.at)),...(ev.clips&&ev.clips.length?['Watch:',...ev.clips.map(clipLine)]:[]),...(ev.source?[ev.source]:[])].join('\n'); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
   stgPosted=false; gaugeStop();
@@ -3269,7 +3284,7 @@ function plugConsent(c){
   const box=$('#plugCons'); box.replaceChildren(); box.classList.toggle('on',!!c); if(!c) return;
   const q=document.createElement('div'), pre=document.createElement('pre'), bar=document.createElement('div'), no=document.createElement('button'), yes=document.createElement('button');
   q.className='q'; q.textContent='\u270b Let '+c.name+' run a program?';
-  pre.textContent=[c.what,'It runs: '+c.runs,...(c.hint?['Nixi tells the agent: '+c.hint]:[]),c.network?'It can use the internet and your local networks (not this computer\'s own services).':'It cannot use the network.',...(c.reads||[]).map(r=>r==='system-status'?'It can read your system status (load, memory, disks, network rates, failed services).':'It can read your '+r.replace('-',' ')+'.'),(c.config?'Nixi checks it again if any of its files change. Its settings ('+c.config+') aren\'t checked: change them freely.':'Nixi checks it again if any of its files change.')].join('\n');
+  pre.textContent=[c.what,'It runs: '+c.runs,...(c.hint?['Nixi tells the agent: '+c.hint]:[]),c.network?'It can use the internet and your local networks (not this computer\'s own services).':'It cannot use the network.',...(c.videos?['Searches YouTube for news clips (on by default; turn off in its settings)']:[]),...(c.reads||[]).map(r=>r==='system-status'?'It can read your system status (load, memory, disks, network rates, failed services).':'It can read your '+r.replace('-',' ')+'.'),(c.config?'Nixi checks it again if any of its files change. Its settings ('+c.config+') aren\'t checked: change them freely.':'Nixi checks it again if any of its files change.')].join('\n');
   bar.className='bar'; no.className='btn sm'; no.textContent='Cancel'; yes.className='btn sm yes'; yes.textContent='Allow';
   no.addEventListener('click',()=>plugConsent(null)); yes.addEventListener('click',()=>plugAct({consent:true,id:c.id,sha256:c.sha256}));
   bar.append(no,yes); box.append(q,pre,bar);

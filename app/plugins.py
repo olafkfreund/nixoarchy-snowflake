@@ -26,7 +26,7 @@ ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{2,63}$")
 REQUIRED = {"api", "id", "name", "version"}
 OPTIONAL = {"description", "quips", "prop", "notifications", "stage"}
 PROP_KEYS = {"file", "anchor", "layer"}
-STAGE_KEYS = {"phrases", "hint", "argv", "network", "cache_seconds", "reads", "config"}
+STAGE_KEYS = {"phrases", "hint", "argv", "network", "cache_seconds", "reads", "config", "videos"}
 CATEGORIES = {"mail", "chat", "feed"}
 APP_RE = re.compile(r"^[a-z0-9._-]+$")
 HOST_RE = re.compile(r"^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$")
@@ -44,7 +44,7 @@ def reserved(phrase):
     import quick
     import stages
     t = norm(phrase)
-    if not t or t in ("close", "go back", "show it", "what s next", "what is next", "guide", "mechanic") or stages.fast_path(t, {"items": [0] * 5}) is not None:
+    if not t or t in ("close", "go back", "show it", "what s next", "what is next", "guide", "mechanic") or any(stages.fast_path(t, stage) is not None for stage in ({"items": [0] * 5}, {"kind": "headlines", "items": [0] * 5, "clips": [0] * 5})):
         return True
     try:
         return quick.matches(phrase)
@@ -152,6 +152,11 @@ def _check(m, d):
             return "bad stage hint"
         if "network" in s and not isinstance(s["network"], bool):
             return "bad stage network"
+        if "videos" in s:
+            if not isinstance(s["videos"], bool):
+                return "bad stage videos"
+            if s["videos"] and m["id"] != "news":
+                return "only the news plugin can search YouTube"
         if "config" in s:
             if not isinstance(s["config"], bool):
                 return "bad stage config"
@@ -197,18 +202,24 @@ def config_path(pid):
     return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "nixi-companion" / "plugin-config" / (pid + ".json")
 
 
-def read_config(pid, snap_dir):
-    """-> (settings, note). The user's file when it is a good one, else the defaults from the snapshot (the hashed bytes)."""
+def read_user_config(pid):
+    """-> (the user's settings dict or None, note). Only the user's file is opened."""
     try:
         c = json.loads(_read_small(config_path(pid)))
         if isinstance(c, dict):
             return c, None
-        note = "settings file unreadable"
+        return None, "settings file unreadable"
     except FileNotFoundError:
-        note = None
+        return None, None
     except (OSError, ValueError):
-        note = "settings file unreadable"
-    return json.loads(_read_small(os.path.join(snap_dir, "defaults.json"))), note
+        return None, "settings file unreadable"
+
+
+def read_config(pid, snap_dir, user=None):
+    """-> (settings, note): the snapshot's defaults (the hashed bytes) with a good user file over them. user: a read_user_config result already in hand."""
+    c, note = user or read_user_config(pid)
+    d = json.loads(_read_small(os.path.join(snap_dir, "defaults.json")))
+    return ({**d, **c} if c is not None else d), note
 
 
 def edit_config(pid, d):
@@ -772,6 +783,10 @@ def run_stage(p, query, locale="en", timeout=TIME_DEFAULT, fresh=False):
     stg, now = p.manifest["stage"], _now()
     key = (p.id, norm(query), "peer-status" in stg.get("reads", []) and peers_allowed())   # (a board with peers is never served once they're off)
     _consented(p)                                                  # (before the cache too: a changed plugin shows nothing, old or new)
+    user = None
+    if stg.get("config"):                                          # (one read of the settings: the key and the plugin's stdin both come from it)
+        user = read_user_config(p.id)
+        key += (hashlib.sha256(json.dumps(user[0], sort_keys=True).encode()).hexdigest(),)
     with _cache_lock:
         hit = _cache.get(key)
         if not fresh and hit and now - hit[0] < stg.get("cache_seconds", 60):
@@ -781,7 +796,7 @@ def run_stage(p, query, locale="en", timeout=TIME_DEFAULT, fresh=False):
         _running.add(p.id)
     try:
         try:
-            out = _launch(p, query, locale, min(timeout, TIME_MAX), stages)
+            out = _launch(p, query, locale, min(timeout, TIME_MAX), stages, user)
         except StageError as e:
             if not fresh and hit and str(e) != CHANGED:
                 old = dict(hit[1])
@@ -802,7 +817,7 @@ def _limits():
     resource.setrlimit(resource.RLIMIT_FSIZE, (TMP_SIZE, TMP_SIZE))
 
 
-def _launch(p, query, locale, timeout, stages):
+def _launch(p, query, locale, timeout, stages, user=None):
     stg = p.manifest["stage"]
     if not bwrap_ok():
         raise StageError("bubblewrap isn't working here")
@@ -812,12 +827,12 @@ def _launch(p, query, locale, timeout, stages):
         raise StageError(CHANGED)
     tmp = tempfile.mkdtemp(prefix="nixi-plugin-")
     try:
-        return _run_copy(p, query, locale, timeout, stages, tmp)
+        return _run_copy(p, query, locale, timeout, stages, tmp, user)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _run_copy(p, query, locale, timeout, stages, tmp):
+def _run_copy(p, query, locale, timeout, stages, tmp, user=None):
     stg = p.manifest["stage"]
     try:
         try:
@@ -833,7 +848,7 @@ def _run_copy(p, query, locale, timeout, stages, tmp):
         if "system-status" in stg.get("reads", []):
             feed["system_status"] = system_status()
         if stg.get("config"):
-            feed["config"] = read_config(p.id, os.path.join(tmp, "plugin"))[0]
+            feed["config"] = read_config(p.id, os.path.join(tmp, "plugin"), user)[0]
         if "peer-status" in stg.get("reads", []) and peers_allowed():
             import peers
             feed["peers"] = peers.snapshot()

@@ -110,6 +110,36 @@ class NewsTest(unittest.TestCase):
         self.assertEqual((card["kind"], card["points"]), ("facts", ["No news feeds could be reached."]))
         self.assertIn("2 couldn't be reached", card["source"])
 
+    def card(self, query, config, feeds_ok=True):
+        stdin = json.dumps({"query": query, "config": config})
+        with mock.patch.object(news.sys, "stdin", io.StringIO(stdin)), \
+             mock.patch.object(news, "fetch", lambda url, src, res, i: res.__setitem__(i, news.parse_feed(RSS, src) if feeds_ok else None)), \
+             redirect_stdout(io.StringIO()) as out:
+            news.main()
+        return json.loads(out.getvalue())
+
+    def defaults(self, **over):
+        d = json.loads((REPO / "plugins/examples/news/defaults.json").read_text())
+        return {**d, "feeds": [{"name": "BBC", "url": "https://example.com/feed"}], **over}
+
+    def test_topic_picks_the_video_query(self):
+        for q, want in (("latest world news", "world news"), ("What's the tech news?", "technology news"),
+                        ("news", "world news"), ("the news about my bank", "world news"), ("sports headlines", "sport news")):
+            with self.subTest(q=q):
+                card = self.card(q, self.defaults())
+                self.assertEqual(card["video_query"], want)
+                self.assertIsNotNone(stages.validate(card))
+
+    def test_no_video_query_when_off_or_bad(self):
+        for over in ({"videos": False}, {"topics": []}, {"topics": {"world": "a;b"}}, {"topics": {}}):
+            with self.subTest(over=over):
+                self.assertNotIn("video_query", self.card("news", self.defaults(**over)))
+
+    def test_facts_card_has_no_video_query(self):
+        card = self.card("news", self.defaults(), feeds_ok=False)
+        self.assertEqual(card["kind"], "facts")
+        self.assertNotIn("video_query", card)
+
 
 if __name__ == "__main__":
     unittest.main()

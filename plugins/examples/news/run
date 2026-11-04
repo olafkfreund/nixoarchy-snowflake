@@ -116,12 +116,26 @@ def fetch(url, source, results, index):
         pass
 
 
+def pick_topic(query, config):
+    """The clip search for the asked topic from the settings' `topics`, else None. The asked words are never searched, only the mapped value."""
+    topics = config.get("topics")
+    if config.get("videos", True) is not True or not isinstance(topics, dict):
+        return None
+    words = re.sub(r"[^a-z0-9 ]", " ", str(query or "").lower()).split()
+    key = next((w for w in words if w in topics), config.get("default_topic", "world"))
+    q = topics.get(key) if isinstance(key, str) else None
+    return q.strip() if isinstance(q, str) and re.fullmatch(r"[A-Za-z0-9 '-]{3,60}", q.strip()) else None   # (stages.validate's rule)
+
+
 def main():
     try:
-        config = json.load(sys.stdin).get("config") or {}
+        req = json.load(sys.stdin)
     except ValueError:
-        config = {}
-    feeds = config.get("feeds") if isinstance(config, dict) else None
+        req = {}
+    req = req if isinstance(req, dict) else {}
+    config = req.get("config") or {}
+    config = config if isinstance(config, dict) else {}
+    feeds = config.get("feeds")
     feeds = feeds[:8] if isinstance(feeds, list) else []
     results, jobs, names = [None] * len(feeds), [], []
     deadline = time.monotonic() + 1.5
@@ -148,6 +162,9 @@ def main():
         stage = {"v": 1, "kind": "facts", "title": "News", "points": ["No news feeds could be reached." if failed else "No stories found."]}
     else:
         stage = {"v": 1, "kind": "headlines", "title": "News", "items": items, "say": say_line(items)}
+        video_query = pick_topic(req.get("query"), config)
+        if video_query:
+            stage["video_query"] = video_query
     source = ", ".join(names)
     if suffix:
         source = source[:120 - len(suffix) - 3] + " · " + suffix if source else suffix
