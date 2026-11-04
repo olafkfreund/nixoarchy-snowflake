@@ -18,6 +18,8 @@ body{position:relative;width:340px;height:460px;margin:0;overflow:visible}   /* 
 html{background:transparent}
 body{background:radial-gradient(70% 52% at 50% 36%,var(--panel2) 0%,#090909 78%);color:var(--text);
   font:14px/1.45 "Inter",system-ui,sans-serif;user-select:none;-webkit-user-select:none}
+body.still .tCursor,body.still .tAntenna,body.still .tTail{animation-play-state:paused}
+@media (prefers-reduced-motion:reduce){.tCursor,.tAntenna,.tTail{animation:none!important}}
 html.native body{background:transparent}
 button{font:inherit;color:inherit}
 
@@ -1077,8 +1079,9 @@ let SKIN_PARTS={}, SIT_P=null, sitSettled=false, shivAt=0, shivT0=0;
 // and the skin picker never shows one. Flat paths only; frame() fades and scales them with springs.
 function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) return null; bk.innerHTML=''; fr.innerHTML='';
   const acc=L.skinColor||L.pupL, R=at=>({...at,'stroke-linejoin':'round','stroke-linecap':'round'});
-  const nc=sv('g',{opacity:0},fr), ph=sv('g',{opacity:0},fr), bn=sv('g',{opacity:0},fr), sc=sv('g',{opacity:0},fr);   // top zone, drawn first: the headphone band passes in front
-  const hb=sv('g',{opacity:0},bk), bd=sv('g',{},hb), tie=sv('g',{opacity:0},fr), hf=sv('g',{opacity:0},fr), gl=sv('g',{opacity:0},fr), sh=sv('g',{opacity:0},fr);
+  const prop=(par,anchor,fit)=>sv('g',{opacity:0},sv('g',{class:'anc','data-a':anchor,'data-fit':fit},par));
+  const nc=prop(fr,'head','nightcap'), ph=prop(fr,'head','party'), bn=prop(fr,'head','beanie'), sc=prop(fr,'neck','scarf');   // top zone, drawn first: the headphone band passes in front
+  const hb=prop(bk,'face','headphones'), bd=sv('g',{},hb), tie=prop(fr,'neck','tie'), hf=prop(fr,'face','headphones'), gl=prop(fr,'face','glasses'), sh=prop(fr,'face','shades');
   const wh=L.whiteL, pc=L.pupL, pd=shade(pc,-.3);
   // nightcap: a soft cone drooping to one side, a pom-pom, a pale brim
   const nci=sv('g',{transform:'translate(0 -62) scale(.6) translate(0 84)'},nc);   // (sized so even his biggest bounce keeps it in the window)
@@ -1126,7 +1129,7 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   const lens=()=>sv('path',R({d:'',fill:'#ffffff0d',stroke:acc,'stroke-width':2.6}),gl), line=w=>sv('path',R({d:'',fill:'none',stroke:w||acc,'stroke-width':w?2.4:2.6}),gl);
   const lensL=lens(), lensR=lens(), brg=line(), glintL=line('#ffffff60'), glintR=line('#ffffff60');
   // notification props, absolute coordinates, white / bright on his blue arms; frame() places them with put() and animates them while they show
-  const pk2='#0b0e14', chat=sv('g',{opacity:0},fr), feed=sv('g',{opacity:0},fr);
+  const pk2='#0b0e14', chat=prop(fr,'left','chat'), feed=prop(fr,'right','feed');
   sv('path',R({d:'M-88 -73H-60Q-56 -73 -56 -69V-55Q-56 -51 -60 -51H-72L-80 -43L-79 -51H-88Q-92 -51 -92 -55V-69Q-92 -73 -88 -73Z',fill:'#fff',stroke:'#2f8f66','stroke-width':3}),chat);
   const dots=[-82,-74,-66].map(x=>sv('circle',{cx:x,cy:-62,r:2.9,fill:'#2f8f66'},chat));
   const badge=sv('g',{display:'none'},chat); sv('circle',{cx:-58,cy:-74,r:8.5,fill:'#e5484d',stroke:'#fff','stroke-width':1.6},badge);
@@ -1139,33 +1142,35 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   return {chat:{g:chat,dots,badge,bt,n:0,img:ic(-99,-80,chat)},feed:{g:feed,scr,ant:tvA,img:ic(48,-70,feed)},tie,hb,bd,hf,bn,sc,scT,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,lensL,lensR,brg,glintL,glintR}; }
 // a plugin's prop (#149): the server already sanitised it to a node list; only createElementNS + setAttribute here, no ids, no markup
 const PROP_BOX={head:[-30,-112,60,54],left:[-98,-34,40,40],right:[58,-34,40,40],base:[-36,68,72,26]}, PROP_COL={acc:'var(--acc)',text:'var(--text)',dim:'var(--dim)'};
-function drawProp(par,P){   // a nested <svg> at the anchor box: it scales the prop and clips it to the box
+function drawProp(par,P){   // the anchor wrapper shifts this box; the nested svg scales and clips the prop
   const [x,y,width,height]=PROP_BOX[P.anchor]||PROP_BOX.head, els=[sv('svg',{x,y,width,height,viewBox:P.nodes[0].a.viewBox.join(' ')},par)];
   P.nodes.forEach((n,i)=>{ if(!i) return; const e=document.createElementNS(SVGNS,n.tag);
     for(const a in n.a){ if((a==='fill'||a==='stroke')&&PROP_COL[n.a[a]]) e.style.setProperty(a,PROP_COL[n.a[a]]); else e.setAttribute(a,n.a[a]); }   // (WebKitGTK: var() only works as a style)
     els[n.p].appendChild(e); els[i]=e; });
 }
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
-function drawSkin(back,front,L,bodyFill='url(#ballG)'){
+function drawSkin(back,front,L,bodyFill='url(#ballG)',character=BODY){
   back.innerHTML=''; front.innerHTML='';
   const F=L.skinColor||bodyFill, acc=L.skinColor||L.pupL, soft=L.skinColor||L.whiteL, parts={pivots:{},baseProp:false};
   const R=(at)=>({...at,'stroke-linejoin':'round','stroke-linecap':'round'});
+  const prop=(par,anchor,fit)=>sv('g',{class:'anc','data-a':anchor,'data-fit':fit},par);
   switch(L.skin){
-    case 'halo': { const g=sv('g',{},front);
+    case 'halo': { const g=sv('g',{},prop(front,'head','halo'));
         sv('ellipse',{cx:0,cy:-114,rx:36,ry:6,fill:'none',stroke:soft,'stroke-width':4},g); parts.halo=g; break; }
-    case 'crown': { const g=sv('g',{transform:'translate(0 -58) scale(.85) translate(0 68)'},front);
+    case 'crown': { const g=sv('g',{transform:'translate(0 -58) scale(.85) translate(0 68)'},prop(front,'head','crown'));
         sv('path',R({d:'M-22 -68L-26 -94L-11 -80L0 -98L11 -80L26 -94L22 -68Z',fill:soft,stroke:soft,'stroke-width':6}),g); break; }
-    case 'sprout': { const g=sv('g',{},front);   // in front: the lambdas would hide it
+    case 'sprout': { const g=sv('g',{},prop(front,'head','sprout'));   // in front: the lambdas would hide it
         sv('path',R({d:'M0 -58Q-3 -76 2 -90',fill:'none',stroke:soft,'stroke-width':3.5}),g);
         sv('ellipse',{cx:-9,cy:-93,rx:10,ry:5,fill:soft,transform:'rotate(-28 -9 -93)'},g);
         sv('ellipse',{cx:13,cy:-96,rx:11,ry:5.5,fill:soft,transform:'rotate(26 13 -96)'},g);
         parts.wob=g; parts.pivots.wob=[0,-58]; break; }
-    case 'bow': { const g=sv('g',{transform:'translate(33.5 -58) rotate(30)'},front);
+    case 'bow': { const g=sv('g',{transform:'translate(33.5 -58) rotate(30)'},prop(front,'head','bow'));
         sv('path',{d:'M0 0C-8 -13 -24 -12 -24 0C-24 12 -8 13 0 0Z',fill:soft},g);
         sv('path',{d:'M0 0C8 -13 24 -12 24 0C24 12 8 13 0 0Z',fill:soft},g);
         sv('circle',{r:5,fill:shade(soft,-.15)},g); break; }
-    default: if(String(L.skin).startsWith('plug:')){ const P=((info&&info.plugin_props)||[]).find(p=>'plug:'+p.id===L.skin); if(P){ parts.baseProp=P.anchor==='base'; drawProp(P.layer==='back'?back:front,P); } }
+    default: if(String(L.skin).startsWith('plug:')){ const P=((info&&info.plugin_props)||[]).find(p=>'plug:'+p.id===L.skin); if(P){ parts.baseProp=P.anchor==='base'; drawProp(prop(P.layer==='back'?back:front,P.anchor,L.skin),P); } }
   }
+  applyAnchors(character,[back,front]);
   return parts;
 }
 // little mini-Nixi for the settings preview + skin gallery (static, clickable parts)
@@ -1180,7 +1185,7 @@ function miniNixi(svg,L,clickable){
     sv('ellipse',{cx:s*25.5,cy:-4.5,rx:23.5,ry:40.5,transform:`rotate(${-s*9} ${s*25.5} -4.5)`,fill:L['white'+k],'data-part':'white'+k},svg);
     sv('ellipse',{cx:s*10.5,cy:-4,rx:clickable?4.2:3.2,ry:12.5,transform:`rotate(${-s*8} ${s*10.5} -4)`,fill:L['pup'+k],'data-part':'pup'+k},svg); }
   const front=sv('g',{'data-part':clickable?'skin':''},svg);
-  drawSkin(back,front,L,`url(#${id})`);
+  drawSkin(back,front,L,`url(#${id})`,CHARACTERS[L.character]||BODY);
   svg.insertBefore(back,ball);
   return svg;
 }
@@ -1202,6 +1207,12 @@ const CHARACTERS={snowflake:{label:'Snowflake',ball:snowPath(),back:nixLambdas()
   faceBox:[-76,-76,152,152],anchors:{head:[0,0],face:[0,0],neck:[0,0],base:[0,0],left:[0,0],right:[0,0]},
   pivot:76,shadow:62,fits:new Set(['none','halo','crown','sprout','bow','nightcap','beanie','party','scarf','tie','headphones','shades','glasses','chat','feed']),touch:null}};
 let BODY=CHARACTERS.snowflake;
+function applyAnchors(character=BODY,roots=[$('#accBack'),$('#accFront'),$('#sitBack'),$('#sitFront')]){
+  for(const root of roots) for(const e of root.querySelectorAll('.anc')){
+    const [dx,dy]=character.anchors[e.dataset.a]||[0,0]; e.setAttribute('transform',`translate(${dx} ${dy})`);
+    const f=e.dataset.fit||'', ok=character.fits.has(f)||(f.startsWith('plug:')&&character.fits.has('plug'));   // 'plug': every plugin prop fits
+    e.style.display=character===CHARACTERS.snowflake||ok?'':'none'; }
+}
 function setCharacter(id){
   const next=CHARACTERS[id]||CHARACTERS.snowflake, changed=BODY!==next;
   document.querySelectorAll('#body>path.ball').forEach(e=>e.setAttribute('d',next.ball));
@@ -1209,6 +1220,10 @@ function setCharacter(id){
   document.querySelectorAll('#body>.bfront').forEach(g=>g.innerHTML=next.front);
   document.querySelectorAll('#body>ellipse').forEach(e=>e.setAttribute('display',next.gloss?'':'none'));
   BODY=next;
+  const [dx,dy]=BODY.anchors.base;
+  $('#shadow').setAttribute('cx',dx); $('#shadow').setAttribute('cy',108+dy); $('#shadow').setAttribute('rx',BODY.shadow);
+  applyAnchors();
+  const [hx,hy]=BODY.anchors.head; $('#wx').setAttribute('transform',`translate(${hx} ${hy})`);   // every weather slot follows his head
   if(changed) renderCue();
 }
 setCharacter(LOOK.character || 'snowflake');
@@ -1647,7 +1662,7 @@ function frame(ts){
   if(SIT.cold>=1&&m==='idle'&&!REDUCED.matches){ if(!shivAt) shivAt=ts+25000; if(ts>=shivAt){ shivT0=ts; shivAt=ts+(20+Math.random()*10)*1000; } } else { shivAt=0; shivT0=0; }
   const sp6=(ts-shivT0)/600, shiv=shivT0&&sp6>=0&&sp6<1?Math.sin(t*60)*1.5*Math.sin(Math.PI*sp6):0;   // 0.6 s, ~25 s apart, straight into dxp (a spring would filter 9 Hz away)
   const dxp=G.dx.to(0,dt)+shiv;
-  const bodyTr=`translate(${dxp.toFixed(2)},${(76*(1-sy*pump)).toFixed(2)}) rotate(${rot.toFixed(2)})`;
+  const bodyTr=`translate(${dxp.toFixed(2)},${(BODY.pivot*(1-sy*pump)).toFixed(2)}) rotate(${rot.toFixed(2)})`;
   E.body.setAttribute('transform',`${bodyTr} scale(${(sx*pump).toFixed(4)},${(sy*pump).toFixed(4)})`);
   E.shadow.setAttribute('transform',`scale(${sx.toFixed(3)},1)`);
 
@@ -3541,7 +3556,7 @@ addEventListener('transitionend',e=>{ if(e.target.matches&&e.target.matches('#me
 let downAt=null, dragged=false, clicks=[];
 E.body.addEventListener('mousedown',e=>{ if(e.button!==0) return; downAt=[e.clientX,e.clientY]; dragged=false; });
 // ---- idle (#140): after a while he shrinks into the corner nearest him (peek), then optionally hides without sleeping (doze)
-let idleSt='full', idleHoldUntil=0, lastUser=performance.now(), IDLE_K=1, eatClick=false, peekT=null, corner='br';
+let idleSt='full', idleHoldUntil=0, lastUser=performance.now(), IDLE_K=1, eatClick=false, peekT=null, corner='br', stillNow=false;
 const IDLE_SHRINK=45000, IDLE_DOZE=300000;
 window.nixiIdleScale=k=>{ IDLE_K=k; };      // test hook: multiplies the timers
 window.nixiCorner=c=>{ corner=c; const x=c[1]==='l'?-102:102, y=c[0]==='t'?-99:99; document.body.style.setProperty('--px',x+'px'); document.body.style.setProperty('--py',y+'px'); };
@@ -3561,6 +3576,8 @@ function restore(hold,focus){ const now=performance.now(); idleHoldUntil=Math.ma
   if(dozing){ native(focus?'show':'doze:show'); entrance(); }     // (not when the host already showed him: dozing is cleared first)
   setIdle('full'); }
 function idleCheck(){ const mode=info.idle_mode||'shrink', now=performance.now();
+  const st=now-Math.max(lastActive,lastUser)>60000&&!idleActive()&&!busy;
+  if(st!==stillNow){ stillNow=st; document.body.classList.toggle('still',st); }
   if(framePaused&&AM&&now>=AM.until){ AM=null; G.agent.x=0; G.agent.v=0; AMX.mk.setAttribute('opacity','0'); AMX.mk.setAttribute('pointer-events','none'); renderCue(); }   // (frame() isn't running to expire it)
   if(mode==='off'||idleActive()){ if(idleSt==='doze'&&!hiddenNow) restore(0); else setIdle('full'); return; }
   if(idleShowing()) return;
