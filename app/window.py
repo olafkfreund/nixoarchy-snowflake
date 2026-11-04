@@ -26,8 +26,10 @@ import socket
 import sys
 import threading
 import time
+from urllib.parse import urlparse
 
 import aside
+from room import split_room
 import screens
 
 # He's an overlay (a layer-shell surface, like a bar or a notification), which only works when GTK talks Wayland.
@@ -135,6 +137,13 @@ def log(msg):
     if msg not in _logged:
         _logged.add(msg)
         print(f"[nixi] {msg}", file=sys.stderr, flush=True)
+
+
+def token_script(tok, port):
+    """The user script that gives the page its token. WebKit's allow-list matches the host only, never the port, so
+    the script itself checks the exact origin: no other page on 127.0.0.1 gets it."""
+    origin = f"http://127.0.0.1:{port}"
+    return f"if(location.origin==={json.dumps(origin)})window.__nixiT={json.dumps(tok)};", ["http://127.0.0.1/*"]
 
 
 def send(cmd):
@@ -364,7 +373,7 @@ class NixiWindow:
             self.save_t = None
             w.connect("configure-event", self._moved)
 
-        ucm = WebKit2.UserContentManager()
+        ucm = self.ucm = WebKit2.UserContentManager()
         ucm.register_script_message_handler("nixiui")
         ucm.connect("script-message-received::nixiui", self._on_msg)
         v = self.view = WebKit2.WebView.new_with_user_content_manager(ucm)
@@ -388,8 +397,7 @@ class NixiWindow:
         except TypeError:
             pass
         self.url = url
-        v.connect("load-changed", lambda _v, ev: self._send_corner() if ev == WebKit2.LoadEvent.FINISHED else None)
-        v.load_uri(self._authed_url())
+        self._start_page()
         w.add(v)
         w.connect("delete-event", lambda *a: (self.hide(), True)[1])
         if not self.layer:
@@ -481,7 +489,7 @@ class NixiWindow:
                 p = json.load(open(POS_FILE))
             except (OSError, ValueError):
                 p = {}
-            p.update(gx=self.mx, gy=self.my)
+            p.update(gx=self.mx + self.wide_shift, gy=self.my + self.top_shift)
             os.makedirs(os.path.dirname(POS_FILE), exist_ok=True)
             json.dump(p, open(POS_FILE, "w"))
         except OSError:
@@ -497,7 +505,7 @@ class NixiWindow:
             except (OSError, ValueError):
                 p = {}
             name = next((n for n, i, _ in self._hmons() if i == self.mon_i), None) if self.hypr.ok() else None
-            screens.pos_dict(p, self.mon_i, self.mx + self.wide_shift, self.my, name, self.bar)
+            screens.pos_dict(p, self.mon_i, self.mx + self.wide_shift, self.my + self.top_shift, name, self.bar)
             json.dump(p, open(POS_FILE, "w"))
         except OSError:
             pass
@@ -505,7 +513,7 @@ class NixiWindow:
 
     def _send_corner(self):
         """Tell the page which corner of his screen he sits in (tl/tr/bl/br), from the middle of his own 340px strip."""
-        cx, cy = self.mx + self.wide_shift + W / 2, self.my + H / 2
+        cx, cy = self.mx + self.wide_shift + W / 2, self.my + self.top_shift + H / 2
         if self.layer:                                   # layer mode: mx/my are margins from this monitor's top-left
             g = self._geom()[1]
         else:                                            # X11: mx/my are global screen coordinates
@@ -555,34 +563,28 @@ class NixiWindow:
         L = max(WIDE - W if self.want_panel else 0, CODE_SIDE if self.want_code else 0, BAR_SIDE if self.want_bar else 0)
         R = max(CODE_SIDE if self.want_code else 0, BAR_SIDE if self.want_bar else 0)
         xw, eh = (0, 0) if (self.hover or self.want_bar) else (self.want_xw, self.want_h)
-        L, R = max(L, (xw + 1) // 2), max(R, (xw + 1) // 2)
         if self.hover:
             L = R = 0
-        base = self.mx + self.wide_shift                 # where his own 340px strip starts on the monitor
+        base, basey = self.mx + self.wide_shift, self.my + self.top_shift
         if self.layer:
-            gw = self._geom()[1].width
-            aL, aR = max(0, base), max(0, gw - base - W)
-            if xw:                                   # next to a screen edge: what doesn't fit on one side goes to the other
-                L, R = L + max(0, R - aR), R + max(0, L - aL)
-            L, R = min(L, aL), min(R, aR)
-        elif not (self.want_bar and not (self.want_panel or self.want_code)):
-            L, R = 0, L + R                              # a normal window only grows to the right (it isn't moved)…
-        # height: grow downward as far as the monitor allows, then upward (the page is shifted down by T so he stays put)
-        basey, T, B = self.my + self.top_shift, 0, 0
-        if eh:
-            gh = self._geom()[1].height
-            B = min(eh, max(0, gh - (basey + H)))
-            T = min(eh - B, max(0, basey)) if self.layer else 0
-        if W + L + R == self.cur_w and L == self.wide_shift and H + T + B == self.cur_h and T == self.top_shift:
+            g = self._geom()[1]
+            mon = (0, 0, g.width, g.height)
+        else:
+            g = Gdk.Display.get_default().get_monitor_at_point(base, basey).get_geometry()
+            mon = (g.x, g.y, g.width, g.height)
+        L, R, T, extra_h = split_room(base, basey, W, H, xw, eh, (L, R), mon)
+        if self.hover:
+            L = R = 0
+        if W + L + R == self.cur_w and L == self.wide_shift and H + extra_h == self.cur_h and T == self.top_shift:
             return
-        old = self.wide_shift
-        self.wide_shift, self.cur_w, self.top_shift, self.cur_h = L, W + L + R, T, H + T + B
+        old, old_top = self.wide_shift, self.top_shift
+        self.wide_shift, self.cur_w, self.top_shift, self.cur_h = L, W + L + R, T, H + extra_h
         self.win.set_size_request(self.cur_w, self.cur_h)
         self.win.resize(self.cur_w, self.cur_h)
         if self.layer:
             self._place(base - L, basey - T)
-        elif L != old:                                   # …except round the notch, where we place it ourselves
-            self._xmove(base - L, self.my)
+        elif (L, T) != (old, old_top):
+            self._xmove(base - L, basey - T)
         if not self.layer and self.hypr.ok() and self.hypr.addr:
             try:
                 self.hypr.dispatch(f"resizewindowpixel exact {self.cur_w} {self.cur_h},address:{self.hypr.addr}")
@@ -613,7 +615,8 @@ class NixiWindow:
         """Move him to another screen, to the spot he had there last (bottom-right the first time). Docked, he re-docks on
         the same edge. False if there is nowhere to go."""
         ms = self._hmons() if self.hypr.ok() else []
-        cur = self.mon_i if self.layer else self._mon_at(self.mx + W // 2, self.my + H // 2)[0]
+        cur = self.mon_i if self.layer else self._mon_at(self.mx + self.wide_shift + W // 2,
+                                                        self.my + self.top_shift + H // 2)[0]
         k = next((j for j, m in enumerate(ms) if m[1] == cur), 0)
         arg = (arg or "").strip()
         if arg in ("next", "prev") and len(ms) > 1:
@@ -641,11 +644,11 @@ class NixiWindow:
                 self.bar_home = (tgt[1], x, y)
             bx = {"top": (gw - W) // 2, "bottom": (gw - W) // 2, "left": 0, "right": gw - W}[self.bar]
             by = {"top": 0, "bottom": gh - H, "left": (gh - H) // 2, "right": (gh - H) // 2}[self.bar]
-            self._place(bx - self.wide_shift, by, True, tgt[1])
+            self._place(bx - self.wide_shift, by - self.top_shift, True, tgt[1])
         elif self.layer:
-            self._place(x - self.wide_shift, y, True, tgt[1])
+            self._place(x - self.wide_shift, y - self.top_shift, True, tgt[1])
         else:
-            self._xmove(g.x + x - self.wide_shift, g.y + y)
+            self._xmove(g.x + x - self.wide_shift, g.y + y - self.top_shift)
         self._rewide()
         self._send_corner()
         GLib.timeout_add(100, lambda: (self._save_pos() if self.layer else self._save_xpos(), False)[1])
@@ -958,7 +961,7 @@ class NixiWindow:
             return
         if edge:
             if not self.bar:
-                self.bar_home = (self.mon_i, self.mx + self.wide_shift, self.my)
+                self.bar_home = (self.mon_i, self.mx + self.wide_shift, self.my + self.top_shift)
             self.bar = edge
             if self.layer:                                        # margins from the monitor's top-left
                 _, g = self._geom()
@@ -972,9 +975,9 @@ class NixiWindow:
             y = {"top": 0, "bottom": gh_ - H, "left": (gh_ - H) // 2, "right": (gh_ - H) // 2}[edge]
             room = None                                           # (no growing round the notch: it flickered)
             if self.layer:
-                self._glide_to(x - self.wide_shift, y, room)
+                self._glide_to(x - self.wide_shift, y - self.top_shift, room)
             else:
-                self._glide_to(ox + x - self.wide_shift, oy + y, room)
+                self._glide_to(ox + x - self.wide_shift, oy + y - self.top_shift, room)
         else:
             was, self.bar = self.bar, None
             self.set_wide(False, "bar")
@@ -992,11 +995,11 @@ class NixiWindow:
                 if self.layer and m != self.mon_i or not glide:      # (another monitor, or right now: no glide)
                     self.glide_n += 1
                     if self.layer:
-                        self._place(hx - self.wide_shift, hy, True, m)
+                        self._place(hx - self.wide_shift, hy - self.top_shift, True, m)
                     else:
-                        self._xmove(hx - self.wide_shift, hy)
+                        self._xmove(hx - self.wide_shift, hy - self.top_shift)
                 else:
-                    self._glide_to(hx - self.wide_shift, hy)
+                    self._glide_to(hx - self.wide_shift, hy - self.top_shift)
             if was:
                 GLib.timeout_add(int(GLIDE * 1000) + 150, lambda: (None if self.dragging or self.pmoving or self.dpos else (self._save_pos() if self.layer else self._save_xpos()), False)[1])
         # (pulled out by the mouse: the page just pops him out under it, nothing trailing behind)
@@ -1119,17 +1122,18 @@ class NixiWindow:
             return
         if on and self.bar:                                        # hover mode is the blob: leave the edge first
             self.set_bar(None, glide=False)                        # (at once: the cursor-following starts here)
-        if on and self.cur_w > W:
+        home = (self.mon_i, self.mx + self.wide_shift, self.my + self.top_shift) if on else None
+        self.hover = on
+        if on and (self.cur_w > W or self.cur_h > H or self.top_shift):
             self.want_code = False
             self.set_wide(False)
         log(f"hover mode {'on' if on else 'off'}")
         self.cursor_hidden(on)
-        self.hover = on
         if on:
             self.hpos = None
         self.mons = None
         if on:
-            self.home = (self.mon_i, self.mx, self.my)
+            self.home = home
             threading.Thread(target=self._follow, daemon=True).start()
         elif getattr(self, "home", None):                          # glide from the cursor back to where he was parked
             threading.Thread(target=self._glide_home, daemon=True).start()
@@ -1147,12 +1151,14 @@ class NixiWindow:
                 if k >= 1:
                     break
                 time.sleep(0.008)
-            GLib.idle_add(self.win.move, int(hx), int(hy))
+            GLib.idle_add(self._xmove, int(hx), int(hy))
+            GLib.idle_add(self._rewide)
             return
         _, g = self._geom(m)
         start = self.hpos                     # global position he was at as the cursor
         if not start:
             GLib.idle_add(self._place, hx, hy, True, m)
+            GLib.idle_add(self._rewide)
             return
         sx, sy = start[0] - g.x, start[1] - g.y      # in home-monitor coordinates
         t0, dur = time.monotonic(), 0.65
@@ -1165,6 +1171,7 @@ class NixiWindow:
                 break
             time.sleep(0.008)
         GLib.idle_add(self._place, hx, hy, True, m)
+        GLib.idle_add(self._rewide)
 
     def cursor_hidden(self, hide):
         """In hover mode he *is* the mouse pointer, so hide the real one (Hyprland's cursor:invisible; elsewhere it stays)."""
@@ -1249,18 +1256,44 @@ class NixiWindow:
                 log(f"hover: moving the window failed ({e})")
 
     # ---- messages from the page
-    def _authed_url(self):
-        """The page's address with the server's token after '#': read from runtime.json (only you can read it) and
-        never on a command line or in the page the server hands out; the part after '#' is never sent anywhere."""
+    def _token(self, tries=50):
         rt = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "nixi-companion", "runtime.json")
-        for _ in range(50):                                            # (a just-started server writes it in a moment)
+        for _ in range(tries):                                         # (a just-started server writes it in a moment)
             try:
                 with open(rt) as f:
-                    return self.url + "#t=" + json.load(f)["token"]
+                    return json.load(f)["token"]
             except (OSError, ValueError, KeyError):
                 time.sleep(0.1)
         log("couldn't read the server's token (runtime.json)")
-        return self.url
+        return ""
+
+    def _hand_token(self, tries=50):
+        self.ucm.remove_all_scripts()
+        tok = self._token(tries)
+        if tok:
+            src, allow = token_script(tok, urlparse(self.url).port)
+            self.ucm.add_script(WebKit2.UserScript.new(src, WebKit2.UserContentInjectedFrames.TOP_FRAME,
+                                                       WebKit2.UserScriptInjectionTime.START, allow, None))
+
+    def _start_page(self):
+        self.view.connect("load-changed", lambda _v, ev: self._send_corner() if ev == WebKit2.LoadEvent.FINISHED else None)
+        origin = f"http://127.0.0.1:{urlparse(self.url).port}/"
+
+        def retry():
+            self._hand_token(tries=1)                                  # (no waiting on the main thread: it retries anyway)
+            self.view.load_uri(self.url)
+            return False
+
+        def failed(_view, _ev, uri, err):
+            if not uri.startswith(origin) or (err is not None and err.matches(WebKit2.network_error_quark(),
+                                                                                WebKit2.NetworkError.CANCELLED)):
+                return False                                       # (a newer load replaced this one: not a failure)
+            GLib.timeout_add(1000, retry)
+            return True
+
+        self.view.connect("load-failed", failed)
+        self._hand_token()
+        self.view.load_uri(self.url)
 
     def _on_msg(self, _ucm, res):
         try:
@@ -1268,7 +1301,8 @@ class NixiWindow:
         except AttributeError:
             msg = res.to_string()
         if msg == "reauth":                                            # the server restarted: hand over its new token
-            self.view.load_uri(self._authed_url())
+            self._hand_token()
+            self.view.load_uri(self.url)
             return
         if msg.startswith("region:"):
             try:
