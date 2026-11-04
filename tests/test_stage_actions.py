@@ -1,40 +1,23 @@
 import io
 import json
-import os
-import shutil
-import sys
-import tempfile
 import time
 import unittest
 import urllib.error
-from pathlib import Path
 from unittest import mock
+from test_speakable import _ServerEnv
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
 CMD = "nix profile install nixpkgs#firefox"
 OPTS = [{"id": "a1", "kind": "allow_once"}, {"id": "r1", "kind": "reject_once"}, {"id": "r2", "kind": "reject_always"}]
 
 
-class StageActionsTest(unittest.TestCase):
+class StageActionsTest(_ServerEnv):
     @classmethod
     def setUpClass(cls):
-        cls._orig_env = os.environ.copy()
-        cls.tmp = tempfile.mkdtemp(prefix="nixi-stageact-test-")
-        for k, d in (("HOME", ""), ("XDG_CONFIG_HOME", ".config"), ("XDG_DATA_HOME", "data"), ("XDG_STATE_HOME", "state")):
-            os.environ[k] = os.path.join(cls.tmp, d)
-            os.makedirs(os.environ[k], exist_ok=True)
-        sys.path.insert(0, str(REPO_ROOT / "app"))
+        super().setUpClass()
         import day
-        import server
         import stages
-        cls.server, cls.stages = server, stages
+        cls.stages = stages
         globals()["day"] = day
-
-    @classmethod
-    def tearDownClass(cls):
-        os.environ.clear()
-        os.environ.update(cls._orig_env)
-        shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def setUp(self):
         self.s = self.server
@@ -123,7 +106,7 @@ class StageActionsTest(unittest.TestCase):
                 mock.patch.object(self.s.plugins, "run_stage", return_value=stage) as run, \
                 mock.patch.object(self.s.BUS, "pub") as pub:
             self.assertEqual(self.s.stage_act(page["refresh"], "refresh"), {"ok": True})
-            run.assert_called_once_with(p, "system status", fresh=True)
+            run.assert_called_once_with(p, "system status", locale="en", fresh=True)   # (#177: plugins get the active locale)
             self.assertEqual(pub.call_args.kwargs["t"], "stage_update")
             pub.reset_mock()
             for token in (page["token"], self.tok, "forged"):
@@ -208,7 +191,7 @@ class StageActionsTest(unittest.TestCase):
     def test_play_uses_mpv_else_browser_and_search_opens(self):
         page = self.video_page(); url = "https://www.youtube.com/watch?v=abcdefghijk"
         with mock.patch.object(self.s.subprocess, "Popen") as po:
-            with mock.patch.object(self.s.shutil, "which", return_value="/bin/mpv"):
+            with mock.patch.object(self.s.shutil, "which", side_effect=lambda name: "/bin/mpv" if name == "mpv" else None):
                 self.assertTrue(self.s.stage_act(page["items"][0]["play"], "play")["ok"])
                 self.assertEqual(po.call_args[0][0], ["mpv", url])
             with mock.patch.object(self.s.shutil, "which", return_value=None):
@@ -216,6 +199,34 @@ class StageActionsTest(unittest.TestCase):
                 self.assertEqual(po.call_args[0][0], ["xdg-open", url])
             self.s.stage_act(page["search"], "open")
             self.assertEqual(po.call_args[0][0], ["xdg-open", "https://www.youtube.com/results?search_query=cats"])
+
+    def fallback(self, first_rc, procs, have_ytdlp=True):
+        first = mock.Mock(); first.wait.return_value = first_rc
+        with mock.patch.object(self.s.subprocess, "Popen", side_effect=procs) as po, \
+                mock.patch.object(self.s.shutil, "which", return_value="/bin/yt-dlp" if have_ytdlp else None):
+            self.s._play_fallback(first, "https://www.youtube.com/watch?v=abcdefghijk")
+        return [c.args[0] for c in po.call_args_list], po
+
+    def test_play_ok_or_closed_takes_no_fallback(self):
+        for rc in (0, 4, -15):
+            self.assertEqual(self.fallback(rc, [])[0], [])
+
+    def test_play_refused_stream_takes_the_pipe(self):
+        url = "https://www.youtube.com/watch?v=abcdefghijk"
+        yt = mock.Mock(stdout=mock.Mock()); player = mock.Mock(); player.wait.return_value = 0
+        argv, po = self.fallback(2, [yt, player])
+        self.assertEqual(argv, [["yt-dlp", "--ignore-config", "-q", "-o", "-", "--", url], ["mpv", "--force-window=immediate", "-"]])
+        self.assertIs(po.call_args_list[1].kwargs["stdin"], yt.stdout)
+        yt.stdout.close.assert_called_once_with()
+
+    def test_play_falls_back_to_the_browser(self):
+        url = "https://www.youtube.com/watch?v=abcdefghijk"
+        yt = mock.Mock(stdout=mock.Mock()); player = mock.Mock(); player.wait.return_value = 2
+        self.assertEqual(self.fallback(2, [yt, player, mock.Mock()])[0][-1], ["xdg-open", url])    # the pipe failed too
+        yt = mock.Mock(stdout=mock.Mock())
+        self.assertEqual(self.fallback(2, [yt, OSError("no mpv"), mock.Mock()])[0][-1], ["xdg-open", url])    # mpv would not start
+        yt.kill.assert_called_once_with(); yt.wait.assert_called()
+        self.assertEqual(self.fallback(2, [mock.Mock()], have_ytdlp=False)[0], [["xdg-open", url]])
 
     def test_play_refused_for_a_command_token(self):
         with mock.patch.object(self.s.subprocess, "Popen") as po:
@@ -362,7 +373,7 @@ class StageActionsTest(unittest.TestCase):
             {"id": "abcdefghijk", "title": "One", "channel": "A", "duration": "1:00"},
             {"id": "lmnopqrstuv", "title": "Two", "channel": "B", "duration": "2:00"}])
         self.s.STAGES.set_visible(True)
-        with mock.patch.object(self.s.subprocess, "Popen") as po, mock.patch.object(self.s.shutil, "which", return_value="/bin/mpv"):
+        with mock.patch.object(self.s.subprocess, "Popen") as po, mock.patch.object(self.s.shutil, "which", side_effect=lambda name: "/bin/mpv" if name == "mpv" else None):
             evs, prompts, _ = self.ask({"prompt": "play the second video"})
             self.assertEqual((prompts, evs[0]["text"], po.call_args[0][0]),
                              ([], "Playing it.", ["mpv", "https://www.youtube.com/watch?v=lmnopqrstuv"]))
@@ -376,7 +387,7 @@ class StageActionsTest(unittest.TestCase):
             evs, prompts, _ = self.ask({"prompt": "open it"})
         self.assertEqual((prompts, evs[0]["text"], po.call_args[0][0][0]), ([], "Opening it.", "xdg-open"))
         self.video_page(); self.s.STAGES.set_visible(True)
-        with mock.patch.object(self.s.subprocess, "Popen") as po, mock.patch.object(self.s.shutil, "which", return_value="/bin/mpv"):
+        with mock.patch.object(self.s.subprocess, "Popen") as po, mock.patch.object(self.s.shutil, "which", side_effect=lambda name: "/bin/mpv" if name == "mpv" else None):
             evs, prompts, _ = self.ask({"prompt": "play the first one"})
         self.assertEqual((prompts, evs[0]["text"], po.call_args[0][0]), ([], "Playing it.", ["mpv", "https://www.youtube.com/watch?v=abcdefghijk"]))
         evs, prompts, _ = self.ask({"prompt": "run the first one"})     # no KeyError: Run is only for commands, so it is an ordinary turn

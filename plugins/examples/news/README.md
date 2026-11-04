@@ -7,3 +7,5 @@ This plugin needs network access, so Nixi asks before enabling it. Edit its sett
 Feeds and redirects must use HTTPS public-looking DNS names. DNS results and links opened in your browser are subject to the browser's own handling.
 
 Under the stories, News can show up to three recent YouTube news clips for the topic you asked about (world, UK, tech, business, science or sport; anything else uses `default_topic`). Nixi asks before allowing this, and only the topic's fixed search words (`topics` in the settings) are sent to YouTube, never what you said. Set `"videos": false` in the settings to turn clips off.
+
+Topic words in `news.json` are English keys in v1 (world, UK, tech, …), so what you say in another language falls back to `default_topic`. You can add your own, e.g. `"verden": "verdensnyheter"` maps the word you say to the search words sent to YouTube.

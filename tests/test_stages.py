@@ -583,6 +583,16 @@ class FastPathTest(unittest.TestCase):
         self.assertIsNone(f("run the first one and then delete it", self.two))
         self.assertIsNone(f("", self.two))
 
+    def test_unicode_and_wrapped_shortcuts(self):
+        with mock.patch.object(S, "lang_active", return_value="pl"):
+            self.assertEqual(S.fast_path("Hej Nixi, otwórz drugi artykuł", self.two), ("open", 1))
+            self.assertEqual(S.fast_path("otwórz drugiego", self.two), ("open", 1))
+            self.assertEqual(S.fast_path("skopiuj go", self.one), ("copy", 0))
+            self.assertEqual(S.fast_path("pokaż to", None), ("show", None))
+        with mock.patch.object(S, "lang_active", return_value="nb"):
+            self.assertEqual(S.fast_path("Hei Nixi, åpne nummer to", self.two), ("open", 1))
+            self.assertEqual(S.fast_path("vis det", None), ("show", None))
+
 
 if __name__ == "__main__":
     unittest.main()

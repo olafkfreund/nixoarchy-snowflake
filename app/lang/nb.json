@@ -1,0 +1,100 @@
+{
+  "lines": {
+    "lang.switching": "Bytter til {language}: laster ned talemodell og stemme…",
+    "approve.can_i": "Kan jeg {what}?",
+    "approve.command": "Kan jeg kjøre denne kommandoen?",
+    "approve.command_to": "Kan jeg kjøre en kommando for å {what}?",
+    "approve.page_on": "Kan jeg åpne en side på {host}?",
+    "approve.page": "Kan jeg åpne denne siden?",
+    "approve.search": "Kan jeg søke på nettet?",
+    "approve.change": "Kan jeg endre {name}?",
+    "approve.change_file": "Kan jeg endre denne filen?",
+    "approve.use": "Kan jeg bruke {tool}?",
+    "path.home": "hjemmemappen din",
+    "path.root": "hovedmappen",
+    "path.home_dir": "{name}-mappen din",
+    "path.dir": "mappen {name}",
+    "speak.code": "Jeg la litt kode på skjermen.",
+    "speak.command": "kommandoen på tavlen",
+    "speak.link": "en lenke",
+    "speak.rest": "Resten står på skjermen.",
+    "plugin.off": "Det tillegget er slått av.",
+    "plugin.failed": "{name}: {error}.",
+    "plugin.peers_off": "Andre maskiner er slått av.",
+    "plugin.done": "Vær så god.",
+    "plugin.title": "Tillegg",
+    "stage.which": "Hvilken? Si den første, andre eller tredje.",
+    "stage.copy": "Kopiert.",
+    "stage.open": "Åpner den.",
+    "stage.play": "Spiller den av.",
+    "stage.not_yet": "Det kan jeg ikke ennå.",
+    "stage.failed": "Det klarte jeg ikke.",
+    "stage.done": "Ferdig.",
+    "stage.which_plugin": "Hvilken: {names}?",
+    "stage.or": " eller ",
+    "session.no_herdr": "Jeg får ikke lest herdr akkurat nå.",
+    "session.not_found": "Jeg finner ingen økt som heter {name}.",
+    "session.which": "Hvilken: {names}?",
+    "session.no_read": "Jeg får ikke lest den økten akkurat nå.",
+    "session.open_failed": "Jeg klarte ikke å åpne den økten.",
+    "session.opening": "Åpner økten {name}.",
+    "session.send_needs_nixi": "Å sende til økter krever nixi-modus.",
+    "session.send_needs_claude": "Å sende til økter fungerer foreløpig bare med Claude som nixis agent.",
+    "session.bad_id": "Jeg kan ikke bruke id-en til den økten.",
+    "session.send_say": "Jeg ber om å sende '{text}' til {title}. Sjekk kortet.",
+    "page.control_back": "Kontrollen er tilbake hos deg.",
+    "page.live_on": "Greit, jeg følger med. Si ifra når du er ferdig.",
+    "page.live_off": "Greit, nå følger jeg ikke med lenger.",
+    "page.live_wasnt": "Jeg fulgte ikke med.",
+    "page.tidy": "Greit, rydder opp.",
+    "page.voice_1": "hei! dette er den nye stemmen min.",
+    "page.voice_2": "hvordan høres jeg ut?",
+    "page.voice_3": "å, denne liker jeg."
+  },
+  "_review": [],
+  "words": {
+    "verbs": {
+      "kjør": "run",
+      "kopier": "copy",
+      "åpne": "open",
+      "spill": "play",
+      "spill av": "play"
+    },
+    "ordinals": {
+      "første": 0,
+      "andre": 1,
+      "tredje": 2,
+      "fjerde": 3,
+      "femte": 4
+    },
+    "cardinals": {
+      "en": 0,
+      "to": 1,
+      "tre": 2,
+      "fire": 3,
+      "fem": 4
+    },
+    "fillers": [
+      "den",
+      "det",
+      "nummer"
+    ],
+    "it": [
+      "den",
+      "det"
+    ],
+    "nouns": [
+      "video",
+      "klipp",
+      "klippet",
+      "videoen",
+      "artikkelen"
+    ],
+    "plain": {
+      "lukk": "close",
+      "gå tilbake": "back",
+      "vis den": "show",
+      "vis det": "show"
+    }
+  }
+}

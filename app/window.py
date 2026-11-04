@@ -575,6 +575,7 @@ class NixiWindow:
         L, R, T, extra_h = split_room(base, basey, W, H, xw, eh, (L, R), mon)
         if self.hover:
             L = R = 0
+        print(f"[nixi] panel set_wide {kind} {on} -> L={L} R={R} T={T} h+={extra_h} base={base},{basey} cur={self.cur_w}x{self.cur_h}", file=sys.stderr, flush=True)   # shortcut: temporary trace
         if W + L + R == self.cur_w and L == self.wide_shift and H + extra_h == self.cur_h and T == self.top_shift:
             return
         old, old_top = self.wide_shift, self.top_shift
@@ -811,6 +812,7 @@ class NixiWindow:
     def hide(self):
         if self.hover:
             self.cursor_hidden(False)
+        print("[nixi] panel window hide", file=sys.stderr, flush=True)   # shortcut: temporary trace for the two-click Settings bug
         self.shown = False
         self._js("window.nixiHidden&&nixiHidden()")
         self.win.hide()

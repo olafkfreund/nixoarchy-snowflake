@@ -5,7 +5,9 @@ import io
 import json
 import os
 import re
+import shutil
 import stat
+import subprocess
 import tempfile
 import threading
 import time
@@ -210,14 +212,31 @@ def speak(text, voice_id, still_ok=None, checked=False):
     # A deleted voice is a configuration error even if the API would return another status.
     if not checked and not any(v["id"] == voice_id for v in voices(deadline)):
         raise ElevenError("bad_voice")
-    body = json.dumps({"text": text, "model_id": "eleven_flash_v2_5"}).encode()
-    pcm, _ = _request(_api(f"/v1/text-to-speech/{voice_id}?output_format=pcm_22050", body), deadline, retry=True, still_ok=still_ok)
+    ffmpeg = shutil.which("ffmpeg")
+    body = json.dumps({"text": text, "model_id": "eleven_v4_turbo",
+                       "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}}).encode()
+    output_format = "mp3_44100_128" if ffmpeg else "pcm_22050"
+    audio, _ = _request(_api(f"/v1/text-to-speech/{voice_id}?output_format={output_format}", body), deadline, retry=True, still_ok=still_ok)
+    if ffmpeg:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ElevenError("decode", sent=True)
+        try:
+            decoded = subprocess.run(
+                [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "mp3", "-i", "pipe:0",
+                 "-af", "volume=6dB,alimiter=limit=0.84:level=0", "-ac", "1", "-ar", "44100", "-f", "s16le", "pipe:1"],
+                input=audio, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=remaining)
+        except (OSError, subprocess.TimeoutExpired):
+            raise ElevenError("decode", sent=True) from None
+        if decoded.returncode or not decoded.stdout or time.monotonic() > deadline:
+            raise ElevenError("decode", sent=True)
+        audio = decoded.stdout
     out = io.BytesIO()
     with wave.open(out, "wb") as wav:
         wav.setnchannels(1)
         wav.setsampwidth(2)
-        wav.setframerate(22050)
-        wav.writeframes(pcm)
+        wav.setframerate(44100 if ffmpeg else 22050)
+        wav.writeframes(audio)
     return out.getvalue()
 
 
@@ -233,10 +252,15 @@ def preview(voice_id):
         port = parts.port
     except ValueError:
         raise ElevenError("preview") from None
-    if parts.scheme != "https" or parts.hostname != "storage.googleapis.com" or port not in (None, 443) or not parts.path.startswith("/") or parts.username or parts.password or parts.query or parts.fragment:
+    host = parts.hostname
+    sample = host == "storage.googleapis.com" and parts.path.startswith("/eleven-public-prod/") and not parts.query
+    # (ElevenLabs' own signed preview links; no key is sent to either host)
+    own = host in ("api.elevenlabs.io", "api.us.elevenlabs.io") and parts.path == f"/v1/voices/{voice_id}/previews/audio"
+    if parts.scheme != "https" or port not in (None, 443) or parts.username or parts.password or parts.fragment or not (sample or own):
         raise ElevenError("preview")
-    data, headers = _request(urllib.request.Request(url), time.monotonic() + 5, limit=1024 * 1024)
-    if headers.get_content_type() not in ("audio/mpeg", "audio/wav"):
+    data, _ = _request(urllib.request.Request(url), time.monotonic() + 5, limit=1024 * 1024)
+    # The bytes decide, not the header: Google serves these MP3s as text/plain.
+    if not (data[:3] == b"ID3" or data[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2") or (data[:4] == b"RIFF" and data[8:12] == b"WAVE")):
         raise ElevenError("preview")
     return data
 
