@@ -260,6 +260,7 @@ PEERS = peers.load()
 plugins.peers_allowed = lambda: CFG.get("peers_on") is True and bool(PEERS)
 
 SKINS = ["none", "halo", "crown", "sprout", "bow"]
+CHARACTERS = ("snowflake", "terminal", "robot", "devil")
 HEX = re.compile(r"#[0-9a-f]{6}")
 
 
@@ -269,11 +270,13 @@ def look():
     pup = ec if HEX.fullmatch(ec) else "#3e5993"
     wht = ew if HEX.fullmatch(ew) else "#ffffff"
     out = {"body": "#1b2a4a", "pupL": pup, "pupR": pup, "whiteL": wht, "whiteR": wht, "skin": "none",
-           "skinColor": "", "link": True, "random": ec == "random" or ew == "random", "follow_theme": True}
+           "skinColor": "", "link": True, "random": ec == "random" or ew == "random", "follow_theme": True, "character": "snowflake"}
     for k, v in lk.items():
         if k in ("body", "pupL", "pupR", "whiteL", "whiteR", "skinColor") and isinstance(v, str) and (HEX.fullmatch(v.lower()) or (k == "skinColor" and v == "")):
             out[k] = v.lower()
         elif k == "skin" and (v in SKINS or (isinstance(v, str) and v.startswith("plug:") and Plug.has_prop(v[5:]))):
+            out[k] = v
+        elif k == "character" and v in CHARACTERS:       # (a non-string is never in the tuple)
             out[k] = v
         elif k in ("link", "random", "follow_theme"):
             out[k] = bool(v)
