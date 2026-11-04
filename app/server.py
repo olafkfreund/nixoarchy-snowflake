@@ -1908,14 +1908,21 @@ class Quips:
 
     @classmethod
     def lines(cls, event):
+        code = lang.active
+        path = cls.path if code == "en" else cls.path.with_name(f"quips.{code}.json")
         try:
-            m = cls.path.stat().st_mtime
+            m = (cls.path.stat().st_mtime, path.stat().st_mtime if path != cls.path else None, code)
         except OSError:
-            m = None
+            m = (None, code)
         if cls.data is None or m != cls.mtime:
             cls.mtime, cls.bags = m, {}
             try:
                 d = json.loads(cls.path.read_text(encoding="utf-8"))
+                if path != cls.path:
+                    try:
+                        d = {**d, **json.loads(path.read_text(encoding="utf-8"))}
+                    except (OSError, ValueError):
+                        pass
                 cls.data = {k: [x for x in v if isinstance(x, str) and x.strip()] for k, v in d.items() if isinstance(v, list)}
             except (OSError, ValueError, AttributeError):
                 cls.data = {}                                   # broken or missing: the built-in lines
@@ -1925,11 +1932,12 @@ class Quips:
 
 
 def quip(event, **slots):
-    bag = Quips.bags.get(event)
+    key = (lang.active, event)
+    bag = Quips.bags.get(key)
     if not bag:
         bag = Quips.lines(event)[:]
         random.shuffle(bag)
-        Quips.bags[event] = bag
+        Quips.bags[key] = bag
     if not bag:
         return ""
     line = bag.pop()
@@ -2467,6 +2475,11 @@ def _wire_quick():
 _whisper = None
 _whisper_err = None
 _whisper_lock = threading.Lock()
+_stt = None                         # (model, language, device); one immutable snapshot per utterance
+_switch_lock = threading.Lock()
+sg = 0
+lang_status = ""
+_cpu_stt_ms = None
 
 
 def _preload_cuda_libs():
@@ -2515,11 +2528,14 @@ def _compute_type(device):
     return "default"
 
 
-def _load(device):
+def _load(device, code=None):
     from faster_whisper import WhisperModel
+    code = code or lang.active
     name = CFG["whisper_model"]
     if name in ("", "auto"):
-        name = "small.en" if device == "cuda" else "base.en"
+        name = ("small" if device == "cuda" else "base") + (".en" if code == "en" else "")
+    if code != "en" and name.endswith(".en"):
+        raise ValueError(f"{name} cannot transcribe {lang.LANGS[code]['english']}")
     ct = _compute_type(device)
     m = WhisperModel(name, device=device, compute_type=ct)
     m._nixi_name, m._nixi_dev, m._nixi_ct = name, device, ct
@@ -2528,7 +2544,7 @@ def _load(device):
 
 
 def whisper():
-    global _whisper, _whisper_err
+    global _whisper, _whisper_err, _stt
     with _whisper_lock:
         if _whisper is None and _whisper_err is None:
             try:
@@ -2541,11 +2557,13 @@ def whisper():
                     _preload_cuda_libs()
                     dev = "cuda"
                 try:
-                    _whisper = _load(dev)
+                    _whisper = _load(dev, lang.active)
+                    _stt = (_whisper, lang.active, dev)
                 except Exception as e:  # noqa: BLE001
                     print(f"[nixi] whisper on {dev} failed ({e}); using CPU", file=sys.stderr)
                     try:
-                        _whisper = _load("cpu")
+                        _whisper = _load("cpu", lang.active)
+                        _stt = (_whisper, lang.active, "cpu")
                     except Exception as e2:  # noqa: BLE001
                         _whisper_err = str(e2)
         if _whisper is None:
@@ -2555,28 +2573,52 @@ def whisper():
 
 def run_whisper(audio, beam=None, hint=None) -> str:
     """Transcribe; if the GPU path blows up at run time (missing CUDA libs etc.), drop to CPU for good."""
-    global _whisper
+    global _whisper, _stt, _cpu_stt_ms
 
-    def go():
-        segs, _ = whisper().transcribe(
-            audio, language=lang.LANGS[lang.active]["whisper"], beam_size=int(beam or CFG.get("whisper_beam") or 5),
+    whisper()
+    with _whisper_lock:
+        pair = _stt
+
+    def go(current):
+        global _cpu_stt_ms
+        model, code, device = current
+        wake = {"en": "Hey Nixi.", "nb": "Hei Nixi.", "pl": "Hej Nixi."}[code]
+        local_hint = {"en": CFG.get("stt_hint") or "",
+                      "nb": "Nixi, Claude, norsk, Bokmål, stopp, vær stille.",
+                      "pl": "Nixi, Claude, polski, cześć, stop, cicho, dziękuję."}[code]
+        if code != "en" and CFG.get("stt_hint") != DEFAULTS["stt_hint"]:
+            local_hint += " " + (CFG.get("stt_hint") or "")
+        prompt = hint if hint is not None else wake + " " + local_hint
+        started = time.monotonic() if device == "cpu" else None
+        segs, _ = model.transcribe(
+            audio, language=lang.LANGS[code]["whisper"], beam_size=int(beam or CFG.get("whisper_beam") or 5),
             vad_filter=True, vad_parameters={"min_silence_duration_ms": 600, "speech_pad_ms": 300},
-            condition_on_previous_text=False, initial_prompt=(hint if hint is not None else CFG.get("stt_hint")) or None,
+            condition_on_previous_text=False, initial_prompt=prompt or None,
             no_speech_threshold=0.5)
         out = " ".join(s.text.strip() for s in segs).strip()      # segments are lazy: errors surface here
+        if started is not None:
+            _cpu_stt_ms = round((time.monotonic() - started) * 1000)
         # whisper sometimes "hears" the hint or filler on near-silence
-        if out.strip(" .").lower() in ("", "you", "thank you", "thanks for watching", "bye"):
+        noise = {"en": ("you", "thank you", "thanks for watching", "bye"),
+                 "nb": ("teksting av", "takk for meg"),
+                 "pl": ("napisy stworzone przez społeczność amara.org", "dziękuję")}
+        clean = out.strip(" .!?").casefold()
+        if clean in ("", *noise[code]) or code == "nb" and clean.startswith("teksting av "):
             return ""
         return out
     try:
-        return go()
+        return go(pair)
     except Exception as e:  # noqa: BLE001
         if not re.search(r"cuda|cublas|cudnn|libcu|gpu", str(e), re.I):
             raise
         print(f"[nixi] GPU speech-to-text failed ({e}); switching to CPU", file=sys.stderr)
+        cpu = _load("cpu", pair[1])
+        retry = (cpu, pair[1], "cpu")
         with _whisper_lock:
-            _whisper = _load("cpu")
-        return go()
+            if _stt is pair:
+                _stt = retry
+                _whisper = cpu
+        return go(retry)
 
 
 def pcm_audio(pcm: bytes):
@@ -2846,10 +2888,55 @@ class Listen:
 
 
 def reset_whisper():
-    global _whisper, _whisper_err
-    with _whisper_lock:
-        _whisper, _whisper_err = None, None
-    threading.Thread(target=lambda: _try(whisper), daemon=True).start()
+    request_language(lang.active)
+
+
+def request_language(code):
+    """Prepare both resources off-thread; only the newest complete request can become active."""
+    global sg, lang_status
+    with _switch_lock:
+        sg += 1
+        generation = sg
+        changed = code != lang.active
+        lang_status = lang.t("lang.switching", language=lang.LANGS[code]["name"])
+    if changed:
+        Speaker.say(lang_status, f"lang-{generation}", follow=False)
+
+    def prepare():
+        global _whisper, _whisper_err, _stt, lang_status
+        try:
+            dev = "cuda" if _gpu_ok() else "cpu"
+            if dev == "cuda":
+                _preload_cuda_libs()
+            try:
+                model = _load(dev, code)
+            except Exception as e:  # noqa: BLE001
+                if dev != "cuda":
+                    raise
+                print(f"[nixi] whisper on cuda failed ({e}); using CPU", file=sys.stderr)
+                dev, model = "cpu", _load("cpu", code)
+            name = lang_voice_name(code)
+            if name:
+                ok, reason = fetch_voice_sync(name)
+                if not ok:
+                    raise RuntimeError(reason)
+            if not voice_ready_for(code):
+                raise RuntimeError(f"No voice is ready for {lang.LANGS[code]['english']}")
+            with _switch_lock:
+                if generation != sg:
+                    return
+                with _whisper_lock:
+                    _stt = (model, code, dev)
+                    _whisper, _whisper_err = model, None
+                    lang.active = code
+                    restore_voice(code)
+                lang_status = ""
+        except Exception as e:  # noqa: BLE001
+            with _switch_lock:
+                if generation == sg:
+                    lang_status = str(e)[:200]
+
+    threading.Thread(target=prepare, daemon=True).start()
 
 
 def list_mics():
@@ -3109,7 +3196,7 @@ class Wake:
             ss = speech_seconds(pcm)
             if ss < 0.25 or ss < len(pcm) / (RATE * 2) * 0.2:    # music or noise, not talking: don't let Whisper dream up words
                 return
-            text = transcribe_pcm(pcm) if follow else transcribe_pcm(pcm, beam=1, hint="Hey Nixi.")
+            text = transcribe_pcm(pcm) if follow else transcribe_pcm(pcm, beam=1, hint={"en": "Hey Nixi.", "nb": "Hei Nixi.", "pl": "Hej Nixi."}[lang.active])
         except Exception as e:  # noqa: BLE001
             print(f"[nixi] wake word stt: {e}", file=sys.stderr)
             return
@@ -3199,11 +3286,11 @@ def doctor():
             print(f"  (what he heard is saved in {wav} — play it to hear it yourself)")
         if peak > 0.002:
             try:
-                heard = transcribe_pcm(data)
+                wake_hint = {"en": "Hey Nixi.", "nb": "Hei Nixi.", "pl": "Hej Nixi."}[lang.active]
+                heard = transcribe_pcm(data, hint=f"{wake_hint} {lang.LANGS[lang.active]['english']} microphone test.")
                 print("  heard:", repr(heard))
                 if not heard and heard_any:
-                    print("  -> there's talking but no words came out: speak a bit closer to the mic, in English "
-                          "(or set language in Settings)")
+                    print(f"  -> there's talking but no words came out: speak a bit closer to the mic, in {lang.LANGS[lang.active]['english']}")
                 print(f"  (speech model: {_whisper._nixi_name} on {_whisper._nixi_dev}, {_whisper._nixi_ct})")
             except Exception as e:  # noqa: BLE001
                 print("  speech-to-text failed:", e)
@@ -3451,7 +3538,9 @@ def voice_ready_for(code):
     if mode == "off":
         return True
     if code == "en":
-        return tts_engine(local=True) is not None
+        return (mode in ("auto", "kokoro") and kokoro_ready() or
+                mode in ("auto", "piper") and bool(piper_bin() and piper_voice()) or
+                mode in ("auto", "espeak") and bool(shutil.which("espeak-ng")))
     if mode == "kokoro":
         return False
     name, es = lang_voice_name(code), bool(shutil.which("espeak-ng"))
@@ -5466,6 +5555,7 @@ def diagnostics():
     add("elevenlabs", f"{'on' if CFG.get('eleven_on') is True else 'off'}, key {'present' if eleven.has_key() else 'absent'}, "
                       f"used {eleven.today()['used']}/{eleven_cap()}")
     add("tts first-sound ms", Speaker.stats.get("first_sound_ms", "—"))
+    add("CPU transcription ms", _cpu_stt_ms if _cpu_stt_ms is not None else "—")
     if _whisper:
         add("speech model", f"{_whisper._nixi_name} on {_whisper._nixi_dev} ({_whisper._nixi_ct})")
     else:
@@ -5607,7 +5697,7 @@ def state_info():
         "projects": quick.projects(),
         **{k: bool(CFG.get(k, k == "notify_sound")) for k in NOTIFY_FLAGS}, "notify_speak": CFG.get("notify_speak", ["meeting"]),
         "quick_actions": CFG.get("quick_actions") or [], "memory_count": len(mem_load()),
-        "language": lang.norm(CFG.get("language")), "lang_active": lang.active, "lang_status": "", "lines": lang.lines(),
+        "language": lang.norm(CFG.get("language")), "lang_active": lang.active, "lang_status": lang_status, "lines": lang.lines(),
         "mic_device": CFG.get("mic_device") or "", "whisper_model": CFG.get("whisper_model") or "auto",
         "can_shoot": any(shutil.which(t) for t in ("grim", "spectacle", "gnome-screenshot", "maim", "scrot", "import")),
         "eye_color": CFG.get("eye_color") or "#3e5993", "eye_white": CFG.get("eye_white") or "#ffffff",
@@ -5941,8 +6031,12 @@ class Handler(BaseHTTPRequestHandler):
                     upd["mic_device"] = str(b["mic_device"] or "")
                 if b.get("language") in lang.LANGS:      # asked for; lang.active follows only through the switcher
                     upd["language"] = b["language"]
-                if b.get("whisper_model") in ("auto", "tiny.en", "base.en", "small.en", "medium.en"):
+                if b.get("whisper_model") in ("auto", "tiny.en", "base.en", "small.en", "medium.en", "tiny", "base", "small", "medium"):
                     upd["whisper_model"] = b["whisper_model"]
+                target = upd.get("language", CFG.get("language"))
+                model = upd.get("whisper_model", CFG.get("whisper_model") or "auto")
+                if target in ("nb", "pl") and model.endswith(".en"):
+                    return self._json({"error": f"{model} cannot transcribe {lang.LANGS[target]['english']}"}, 400)
                 if isinstance(b.get("quick_actions"), list):
                     qa = []
                     for a in b["quick_actions"][:12]:
@@ -5968,8 +6062,8 @@ class Handler(BaseHTTPRequestHandler):
                             if STAGES.forget_where(lambda pg: pg.get("kind") == "gauges" and len(pg.get("hosts", [])) > 1):
                                 BUS.pub(t="stage_close")            # (and Back can't restore one either)
                             BUS.pub(t="toast", text="Other machines are off")
-                if "whisper_model" in upd:
-                    reset_whisper()
+                if "language" in upd or "whisper_model" in upd:
+                    request_language(lang.norm(CFG.get("language")))
                 if "autostart" in upd:
                     sync_autostart()
                 if any(k.startswith("ambient_") for k in upd) or "proactive" in upd or "look_weather" in upd:

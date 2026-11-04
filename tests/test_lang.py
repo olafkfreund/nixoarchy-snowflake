@@ -65,7 +65,8 @@ class LangServerTest(_ServerEnv):
     def test_language_is_saved_but_active_stays(self):
         s = self.server
         s.lang.active = "en"
-        with mock.patch.object(s.quick, "projects", return_value={}), mock.patch.object(s, "save_config", side_effect=lambda **kw: s.CFG.update(kw)):
+        with mock.patch.object(s.quick, "projects", return_value={}), mock.patch.object(s, "save_config", side_effect=lambda **kw: s.CFG.update(kw)), \
+             mock.patch.object(s, "request_language") as request:
             srv = s.ThreadingHTTPServer(("127.0.0.1", 0), s.Handler)
             threading.Thread(target=srv.serve_forever, daemon=True).start()
             self.addCleanup(srv.server_close)
@@ -75,6 +76,7 @@ class LangServerTest(_ServerEnv):
                                              headers={"Content-Type": "application/json", "X-Nixi-Token": s.TOKEN})
                 info = json.load(urllib.request.urlopen(req))
                 self.assertEqual((info["language"], info["lang_active"]), ("en" if lg == "de" else "pl", "en"))
+            request.assert_called_once_with("pl")
         self.assertIn("lines", info)
 
     def _fake_bridge(self, emit):
