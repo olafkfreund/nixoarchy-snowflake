@@ -98,7 +98,7 @@ def _gauges_text(stage):
     return "\n".join(lines)
 
 
-PLUGIN_ONLY = ("gauges",)   # kinds only a stage plugin may return: never from the agent's own <<stage>> block (#166 review)
+PLUGIN_ONLY = ("gauges", "headlines")   # kinds only a stage plugin may return: never from the agent's own <<stage>> block (#166 review)
 
 
 def validate(obj, plugin_ok=None):
@@ -146,6 +146,28 @@ def validate(obj, plugin_ok=None):
             if say is None:
                 return None
             out["say"] = say
+        return out
+    if kind == "headlines":
+        title, items = _str(obj.get("title"), 80), obj.get("items")
+        if title is None or not isinstance(items, list) or not 1 <= len(items) <= 5:
+            return None
+        out = {"v": 1, "kind": "headlines", "title": title, "items": []}
+        for key, limit in (("source", 120), ("say", 200)):
+            if key in obj:
+                value = _str(obj[key], limit)
+                if value is None:
+                    return None
+                out[key] = value
+        for item in items:
+            if not isinstance(item, dict) or "at" not in item:
+                return None
+            headline, source, at = _str(item.get("title"), 160), _str(item.get("source"), 40), item["at"]
+            if headline is None or source is None or (at is not None and (type(at) is not int or at <= 0)):
+                return None
+            clean = {"title": headline, "source": source, "at": None if at is not None and at > time.time() + 600 else at}
+            if news_url_ok(item.get("url")):
+                clean["url"] = item["url"]
+            out["items"].append(clean)
         return out
     if kind == "gauges":
         title, src = _str(obj.get("title"), 80), obj.get("source")
@@ -297,6 +319,22 @@ def item_url_ok(u):
         return False
 
 
+def news_url_ok(u):
+    """HTTPS news link on a public-looking DNS name; the browser handles DNS and redirects."""
+    if not isinstance(u, str) or len(u) > 400 or re.search(r"[\s\x00-\x1f\x7f-\x9f]", u):
+        return False
+    try:
+        p = urllib.parse.urlsplit(u)
+        host = (p.hostname or "").lower().rstrip(".")
+    except ValueError:
+        return False
+    labels = host.split(".")
+    return (p.scheme == "https" and bool(p.netloc) and not any(c in p.netloc for c in ":@")
+            and len(labels) >= 2 and all(re.fullmatch(r"[a-z0-9-]{1,63}", x) for x in labels)
+            and bool(re.fullmatch(r"[a-z]{2,63}", labels[-1]))
+            and host != "localhost" and not host.endswith((".localhost", ".local", ".lan", ".home", ".internal", ".home.arpa", ".ts.net")))
+
+
 def meeting_link(event):
     """A calendar event's join link: a video conferenceData entry point, else hangoutLink; https on a known meeting host only.
     Never from the title or notes."""
@@ -417,6 +455,16 @@ class Store:
             if stage.get("live") and refresh is not None:
                 page["refresh"] = secrets.token_urlsafe(12)
                 toks[page["refresh"]] = ("refresh", {"pid": refresh[0], "query": refresh[1]})
+        elif stage["kind"] == "headlines":
+            page["items"] = []
+            page["copy"] = secrets.token_urlsafe(12)
+            toks[page["copy"]] = ("facts", {"text": "\n".join(f'{it["title"]} — {it["source"]}' for it in stage["items"])})
+            for it in stage["items"]:
+                row = {k: v for k, v in it.items() if k != "url"}
+                if "url" in it:
+                    row["open"] = secrets.token_urlsafe(12)
+                    toks[row["open"]] = ("link", {"url": it["url"]})
+                page["items"].append(row)
         else:  # facts: one token, Copy takes the whole text
             t = secrets.token_urlsafe(12)
             toks[t] = ("facts", {"text": "\n".join([stage["title"], *stage["points"]])})
@@ -561,6 +609,8 @@ def fast_path(said, stage):
     if not m or not stage or stage.get("kind") == "day":  # (the day desk is clicked in v1: no voice-numbered opening)
         return None
     n = len(stage.get("items") or stage.get("sessions") or [None])  # facts: one target; a status stage: its sessions
+    if stage.get("kind") == "headlines" and m.group(1) == "copy":
+        return "copy", 0
     if stage.get("kind") == "status" and not stage.get("sessions"):
         return None
     if m.group(2):

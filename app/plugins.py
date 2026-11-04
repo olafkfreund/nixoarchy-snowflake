@@ -788,7 +788,7 @@ def _run_copy(p, query, locale, timeout, stages, tmp):
         got = stages.validate(json.loads(out[0].decode("utf-8")))
     except (ValueError, RecursionError):
         got = None
-    if not got or got["kind"] not in ("facts", "gauges"):
+    if not got or got["kind"] not in ("facts", "gauges", "headlines"):
         raise StageError("it gave something Nixi can't show")
     return got
 
