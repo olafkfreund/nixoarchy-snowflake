@@ -3070,6 +3070,7 @@ class Wake:
     follow_from = follow_until = 0.0         # the "just talk, no 'hey Nixi'" window right after he stops talking
     follow_on = False                        # what the page was last told (it shows him listening while it's open)
     cut = None                               # you clicked him ("finish") or pressed Space/Esc ("cancel") while he heard you
+    held = False                             # the ask box is open: no follow-up window
     asleep = False                           # he's hidden: the mic stays closed until he's shown again
 
     @classmethod
@@ -3091,7 +3092,7 @@ class Wake:
         """He's talking until `end`; the follow-up window opens just before that, so a quick answer isn't lost.
         `follow` false: said unasked, so nobody is expected to answer."""
         cls.speaking_until = end
-        if not follow:
+        if not follow or cls.held:
             cls.follow_from = cls.follow_until = 0.0
             return
         cls.follow_from = end - 0.15
@@ -3205,9 +3206,13 @@ class Wake:
             mic.close()
 
     @classmethod
+    def in_window(cls, started):
+        return not cls.speaking() and cls.follow_from <= started < cls.follow_until and not ST.lock.locked()
+
+    @classmethod
     def check(cls, pcm, started):
         # started after he finished talking, inside the follow-up window → it's a request, no "hey Nixi" needed
-        follow = not cls.speaking() and cls.follow_from <= started < cls.follow_until and not ST.lock.locked()
+        follow = cls.in_window(started)
         if FLOOR.floor_overlaps(started):        # the other voice spoke while this was recorded: not yours, not worth learning
             return
         if not cls.speaking():                   # (while he talks the mic also hears him: don't tune to his voice)
@@ -3234,7 +3239,7 @@ class Wake:
         if m:
             rest = m.group(2).strip(" .,!?")
             BUS.pub(t="wake", text=rest)
-        elif follow:
+        elif follow and cls.in_window(started):          # (cancelled while we were transcribing)
             said = (text or "").strip(" .,!?")
             if len(said.split()) >= 2 and said.lower() not in NOISE_WORDS:     # (a stray word isn't a request)
                 cls.follow_until = 0.0
@@ -6002,7 +6007,13 @@ class Handler(BaseHTTPRequestHandler):
                 Inbox.seen(str(json.loads(self._body() or b"{}").get("key") or ""))
                 return self._json({"ok": True})
             if p == "/api/follow":
-                Wake.end_follow("finish" if json.loads(self._body() or b"{}").get("act") == "finish" else "cancel")
+                b = json.loads(self._body() or b"{}")
+                if b.get("act") == "hold":
+                    Wake.held = bool(b.get("on"))
+                    if Wake.held:
+                        Wake.end_follow("cancel")        # (after the flag: a window scheduled either side of it stays shut)
+                else:
+                    Wake.end_follow("finish" if b.get("act") == "finish" else "cancel")
                 return self._json({"ok": True})
             if p == "/api/listen/stop":
                 cur = Listen.current
