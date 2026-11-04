@@ -102,7 +102,15 @@
     "session.send_needs_nixi": "Wysyłanie do sesji wymaga trybu nixi.",
     "session.send_needs_claude": "Wysyłanie do sesji na razie działa tylko z Claude jako agentem nixi.",
     "session.bad_id": "Nie mogę użyć identyfikatora tej sesji.",
-    "session.send_say": "Poproszę o wysłanie '{text}' do {title}. Sprawdź kartę."
+    "session.send_say": "Poproszę o wysłanie '{text}' do {title}. Sprawdź kartę.",
+    "page.control_back": "Sterowanie wróciło do Ciebie.",
+    "page.live_on": "Dobrze, patrzę. Powiedz „stop watching”, kiedy skończysz.",
+    "page.live_off": "Dobrze, już nie patrzę.",
+    "page.live_wasnt": "Nie patrzyłem.",
+    "page.tidy": "Dobrze, porządkuję.",
+    "page.voice_1": "cześć! to mój nowy głos.",
+    "page.voice_2": "jak brzmię?",
+    "page.voice_3": "o, ten mi się podoba."
   },
   "_review": [
     "lang.switching",
@@ -146,6 +154,14 @@
     "session.send_needs_nixi",
     "session.send_needs_claude",
     "session.bad_id",
-    "session.send_say"
+    "session.send_say",
+    "page.control_back",
+    "page.live_on",
+    "page.live_off",
+    "page.live_wasnt",
+    "page.tidy",
+    "page.voice_1",
+    "page.voice_2",
+    "page.voice_3"
   ]
 }

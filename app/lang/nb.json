@@ -41,7 +41,15 @@
     "session.send_needs_nixi": "Å sende til økter krever nixi-modus.",
     "session.send_needs_claude": "Å sende til økter fungerer foreløpig bare med Claude som nixis agent.",
     "session.bad_id": "Jeg kan ikke bruke id-en til den økten.",
-    "session.send_say": "Jeg ber om å sende '{text}' til {title}. Sjekk kortet."
+    "session.send_say": "Jeg ber om å sende '{text}' til {title}. Sjekk kortet.",
+    "page.control_back": "Kontrollen er tilbake hos deg.",
+    "page.live_on": "Greit, jeg følger med. Si «stop watching» når du er ferdig.",
+    "page.live_off": "Greit, jeg sluttet å se.",
+    "page.live_wasnt": "Jeg så ikke på.",
+    "page.tidy": "Greit, rydder opp.",
+    "page.voice_1": "hei! dette er den nye stemmen min.",
+    "page.voice_2": "hvordan høres jeg ut?",
+    "page.voice_3": "å, denne liker jeg."
   },
   "_review": [
     "lang.switching",
@@ -85,7 +93,15 @@
     "session.send_needs_nixi",
     "session.send_needs_claude",
     "session.bad_id",
-    "session.send_say"
+    "session.send_say",
+    "page.control_back",
+    "page.live_on",
+    "page.live_off",
+    "page.live_wasnt",
+    "page.tidy",
+    "page.voice_1",
+    "page.voice_2",
+    "page.voice_3"
   ],
   "words": {
     "verbs": {

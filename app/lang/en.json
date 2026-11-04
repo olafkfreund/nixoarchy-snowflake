@@ -41,6 +41,14 @@
     "session.send_needs_nixi": "Sending to sessions needs nixi mode.",
     "session.send_needs_claude": "Sending to sessions works with Claude as nixi's agent for now.",
     "session.bad_id": "I can't use that session's id.",
-    "session.send_say": "I'll ask to send '{text}' to {title} — check the card."
+    "session.send_say": "I'll ask to send '{text}' to {title} — check the card.",
+    "page.control_back": "Control is back with you.",
+    "page.live_on": "Okay, I'm watching. Say “stop watching” when you're done.",
+    "page.live_off": "Okay, I stopped looking.",
+    "page.live_wasnt": "I wasn't looking.",
+    "page.tidy": "Okay, tidying up.",
+    "page.voice_1": "hi! this is my new voice.",
+    "page.voice_2": "how do i sound?",
+    "page.voice_3": "ooh, i like this one."
   }
 }

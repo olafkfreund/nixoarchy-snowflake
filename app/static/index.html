@@ -871,6 +871,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
     </div>
     <!-- ================= VOICE ================= -->
     <div class="tab" id="panel-voice" role="tabpanel" aria-labelledby="tab-voice" data-tab="voice">
+      <div class="row" id="langRow"><div class="t">Language</div><div class="h" id="langHint">First switch downloads a speech model (≈150 MB for base, ≈480 MB for small — use small only with a GPU) and voice.</div><div class="seg" id="langChips"></div><div class="h" id="langStatus" style="margin:5px 0 0"></div></div>
       <div class="row" id="engRow"><div class="t">Speech engine</div><div class="h">Local voices run on your computer. <span id="voiceEng"></span></div><div class="seg" id="engChips"></div><div class="h" id="engWhy" style="margin:5px 0 0"></div><div class="h verr" id="voiceErr"></div></div>
       <div class="row"><div class="t">His voice</div><div class="h">Tap one to hear it.</div><div class="voices" id="voiceChips"></div></div>
       <div class="row" id="elevenRow">
@@ -2138,9 +2139,10 @@ function mirSet(m){ const was=MIR.owner; MIR={owner:m&&['off','pending','agent']
     if(MIR.owner==='pending'){ restore(0); poke('curious',1800); capShow(); himSet("An agent is asking to control your desktop — answer in ai-mirror's dialog."); }
     else if(MIR.owner==='agent'){ restore(0); poke('scared',1500); } }
   renderCue(); if(menuOn) layoutMenu(); sendRegion(true); }
+const pageLine=(k,fb)=>(info.lines&&info.lines[k])||fb;
 async function mirRevoke(){ let ok=false;
   try{ const r=await post('/api/mirror/off'); ok=!!(await r.json()).ok; }catch(e){}
-  if(ok){ mirSet({owner:'off',watching:MIR.watching}); poke('happy',2000); say('Control is back with you.'); }
+  if(ok){ mirSet({owner:'off',watching:MIR.watching}); poke('happy',2000); say(pageLine('page.control_back','Control is back with you.')); }
   else{ poke('sad',1800); capShow(); himSet("Couldn't take control back — press Super+Shift+Esc.",true); } }
 MX.mk.addEventListener('click',e=>{ e.stopPropagation(); mirRevoke(); });
 $('#mirBarBtn').addEventListener('click',e=>{ e.stopPropagation(); mirRevoke(); });
@@ -2557,8 +2559,9 @@ function pressWatch(clips,bd,fn,anim){ stgEl.querySelector('.prws')?.remove(); i
   bd.appendChild(sec); }
 function pressUpdate(ev){ if(!stg||stg.kind!=='headlines'||ev.kind!=='headlines'||ev.copy!==stg.copy||stgState==='closed') return;
   stg.clips=ev.clips; stgUse=performance.now(); pressWatch(ev.clips,$('#stgBd'),$('#stgFn'),true); }
+const DATE_LOCALES={en:'en-GB',nb:'nb-NO',pl:'pl-PL'};
 function stagePress(ev,bd,acts,fn){
-  $('#stgDt').textContent=new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+  $('#stgDt').textContent=new Date().toLocaleDateString(DATE_LOCALES[info.lang_active]||'en-GB',{weekday:'short',day:'numeric',month:'short'});
   (ev.items||[]).forEach((it,i)=>{ const row=hx('div','it prw'), tx=hx('div','tx'), m=hx('div','prm'); row.style.setProperty('--i',i);
     tx.appendChild(hx('div','prt',it.title)); m.dataset.source=it.source||''; m.dataset.at=typeof it.at==='number'&&it.at>0?String(it.at):''; tx.appendChild(m); row.appendChild(tx);
     if(it.open){ const b=stageBtn('Open',b=>stageOpen(b,fn,it.open,'open')); b.setAttribute('aria-label','Open: '+it.title); row.appendChild(b); }
@@ -2700,7 +2703,7 @@ function setLive(on,why){
   else if(why==='timeout') tick('live view off');
 }
 const liveOn=()=>liveUntil>Date.now();
-function toggleLive(){ const on=!liveOn(); setLive(on); say(on?"Okay, I'm watching. Say “stop watching” when you're done.":'Okay, I stopped looking.'); poke(on?'looking':'wink',1200); }
+function toggleLive(){ const on=!liveOn(); setLive(on); say(on?pageLine('page.live_on',"Okay, I'm watching. Say “stop watching” when you're done."):pageLine('page.live_off','Okay, I stopped looking.')); poke(on?'looking':'wink',1200); }
 const CLIP_RE=/\bclipboard\b|\b(i|i've|i have|i just) (just )?copied\b|\bwhat i copied\b|\bthis (error|text) i copied\b/i;
 
 /* ================= sudo password: a card right next to him (no separate window) ================= */
@@ -2790,9 +2793,9 @@ async function send(text,opts={}){
     info.memory_count=r.items.length; capShow(); setYou(text); say(r.added?"Got it — I'll remember that.":'I already had that one!'); poke('wink',1300); return; }
   if(!info.bridge && (mm=text.match(MEM_DEL))){ const r=await (await post('/api/memory',{op:'del',match:mm[1].replace(/[.!]+$/,'')})).json();
     info.memory_count=r.items.length; capShow(); setYou(text); say(r.removed?'Okay, forgotten.':"I couldn't find that in my notes — opening them so you can pick."); if(!r.removed) openPanel('memory'); return; }
-  if(LIVE_ON.test(text)){ setLive(true); capShow(); setYou(text); say("Okay, I'm watching. Say “stop watching” when you're done."); poke('looking',1400); sfx('ok'); return; }
-  if(LIVE_OFF.test(text)){ const was=liveOn(); setLive(false); capShow(); setYou(text); say(was?'Okay, I stopped looking.':"I wasn't looking."); poke('wink',1000); return; }
-  if(CTX_TIDY.test(text)){ capShow(); setYou(text); say('Okay, tidying up.'); tidyNow(); return; }
+  if(LIVE_ON.test(text)){ setLive(true); capShow(); setYou(text); say(pageLine('page.live_on',"Okay, I'm watching. Say “stop watching” when you're done.")); poke('looking',1400); sfx('ok'); return; }
+  if(LIVE_OFF.test(text)){ const was=liveOn(); setLive(false); capShow(); setYou(text); say(was?pageLine('page.live_off','Okay, I stopped looking.'):pageLine('page.live_wasnt',"I wasn't looking.")); poke('wink',1000); return; }
+  if(CTX_TIDY.test(text)){ capShow(); setYou(text); say(pageLine('page.tidy','Okay, tidying up.')); tidyNow(); return; }
   if(MEM_SHOW.test(text)){ capShow(); setYou(text); const n=info.memory_count||0; say(n?`I have ${n} note${n>1?'s':''} — here they are.`:"Nothing yet! Say “remember …” and I'll keep it."); openPanel('memory'); return; }
   }
   let asked=text;                            // what goes to the agent (a session summary asks with the session's text)
@@ -3181,6 +3184,7 @@ window.nixiLook=(dx,dy)=>{ lastMouse=performance.now(); const m=mood(lastMouse);
 /* ================= settings ================= */
 const EFFORTS=['low','medium','high','xhigh','max'];
 const MODELS=[['auto','Auto'],['default','Default'],['opus','Opus'],['sonnet','Sonnet'],['haiku','Haiku']];
+const LANGS=[['en','English'],['nb','Norsk'],['pl','Polski']];
 const STT=[['tiny.en','Fastest'],['base.en','Fast'],['auto','Balanced'],['medium.en','Best']];
 const TRUST=[['ask','✋','Ask me first','Edits files on his own; asks you (out loud) before running commands or going online.'],
   ['trust','⚡','Just do it','Runs anything without asking. Fast, but you won’t get a say.'],
@@ -3300,6 +3304,12 @@ function renderSettings(){
   const cur=(info.model||'default');
   $('#effortChips').innerHTML=['',...EFFORTS].map(e=>`<button data-eff="${e}" class="${(info.effort||'')===e?'on':''}">${e||'default'}</button>`).join('');
   $('#modelChips').innerHTML=MODELS.map(([id,l])=>`<button data-m="${id}" class="${cur===id?'on':''}">${l}</button>`).join('');
+  { const lc=$('#langChips'); if(lc){ lc.replaceChildren();
+    const curL=info.language||info.lang_active||'en';
+    for(const [id,l] of LANGS){
+      const b=hx('button',curL===id?'on':'',l); b.type='button'; b.dataset.lang=id; lc.appendChild(b);
+    } }
+    const ls=$('#langStatus'); if(ls) ls.textContent=info.lang_status||''; }
   { const vc=$('#voiceChips'); if(vc){ vc.replaceChildren();
     for(const v of info.voices||[]){
       const b=hx('button',info.voice===v.id?'on':'',v.label); b.type='button'; b.dataset.v=v.id;
@@ -3523,7 +3533,7 @@ async function previewEleven(vid,btn){
   }
 }
 async function setSetting(b,errSel){
-  const errEl=errSel?$(errSel):('tts' in b||'voice' in b)?$('#voiceErr'):('eleven_on' in b||'eleven_voice' in b||'eleven_daily_chars' in b||'tts_fallback' in b)?$('#elevenErr'):null;
+  const errEl=errSel?$(errSel):('tts' in b||'voice' in b||'language' in b)?$('#voiceErr'):('eleven_on' in b||'eleven_voice' in b||'eleven_daily_chars' in b||'tts_fallback' in b)?$('#elevenErr'):null;
   if(errEl) errEl.textContent='';
   try{
     const r=await post('/api/settings',b), j=await r.json().catch(()=>({}));
@@ -3543,6 +3553,7 @@ setEl.addEventListener('click',e=>{
   const g=k=>e.target.closest(`[data-${k}]`);
   const be=g('eff'); if(be) return setSetting({effort:be.dataset.eff}).then(()=>tick('effort → '+be.dataset.eff));
   const bn=g('ns'); if(bn){ const l=info.notify_speak||[], c=bn.dataset.ns; return setSetting({notify_speak:l.includes(c)?l.filter(x=>x!==c):[...l,c]}); }
+  const blang=g('lang'); if(blang) return setSetting({language:blang.dataset.lang},'#voiceErr');
   const beng=g('eng'); if(beng){ if(beng.disabled) return; return setSetting({tts:beng.dataset.eng},'#voiceErr').then(ok=>{ if(ok&&beng.dataset.eng!=='off'&&muted) toggleMute(); }); }
   const bfb=g('fb'); if(bfb) return setSetting({tts_fallback:bfb.dataset.fb},'#elevenErr');
   const beprev=g('eprev'); if(beprev) return previewEleven(beprev.dataset.eprev,beprev);
@@ -3555,7 +3566,7 @@ setEl.addEventListener('click',e=>{
   if(bm) setSetting({model:bm.dataset.m}).then(()=>tick('model → '+bm.textContent));
   if(bv){ if(bv.disabled) return; setSetting({voice:bv.dataset.v},'#voiceErr').then(ok=>{ if(!ok) return; const vv=(info.voices||[]).find(x=>x.id===bv.dataset.v);
     if(vv&&!vv.ready) tick('downloading that voice… using another one till it lands');
-    if(muted) toggleMute(); shush(); say(['hi! this is my new voice.','how do i sound?','ooh, i like this one.'][Math.random()*3|0]); }); }
+    if(muted) toggleMute(); shush(); say([pageLine('page.voice_1','hi! this is my new voice.'),pageLine('page.voice_2','how do i sound?'),pageLine('page.voice_3','ooh, i like this one.')][Math.random()*3|0]); }); }
   if(bp) setSetting({pupil_style:bp.dataset.ps}).then(()=>{ idlePu=null; idleSwapAt=performance.now()+12000; popPupils(); });
   if(bi) setSetting({idle_mode:bi.dataset.idle});
   if(bs) setSetting({whisper_model:bs.dataset.stt}).then(()=>tick('speech recognition: '+bs.textContent+' (loading…)'));
@@ -3613,7 +3624,7 @@ setEl.addEventListener('change',e=>{
   if(id==='rndSw') setLook({random:on}).then(()=>{ if(on){ lookRolled=false; syncLook(true); } else { lookShown=''; syncLook(); } renderSettings(); });
 });
 setEl.addEventListener('keydown',e=>{ if(e.key!=='Escape'&&!(e.ctrlKey&&e.key.toLowerCase()===',')) e.stopPropagation(); if(e.key==='Enter'&&(e.target.id==='projPath'||e.target.id==='projName')) $('#projAdd').click(); if(e.key==='Enter'&&e.target.id==='elevenCap') e.target.blur(); });
-setInterval(()=>{ if(setEl.classList.contains('on') && (info.voices||[]).some(v=>v.downloading)) refresh().then(renderSettings); },1500);
+setInterval(()=>{ if(setEl.classList.contains('on') && ((info.voices||[]).some(v=>v.downloading)||info.lang_status||(info.language&&info.lang_active&&info.language!==info.lang_active))) refresh().then(renderSettings); },1500);
 
 /* ================= slash commands ================= */
 async function slash(cmd){
@@ -3654,7 +3665,7 @@ async function slash(cmd){
 }
 
 /* ================= wiring ================= */
-function showInfo(){ if('mirror' in info) mirSet(info.mirror); if(info.ambient){ AMB=info.ambient; renderCue(); } syncEye(); document.body.classList.toggle('fulltext',!!info.full_text); ctxRender(); input.placeholder=`ask in ${info.cwd_display||'~'}…`; const l=$('#cwdLbl'); if(l) l.textContent=info.cwd_display||'folder';
+function showInfo(){ document.documentElement.lang=info.lang_active||'en'; const ls=$('#langStatus'); if(ls) ls.textContent=info.lang_status||''; if('mirror' in info) mirSet(info.mirror); if(info.ambient){ AMB=info.ambient; renderCue(); } syncEye(); document.body.classList.toggle('fulltext',!!info.full_text); ctxRender(); input.placeholder=`ask in ${info.cwd_display||'~'}…`; const l=$('#cwdLbl'); if(l) l.textContent=info.cwd_display||'folder';
   const ve=$('#voiceEng'); if(ve) ve.textContent=voiceEngText();
   document.body.classList.toggle('root',!!info.root); document.body.classList.toggle('nixi',!!info.bridge); }
 async function refresh(){ try{ await tokenReady; const r=await fetch('/api/state',{headers:hdr()}); const j=await r.json();

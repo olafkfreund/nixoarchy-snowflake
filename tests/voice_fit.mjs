@@ -283,7 +283,159 @@ const cutMap = await ev(`
 `);
 check(!cutMap.has42, "spk_done with id did not remove item from spkMap");
 
-// 9. Zero off-origin requests.
+// 9. Language (#177): first row of Voice tab, size/GPU hint, chips post language, status line while switching,
+//    <html lang> follows lang_active, dates use active date locale, and page-spoken lines come from state_info.lines with English fallback.
+const langTest = await ev(`
+  settings(true, 'voice');
+  await new Promise(r => setTimeout(r, 100));
+  const panelRows = [...document.querySelectorAll('#panel-voice > .row')];
+  const firstRowId = panelRows[0]?.id || '';
+  const hintTxt = document.getElementById('langHint')?.textContent || '';
+  const chipList = [...document.querySelectorAll('#langChips button')].map(b => ({
+    lang: b.dataset.lang, text: b.textContent, on: b.classList.contains('on')
+  }));
+  const initHtmlLang = document.documentElement.lang;
+
+  const posted = [];
+  const origFetch = window.fetch;
+  window.fetch = async (u, opts = {}) => {
+    if (u === '/api/settings') {
+      const body = JSON.parse(opts.body || '{}');
+      posted.push(body);
+      const r = await origFetch(u, opts);
+      const j = await r.clone().json().catch(() => ({}));
+      if (body.language === 'pl' && (!j.lang_status || !/Switching|Przełączam/i.test(j.lang_status))) {
+        j.lang_status = 'Switching to Polski: downloading the speech model and voice…';
+      }
+      j.lang_active = 'en';
+      return new Response(JSON.stringify(j), { status: r.status, headers: { 'Content-Type': 'application/json' } });
+    }
+    return origFetch(u, opts);
+  };
+  let statusDuring = '', htmlLangDuring = '', plOnDuring = false;
+  try {
+    document.querySelector('#langChips button[data-lang="pl"]').click();
+    await new Promise(r => setTimeout(r, 200));
+    statusDuring = document.getElementById('langStatus')?.textContent || '';
+    htmlLangDuring = document.documentElement.lang;
+    plOnDuring = document.querySelector('#langChips button[data-lang="pl"]')?.classList.contains('on') || false;
+  } finally {
+    window.fetch = origFetch;
+  }
+
+  // Simulate switch completion to pl, check <html lang> and pl-PL date in stagePress
+  info.language = 'pl';
+  info.lang_active = 'pl';
+  info.lang_status = '';
+  showInfo();
+  renderSettings();
+  const htmlLangPl = document.documentElement.lang;
+  const statusAfter = document.getElementById('langStatus')?.textContent || '';
+  stageBuild({ t: 'stage', v: 1, kind: 'headlines', title: 'Wiadomości', items: [{ title: 'Test', source: 'PAP', at: Date.now() / 1000 }] });
+  const gotPlDate = document.getElementById('stgDt')?.textContent || '';
+  const expPlDate = new Date().toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short' });
+
+  info.lang_active = 'nb';
+  showInfo();
+  const htmlLangNb = document.documentElement.lang;
+  stageBuild({ t: 'stage', v: 1, kind: 'headlines', title: 'Nyheter', items: [{ title: 'Test', source: 'NRK', at: Date.now() / 1000 }] });
+  const gotNbDate = document.getElementById('stgDt')?.textContent || '';
+  const expNbDate = new Date().toLocaleDateString('nb-NO', { weekday: 'short', day: 'numeric', month: 'short' });
+
+  // Page-spoken lines from state_info.lines, with English fallback when lines are absent
+  const spokenFromState = [];
+  const spokenFallback = [];
+  const origSay = window.say;
+  const origFetch2 = window.fetch;
+  let curLines = {
+    'page.control_back': 'Sterowanie wróciło do Ciebie.',
+    'page.live_on': 'Dobrze, patrzę. Powiedz „stop watching”, kiedy skończysz.',
+    'page.live_off': 'Dobrze, już nie patrzę.',
+    'page.live_wasnt': 'Nie patrzyłem.',
+    'page.tidy': 'Dobrze, porządkuję.',
+    'page.voice_1': 'cześć! to mój nowy głos.',
+    'page.voice_2': 'jak brzmię?',
+    'page.voice_3': 'o, ten mi się podoba.'
+  };
+  window.say = (t, follow) => { spokenFromState.push(t); };
+  window.fetch = async (u, opts = {}) => {
+    if (u === '/api/mirror/off') return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (u === '/api/compact') return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (u === '/api/state') return new Response(JSON.stringify({ ...info, lines: curLines }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (u === '/api/settings') {
+      const b = JSON.parse(opts.body || '{}');
+      return new Response(JSON.stringify({ ...info, ...b, lines: curLines }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return origFetch2(u, opts);
+  };
+  try {
+    info.lines = curLines;
+    await mirRevoke();
+    setLive(false);
+    toggleLive();
+    toggleLive();
+    await send('stop watching');
+    await send('tidy up');
+    document.querySelector('#voiceChips button:not(:disabled)')?.click();
+    await new Promise(r => setTimeout(r, 80));
+
+    curLines = {};
+    info.lines = curLines;
+    window.say = (t, follow) => { spokenFallback.push(t); };
+    await mirRevoke();
+    setLive(false);
+    toggleLive();
+    toggleLive();
+    await send('stop watching');
+    await send('tidy up');
+    document.querySelector('#voiceChips button:not(:disabled)')?.click();
+    await new Promise(r => setTimeout(r, 80));
+  } finally {
+    window.say = origSay;
+    window.fetch = origFetch2;
+  }
+
+  info.language = 'en';
+  info.lang_active = 'en';
+  showInfo();
+  renderSettings();
+
+  return {
+    firstRowId, hintTxt, chipList, initHtmlLang,
+    posted, statusDuring, htmlLangDuring, plOnDuring,
+    htmlLangPl, htmlLangNb, statusAfter,
+    gotPlDate, expPlDate, gotNbDate, expNbDate,
+    spokenFromState, spokenFallback
+  };
+`);
+check(langTest.firstRowId === "langRow", "Language row must be the first .row in #panel-voice", langTest.firstRowId);
+check(langTest.hintTxt.includes("≈150 MB") && langTest.hintTxt.includes("base") && langTest.hintTxt.includes("≈480 MB") && langTest.hintTxt.includes("small") && /GPU/i.test(langTest.hintTxt),
+  "first-switch size/GPU hint missing required details", langTest.hintTxt);
+check(langTest.chipList.map(c => `${c.lang}:${c.text}:${c.on}`).join(",") === "en:English:true,nb:Norsk:false,pl:Polski:false",
+  "Language chips initial state", JSON.stringify(langTest.chipList));
+check(langTest.initHtmlLang === "en", "initial <html lang> should be en", langTest.initHtmlLang);
+check(langTest.posted.some(p => p.language === "pl") && langTest.plOnDuring, "clicking Polski chip did not post language='pl'", JSON.stringify(langTest.posted));
+check(/Switching to Polski/i.test(langTest.statusDuring), "status line not shown while switching", langTest.statusDuring);
+check(langTest.htmlLangDuring === "en" && langTest.htmlLangPl === "pl" && langTest.htmlLangNb === "nb" && langTest.statusAfter === "",
+  "<html lang> did not follow lang_active or status did not clear", JSON.stringify(langTest));
+check(langTest.gotPlDate === langTest.expPlDate && langTest.gotNbDate === langTest.expNbDate,
+  "date locale did not follow lang_active", JSON.stringify({ gotPlDate: langTest.gotPlDate, expPlDate: langTest.expPlDate, gotNbDate: langTest.gotNbDate, expNbDate: langTest.expNbDate }));
+check(langTest.spokenFromState[0] === "Sterowanie wróciło do Ciebie."
+  && langTest.spokenFromState[1] === "Dobrze, patrzę. Powiedz „stop watching”, kiedy skończysz."
+  && langTest.spokenFromState[2] === "Dobrze, już nie patrzę."
+  && langTest.spokenFromState[3] === "Nie patrzyłem."
+  && langTest.spokenFromState[4] === "Dobrze, porządkuję."
+  && ["cześć! to mój nowy głos.", "jak brzmię?", "o, ten mi się podoba."].includes(langTest.spokenFromState[5]),
+  "page-spoken lines were not taken from state_info.lines", JSON.stringify(langTest.spokenFromState));
+check(langTest.spokenFallback[0] === "Control is back with you."
+  && langTest.spokenFallback[1] === "Okay, I'm watching. Say “stop watching” when you're done."
+  && langTest.spokenFallback[2] === "Okay, I stopped looking."
+  && langTest.spokenFallback[3] === "I wasn't looking."
+  && langTest.spokenFallback[4] === "Okay, tidying up."
+  && ["hi! this is my new voice.", "how do i sound?", "ooh, i like this one."].includes(langTest.spokenFallback[5]),
+  "page-spoken lines did not fall back to English", JSON.stringify(langTest.spokenFallback));
+
+// 10. Zero off-origin requests.
 check(offOrigin.length === 0, "off-origin requests made", offOrigin.join(", "));
 
 ws.close();
