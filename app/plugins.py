@@ -18,6 +18,7 @@ from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "nixi-companion"
+peers_allowed = lambda: False
 
 Plugin = namedtuple("Plugin", "id dir manifest source error")
 
@@ -154,8 +155,10 @@ def _check(m, d):
         c = s.get("cache_seconds", 60)
         if type(c) is not int or not 0 <= c <= 600:
             return "bad stage cache_seconds"
-        if "reads" in s and not (isinstance(s["reads"], list) and all(_in(x, ("system-status",)) for x in s["reads"])):
+        if "reads" in s and not (isinstance(s["reads"], list) and all(_in(x, ("system-status", "peer-status")) for x in s["reads"])):
             return "bad stage reads"
+        if s.get("network") is True and "peer-status" in s.get("reads", []):
+            return "a plugin that reads your other machines' status can't use the network"
         if s.get("network") is True and "system-status" in s.get("reads", []):
             return "a plugin that reads your system status can't use the network"
         if not _inside(d, s["argv"][0]):
@@ -773,6 +776,9 @@ def _run_copy(p, query, locale, timeout, stages, tmp):
         feed = {"v": 1, "query": query, "locale": locale}
         if "system-status" in stg.get("reads", []):
             feed["system_status"] = system_status()
+        if "peer-status" in stg.get("reads", []) and peers_allowed():
+            import peers
+            feed["peers"] = peers.snapshot()
         proc = subprocess.Popen(sandbox_argv(os.path.join(tmp, "plugin"), stg, os.path.join(tmp, "resolv.conf")), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 start_new_session=True, bufsize=0, preexec_fn=_limits)
     except OSError as e:
@@ -815,7 +821,8 @@ def _run_copy(p, query, locale, timeout, stages, tmp):
     if late:
         raise StageError("it took too long")
     if err[0]:
-        sys.stderr.write("plugin %s: %s\n" % (p.id, stages._CTRL.sub(" ", err[0].decode("utf-8", "replace")[:ERR_CAP])))
+        message = f"{len(err[0])} bytes of stderr" if stg.get("reads") else stages._CTRL.sub(" ", err[0].decode("utf-8", "replace")[:ERR_CAP])
+        sys.stderr.write(f"plugin {p.id}: {message}\n")
     if proc.returncode != 0:
         raise StageError("it failed")
     try:

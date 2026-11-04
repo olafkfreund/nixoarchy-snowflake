@@ -175,6 +175,8 @@ class T(unittest.TestCase):
         self.assertIsNone(self.one(dict(GOOD, stage=st), ["run"]).error)
         self.assertIsNone(self.one(dict(GOOD, stage=dict(st, network=True, reads=[])), ["run"]).error)
         self.assertIn("system status", self.one(dict(GOOD, stage=dict(st, network=True)), ["run"]).error)
+        self.assertEqual(self.one(dict(GOOD, stage=dict(st, network=True, reads=["peer-status"])), ["run"]).error,
+                         "a plugin that reads your other machines' status can't use the network")
 
     def test_plugin_dirs(self):
         d = plugins.plugin_dirs()

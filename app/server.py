@@ -39,6 +39,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 import plugins  # noqa: E402
+import peers  # noqa: E402
 from floor import FLOOR, pdeathsig_preexec  # noqa: E402
 import day  # noqa: E402
 import quick  # noqa: E402
@@ -199,6 +200,8 @@ DEFAULTS = {
     # lambda-tip cues: failed user units + new generation (local); next calendar item (gog) and weather look (network): off
     "follow_focus": False,                  # move to the screen you focus (Hyprland)
     "answer_stages": True,                  # a board/notebook beside him for commands and facts (#144); off = captions only
+    "peers_on": False,
+    "peers_asked": False,
     "step_aside": True,                     # slide out of the way while nixi's card is open
     "idle_mode": "shrink",                  # when idle: off (stay) | shrink (peek at the edge) | doze
     "ambient_system": True, "ambient_calendar": False, "ambient_weather": False,
@@ -253,6 +256,8 @@ def load_config():
 
 
 CFG = load_config()
+PEERS = peers.load()
+plugins.peers_allowed = lambda: CFG.get("peers_on") is True and bool(PEERS)
 
 SKINS = ["none", "halo", "crown", "sprout", "bow"]
 HEX = re.compile(r"#[0-9a-f]{6}")
@@ -1799,6 +1804,8 @@ def plugin_caps(m):
         out.append("Runs a program when you ask for it" + (" and uses the network" if m["stage"].get("network") else ""))
         if "system-status" in m["stage"].get("reads", []):
             out.append("Can read your system status")
+        if "peer-status" in m["stage"].get("reads", []):
+            out.append("It can read your other machines' status (load, memory, disks, failed services)")
     return out
 
 
@@ -4700,6 +4707,60 @@ def day_next():
     return {"say": day.whats_next(snap), "mood": "happy"}
 
 
+def refresh_stage(token):
+    got = STAGES.get(token)
+    if not got or got[0] != "refresh" or Desk.locked() is True:
+        return {"ok": False}
+    p = Plug.stage.get(got[1]["pid"])
+    if p is None:
+        return {"ok": False}
+    try:
+        st = plugins.run_stage(p, got[1]["query"], fresh=True)
+    except plugins.Busy:
+        return {"ok": True, "skipped": True}
+    except plugins.StageError as e:
+        if str(e) == plugins.CHANGED:
+            Plug.reload()
+        return {"ok": False}
+    if st["kind"] != "gauges" or not st.get("live"):
+        return {"ok": False}
+    page = STAGES.replace(token, st)
+    if page is None:
+        return {"ok": False, "error": "gone"}
+    BUS.pub(t="stage_update", **stage_event(page))
+    return {"ok": True}
+
+
+def refresh_current_gauges():
+    page = STAGES.current()
+    if page and page.get("kind") == "gauges" and page.get("live") and page.get("refresh"):
+        return refresh_stage(page["refresh"])
+    return None
+
+
+_peer_followup_round = False
+
+
+def peer_round_done():
+    global _peer_followup_round
+    if not plugins.peers_allowed():
+        return
+    if _peer_followup_round:
+        _peer_followup_round = False
+        return
+    page = STAGES.current()
+    if not page or page.get("kind") != "gauges" or not page.get("live") or not page.get("refresh") or not STAGES.visible():
+        return                                         # (not on screen: nothing samples, #166)
+    got = STAGES.get(page["refresh"])
+    p = Plug.stage.get(got[1]["pid"]) if got and got[0] == "refresh" else None
+    result = refresh_stage(page["refresh"])
+    if p and "peer-status" in p.manifest["stage"].get("reads", []):
+        _peer_followup_round = result.get("ok") is True and not result.get("skipped")
+
+
+peers.on_round(peer_round_done)
+
+
 def stage_act(token, act):
     """A button on the stage (never Run: that is a turn, see ask). Only what the store holds is ever used, never page text."""
     if not stages_on() and act not in ("close", "shown", "hidden"):
@@ -4716,28 +4777,9 @@ def stage_act(token, act):
         if page:
             BUS.pub(t="stage", **stage_event(page))
         return {"ok": bool(page)}
-    got = STAGES.get(token) if act in ("copy", "open", "play", "session", "terminal", "refresh") else None
     if act == "refresh":
-        if not got or got[0] != "refresh" or Desk.locked() is True:
-            return {"ok": False}
-        p = Plug.stage.get(got[1]["pid"])
-        if p is None:
-            return {"ok": False}
-        try:
-            st = plugins.run_stage(p, got[1]["query"], fresh=True)
-        except plugins.Busy:
-            return {"ok": True, "skipped": True}
-        except plugins.StageError as e:
-            if str(e) == plugins.CHANGED:
-                Plug.reload()
-            return {"ok": False}
-        if st["kind"] != "gauges" or not st.get("live"):
-            return {"ok": False}
-        page = STAGES.replace(token, st)
-        if page is None:
-            return {"ok": False, "error": "gone"}
-        BUS.pub(t="stage_update", **stage_event(page))
-        return {"ok": True}
+        return refresh_stage(token)
+    got = STAGES.get(token) if act in ("copy", "open", "play", "session", "terminal") else None
     if act in ("session", "terminal") and got and got[0] == act:    # the desk: a herdr session's window, or a fresh terminal
         try:
             argv = attach_argv(got[1]["pane"]) if act == "session" else ["xdg-terminal-exec"]
@@ -5116,6 +5158,7 @@ def state_info():
         "weather": {"sky": Ambient.sky, "cold": Ambient.cold, "windy": Ambient.windy, "lean": Ambient.lean,
                     "heavy": Ambient.heavy, "feel": Ambient.feel, "wind": Ambient.wspeed, "day": Ambient.day, "source": Ambient.wsrc},
         "follow_focus": bool(CFG.get("follow_focus")), "step_aside": CFG.get("step_aside", True) is not False, "answer_stages": CFG.get("answer_stages", True) is not False,
+        "peers_on": CFG.get("peers_on") is True, "peers_asked": CFG.get("peers_asked") is True, "peers_configured": bool(PEERS),
         **{k: bool(CFG.get(k, k == "ambient_system")) for k in Ambient.FLAG.values()},
         "projects": quick.projects(),
         **{k: bool(CFG.get(k, k == "notify_sound")) for k in NOTIFY_FLAGS}, "notify_speak": CFG.get("notify_speak", ["meeting"]),
@@ -5406,7 +5449,7 @@ class Handler(BaseHTTPRequestHandler):
                 except (TypeError, ValueError):
                     pass
                 for key in ("wake_word", "notify_done", "popup_done", "code_panel", "hover", "click_through", "autostart", "listen_on_show",
-                            "barge_in", "sfx", "update_check", "auto_compact", "full_text", "lean", "follow_focus", "step_aside", "answer_stages", "ambient_system", "ambient_calendar", "ambient_weather", *NOTIFY_FLAGS):
+                            "barge_in", "sfx", "update_check", "auto_compact", "full_text", "lean", "follow_focus", "step_aside", "answer_stages", "peers_on", "peers_asked", "ambient_system", "ambient_calendar", "ambient_weather", *NOTIFY_FLAGS):
                     if key in b:
                         upd[key] = bool(b[key])
                 if "answer_stages" in b and not b["answer_stages"]:
@@ -5436,7 +5479,23 @@ class Handler(BaseHTTPRequestHandler):
                                        **({"attach": a["attach"]} if a.get("attach") in ("screen", "clipboard") else {})})
                     upd["quick_actions"] = qa
                 if upd:
+                    peers_changed = "peers_on" in upd and upd["peers_on"] != (CFG.get("peers_on") is True)
                     save_config(**upd)
+                    if peers_changed:
+                        global _peer_followup_round
+                        _peer_followup_round = False
+                        if upd["peers_on"]:
+                            plugins.forget()
+                            refresh_current_gauges()
+                        else:
+                            peers.stop()
+                            plugins.forget()
+                            page = STAGES.current()
+                            if page and page.get("kind") == "gauges" and len(page.get("hosts", [])) > 1:
+                                STAGES.close()
+                                STAGES.clear()
+                                BUS.pub(t="stage_close")
+                            BUS.pub(t="toast", text="Other machines are off")
                 if "whisper_model" in upd:
                     reset_whisper()
                 if "autostart" in upd:
