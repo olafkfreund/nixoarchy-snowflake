@@ -263,6 +263,14 @@ body.bar #mailPop,body.hover #mailPop,body.calm #mailPop{display:none}
 #stg.term .tmx{grid-column:1/-1;display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--dm)}
 #stg.term .tmt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#stg.term .tms{flex:none;letter-spacing:0;color:var(--a)}
 #stg.term .tmls{margin-top:6px}#stg.term .tmlt{color:var(--dm);margin-top:4px}#stg.term .tmit{overflow-wrap:anywhere}
+#stg.term .tmh.cmp{cursor:pointer;padding:10px 10px 4px}#stg.term .tmh.cmp:focus-visible{outline:1px solid var(--a)}
+#stg.term .tmh.cmp:not(.exp) .tms,#stg.term .tmh.cmp:not(.exp) .tmli{display:none}
+#stg.term .tmh.cmp.exp .tmfc{display:none}#stg.term .tmfc{font-size:11px;color:var(--dm)}#stg.term .tmfc.bad{color:var(--r)}
+#stg.term .tmh.one{padding:2px 8px;border-color:transparent;color:var(--dm);margin:4px 0}
+#stg.term .tmh.one .tmn{position:static;padding:0;background:none}
+#stg.term .tmh.one .tmb,#stg.term .tmh.one .tmr,#stg.term .tmh.one .tmls{display:none}
+#stg.term .tmask{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:11px;color:var(--dm);margin:6px 2px 2px}
+#stg.term .tmask button{background:none;border:0;padding:0;color:var(--a);font:inherit;cursor:pointer;text-decoration:underline}
 #stg.term.go .tmh{animation:stgPow .18s var(--ease) both}
 #stg.term.go .tmw{animation:stgRow .2s ease-out both;animation-delay:calc(var(--i,0)*30ms + 180ms)}
 #stg.term.go .tmbar i{animation:stgBar .2s ease-out both;animation-delay:calc(var(--i,0)*30ms + 180ms)}
@@ -860,6 +868,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <label class="tg nx"><input type="checkbox" id="updSw"><span class="sw"></span><span class="l">Check for updates<small>Asks GitHub for the latest version when he starts, every few hours and when you open Settings. Nothing about you is sent.</small></span></label>
       </div>
       <div class="row"><div class="t">Plugins</div><div class="h">Things other people made for him. They never download anything; they only use what is on this computer.</div>
+        <label class="tg" id="peersRow" hidden style="margin-bottom:8px"><input type="checkbox" id="peersSw"><span class="sw"></span><span class="l">Other machines<small>Let plugins show your other machines' status (load, memory, disks, failed services)</small></span></label>
         <div id="plugCons"></div><div id="plugList"></div><div class="h" id="plugErr" style="color:#e8836f"></div>
         <div class="bar"><button class="btn" id="plugReload">Reload</button></div></div>
       <div class="row"><div class="t">ai-mirror</div><div class="h">Shows when an agent controls your desktop through ai-mirror. Super+Shift+Esc always takes it back.</div></div>
@@ -2086,6 +2095,7 @@ function onEvent(ev){
   else if(ev.t==='stage_update') gaugeUpdate(ev);
   else if(ev.t==='stage_status') stageStatus(ev);
   else if(ev.t==='stage_close') stageClosedByServer();
+  else if(ev.t==='toast') tick(ev.text);
   else if(ev.t==='askpass'){ restore(20000,true); askPass(ev); }
   else if(ev.t==='askpass_done') pwGone(ev.id);
 }
@@ -2364,26 +2374,49 @@ function stageStat(ev,bd,acts,fn){
   acts.appendChild(stageBtn('Open terminal',b=>stageOpen(b,fn,ev.term,'terminal')));
 }
 const BRL='\u2800\u28c0\u28c4\u28e4\u28e6\u28f6\u28f7\u28ff';   // 8 braille levels, empty to full
+let gaugeExp=null;
 function gaugeSpark(a,pct){ const mx=pct?100:Math.max(1e-9,...a); return a.map(x=>BRL[Math.min(7,Math.max(0,Math.round(x/mx*7)))]).join(''); }
 function gaugeHistAdd(ev){ for(const h of ev.hosts||[]) for(const m of h.meters||[]){ const x=m.pct!=null?m.pct:m.v; if(typeof x!=='number') continue;
   const k=h.name+'\0'+m.label, a=gaugeHist[k]||(gaugeHist[k]=[]); a.push(x); if(a.length>24) a.shift(); } }
+function gaugeOneText(h){ if(h.state==='stale') return 'asking\u2026';
+  const v=((h.badges||[]).find(b=>b.k==='last')||{}).v||((h.badges||[])[0]||{}).v||'not seen yet';
+  return 'unreachable \u00b7 '+(/^\d\d:\d\d$/.test(v)?'last seen '+v:v); }
 function gaugeFill(row,h,m){ const p=m.pct, a=gaugeHist[h.name+'\0'+m.label]||[];   // fills a meter row; also the in-place update
   row.className='tmw'+(m.tone?' '+m.tone:'')+(p==null?' nul':'');
   row.setAttribute('aria-label',m.label+' '+(p==null?(m.text||'no reading'):Math.round(p)+' percent'));
   row.querySelector('.tmbar i').style.setProperty('--w',(p==null?0:p)+'%');
   row.querySelector('.tmv').textContent=p==null?'\u2014':Math.round(p)+'%';
   row.querySelector('.tmt').textContent=m.text||''; row.querySelector('.tms').textContent=a.length?gaugeSpark(a,p!=null):''; }
-function gaugeHostFill(p,h){ p.className='tmh '+(h.state||'up'); p.querySelector('.tmn').textContent='\u2524 '+h.name+(h.state&&h.state!=='up'?' \u00b7 '+h.state:'')+' \u251c';
+function gaugeHostFill(p,h,i=0){ const st=h.state||'up', one=st==='down'||st==='stale', cmp=i>0&&!one, exp=cmp&&gaugeExp===h.name;
+  p.className='tmh '+st+(one?' one':'')+(cmp?' cmp'+(exp?' exp':''):'');
+  if(cmp){ p.setAttribute('role','button'); p.tabIndex=0; p.setAttribute('aria-expanded',String(exp)); }
+  else { p.removeAttribute('role'); p.removeAttribute('tabindex'); p.removeAttribute('aria-expanded'); }
+  p.querySelector('.tmn').textContent='\u2524 '+h.name+(!one&&st!=='up'?' \u00b7 '+st:'')+' \u251c';
+  const ol=p.querySelector('.tmol'); if(ol) ol.textContent=one?' '+gaugeOneText(h):'';
   const b=p.querySelector('.tmb'); b.textContent='';
   (h.badges||[]).forEach(x=>{ const s=hx('span','tmg'+(x.tone?' '+x.tone:'')); s.appendChild(hx('em',null,x.k)); s.appendChild(document.createTextNode(' '+x.v)); b.appendChild(s); });
   const ls=p.querySelector('.tmls'); ls.textContent='';
-  (h.lists||[]).forEach(l=>{ const d=hx('div','tmli'+(l.tone?' '+l.tone:'')); d.appendChild(hx('div','tmlt',l.title)); (l.items||[]).forEach(t=>d.appendChild(hx('div','tmit',t))); ls.appendChild(d); }); }
-function stageGauges(ev,bd,acts,fn,reset=true){ if(reset) gaugeHist={}; gaugeHistAdd(ev); let n=0;
-  (ev.hosts||[]).forEach(h=>{ const p=hx('section'); p.dataset.host=h.name; p.appendChild(hx('span','tmn')); p.appendChild(hx('div','tmb')); const rs=hx('div','tmr');
-    (h.meters||[]).forEach(m=>{ const r=hx('div'); r.setAttribute('role','group'); r.dataset.label=m.label; r.style.setProperty('--i',n++);
-      r.appendChild(hx('span','tml',m.label)); const bar=hx('span','tmbar'); bar.appendChild(hx('i')); r.appendChild(bar); r.appendChild(hx('span','tmv'));
-      const x=hx('div','tmx'); x.appendChild(hx('span','tmt')); const s=hx('span','tms'); s.setAttribute('aria-hidden','true'); x.appendChild(s); r.appendChild(x); gaugeFill(r,h,m); rs.appendChild(r); });
-    p.appendChild(rs); p.appendChild(hx('div','tmls')); gaugeHostFill(p,h); bd.appendChild(p); });
+  let fn=0; (h.lists||[]).forEach(l=>{ fn+=(l.items||[]).length; const d=hx('div','tmli'+(l.tone?' '+l.tone:'')); d.appendChild(hx('div','tmlt',l.title)); (l.items||[]).forEach(t=>d.appendChild(hx('div','tmit',t))); ls.appendChild(d); });
+  if(cmp){ ls.appendChild(hx('div','tmfc'+(fn?' bad':''),fn?fn+' failed':'0 failed')); } }
+function gaugeToggle(name){ gaugeExp=gaugeExp===name?null:name; stgUse=performance.now();
+  stgEl.querySelectorAll('.tmh.cmp').forEach(p=>{ const on=p.dataset.host===gaugeExp; p.classList.toggle('exp',on); p.setAttribute('aria-expanded',String(on)); }); }
+function gaugeMeterRow(h,m,n){ const r=hx('div'); r.setAttribute('role','group'); r.dataset.label=m.label; r.style.setProperty('--i',n);
+  r.appendChild(hx('span','tml',m.label)); const bar=hx('span','tmbar'); bar.appendChild(hx('i')); r.appendChild(bar); r.appendChild(hx('span','tmv'));
+  const x=hx('div','tmx'); x.appendChild(hx('span','tmt')); const s=hx('span','tms'); s.setAttribute('aria-hidden','true'); x.appendChild(s); r.appendChild(x); gaugeFill(r,h,m); return r; }
+function stageGauges(ev,bd,acts,fn,reset=true){ if(reset){ gaugeHist={}; gaugeExp=null; } gaugeHistAdd(ev); let n=0;
+  (ev.hosts||[]).forEach((h,i)=>{ const p=hx('section'), st=h.state||'up', one=st==='down'||st==='stale'; p.dataset.host=h.name;
+    p.appendChild(hx('span','tmn')); p.appendChild(hx('span','tmol')); p.appendChild(hx('div','tmb')); const rs=hx('div','tmr');
+    if(!one) (h.meters||[]).forEach(m=>rs.appendChild(gaugeMeterRow(h,m,n++)));
+    p.appendChild(rs); p.appendChild(hx('div','tmls'));
+    p.addEventListener('click',e=>{ if(!p.classList.contains('cmp')) return; e.stopPropagation(); gaugeToggle(h.name); });
+    p.addEventListener('keydown',e=>{ if(!p.classList.contains('cmp')) return; if(e.key==='Enter'||e.key===' '){ e.preventDefault(); e.stopPropagation(); gaugeToggle(h.name); } });
+    gaugeHostFill(p,h,i); bd.appendChild(p); });
+  if(ev.peers_ask||(info.peers_configured&&!info.peers_on&&!info.peers_asked)){
+    const ask=hx('div','tmask'), sh=hx('button',null,'Show them'), no=hx('button',null,'Not now'); sh.type=no.type='button';
+    const choose=b=>{ ask.remove(); Object.assign(info,b); setSetting(b); };
+    sh.addEventListener('click',e=>{ e.stopPropagation(); choose({peers_on:true,peers_asked:true}); });
+    no.addEventListener('click',e=>{ e.stopPropagation(); choose({peers_asked:true}); });
+    ask.append(document.createTextNode((typeof ev.peers_ask==='number'?ev.peers_ask+' other machines':'Your other machines')+' \u00b7 '),sh,document.createTextNode(' \u00b7 '),no); bd.appendChild(ask); }
   fn.textContent=ev.source?'Source: '+ev.source:''; if(ev.token) acts.appendChild(stageBtn('Copy',b=>stageAct('copy',ev.token,b))); termContrast(); }
 function lumOf(c){ c=String(c).trim(); const hex=c.match(/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i), rgb=c.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
   const v=hex?(hex[1].length<=4?[...hex[1].slice(0,3)].map(x=>parseInt(x+x,16)):[0,2,4].map(i=>parseInt(hex[1].slice(i,i+2),16))):rgb?rgb.slice(1,4).map(Number):null;
@@ -2394,18 +2427,19 @@ function termContrast(){ stgEl.classList.remove('fixed'); const cs=getComputedSt
 function gaugeUpdate(ev){ if(!stgOpen()||!stg||stg.kind!=='gauges'||ev.kind!=='gauges'||ev.refresh!==stg.refresh) return;
   stg=Object.assign({},stg,ev);
   const panels=[...stgEl.querySelectorAll('.tmh')], hosts=ev.hosts||[];
-  if(panels.length!==hosts.length||hosts.some((h,i)=>panels[i].dataset.host!==h.name||[...panels[i].querySelectorAll('.tmw')].map(r=>r.dataset.label).join('\0')!==(h.meters||[]).map(m=>m.label).join('\0'))){
+  const mKey=h=>{ const st=h.state||'up'; return st==='down'||st==='stale'?'':(h.meters||[]).map(m=>m.label).join('\0'); };
+  if(panels.length!==hosts.length||hosts.some((h,i)=>panels[i].dataset.host!==h.name||[...panels[i].querySelectorAll('.tmw')].map(r=>r.dataset.label).join('\0')!==mKey(h))){
     stgEl.classList.remove('go'); const bd=$('#stgBd'), acts=$('#stgActs'), fn=$('#stgFn'); bd.textContent=''; acts.textContent=''; fn.textContent='';
     stageGauges(ev,bd,acts,fn,false); return; }
   gaugeHistAdd(ev);
-  for(const h of ev.hosts||[]){ const p=[...stgEl.querySelectorAll('.tmh')].find(e=>e.dataset.host===h.name); if(!p) continue; gaugeHostFill(p,h);
-    for(const m of h.meters||[]){ const r=[...p.querySelectorAll('.tmw')].find(e=>e.dataset.label===m.label); if(r) gaugeFill(r,h,m); } } }
+  hosts.forEach((h,i)=>{ const p=panels[i], st=h.state||'up', one=st==='down'||st==='stale'; if(!p) return; gaugeHostFill(p,h,i);
+    if(!one) for(const m of h.meters||[]){ const r=[...p.querySelectorAll('.tmw')].find(e=>e.dataset.label===m.label); if(r) gaugeFill(r,h,m); } }); }
 function gaugeStop(){ if(gaugeRef){ clearInterval(gaugeRef.t); gaugeRef=null; stgUse=performance.now(); } }   // (a board that stops updating gets the usual 30 s from now)
 function gaugeLoop(){ const r=gaugeRef; if(!r) return;   // paused (not stopped) while hidden or not shown
   if(stgState!=='open') return gaugeStop(); if(!stgPosted||document.hidden) return;
   post('/api/stage/act',{token:r.tok,act:'refresh'}).then(x=>x.json()).then(j=>{ if(gaugeRef===r){ r.failed=j.ok?0:r.failed+1; if(r.failed>=2) gaugeStop(); } }).catch(()=>{ if(gaugeRef===r) gaugeStop(); });
   if(++r.n>=24) gaugeStop(); }
-function stageText(ev){ if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>[...(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))), ...(h.badges||[]).map(b=>(many?h.name+' ':'')+b.k+': '+b.v), ...(h.lists||[]).map(l=>(many?h.name+' ':'')+l.title+': '+(l.items||[]).join(', '))])).join('\n'); } const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
+function stageText(ev){ if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>{ const st=h.state||'up'; if(st==='down'||st==='stale') return [h.name+': '+gaugeOneText(h)]; return [...(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))), ...(h.badges||[]).map(b=>(many?h.name+' ':'')+b.k+': '+b.v), ...(h.lists||[]).map(l=>(many?h.name+' ':'')+l.title+': '+(l.items||[]).join(', '))]; })).join('\n'); } const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
   stgPosted=false; gaugeStop();
@@ -2422,7 +2456,7 @@ function stageShow(ev){
   if(ev.kind==='gauges'&&ev.refresh) gaugeRef={tok:ev.refresh,n:0,failed:0,t:setInterval(gaugeLoop,GAUGE_MS)};
 }
 function stageHide(toTab){
-  stgTm.forEach(clearTimeout); stgTm=[]; clearInterval(stgTimer); stgTimer=null; gaugeStop(); if(!toTab) gaugeHist={};
+  stgTm.forEach(clearTimeout); stgTm=[]; clearInterval(stgTimer); stgTimer=null; gaugeStop(); if(!toTab){ gaugeHist={}; gaugeExp=null; }
   stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on'); popEl.classList.remove('on'); wtcEl.classList.remove('on'); stgEl.setAttribute('aria-hidden','true'); stgEl.inert=true; stgTab.inert=!toTab;
   if(!toTab) stgPosted=false;
   if(toTab){ stagePost(false); stgState='tab'; stgTab.textContent=$('#stgT').textContent; stagePlace(); stgSize(300); void stgTab.offsetWidth; stgTab.classList.add('on'); }
@@ -3090,13 +3124,14 @@ $('#pkAll').addEventListener('click',()=>{ const L=curLook(), R=randomLook(L); O
 
 function renderSettings(){
   { const rr=$('#rootSw').closest('.row'); if(rr) rr.style.display=info.root_ok===false?'none':''; }
+  { const pr=$('#peersRow'); if(pr) pr.hidden=!info.peers_configured; }
   const cur=(info.model||'default');
   $('#effortChips').innerHTML=['',...EFFORTS].map(e=>`<button data-eff="${e}" class="${(info.effort||'')===e?'on':''}">${e||'default'}</button>`).join('');
   $('#modelChips').innerHTML=MODELS.map(([id,l])=>`<button data-m="${id}" class="${cur===id?'on':''}">${l}</button>`).join('');
   $('#voiceChips').innerHTML=(info.voices||[]).map(v=>`<button data-v="${v.id}" class="${info.voice===v.id?'on':''}">${v.label}${v.downloading?'<i>⇣</i>':''}</button>`).join('');
   const sw={rootSw:info.root,speakSw:!muted,wakeSw:info.wake_word,autoSw:info.autostart,listenShowSw:info.listen_on_show,hoverSw:info.hover,
     followSw:!!info.follow_focus,asideSw:info.step_aside!==false,stagesSw:info.answer_stages!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,proactiveSw:!!info.proactive,takeoverSw:!!info.notifications_takeover,detailsSw:!!info.notify_details,nsoundSw:info.notify_sound!==false,lookMeetSw:!!info.look_meeting,lookMusicSw:!!info.look_music,lookBeatSw:!!info.look_beat,speakSubjSw:!!info.notify_speak_subject,lookFsSw:!!info.look_fullscreen,reactLoadSw:!!info.react_load,reactBreakSw:!!info.react_break,reactWelcomeSw:!!info.react_welcome,lookCodingSw:!!info.look_coding,lookNightSw:!!info.look_night,lookWeatherSw:!!info.look_weather,lookPartySw:!!info.look_party,reactQuipsSw:!!info.react_quips,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
-    updSw:info.update_check!==false,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
+    updSw:info.update_check!==false,peersSw:!!info.peers_on,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
   renderUpdate(); renderPtt();
   for(const k in sw){ const e=document.getElementById(k); if(e) e.checked=!!sw[k]; }
@@ -3298,6 +3333,7 @@ setEl.addEventListener('change',e=>{
   if(id==='notifySw') setSetting({notify_done:on});
   if(id==='popupSw') setSetting({popup_done:on});
   if(id==='updSw') setSetting({update_check:on}).then(renderUpdate);
+  if(id==='peersSw') setSetting({peers_on:on});
   if(id==='fullSw') setSetting({full_text:on}).then(showInfo);
   if(id==='compactSw') setSetting({auto_compact:on});
   if(id==='costIn') setSetting({max_cost_usd:+e.target.value||0}).then(()=>tick(+e.target.value?'a request stops at $'+e.target.value:'no usage limit'));
