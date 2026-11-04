@@ -1716,6 +1716,7 @@ class Plug:
         st = plugins.State()
         found = plugins.scan(plugins.plugin_dirs())
         cls.review(found, st)                                   # (a changed Folder plugin is switched off here)
+        plugins.forget()                                        # (a result from before a reload or a switch-off is never shown again)
         loaded = [p for p in found if not p.error and st.get(p.id)["enabled"]]
         quips, rules, props, errors = {}, [], [], {}               # built aside, then swapped in at once: no half-loaded state
         for p in loaded:
@@ -1849,7 +1850,7 @@ def plugins_act(b):
             st.set(pid, True, h)
         else:
             return plugins_api(needs_consent={"id": pid, "name": str(p.manifest["name"]), "sha256": h, "network": bool(stg.get("network")),
-                                              "what": str(p.manifest.get("description") or p.manifest["name"]),
+                                              "what": str(p.manifest.get("description") or p.manifest["name"]), "hint": str(stg.get("hint") or ""),
                                               "runs": " ".join(stg["argv"]), "reads": list(stg.get("reads", []))})
         Plug.updated.pop(pid, None)
     Plug.reload()
@@ -4624,9 +4625,13 @@ def desk_stage(st):
     return st
 
 
-def plugin_stage(pid, query):
+_ANY = object()                                        # (plugin_stage: "no stage-on-screen check")
+
+
+def plugin_stage(pid, query, before=_ANY):
     """Run an enabled stage plugin (no agent turn) and put its facts on the stage. -> (shown, what to say). The output is for the
-    page only: it is never added to a prompt (the follow-up note only ever names a day desk)."""
+    page only: it is never added to a prompt (the follow-up note only ever names a day desk). With `before` (the stage on screen
+    when it was asked for) the result is shown only if that is still the stage on screen."""
     p = Plug.stage.get(pid)
     if p is None:
         return False, "That plugin is off."
@@ -4635,15 +4640,18 @@ def plugin_stage(pid, query):
     except plugins.Busy as e:
         return False, str(e)
     except plugins.StageError as e:
+        if str(e) == plugins.CHANGED:
+            Plug.reload()                                      # (switched off just now: drop it from memory too)
         return False, f"{p.manifest['name']}: {e}."
-    BUS.pub(t="stage", **stage_event(STAGES.put(st)))
+    if before is _ANY or (stages_on() and STAGES.current() is before):
+        BUS.pub(t="stage", **stage_event(STAGES.put(st)))
     return True, "Here you go."
 
 
-def plugin_stage_thread(pid, query):
-    """The agent asked for a plugin: run it off the turn; a failure shows as a one-line notebook."""
-    shown, say = plugin_stage(pid, query)
-    if not shown and stages_on():
+def plugin_stage_thread(pid, query, before=_ANY):
+    """The agent asked for a plugin: run it off the turn; a failure shows as a one-line notebook (both only if the stage on screen is still `before`)."""
+    shown, say = plugin_stage(pid, query, before)
+    if not shown and stages_on() and (before is _ANY or STAGES.current() is before):
         BUS.pub(t="stage", **stage_event(STAGES.put({"v": 1, "kind": "facts", "title": str(Plug.stage[pid].manifest["name"])[:120] if pid in Plug.stage else "Plugin", "points": [say[:120]]})))
 
 
@@ -5817,7 +5825,7 @@ class Handler(BaseHTTPRequestHandler):
                     st = stages.validate(blk, Plug.stage_enabled) if t == "result" and blk and run_cmd is None and stages_on() else None    # (a Run never replaces the board)
                     if st and st["kind"] == "plugin":                                  # (the page never sees this kind: it gets the plugin's facts)
                         out(**kw)
-                        threading.Thread(target=plugin_stage_thread, args=(st["id"], said), daemon=True).start()
+                        threading.Thread(target=plugin_stage_thread, args=(st["id"], said, STAGES.current()), daemon=True).start()
                         return
                     if st and st["kind"] in ("video", "day"):
                         out(**kw)                                                      # (the turn ends now; the search may take 8 s)

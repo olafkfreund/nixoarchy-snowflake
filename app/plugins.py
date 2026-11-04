@@ -31,14 +31,21 @@ HOST_RE = re.compile(r"^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$")
 def norm(said):
     """What you said, the way stages.fast_path reads it: lowercase, punctuation dropped, one space, no leading please/nixi."""
     t = " ".join(re.sub(r"[^a-z0-9 ]", " ", (said or "").lower()).split())
-    return re.sub(r"\s+please$", "", re.sub(r"^(?:please|nixi)\s+", "", t))
+    return re.sub(r"(?:\s+please)+$", "", re.sub(r"^(?:(?:please|nixi)\s+)+", "", t))
 
 
 def reserved(phrase):
-    """True for a phrase Nixi answers itself: empty, close / go back / show it / what's next, and the run/copy/play/open verbs."""
+    """True for a phrase Nixi answers itself: empty, close / go back / show it / what's next, guide / mechanic, the run/copy/play/open
+    verbs, and anything the quick matcher handles."""
+    import quick
     import stages
     t = norm(phrase)
-    return not t or t in ("close", "go back", "show it", "what s next", "what is next") or stages.fast_path(t, {"items": [0] * 5}) is not None
+    if not t or t in ("close", "go back", "show it", "what s next", "what is next", "guide", "mechanic") or stages.fast_path(t, {"items": [0] * 5}) is not None:
+        return True
+    try:
+        return quick.handle(phrase) is not None
+    except Exception:                                  # (the matcher needs the server's config for some phrases: those are Nixi's own)
+        return True
 
 
 def plugin_dirs():
@@ -55,9 +62,17 @@ def _inside(base, rel):
     return not os.path.islink(q) and os.path.isfile(p) and os.path.commonpath([os.path.realpath(base), p]) == os.path.realpath(base)
 
 
+def _raise(e):
+    raise e
+
+
+def _in_store(d):
+    return os.path.realpath(d).startswith("/nix/store/")
+
+
 def _symlink(d):
     """The first symlink anywhere inside the folder (a plugin may not contain any), or None."""
-    for dirpath, dirs, files in os.walk(d):
+    for dirpath, dirs, files in os.walk(d, onerror=_raise):   # (an unlistable folder is an error, not "nothing in it")
         for n in dirs + files:
             if os.path.islink(os.path.join(dirpath, n)):
                 return os.path.relpath(os.path.join(dirpath, n), d)
@@ -74,6 +89,7 @@ def _strs(v, n=None):
 
 def _check(m, d):
     """Return the reason the manifest is bad, or None."""
+    import stages
     if not isinstance(m, dict):
         return "plugin.json is not an object"
     if "api" not in m:
@@ -86,8 +102,8 @@ def _check(m, d):
         return f"unknown key: {k}"
     if not isinstance(m["id"], str) or not ID_RE.fullmatch(m["id"]):
         return "bad id"
-    for k in ("name", "version", "description"):
-        if k in m and not (isinstance(m[k], str) and m[k]):
+    for k, n in (("name", 60), ("version", 1000), ("description", 200)):
+        if k in m and not (isinstance(m[k], str) and 0 < len(m[k]) <= n and not stages._CTRL.search(m[k])):
             return f"bad {k}"
     if "quips" in m and not _inside(d, m["quips"]):
         return "quips file missing or outside the folder"
@@ -117,7 +133,7 @@ def _check(m, d):
             return "bad stage"
         if not _strs(s["phrases"]) or not _strs(s["argv"]):
             return "bad stage phrases or argv"
-        if "hint" in s and not isinstance(s["hint"], str):
+        if "hint" in s and not (isinstance(s["hint"], str) and len(s["hint"]) <= 79 and not stages._CTRL.search(s["hint"])):
             return "bad stage hint"
         if "network" in s and not isinstance(s["network"], bool):
             return "bad stage network"
@@ -128,7 +144,7 @@ def _check(m, d):
             return "bad stage reads"
         if not _inside(d, s["argv"][0]):
             return "stage argv[0] missing or outside the folder"
-        if any(os.path.isabs(a) or ".." in a.split("/") for a in s["argv"][1:]):
+        if any(a.startswith("/") or "=/" in a or ".." in re.split(r"[/=]", a) for a in s["argv"][1:]):
             return "stage argv may not point outside the folder"
         for ph in s["phrases"]:
             if reserved(ph):
@@ -159,7 +175,7 @@ def scan(dirs):
                 err = f"plugin.json not understood: {type(e).__name__}"
             if isinstance(m, dict) and isinstance(m.get("id"), str) and ID_RE.fullmatch(m["id"]):
                 vid = m["id"]
-            out.append(Plugin(vid or d.name, d, m if isinstance(m, dict) else None, "nix" if i == 0 else "folder", err))
+            out.append(Plugin(vid or d.name, d, m if isinstance(m, dict) else None, "nix" if i == 0 and _in_store(d) else "folder", err))
             valid.append(vid is not None)
     groups = {}
     for p, ok in zip(out, valid):
@@ -179,7 +195,7 @@ def sha256_of(d):
         raise ValueError(f"contains a symlink: {_symlink(d)}")
     root, h = os.path.realpath(d), hashlib.sha256()
     found = []
-    for dirpath, _, files in os.walk(root):
+    for dirpath, _, files in os.walk(root, onerror=_raise):
         for f in files:
             p = os.path.join(dirpath, f)
             r = os.path.realpath(p)
@@ -345,7 +361,7 @@ def sanitize_svg(data):
 
 
 # ---- stage programs: a plugin's `run`, in a bwrap sandbox, never a shell ----
-OUT_CAP, ERR_CAP, TIME_DEFAULT, TIME_MAX = 64 * 1024, 8 * 1024, 3, 8
+OUT_CAP, ERR_CAP, TIME_DEFAULT, TIME_MAX, TMP_SIZE = 64 * 1024, 8 * 1024, 3, 8, 64 * 1024 * 1024
 CHANGED = "Changed \u2014 check it again"
 
 
@@ -372,16 +388,14 @@ def bwrap_ok():
     return _bwrap[0]
 
 
-def sandbox_argv(d, stage, uid=None):
+def sandbox_argv(d, stage):
     """The bwrap command line for a plugin folder d and its manifest's stage block (argv list; the program is /plugin/<argv>)."""
-    uid = os.getuid() if uid is None else uid
     py = os.path.dirname(os.path.realpath(sys.executable))        # the interpreter Nixi runs on lives in the store: scripts may use it
     path = ":".join(["/plugin", *([os.environ["PATH"]] if os.environ.get("PATH") else []), *([py] if py.startswith("/nix/store/") else [])])
     a = ["bwrap", "--clearenv", "--unshare-all", *(["--share-net"] if stage.get("network") else []), "--die-with-parent", "--new-session",
-         "--ro-bind", "/nix/store", "/nix/store", "--ro-bind", str(d), "/plugin", "--chdir", "/plugin", "--tmpfs", "/tmp", "--proc", "/proc", "--dev", "/dev"]
+         "--ro-bind", "/nix/store", "/nix/store", "--ro-bind", str(d), "/plugin", "--chdir", "/plugin", "--size", str(TMP_SIZE), "--tmpfs", "/tmp", "--proc", "/proc", "--dev", "/dev"]
     ro = (["/usr/bin/env"] +                                       # (so `#!/usr/bin/env python3` finds PATH inside)
-          (["/etc/resolv.conf", "/etc/ssl", "/etc/static/ssl"] if stage.get("network") else []) +
-          (["/run/current-system", f"/run/user/{uid}/systemd"] if "system-status" in stage.get("reads", []) else []))
+          (["/etc/resolv.conf", "/etc/ssl", "/etc/static/ssl"] if stage.get("network") else []))   # (system-status is passed in on stdin, never bound)
     for x in ro:
         if os.path.exists(x):
             a += ["--ro-bind", x, x]
@@ -389,7 +403,7 @@ def sandbox_argv(d, stage, uid=None):
     return a + ["/plugin/" + stage["argv"][0], *stage["argv"][1:]]
 
 
-def _drain(f, cap, box):
+def _drain(f, cap, box, fatal=True):
     while True:
         try:
             b = os.read(f.fileno(), 65536)
@@ -398,8 +412,10 @@ def _drain(f, cap, box):
         if not b:
             return
         if len(box[0]) + len(b) > cap:
-            box[1] = True                                          # over the cap: the run is refused and killed
-            return
+            box[1] = True                                          # over the cap: stdout refuses and kills the run; stderr keeps reading, keeping nothing
+            if fatal:
+                return
+            continue
         box[0] += b
 
 
@@ -410,11 +426,51 @@ def _ago(s):
     return f"{int(s)} s ago" if s < 90 else f"{int(s // 60)} min ago"
 
 
+def forget():
+    """Drop every remembered result (a plugin was switched off, changed or reloaded)."""
+    with _cache_lock:
+        _cache.clear()
+
+
+def system_status():
+    """What a plugin with reads: [system-status] gets on stdin, collected here, outside its sandbox: the running generation
+    (null if unknown) and the failed user units (null if the query failed: never an empty list on failure)."""
+    try:
+        gen = os.path.basename(os.readlink("/run/current-system")) or None
+    except OSError:
+        gen = None
+    try:
+        r = subprocess.run(["systemctl", "--user", "--failed", "--plain", "--no-legend"], capture_output=True, text=True, timeout=2)
+        failed = [ln.split()[0][:80] for ln in r.stdout.splitlines() if ln.strip()][:20] if r.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError):
+        failed = None
+    return {"generation": gen, "failed": failed}
+
+
+def _consented(p):
+    """A folder plugin runs only if its files are still the ones the user allowed; otherwise it is switched off here and now."""
+    if p.source != "folder":
+        return
+    st = State()
+    rec = st.get(p.id)
+    try:
+        h = sha256_of(p.dir)
+    except (OSError, ValueError):
+        h = None
+    if not rec["enabled"]:
+        raise StageError("that plugin is off")
+    if not h or h != rec["sha256"]:
+        st.set(p.id, False, rec["sha256"])
+        forget()
+        raise StageError(CHANGED)
+
+
 def run_stage(p, query, locale="en", timeout=TIME_DEFAULT):
     """Run a stage plugin on a query -> a `facts` stage (stages.validate'd, nothing else accepted). Raises StageError / Busy.
     Cached per plugin and query for stage.cache_seconds; if a run fails the last good result is shown with its age."""
     import stages
     stg, key, now = p.manifest["stage"], (p.id, norm(query)), _now()
+    _consented(p)                                                  # (before the cache too: a changed plugin shows nothing, old or new)
     with _cache_lock:
         hit = _cache.get(key)
         if hit and now - hit[0] < stg.get("cache_seconds", 60):
@@ -439,19 +495,37 @@ def run_stage(p, query, locale="en", timeout=TIME_DEFAULT):
             _running.discard(p.id)
 
 
+def _limits():
+    """In the child, before bwrap starts: 1 GiB of memory, files of at most 64 MiB."""
+    import resource
+    resource.setrlimit(resource.RLIMIT_AS, (1 << 30, 1 << 30))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (TMP_SIZE, TMP_SIZE))
+
+
 def _launch(p, query, locale, timeout, stages):
     stg = p.manifest["stage"]
     if not bwrap_ok():
         raise StageError("bubblewrap isn't working here")
     try:
+        feed = {"v": 1, "query": query, "locale": locale}
+        if "system-status" in stg.get("reads", []):
+            feed["system_status"] = system_status()
         proc = subprocess.Popen(sandbox_argv(p.dir, stg), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                start_new_session=True, bufsize=0)
+                                start_new_session=True, bufsize=0, preexec_fn=_limits)
     except OSError as e:
         raise StageError(f"couldn't start it: {e.strerror}")
     out, err = [b"", False], [b"", False]
-    ts = [threading.Thread(target=_drain, args=(f, c, b), daemon=True) for f, c, b in ((proc.stdout, OUT_CAP, out), (proc.stderr, ERR_CAP, err))]
+    ts = [threading.Thread(target=_drain, args=(f, c, b, fatal), daemon=True) for f, c, b, fatal in ((proc.stdout, OUT_CAP, out, True), (proc.stderr, ERR_CAP, err, False))]
     for t in ts:
         t.start()
+
+    def feed_it():                                                 # (a thread: a plugin that never reads stdin must not hold us past the deadline)
+        try:
+            proc.stdin.write(json.dumps(feed).encode())
+            proc.stdin.close()
+        except (OSError, ValueError):
+            pass
+    threading.Thread(target=feed_it, daemon=True).start()
 
     def kill():
         try:
@@ -460,11 +534,6 @@ def _launch(p, query, locale, timeout, stages):
             pass
         proc.kill()
     try:
-        try:
-            proc.stdin.write(json.dumps({"v": 1, "query": query, "locale": locale}).encode())
-            proc.stdin.close()
-        except OSError:
-            pass                                                   # (it did not read its input: fine)
         end = time.monotonic() + timeout
         while proc.poll() is None and time.monotonic() < end and not out[1]:
             time.sleep(0.02)
@@ -483,7 +552,7 @@ def _launch(p, query, locale, timeout, stages):
     if late:
         raise StageError("it took too long")
     if err[0]:
-        sys.stderr.write("plugin %s: %s\n" % (p.id, err[0].decode("utf-8", "replace")[:ERR_CAP]))
+        sys.stderr.write("plugin %s: %s\n" % (p.id, stages._CTRL.sub(" ", err[0].decode("utf-8", "replace")[:ERR_CAP])))
     if proc.returncode != 0:
         raise StageError("it failed")
     try:
@@ -501,6 +570,10 @@ def review(found, st):
     notes = {}
     for p in found:
         rec = st.get(p.id)
+        if p.error and rec["enabled"] and rec["sha256"]:           # a stage plugin that no longer loads (broken, duplicate): off
+            st.set(p.id, False, rec["sha256"])
+            notes[p.id] = CHANGED
+            continue
         if p.error or "stage" not in (p.manifest or {}) or not (rec["enabled"] or (p.source == "folder" and rec["sha256"])):
             continue
         try:
@@ -518,6 +591,11 @@ def review(found, st):
         if rec["enabled"]:
             st.set(p.id, False, rec["sha256"])
         notes[p.id] = CHANGED
+    here = {p.id for p in found}
+    for pid, rec in list(st.data.items()):                         # one that vanished (deleted, or its folder became a symlink): off
+        if pid not in here and isinstance(rec, dict) and rec.get("enabled") and rec.get("sha256"):
+            st.set(pid, False, rec["sha256"])
+            notes[pid] = CHANGED
     return notes
 
 
@@ -528,7 +606,10 @@ def check_dir(d):
         m = json.loads((d / "plugin.json").read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         return f"plugin.json unreadable: {e}"
-    err = _check(m, d)
+    try:
+        err = f"contains a symlink: {_symlink(d)}" if _symlink(d) else _check(m, d)
+    except OSError as e:
+        err = f"couldn't read it: {e}"
     if not err and "prop" in m:
         try:
             sanitize_svg((d / m["prop"]["file"]).read_bytes())

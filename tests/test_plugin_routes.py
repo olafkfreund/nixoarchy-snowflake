@@ -15,7 +15,7 @@ class PluginRoutesTest(_ServerEnv):
         S = self.server
         self.root = Path(tempfile.mkdtemp(dir=self.tmp))
         self.state = S.plugins.State(self.root / "st.json")
-        for target, val in (("plugin_dirs", lambda: [self.root / "pk"]), ("State", lambda *a: self.state)):
+        for target, val in (("plugin_dirs", lambda: [self.root / "pk"]), ("State", lambda *a: self.state), ("_in_store", lambda d: True)):
             mock.patch.object(S.plugins, target, val).start()
         self.addCleanup(mock.patch.stopall)
         self.addCleanup(lambda: setattr(S.Plug, "loaded", None))

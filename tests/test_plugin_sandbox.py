@@ -11,6 +11,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "app"))
@@ -21,8 +22,12 @@ RSS = b"""<?xml version="1.0"?><rss version="2.0"><channel><title>Feed</title>
 %s</channel></rss>""" % b"".join(b"<item><title>Headline %d &amp; more</title></item>" % i for i in range(1, 8))
 
 
+STATE = plugins.State(Path(tempfile.mkdtemp()) / "st.json")        # what these tests have "allowed"
+
+
 def load(d):
     m = json.loads((Path(d) / "plugin.json").read_text())
+    STATE.set(m["id"], True, plugins.sha256_of(d))
     return plugins.Plugin(m["id"], Path(d), m, "folder", None)
 
 
@@ -31,6 +36,8 @@ class SandboxTest(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
         plugins._cache.clear()
+        mock.patch.object(plugins, "State", lambda *a: STATE).start()
+        self.addCleanup(mock.patch.stopall)
         self.addCleanup(shutil.rmtree, self.root, True)
 
     def mk(self, body, network=False, files=None, **stage):
@@ -48,7 +55,7 @@ class SandboxTest(unittest.TestCase):
 
     def test_argv_shape(self):
         p = self.mk("", network=True, reads=["system-status"])
-        a = plugins.sandbox_argv(p.dir, p.manifest["stage"], uid=1000)
+        a = plugins.sandbox_argv(p.dir, p.manifest["stage"])
         self.assertEqual(a[:4], ["bwrap", "--clearenv", "--unshare-all", "--share-net"])
         for flag in ("--die-with-parent", "--new-session", "--tmpfs", "--proc", "--dev", "--chdir"):
             self.assertIn(flag, a)
@@ -107,6 +114,44 @@ class SandboxTest(unittest.TestCase):
         with self.assertRaisesRegex(plugins.StageError, "too long"):
             self.facts(self.mk("import time\ntime.sleep(60)"), timeout=1)
         self.assertLess(time.monotonic() - t, 4)
+
+    def test_no_systemd_socket_even_with_system_status(self):
+        uid = os.getuid()
+        body = ("import json, os, socket\nr = []\n"
+                "for q in ('/run/user/%d/systemd/private', '/run/user/%d/systemd', '/run/current-system'):\n    r.append(str(os.path.exists(q)))\n"
+                "s = socket.socket(socket.AF_UNIX)\ntry:\n    s.connect('/run/user/%d/systemd/private'); r.append('connected')\nexcept OSError:\n    r.append('refused')\n"
+                "print(json.dumps({'v':1,'kind':'facts','title':'t','points':r}))") % (uid, uid, uid)
+        p = self.mk(body, reads=["system-status"])
+        self.assertNotIn(f"/run/user/{uid}", " ".join(plugins.sandbox_argv(p.dir, p.manifest["stage"])))
+        self.assertEqual(self.facts(p), ["False", "False", "False", "refused"])
+
+    def test_system_status_arrives_on_stdin(self):
+        p = self.mk("import json, sys\nq = json.load(sys.stdin)['system_status']\n"
+                    "print(json.dumps({'v':1,'kind':'facts','title':'t','points':[json.dumps(q)]}))", reads=["system-status"])
+        with mock.patch.object(plugins, "system_status", return_value={"generation": "g-1", "failed": ["a.service"]}):
+            self.assertEqual(json.loads(self.facts(p)[0]), {"generation": "g-1", "failed": ["a.service"]})
+
+    def test_nix_status_says_unavailable_when_the_query_failed(self):
+        with mock.patch.object(plugins, "system_status", return_value={"generation": "nixos-system-h-1", "failed": None}):
+            pts = plugins.run_stage(load(EX / "nix-status"), "nixi status")["points"]
+        self.assertEqual(pts[:2], ["System: system-h-1", "Failed user services: unavailable"])
+
+    def test_a_file_over_64_mib_cannot_be_written(self):
+        p = self.mk("import json\ntry:\n    with open('/tmp/big', 'wb') as f:\n        for _ in range(80):\n            f.write(b'x' * (1 << 20))\n    r = 'wrote'\n"
+                    "except OSError:\n    r = 'refused'\nprint(json.dumps({'v':1,'kind':'facts','title':'t','points':[r]}))")
+        try:
+            self.assertEqual(self.facts(p), ["refused"])
+        except plugins.StageError:                                 # (or the limit's signal ended it: also no file)
+            pass
+        self.assertIn(str(plugins.TMP_SIZE), plugins.sandbox_argv(p.dir, p.manifest["stage"]))
+
+    def test_stdin_and_stderr_cannot_hold_it_past_the_limit(self):
+        t = time.monotonic()
+        with self.assertRaisesRegex(plugins.StageError, "too long"):
+            plugins.run_stage(self.mk("import time\ntime.sleep(60)"), "x" * 200_000, timeout=1)
+        self.assertLess(time.monotonic() - t, 4)
+        got = self.facts(self.mk("import sys, json\nsys.stderr.write('e' * 100_000)\nprint(json.dumps({'v':1,'kind':'facts','title':'t','points':['ok']}))"))
+        self.assertEqual(got, ["ok"])
 
     def test_oversized_output_refused(self):
         with self.assertRaisesRegex(plugins.StageError, "too much"):

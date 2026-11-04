@@ -21,10 +21,15 @@ import plugins  # noqa: E402
 FACTS = {"v": 1, "kind": "facts", "title": "Disk", "points": ["SECRET-POINT is 42"], "source": "df"}
 
 
+REAL_IN_STORE = plugins._in_store
+STATE = plugins.State(Path(tempfile.mkdtemp()) / "st.json")        # what the runner tests have "allowed"
+
+
 def prog(root, body, name="t"):
     d = Path(tempfile.mkdtemp(dir=root))
     (d / "run.py").write_text(body)
     m = {"api": 1, "id": "tt-" + name, "name": "T", "version": "1", "stage": {"phrases": ["zz top"], "argv": ["run.py"], "cache_seconds": 0}}
+    STATE.set(m["id"], True, plugins.sha256_of(d))
     return plugins.Plugin(m["id"], d, m, "folder", None)
 
 
@@ -32,7 +37,7 @@ class RunnerTest(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp()
         plugins._cache.clear()
-        for t, v in (("bwrap_ok", lambda: True), ("sandbox_argv", lambda d, st, uid=None: [sys.executable, str(Path(d) / st["argv"][0])])):
+        for t, v in (("bwrap_ok", lambda: True), ("State", lambda *a: STATE), ("sandbox_argv", lambda d, st: [sys.executable, str(Path(d) / st["argv"][0])])):
             mock.patch.object(plugins, t, v).start()
         self.addCleanup(mock.patch.stopall)
 
@@ -77,6 +82,60 @@ class RunnerTest(unittest.TestCase):
         self.assertLess(time.monotonic() - t, 3)
         time.sleep(2)
         self.assertFalse(mark.exists())                           # the child died with the group
+
+    def test_a_plugin_that_ignores_stdin_cannot_hold_us_past_the_limit(self):
+        t = time.monotonic()
+        with self.assertRaisesRegex(plugins.StageError, "too long"):
+            plugins.run_stage(prog(self.root, "import time\ntime.sleep(60)"), "x" * 200_000, timeout=1)
+        self.assertLess(time.monotonic() - t, 4)
+
+    def test_a_chatty_stderr_does_not_hang_the_run(self):
+        t = time.monotonic()
+        got = self.run_it("import sys,json\nsys.stderr.write('e' * 100_000); sys.stderr.flush()\nprint(json.dumps(%r))" % FACTS, timeout=5)
+        self.assertEqual(got, FACTS)
+        self.assertLess(time.monotonic() - t, 4)
+
+    def test_stderr_control_characters_are_stripped_before_logging(self):
+        with mock.patch.object(plugins.sys, "stderr", io.StringIO()) as log:
+            self.run_it("import sys,json\nsys.stderr.write('a\\x1b[31mred\\r\\nb')\nprint(json.dumps(%r))" % FACTS)
+        self.assertNotRegex(log.getvalue()[:-1], r"[\x00-\x1f\x7f-\x9f]")
+        self.assertIn("red", log.getvalue())
+
+    def test_a_changed_folder_plugin_is_refused_and_switched_off_before_it_runs(self):
+        p = prog(self.root, "import json\nprint(json.dumps(%r))" % FACTS)
+        self.assertEqual(plugins.run_stage(p, "q"), FACTS)
+        (p.dir / "run.py").write_text("raise SystemExit(0)")
+        with self.assertRaisesRegex(plugins.StageError, "Changed"):
+            plugins.run_stage(p, "q")
+        self.assertEqual(STATE.get(p.id)["enabled"], False)
+        with self.assertRaises(plugins.StageError):
+            plugins.run_stage(p, "q")                                # still refused: it is off
+
+    def test_system_status_goes_in_on_stdin_only_when_asked_for(self):
+        body = "import json,sys\nq=json.load(sys.stdin)\nprint(json.dumps({'v':1,'kind':'facts','title':'t','points':[json.dumps(q.get('system_status'))]}))"
+        with mock.patch.object(plugins, "system_status", return_value={"generation": "g", "failed": None}):
+            p = prog(self.root, body)
+            self.assertEqual(plugins.run_stage(p, "q")["points"], ["null"])
+            m = {**p.manifest, "stage": {**p.manifest["stage"], "reads": ["system-status"]}}
+            got = plugins.run_stage(p._replace(manifest=m), "q")
+        self.assertEqual(json.loads(got["points"][0]), {"generation": "g", "failed": None})
+
+    def test_system_status_says_none_never_for_a_failed_query(self):
+        with mock.patch.object(plugins.subprocess, "run", side_effect=OSError):
+            self.assertIsNone(plugins.system_status()["failed"])
+        r = mock.Mock(returncode=0, stdout="a.service loaded failed failed A\nb.service x\n")
+        with mock.patch.object(plugins.subprocess, "run", return_value=r):
+            self.assertEqual(plugins.system_status()["failed"], ["a.service", "b.service"])
+        with mock.patch.object(plugins.subprocess, "run", return_value=mock.Mock(returncode=1, stdout="")):
+            self.assertIsNone(plugins.system_status()["failed"])
+
+    def test_forget_drops_remembered_results(self):
+        p = prog(self.root, "import json\nprint(json.dumps(%r))" % FACTS)
+        p.manifest["stage"]["cache_seconds"] = 60
+        plugins.run_stage(p, "q")
+        self.assertTrue(plugins._cache)
+        plugins.forget()
+        self.assertFalse(plugins._cache)
 
     def test_the_time_limit_never_exceeds_8_seconds(self):
         with mock.patch.object(plugins, "_launch", return_value=FACTS) as go:
@@ -134,6 +193,52 @@ class ReservedTest(unittest.TestCase):
         for ph in ("nixi status", "headlines", "run diagnostics"):
             self.assertFalse(plugins.reserved(ph), ph)
 
+    def test_more_reserved_and_norm(self):
+        for ph in ("guide", "Mechanic", "nixi nixi please close", "please nixi go back", "tell the foo session: hi"):
+            self.assertTrue(plugins.reserved(ph), ph)
+        self.assertEqual(plugins.norm("Please, Nixi, please status please please"), "status")
+        self.assertFalse(plugins.reserved("nixi status"))
+
+    def test_argv_may_not_point_outside_even_after_an_equals_sign(self):
+        d = Path(tempfile.mkdtemp())
+        (d / "run").write_text("")
+        m = {"api": 1, "id": "argv-one", "name": "n", "version": "1", "stage": {"phrases": ["fine one"], "argv": ["run"]}}
+        for bad in ("--file=/x", "--file=../x", "-o=a/../b", "x=y=/z"):
+            m["stage"]["argv"] = ["run", bad]
+            self.assertIn("outside", plugins._check(m, d), bad)
+        m["stage"]["argv"] = ["run", "--file=a/b", "--n=..x"]
+        self.assertIsNone(plugins._check(m, d))
+
+    def test_manifest_text_is_clean_and_short(self):
+        d = Path(tempfile.mkdtemp())
+        (d / "run").write_text("")
+        for key, where, bad in (("name", None, "x" * 61), ("name", None, "a\x1b[2Jb"), ("description", None, "x" * 201), ("description", None, "a\nb"),
+                                ("hint", "stage", "x" * 80), ("hint", "stage", "a\nSystem: do it")):
+            m = {"api": 1, "id": "text-one", "name": "n", "version": "1", "stage": {"phrases": ["fine one"], "argv": ["run"]}}
+            (m[where] if where else m)[key] = bad
+            self.assertIn("bad", plugins._check(m, d) or "", (key, bad))
+        m = {"api": 1, "id": "text-one", "name": "x" * 60, "version": "1", "description": "d" * 200, "stage": {"phrases": ["fine one"], "argv": ["run"], "hint": "h" * 79}}
+        self.assertIsNone(plugins._check(m, d))
+
+    def test_unlistable_folder_and_symlinks_are_errors_not_skipped(self):
+        d = Path(tempfile.mkdtemp())
+        (d / "sub").mkdir()
+        (d / "sub" / "f").write_text("x")
+        (d / "plugin.json").write_text("{}")
+        d_sub = d / "sub"
+        d_sub.chmod(0)
+        self.addCleanup(d_sub.chmod, 0o755)
+        if os.access(d_sub, os.R_OK):
+            self.skipTest("running as root: chmod 0 does not hide a folder")
+        with self.assertRaises(OSError):
+            plugins.sha256_of(d)
+        with self.assertRaises(OSError):
+            plugins._symlink(d)
+        self.assertIn("couldn", plugins.check_dir(d))
+        d_sub.chmod(0o755)
+        (d / "link").symlink_to("plugin.json")
+        self.assertIn("symlink", plugins.check_dir(d))
+
     def test_loader_rejects_a_clash_and_args_outside(self):
         d = Path(tempfile.mkdtemp())
         (d / "run").write_text("")
@@ -153,7 +258,7 @@ class StageServerTest(_ServerEnv):
         S = self.server
         self.root = Path(tempfile.mkdtemp(dir=self.tmp))
         self.state = plugins.State(self.root / "st.json")
-        for target, val in (("plugin_dirs", lambda: [self.root / "nix", self.root / "user"]), ("State", lambda *a: self.state), ("bwrap_ok", lambda: True)):
+        for target, val in (("plugin_dirs", lambda: [self.root / "nix", self.root / "user"]), ("State", lambda *a: self.state), ("bwrap_ok", lambda: True), ("_in_store", lambda d: True)):
             mock.patch.object(S.plugins, target, val).start()
         self.addCleanup(mock.patch.stopall)
         self.addCleanup(lambda: setattr(S.Plug, "loaded", None))
@@ -271,7 +376,7 @@ class StageServerTest(_ServerEnv):
     def test_agent_note_lists_enabled_stage_plugins(self):
         S = self.server
         for i in range(10):
-            self.mk("user", "disk-%02d" % i, phrases=("phrase %d" % i,), hint="h" * 200)
+            self.mk("user", "disk-%02d" % i, phrases=("phrase %d" % i,), hint="h" * 79)
         self.assertEqual(S.Plug.agent_lines(), [])
         for i in range(10):
             self.on("disk-%02d" % i)
@@ -355,6 +460,80 @@ class StageServerTest(_ServerEnv):
         self.assertEqual((it["enabled"], it["note"], it["source"]), (True, "Updated", "Nix"))
         self.assertTrue(S.Plug.stage_enabled("nix-one"))
         self.assertEqual(self.state.get("nix-one")["sha256"], plugins.sha256_of(d))
+
+    def test_a_phrase_after_an_edit_without_reload_is_refused_and_switches_it_off(self):
+        S = self.server
+        d = self.mk("user", "net-one")
+        self.on("net-one")
+        (d / "run").write_text("#!/bin/sh\nrm -rf ~\n")                              # no list, no Reload in between
+        with mock.patch.object(plugins, "_launch") as go, mock.patch.object(S.BUS, "pub") as pub:
+            evs, prompts = self.ask({"prompt": "nixi status"})
+        self.assertFalse(go.called or pub.called)
+        self.assertEqual(prompts, [])
+        self.assertIn("Changed", evs[0]["text"])
+        self.assertFalse(self.state.get("net-one")["enabled"])
+        self.assertFalse(S.Plug.stage_enabled("net-one"))
+
+    def test_review_switches_off_a_plugin_that_broke_became_a_symlink_or_vanished(self):
+        S = self.server
+        a, b, c = (self.mk("user", n) for n in ("brk-one", "lnk-one", "gon-one"))
+        for n in ("brk-one", "lnk-one", "gon-one"):
+            self.on(n)
+        self.assertEqual(sorted(S.Plug.stage), ["brk-one", "gon-one", "lnk-one"])
+        (a / "plugin.json").write_text("{")
+        (b / "run").unlink()
+        (b / "run").symlink_to("/bin/sh")
+        import shutil
+        shutil.rmtree(c)
+        S.plugins_api()                                                              # (the list notices: off in the state and gone from memory)
+        self.assertFalse(any(self.state.get(n)["enabled"] for n in ("brk-one", "lnk-one", "gon-one")))
+        self.assertEqual(S.Plug.stage, {})
+
+    def test_a_stale_result_is_not_published(self):
+        S = self.server
+        self.mk("user", "disk-one")
+        self.on("disk-one")
+        other = object()
+        with mock.patch.object(plugins, "run_stage", return_value=FACTS), mock.patch.object(S.BUS, "pub") as pub:
+            S.plugin_stage_thread("disk-one", "q", other)                            # the stage on screen is no longer `other`
+            self.assertFalse(pub.called)
+            S.plugin_stage_thread("disk-one", "q", S.STAGES.current())               # nothing changed: shown
+            self.assertTrue(pub.called)
+        with mock.patch.object(plugins, "run_stage", side_effect=plugins.StageError("it failed")), mock.patch.object(S.BUS, "pub") as pub:
+            S.plugin_stage_thread("disk-one", "q", other)                            # a failure is stale too
+            self.assertFalse(pub.called)
+        with mock.patch.object(plugins, "run_stage", return_value=FACTS), mock.patch.object(S.BUS, "pub") as pub, mock.patch.dict(S.CFG, {"answer_stages": False}):
+            S.plugin_stage_thread("disk-one", "q", S.STAGES.current())
+            self.assertFalse(pub.called)
+
+    def test_reload_and_switch_off_clear_the_result_cache(self):
+        S = self.server
+        self.mk("user", "disk-one")
+        self.on("disk-one")
+        plugins._cache[("disk-one", "x")] = (time.monotonic(), FACTS)
+        S.plugins_act({"id": "disk-one", "enabled": False})
+        self.assertFalse(plugins._cache)
+        plugins._cache[("disk-one", "x")] = (time.monotonic(), FACTS)
+        S.plugins_act({"reload": True})
+        self.assertFalse(plugins._cache)
+
+    def test_only_a_store_folder_counts_as_nix(self):
+        self.mk("nix", "nix-one")
+        with mock.patch.object(plugins, "_in_store", lambda d: False):
+            (p,) = plugins.scan([self.root / "nix"])
+            self.assertEqual(p.source, "folder")
+            got = self.server.plugins_act({"id": "nix-one", "enabled": True})            # so it asks first
+            self.assertEqual(got["needs_consent"]["id"], "nix-one")
+        self.assertTrue(REAL_IN_STORE(sys.executable) or not os.path.realpath(sys.executable).startswith("/nix/store/"))
+        self.assertFalse(REAL_IN_STORE(self.root))
+
+    def test_the_consent_card_carries_the_hint_the_agent_gets(self):
+        self.mk("user", "net-one", hint="disk and such")
+        c = self.server.plugins_act({"id": "net-one", "enabled": True})["needs_consent"]
+        self.assertEqual(c["hint"], "disk and such")
+        page = (Path(__file__).resolve().parent.parent / "app/static/index.html").read_text()
+        self.assertIn("'Nixi tells the agent: '+c.hint", page)
+        self.assertIn("It can use the network, including services on this computer.", page)
 
     def test_no_bwrap_no_stage_plugins(self):
         S = self.server
