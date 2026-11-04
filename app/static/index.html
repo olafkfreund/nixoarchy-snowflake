@@ -1004,7 +1004,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), lerp=(a,b,k)=>a+(b-a)*k;
 const approach=(a,b,dt,rate)=>a+(b-a)*(1-Math.exp(-rate*dt));      // frame-rate independent smoothing
 const hdr=x=>Object.assign({'X-Nixi-Token':TOKEN},x||{});
 const post=(u,b,o)=>tokenReady.then(()=>fetch(u,Object.assign({method:'POST',headers:hdr({'Content-Type':'application/json'}),body:JSON.stringify(b||{})},o||{})))
-  .then(r=>{ if(r.status===403) staleToken(); return r; });
+  .then(r=>{ if(r.status===403) r.clone().json().then(j=>{ if(j.error==='forbidden') staleToken(); }).catch(()=>{}); return r; });   // (only a refused token: "off in nixi mode" is also a 403, and reloading for it lost the open panel, #175)
 function staleToken(){                       // the server restarted with a new token: ask the window for it (at most every 10 s)
   let last=0; try{ last=+sessionStorage.getItem('nixi-reload')||0; }catch(e){}
   if(Date.now()-last<10000) return;
@@ -3731,6 +3731,7 @@ function fit(){ const k=Math.min(1, innerWidth/340, innerHeight/460); fitK=k>0.9
 // the window widened for a panel: it grew to the left by ox px, so shift the page back and he stays exactly where he was
 window.nixiLayout=(ox,oy)=>{ layoutX=ox|0; layoutY=oy|0; fit(); cardPlace(); stagePlace(); sendRegion(true); requestAnimationFrame(moveInd); };
 addEventListener('resize',()=>{ fit(); cardPlace(); sendRegion(true); moveInd(); }); fit();
+if(NATIVE){ native('wide:off'); sizeWindow(); }   // (a reload forgets any panel: the window must not keep its size)
 function sendRegion(force){
   calmCheck();
   if(!NATIVE) return;
