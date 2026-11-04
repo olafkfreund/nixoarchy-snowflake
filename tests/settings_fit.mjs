@@ -463,6 +463,29 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   await ev("settings(false); localStorage.removeItem('nixi.setSize'); setW=0; setH=0; return 1"); await view(340,460);
 }
 
+// #187: the weather cloud moves aside while a notification mark shows, and comes back after
+{ const dx = () => ev("return Math.abs(+(/translate\\((-?[\\d.]+)/.exec(wxEl.getAttribute('transform'))||[0,0])[1])+''").then(Number);
+  const until = async (ok, ms = 4000) => { const t0 = Date.now(); let v = await dx(); while (!ok(v) && Date.now() - t0 < ms) { await sleep(100); v = await dx(); } return v; };
+  await ev("for(const k of ['snow','clear','partly','cloudy']) sitOn[k]=false; sitOn.rain=true; return 1"); await sleep(300);
+  await ev("agentMark('claude','ask'); return 1");
+  const out = await until(v => v > 80);
+  const on = await ev("const a=wxEl.getBoundingClientRect(), b=document.querySelector('#agentMark').getBoundingClientRect(); return [a.left, b.right]");
+  check(out > 80 && on[0] >= on[1] - 1, "weather: the cloud stands clear of the notification mark", JSON.stringify([out, on]));
+  await ev("AM.until=0; AM=null; renderCue(); return 1");
+  const back = await until(v => v < 12);
+  const another = await ev("return wxAside(performance.now())");   // (an ambient cue can legitimately appear in the test: then it rightly stays aside)
+  check(back < 12 || another, "weather: the cloud comes back when the mark goes", JSON.stringify([back, another]));
+  // (Codex: only the sun shows on a clear day and it doesn't overlap; the situation logic resets sitOn, so ask the rule directly)
+  // with a hat the cloud is already left of the marks: +90 would put it on them (Codex, PR #44; LOOK.skin, because the situation logic resets sitOn)
+  const hatted = await ev("const was=LOOK.skin; LOOK.skin='halo'; AM={from:'claude',kind:'ask',t0:0,until:performance.now()+9000}; await new Promise(r=>setTimeout(r,1500)); const dx=Number(wxEl.getAttribute('transform').match(/translate\\(([-\\d.]+)/)[1]); AM=null; LOOK.skin=was; return dx");
+  check(hatted < 12, "weather: with a hat the cloud stays left of the marks", String(hatted));
+  // heavy rain's small extra clouds land on the marks once the sky has moved aside (Codex, PR #44), so they go while a mark is up
+  const extras = await ev("const skies=['snow','rain','clear','partly','cloudy'].map(k=>[k,sitOn[k]]), wasH=SIT.heavy, wasL=lowFx, wasOn=wxOn; skies.forEach(([k])=>sitOn[k]=k==='rain'); SIT.heavy=true; lowFx=false; const shown=on=>{ wxOn=on; wxStep(1,1); const op=+(WX.ex[0].getAttribute('opacity')||0), d=WX.ex[0].getAttribute('display'); return d!=='none'&&op>0; }; const a=shown(false), b=shown(true); skies.forEach(([k,v])=>sitOn[k]=v); SIT.heavy=wasH; lowFx=wasL; wxOn=wasOn; return [a,b]");
+  check(extras[0] === true && extras[1] === false, "weather: heavy rain's small clouds leave while a mark is up", JSON.stringify(extras));
+  const clear = await ev("sitOn.clear=true; AM={from:'claude',kind:'ask',t0:0,until:performance.now()+9000}; const r=wxAside(performance.now()); AM=null; sitOn.clear=false; return r");
+  check(clear === false, "weather: a clear sky stays put under a mark", String(clear));
+  await ev("sitOn.rain=false; renderCue(); return 1"); }
+
 check(exc.size === 0, "no page exceptions", [...exc].join(" ;; "));
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
 console.log(fails.length ? `\n${fails.length} failed: ${fails.join(", ")}` : "\nall pass");
