@@ -53,7 +53,7 @@ class ElevenTest(unittest.TestCase):
     def restore(self):
         eleven.DATA_DIR, eleven.CFG, eleven.urlopen = self.old_dir, self.old_cfg, self.old_open
 
-    def voice_cache(self, preview_url="https://storage.googleapis.com/audio.mp3"):
+    def voice_cache(self, preview_url="https://storage.googleapis.com/eleven-public-prod/premade/voices/a/b.mp3"):
         eleven._write(eleven.DATA_DIR / "eleven-voices.json", [{"id": VOICE, "preview_url": preview_url}])
 
     def test_key_symlink_and_rejections(self):
@@ -301,18 +301,28 @@ class ElevenTest(unittest.TestCase):
         self.assertEqual(eleven.today()["reserved"], 5)
 
     def test_preview_rejections_and_success(self):
+        mp3, seen = b"ID3\x04" + b"\0" * 40, []
+        def fake(req, timeout):
+            seen.append(req)
+            return Response(mp3, content_type="text/plain")   # (what Google really sends for these MP3s)
         self.voice_cache()
-        eleven.urlopen = lambda req, timeout: Response(b"MP3", content_type="audio/mpeg")
-        self.assertEqual(eleven.preview(VOICE), b"MP3")
-        for url in ("http://storage.googleapis.com:443/a", "https://127.0.0.1:443/a",
-                    "https://storage.googleapis.com.evil:443/a", "https://storage.googleapis.com:444/a",
-                    "https://storage.googleapis.com:bad/a"):
+        eleven.urlopen = fake
+        self.assertEqual(eleven.preview(VOICE), mp3)
+        self.voice_cache(f"https://api.us.elevenlabs.io/v1/voices/{VOICE}/previews/audio?payload=abc")   # (ElevenLabs' signed links)
+        self.assertEqual(eleven.preview(VOICE), mp3)
+        self.assertTrue(all(r.get_header("Xi-api-key") is None for r in seen))   # a preview never carries the key
+        for url in ("http://storage.googleapis.com/eleven-public-prod/a", "https://127.0.0.1/a",
+                    "https://storage.googleapis.com.evil/eleven-public-prod/a", "https://storage.googleapis.com:444/eleven-public-prod/a",
+                    "https://storage.googleapis.com:bad/a", "https://storage.googleapis.com/someone-else/a",
+                    "https://storage.googleapis.com/eleven-public-prod/a?x=1",
+                    "https://api.us.elevenlabs.io/v1/user", f"https://api.us.elevenlabs.io/v1/voices/{VOICE}/previews/audio#x",
+                    "https://u:p@api.elevenlabs.io/v1/voices/" + VOICE + "/previews/audio"):
             self.voice_cache(url)
-            with self.assertRaises(eleven.ElevenError):
+            with self.assertRaises(eleven.ElevenError, msg=url):
                 eleven.preview(VOICE)
         self.voice_cache()
-        for response in (Response(status=302), Response(b"x" * (1024 * 1024 + 1), content_type="audio/mpeg"),
-                         Response(b"x", content_type="text/html")):
+        for response in (Response(status=302), Response(b"ID3" + b"x" * (1024 * 1024), content_type="audio/mpeg"),
+                         Response(b"<html>not audio</html>", content_type="audio/mpeg")):   # (the bytes decide, not the header)
             eleven.urlopen = lambda req, timeout, response=response: response
             with self.assertRaises(eleven.ElevenError):
                 eleven.preview(VOICE)

@@ -233,10 +233,15 @@ def preview(voice_id):
         port = parts.port
     except ValueError:
         raise ElevenError("preview") from None
-    if parts.scheme != "https" or parts.hostname != "storage.googleapis.com" or port not in (None, 443) or not parts.path.startswith("/") or parts.username or parts.password or parts.query or parts.fragment:
+    host = parts.hostname
+    sample = host == "storage.googleapis.com" and parts.path.startswith("/eleven-public-prod/") and not parts.query
+    # (ElevenLabs' own signed preview links; no key is sent to either host)
+    own = host in ("api.elevenlabs.io", "api.us.elevenlabs.io") and parts.path == f"/v1/voices/{voice_id}/previews/audio"
+    if parts.scheme != "https" or port not in (None, 443) or parts.username or parts.password or parts.fragment or not (sample or own):
         raise ElevenError("preview")
-    data, headers = _request(urllib.request.Request(url), time.monotonic() + 5, limit=1024 * 1024)
-    if headers.get_content_type() not in ("audio/mpeg", "audio/wav"):
+    data, _ = _request(urllib.request.Request(url), time.monotonic() + 5, limit=1024 * 1024)
+    # The bytes decide, not the header: Google serves these MP3s as text/plain.
+    if not (data[:3] == b"ID3" or data[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2") or (data[:4] == b"RIFF" and data[8:12] == b"WAVE")):
         raise ElevenError("preview")
     return data
 

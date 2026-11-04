@@ -3501,18 +3501,23 @@ function locAsk(k,q){ const g=++locGen[k]; clearTimeout(locTm[k]); if(q.trim().l
       else if(e.key==='Escape'&&n){ e.stopPropagation(); locDrop(k); } }); } }
 let prevAudio=null, prevUrl=null;
 async function previewEleven(vid,btn){
-  const errEl=$('#elevenErr'); if(errEl) errEl.textContent='';
+  const errEl=$('#elevenErr'), label=btn&&btn.textContent, reset=()=>{ if(btn){ btn.disabled=false; btn.textContent=label; } };
+  if(errEl) errEl.textContent='';
+  const fail=()=>{ if(!btn) return; btn.disabled=false; btn.textContent='Couldn\u2019t play'; setTimeout(reset,3000); };   // (on the button: the section's error line can be scrolled away)
+  if(btn){ btn.disabled=true; btn.textContent='Loading\u2026'; }
   try{
     await tokenReady;
     const r=await fetch('/api/eleven/preview/'+encodeURIComponent(vid),{headers:hdr()});
-    if(!r.ok){ const j=await r.json().catch(()=>({})); if(errEl) errEl.textContent=j.error||'Couldn\u2019t play preview'; return; }
+    if(!r.ok) return fail();
     const blob=await r.blob(), url=URL.createObjectURL(blob);
     if(prevAudio){ try{ prevAudio.pause(); }catch(e){} }
     if(prevUrl) URL.revokeObjectURL(prevUrl);
     const au=new Audio(url); prevAudio=au; prevUrl=url;
-    au.onended=au.onerror=()=>{ if(prevUrl===url){ URL.revokeObjectURL(url); prevUrl=null; prevAudio=null; } };
-    await au.play().catch(()=>{});
-  }catch(e){ if(errEl) errEl.textContent=e.message; }
+    const done=()=>{ if(prevUrl===url){ URL.revokeObjectURL(url); prevUrl=null; prevAudio=null; } };
+    au.onended=()=>{ done(); reset(); }; au.onpause=reset; au.onerror=()=>{ done(); fail(); };
+    await au.play();
+    if(btn){ btn.disabled=false; btn.textContent='\u25a0 Playing'; }
+  }catch(e){ fail(); }
 }
 { const ec=$('#engChips'), why=$('#engWhy');
   if(ec&&why){
