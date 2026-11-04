@@ -646,7 +646,7 @@ class StageServerTest(_ServerEnv):
         self.assertEqual(c["hint"], "disk and such")
         page = (Path(__file__).resolve().parent.parent / "app/static/index.html").read_text()
         self.assertIn("'Nixi tells the agent: '+c.hint", page)
-        self.assertIn("It can use the internet (not this computer\\'s own services).", page)
+        self.assertIn("It can use the internet and your local networks (not this computer\\'s own services).", page)
 
     def test_no_bwrap_no_stage_plugins(self):
         S = self.server

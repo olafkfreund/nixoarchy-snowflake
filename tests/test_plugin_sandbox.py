@@ -125,7 +125,7 @@ class SandboxTest(unittest.TestCase):
 
     @unittest.skipUnless(plugins.pasta_ok() and shutil.which("ip"), "needs pasta and ip")
     def test_network_plugins_cannot_reach_this_computers_other_addresses(self):
-        addrs = [a for a in plugins._host_addrs() if not a.startswith("fe80")]
+        addrs = [a for a in plugins._host_addrs() if not a.startswith("fe80") and "/" not in a]
         self.assertTrue(addrs)
         srv = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
         srv.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
@@ -133,14 +133,16 @@ class SandboxTest(unittest.TestCase):
         srv.listen(5)
         self.addCleanup(srv.close)
         body = ("import json, socket\nr = []\nfor a in open('addrs').read().split():\n    s = socket.socket(socket.AF_INET6 if ':' in a else socket.AF_INET)\n"
-                "    s.settimeout(2)\n    try:\n        s.connect((a, int(open('port').read())))\n        r.append('connected ' + a)\n"
-                "    except OSError:\n        pass\nprint(json.dumps({'v':1,'kind':'facts','title':'t','points':['none'] if not r else r}))")
+                "    s.settimeout(0.2)\n    try:\n        s.connect((a, int(open('port').read())))\n        r.append('connected ' + a)\n"
+                "    except OSError:\n        pass\nprint(json.dumps({'v':1,'kind':'facts','title':'t','points':['none'] if not r else ['connected to %d, e.g. %s' % (len(r), r[0])]}))")
         self.assertEqual(self.facts(self.mk(body, network=True, files={"addrs": "\n".join(addrs), "port": str(srv.getsockname()[1])})), ["none"])
 
     @unittest.skipUnless(plugins.pasta_ok() and shutil.which("ip"), "needs pasta and ip")
     def test_the_routes_cannot_be_removed_from_inside(self):
-        body = ("import json, subprocess\nr = subprocess.run([%r, 'route', 'del', 'default'], capture_output=True)\n"
-                "print(json.dumps({'v':1,'kind':'facts','title':'t','points':['removed' if r.returncode == 0 else 'refused']}))") % os.path.realpath(shutil.which("ip"))
+        a = [x for x in plugins._host_addrs() if "/" not in x][0]          # one of the blocking routes itself, not the default route
+        body = ("import json, subprocess\nr = subprocess.run([%r, 'route', 'del', 'unreachable', %r], capture_output=True)\n"
+                "print(json.dumps({'v':1,'kind':'facts','title':'t','points':['removed' if r.returncode == 0 else 'refused']}))") % (
+                    os.path.realpath(shutil.which("ip")), a + ("/128" if ":" in a else "/32"))
         self.assertEqual(self.facts(self.mk(body, network=True)), ["refused"])
 
     def test_a_network_plugin_will_not_run_without_the_address_list(self):

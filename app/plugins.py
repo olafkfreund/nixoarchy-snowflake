@@ -459,16 +459,28 @@ LAUNCHER = ("import os, resource, sys\nresource.setrlimit(resource.RLIMIT_NPROC,
 # Runs inside pasta's namespace (full capabilities there; the plugin gets none): every address this computer owns becomes unreachable,
 # so pasta cannot forward to this computer's own services; then bwrap takes over. A route that cannot be added stops the run.
 ROUTER = ("import os, subprocess, sys\ni = sys.argv.index('--')\nfor a in sys.argv[1:i]:\n"
-          "    v6 = ':' in a\n    r = subprocess.run(['ip', '-6' if v6 else '-4', 'route', 'replace', 'unreachable', a + ('/128' if v6 else '/32')],"
+          "    v6 = ':' in a\n    r = subprocess.run(['ip', '-6' if v6 else '-4', 'route', 'replace', 'unreachable', a if '/' in a else a + ('/128' if v6 else '/32')],"
           " capture_output=True)\n    if r.returncode:\n        sys.exit('route: ' + r.stderr.decode(errors='replace'))\nos.execvp(sys.argv[i + 1], sys.argv[i + 1:])")
 _pasta = [None]
 
 
+# Tailscale's own resolver and web page live inside tailscaled on this computer but aren't one of its addresses
+HOST_EXTRA = ["100.100.100.100", "fd7a:115c:a1e0::53"]
+
+
 def _host_addrs():
-    """Every IPv4 and IPv6 address this computer owns on any interface (except loopback), read before the plugin's namespace exists."""
+    """Everything this computer delivers to itself (the kernel's local tables, so ranges and scope-host addresses too), except loopback,
+    plus HOST_EXTRA. Read before each run: an address that appears mid-run is open for at most that run (capped at TIME_MAX)."""
+    import ipaddress
+    found = set(HOST_EXTRA)
     try:
-        r = subprocess.run(["ip", "-j", "addr"], capture_output=True, timeout=5, check=True)
-        found = {a["local"] for i in json.loads(r.stdout) for a in i.get("addr_info", []) if a.get("scope") != "host"}
+        for fam in ("-4", "-6"):
+            r = subprocess.run(["ip", fam, "-j", "route", "show", "table", "local", "type", "local"], capture_output=True, timeout=5, check=True)
+            for e in json.loads(r.stdout or b"[]"):
+                dst = e["dst"]
+                net = ipaddress.ip_network(dst if "/" in dst else dst + ("/128" if ":" in dst else "/32"), strict=False)
+                if not net.is_loopback:
+                    found.add(str(net) if net.num_addresses > 1 else str(net.network_address))
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
         raise StageError("can't tell which addresses this computer has, so a plugin that uses the internet can't run safely")
     return sorted(found)
