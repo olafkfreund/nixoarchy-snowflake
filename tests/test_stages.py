@@ -121,6 +121,14 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(len(unsafe["items"]), 1)
         self.assertNotIn("url", unsafe["items"][0])
 
+    def test_headlines_video_query(self):
+        self.assertEqual(S.validate({**HEADLINES, "video_query": " world news "})["video_query"], "world news")
+        self.assertEqual(S.validate({**HEADLINES, "video_query": "a-b's"})["video_query"], "a-b's")
+        self.assertNotIn("video_query", S.validate(HEADLINES))
+        for bad in ("ab", "x" * 61, "a;b", "   ", True):
+            with self.subTest(query=bad):
+                self.assertIsNone(S.validate({**HEADLINES, "video_query": bad}))
+
     def test_news_url_ok(self):
         self.assertTrue(S.news_url_ok("https://www.bbc.co.uk/news/x"))
         for url in ("http://a.com/", "javascript:alert(1)", "https://u@a.com/", "https://a.com:8443/",
@@ -203,14 +211,68 @@ class StoreTest(unittest.TestCase):
         self.assertIsNone(self.s.replace(page["refresh"], updated))
 
     def test_headlines_tokens_hide_urls_and_say(self):
-        stage = S.validate(HEADLINES)
+        stage = S.validate({**HEADLINES, "video_query": "world news"})
         page = self.s.put(stage)
         self.assertNotIn("say", page)
+        self.assertNotIn("video_query", page)
         self.assertEqual(stage["say"], "Top stories.")
         self.assertNotIn("url", json.dumps(page))
         self.assertEqual(self.s.get(page["items"][0]["open"]), ("link", {"url": "https://www.bbc.co.uk/news/x"}))
         self.assertNotIn("open", page["items"][1])
         self.assertEqual(self.s.get(page["copy"]), ("facts", {"text": "First — BBC\nSecond — Guardian"}))
+
+    def test_add_clips_preserves_stage_and_tokens(self):
+        previous = self.s.put(S.validate(FACTS))
+        page = self.s.put(S.validate(HEADLINES))
+        self.s.set_visible(True)
+        self.t[0] = 5
+        items = [{"id": "abcdefghijk", "title": "Clip", "channel": "BBC", "duration": "1:23"}]
+        updated = self.s.add_clips(page["copy"], items)
+        self.assertEqual(self.s.current(), updated)
+        self.assertIsNot(updated, page)
+        self.assertNotIn("clips", page)
+        self.assertEqual(self.s.prev[0], previous)
+        self.assertTrue(self.s.visible())
+        self.assertEqual(self.s.cur[2], 0)
+        self.assertEqual(updated["items"], page["items"])
+        self.assertEqual(self.s.get(page["items"][0]["open"]), ("link", {"url": "https://www.bbc.co.uk/news/x"}))
+        clip = updated["clips"][0]
+        self.assertEqual({k: clip[k] for k in ("title", "channel", "duration")}, {k: items[0][k] for k in ("title", "channel", "duration")})
+        self.assertNotIn("http", json.dumps(updated))
+        self.assertEqual(self.s.get(clip["play"]), ("video", {"url": "https://www.youtube.com/watch?v=abcdefghijk"}))
+        self.assertEqual(self.s.get(clip["thumb"]), ("thumb", {"id": "abcdefghijk"}))
+        self.assertEqual(self.s.get(page["copy"]), ("facts", {"text": "First — BBC\nSecond — Guardian\nWatch:\nClip — BBC, 1:23"}))
+
+    def test_add_clips_refuses_invalid_or_stale_stage(self):
+        items = [{"id": "abcdefghijk", "title": "Clip", "channel": "", "duration": ""}]
+        page = self.s.put(S.validate(HEADLINES))
+        before = self.s.cur
+        self.assertIsNone(self.s.add_clips(page["copy"], []))
+        self.assertIsNone(self.s.add_clips("another copy", items))
+        self.assertIs(self.s.cur, before)
+        self.assertIsNotNone(self.s.add_clips(page["copy"], items))
+        self.assertIsNone(self.s.add_clips(page["copy"], items))
+        self.s.put(S.validate(HEADLINES))
+        self.t[0] = 601
+        self.assertIsNone(self.s.add_clips(self.s.cur[0]["copy"], items))
+        self.t[0] = 0
+        self.s.put(S.validate(FACTS))
+        self.assertIsNone(self.s.add_clips(page["copy"], items))
+        restored = self.s.put(S.validate(HEADLINES))
+        other = self.s.put(S.validate(HEADLINES))
+        self.assertEqual(self.s.back(), restored)
+        self.assertIsNone(self.s.add_clips(other["copy"], items))
+        self.assertNotIn("clips", restored)
+
+    def test_add_clips_copy_lines_omit_empty_parts(self):
+        items = [{"id": "abcdefghijk", "title": "Both", "channel": "BBC", "duration": "1:23"},
+                 {"id": "bcdefghijkl", "title": "Channel", "channel": "BBC", "duration": ""},
+                 {"id": "cdefghijklm", "title": "Length", "channel": "", "duration": "2:34"},
+                 {"id": "defghijklmn", "title": "Title", "channel": "", "duration": ""}]
+        page = self.s.put(S.validate(HEADLINES))
+        self.s.add_clips(page["copy"], items)
+        self.assertEqual(self.s.get(page["copy"])[1]["text"],
+                         "First — BBC\nSecond — Guardian\nWatch:\nBoth — BBC, 1:23\nChannel — BBC\nLength — 2:34\nTitle")
 
     def test_gauges_refresh_only_when_live_and_supplied(self):
         self.assertNotIn("refresh", self.s.put(S.validate(GAUGES)))
@@ -397,6 +459,11 @@ class VideoTest(unittest.TestCase):
         self.assertEqual(calls[0][0], ["yt-dlp", "--ignore-config", "--flat-playlist", "-J", "ytsearch3:a; rm -rf ~ --x"])
         self.assertEqual(calls[0][1]["timeout"], 8)
         self.assertNotIn("shell", calls[0][1])
+
+    def test_newest_search_uses_date_prefix(self):
+        calls = []
+        S.video_search("world news", self.run_fake(b'{"entries":[]}', calls), newest=True)
+        self.assertEqual(calls[0][0][-1], "ytsearchdate3:world news")
 
     def test_search_failures_are_empty(self):
         for out in (b"", b"{}", b"[1]", b'{"entries":[{"id":"bad id"}]}'):
