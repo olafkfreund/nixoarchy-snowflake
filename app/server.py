@@ -1806,6 +1806,8 @@ def plugin_caps(m):
             out.append("Can read your system status")
         if "peer-status" in m["stage"].get("reads", []):
             out.append("It can read your other machines' status (load, memory, disks, failed services)")
+        if m["stage"].get("videos"):
+            out.append("Can search YouTube for news clips (off in its settings)")
     return out
 
 
@@ -1880,7 +1882,7 @@ def plugins_act(b):
         else:
             return plugins_api(needs_consent={"id": pid, "name": str(p.manifest["name"]), "sha256": h, "network": bool(stg.get("network")),
                                               "what": str(p.manifest.get("description") or p.manifest["name"]), "hint": str(stg.get("hint") or ""),
-                                              "runs": " ".join(stg["argv"]), "reads": list(stg.get("reads", [])), "config": str(plugins.config_path(pid)) if stg.get("config") else ""})
+                                              "runs": " ".join(stg["argv"]), "reads": list(stg.get("reads", [])), "config": str(plugins.config_path(pid)) if stg.get("config") else "", "videos": bool(stg.get("videos"))})
         Plug.updated.pop(pid, None)
     Plug.reload()
     return plugins_api()

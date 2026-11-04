@@ -48,6 +48,12 @@ class PluginRoutesTest(_ServerEnv):
         S.plugins_act({"reload": True})
         self.assertEqual([p["id"] for p in S.Plug.props], ["hat-one"])
 
+    def test_caps_line_for_news_clips(self):
+        S = self.server
+        stage = {"phrases": ["news"], "argv": ["run"]}
+        self.assertIn("Can search YouTube for news clips (off in its settings)", S.plugin_caps({"stage": {**stage, "videos": True}}))
+        self.assertNotIn("Can search YouTube for news clips (off in its settings)", S.plugin_caps({"stage": stage}))
+
     def test_broken_listed_with_reason_and_refused(self):
         S = self.server
         self.mk("bad-one", surprise=1)

@@ -177,8 +177,37 @@ class RunnerTest(unittest.TestCase):
             plugins.config_path(p.id).parent.mkdir(parents=True)
             plugins.config_path(p.id).write_text('{"mine": 2}')
             self.assertEqual(plugins.sha256_of(p.dir), before)
-            self.assertEqual(json.loads(plugins.run_stage(q, "q")["points"][0]), {"mine": 2})
+            self.assertEqual(json.loads(plugins.run_stage(q, "q")["points"][0]), {"d": 1, "mine": 2})
             self.assertTrue(STATE.get(p.id)["enabled"])
+
+    def test_changed_settings_run_the_plugin_again_and_the_file_is_read_once(self):
+        body = "import json,sys\nq=json.load(sys.stdin)\nprint(json.dumps({'v':1,'kind':'facts','title':'t','points':[json.dumps(q.get('config'))]}))"
+        cfg = Path(tempfile.mkdtemp())
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(cfg)}):
+            p = prog(self.root, body)
+            (p.dir / "defaults.json").write_text('{"d": 1}')
+            STATE.set(p.id, True, plugins.sha256_of(p.dir))
+            q = p._replace(manifest={**p.manifest, "stage": {**p.manifest["stage"], "config": True, "cache_seconds": 60}})
+            plugins.config_path(p.id).parent.mkdir(parents=True)
+            plugins.config_path(p.id).write_text('{"mine": 1}')
+            with mock.patch.object(plugins, "read_user_config", wraps=plugins.read_user_config) as spy:
+                self.assertEqual(json.loads(plugins.run_stage(q, "q")["points"][0]), {"d": 1, "mine": 1})
+                self.assertEqual(spy.call_count, 1)                         # (key and stdin share one read)
+                self.assertEqual(json.loads(plugins.run_stage(q, "q")["points"][0]), {"d": 1, "mine": 1})   # cached
+            plugins.config_path(p.id).write_text('{"mine": 2}')
+            self.assertEqual(json.loads(plugins.run_stage(q, "q")["points"][0]), {"d": 1, "mine": 2})   # not the cached one
+
+    def test_a_changed_defaults_file_is_changed_not_an_oserror(self):
+        cfg = Path(tempfile.mkdtemp())
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(cfg)}):
+            p = prog(self.root, "")
+            (p.dir / "defaults.json").write_text('{"d": 1}')
+            STATE.set(p.id, True, plugins.sha256_of(p.dir))
+            q = p._replace(manifest={**p.manifest, "stage": {**p.manifest["stage"], "config": True}})
+            (p.dir / "defaults.json").write_text('{"d": 2}')
+            with self.assertRaises(plugins.StageError) as cm:
+                plugins.run_stage(q, "q")
+            self.assertEqual(str(cm.exception), plugins.CHANGED)
 
     def test_peer_feed_needs_declaration_consent_and_configuration(self):
         body = "import json,sys\nq=json.load(sys.stdin)\nprint(json.dumps({'v':1,'kind':'facts','title':'t','points':[json.dumps(q.get('peers'))]}))"
@@ -242,7 +271,7 @@ class RunnerTest(unittest.TestCase):
         now = [100.0]
         calls = []
 
-        def launch(p, q, loc, to, st):
+        def launch(p, q, loc, to, st, user=None):
             calls.append(q)
             if len(calls) == 3:
                 raise plugins.StageError("it took too long")
@@ -620,6 +649,12 @@ class StageServerTest(_ServerEnv):
         self.mk("user", "stat-one", reads=["system-status"])
         c = self.server.plugins_act({"id": "stat-one", "enabled": True})["needs_consent"]
         self.assertEqual((c["network"], c["reads"]), (False, ["system-status"]))
+
+    def test_consent_card_carries_the_youtube_flag(self):
+        self.mk("user", "news", videos=True)
+        self.assertIs(self.server.plugins_act({"id": "news", "enabled": True})["needs_consent"]["videos"], True)
+        self.mk("user", "stat-two", reads=[])
+        self.assertIs(self.server.plugins_act({"id": "stat-two", "enabled": True})["needs_consent"]["videos"], False)
 
     def test_a_forged_consent_for_the_wrong_plugin_or_hash_is_refused(self):
         S = self.server
