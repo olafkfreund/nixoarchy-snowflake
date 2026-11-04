@@ -2,14 +2,14 @@
   "api": 1,
   "id": "nix-status",
   "name": "Nix status",
-  "version": "1.0.0",
-  "description": "Which system generation is running, which user services failed, and how big the store is.",
+  "version": "2.0.0",
+  "description": "A live board of this computer: CPU, memory, disks, network, the running generation and failed services.",
   "stage": {
     "phrases": ["nixi status", "system status"],
-    "hint": "NixOS generation, failed user services, store size",
+    "hint": "live CPU, memory, disks, network and failed services",
     "argv": ["run"],
     "network": false,
-    "cache_seconds": 30,
+    "cache_seconds": 4,
     "reads": ["system-status"]
   }
 }
