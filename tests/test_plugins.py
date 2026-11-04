@@ -194,6 +194,7 @@ class Readings(unittest.TestCase):
             mock.patch.object(plugins, n, str(self.d / v)).start()
         self.addCleanup(mock.patch.stopall)
         plugins._last.clear()
+        plugins._generation_details.clear()
 
     def put(self, busy, idle, rx, tx):
         (self.d / "stat").write_text("cpu %d 0 0 %d 0 0 0 0 0 0\n" % (busy, idle))
@@ -207,6 +208,7 @@ class Readings(unittest.TestCase):
         self.assertEqual(cpu, 25.0)
         self.assertTrue(rx > 0 and tx > 0 and rx > tx)
         self.put(1, 1, 10, 10)                                  # counters went back
+        plugins._last["t"] -= 2                                 # (a reading under 1 s old is shared, #168)
         self.assertEqual(plugins._rates(), (None, None, None))
 
     def test_unreadable_is_null_not_zero(self):
@@ -217,7 +219,8 @@ class Readings(unittest.TestCase):
         starts = []
 
         def slow(cmd, **kw):
-            starts.append(time.monotonic())
+            if cmd[0] == "systemctl":                        # (nixos-version is read too, once per generation, #168)
+                starts.append(time.monotonic())
             time.sleep(1)
             return mock.Mock(returncode=0, stdout="")
         self.put(0, 0, 0, 0)
