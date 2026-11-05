@@ -520,6 +520,7 @@ const acts = () => ev("return __acts.slice()");
   let i=await begin('auto'); await frame(i,{t:'open'});
   await ev(`showAsk(); onEvent(${stage}); return 1`);
   check(await ev("return rec===null && stgState==='open' && ask.classList.contains('on')"), 'typed question opens board while old mic stream is live');
+  check(await poll("__posts.some(x=>x[0]==='/api/listen/stop'&&x[1].cancel===true)"), 'dropping an open mic stops it');
   await close(i); await reset();
 
   i=await begin('auto'); await frame(i,{t:'open'});
@@ -530,9 +531,11 @@ const acts = () => ev("return __acts.slice()");
   for(const event of [{t:'open'},{t:'speech'},{t:'note',text:'late note'},{t:'transcribing'},{t:'text',text:'late words'},{t:'error',text:'late error'}]){
     i=await begin('auto'); await ev("showAsk(); return 1");
     const before=await ev("return [youEl.textContent,himEl.textContent,__sends.length]");
-    await frame(i,event); check(await close(i), `cancelled ${event.t} stream completes`);
-    const after=await ev("return [youEl.textContent,himEl.textContent,__sends.length,rec]");
-    check(after[0]===before[0] && after[1]===before[1] && after[2]===before[2] && after[3]===null, `cancelled ${event.t} changes no caption and sends nothing`, JSON.stringify(after));
+    await frame(i,event);
+    if(event.t==='open') check(await poll("__posts.some(x=>x[0]==='/api/listen/stop'&&x[1].cancel===true)"), 'a mic dropped before it opened is stopped when it does');
+    check(await close(i), `cancelled ${event.t} stream completes`);
+    const after=await ev("return [youEl.textContent,himEl.textContent,__sends.length,rec,chip.textContent]");
+    check(after[0]===before[0] && after[1]===before[1] && after[2]===before[2] && after[3]===null && !after[4].includes('late note'), `cancelled ${event.t} changes no caption and sends nothing`, JSON.stringify(after));
     await reset();
   }
 
@@ -552,6 +555,14 @@ const acts = () => ev("return __acts.slice()");
   i=await begin('auto'); await frame(i,{t:'text',text:'spoken question?'}); await close(i);
   check(await poll("__sends.some(x=>x[0]==='spoken question?')"), 'completed recording sends its text');
   await poll("__posts.some(x=>x[0]==='/api/ask')"); await poll('!busy'); await reset();
+
+  { const n=await ev("__recordings.push(null); return __streams.length");   // (begin() numbers streams by __recordings)
+    await ev("dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true})); return 1");
+    check(await poll(`__streams.length>${n}`), 'Space starts a push-to-talk recording');
+    await ev("dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',repeat:true,bubbles:true})); return 1");
+    check(await ev("return rec?.mode==='ptt' && !ask.classList.contains('on')"), 'holding Space keeps the recording and the box shut');
+    await ev(`dispatchEvent(new KeyboardEvent('keyup',{key:' ',code:'Space',bubbles:true})); __streams[${n}].close(); return 1`);
+    await poll('!rec'); await reset(); }
 
   i=await begin('approve'); await ev("showAsk(); return 1");
   check(await ev("return rec?.mode==='approve'"), 'ask box spares approval recording');
@@ -573,7 +584,7 @@ const acts = () => ev("return __acts.slice()");
   await ev("__resumeResolve(); __delayResume=false; return 1");
   check(await poll("youEl.textContent==='Earlier question' && himEl.textContent==='Earlier answer'"), 'continue restores caption');
   await frame(i,{t:'text',text:'old speech'}); await close(i);
-  check(await ev("return youEl.textContent==='Earlier question' && himEl.textContent==='Earlier answer'"), 'old stream cannot replace resumed caption');
+  check(await ev("return youEl.textContent==='Earlier question' && himEl.textContent==='Earlier answer' && __sends.length===0"), 'old stream cannot replace resumed caption or send');
   await reset();
 
   await ev("info.quick_actions=[{label:'Screen task',prompt:'Describe the display?',attach:'screen'}]; openPanel('actions'); return 1");

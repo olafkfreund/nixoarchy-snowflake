@@ -3875,7 +3875,7 @@ addEventListener('keydown',e=>{ wake(); lastUser=performance.now();
   if(e.ctrlKey&&k==='h'){ e.preventDefault(); return openPanel('history'); }
   if(e.ctrlKey&&k===','){ e.preventDefault(); return settings(true); }
   if(e.key==='Enter'&&!askOn){ e.preventDefault(); return showAsk(); }
-  if(!e.ctrlKey&&!e.altKey&&!e.metaKey&&e.key.length===1&&document.activeElement!==input&&!setEl.classList.contains('on')&&!panelEl.classList.contains('on')) showAsk();
+  if(!e.repeat&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&e.key.length===1&&document.activeElement!==input&&!setEl.classList.contains('on')&&!panelEl.classList.contains('on')) showAsk();
 });
 addEventListener('keyup',e=>{ if(e.code==='Space'){ spaceHeld=false; if(rec&&rec.mode==='ptt'){ e.preventDefault(); stopRec(false); } } });
 addEventListener('blur',()=>{ spaceHeld=false; if(rec&&rec.mode==='ptt') stopRec(false); });
