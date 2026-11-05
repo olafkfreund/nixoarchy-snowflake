@@ -79,6 +79,16 @@ Because the agent runs under nixi's rules, these are hidden and refused by the c
 
 Everything else is unchanged: voice in and out, the face and its moods, skins and colours, hover mode and the edge notch.
 
+## Working on it
+
+The plugin sandbox tests skip without `pasta`, and the run still says `OK`. This command runs them all, and fails if it can't:
+
+```bash
+nix develop -c python3 -B tests/test_plugin_sandbox.py
+```
+
+A PR that touches `app/plugins.py`, `tests/test_plugin_sandbox.py` or the wrapper's PATH (`nix/package.nix`) needs a passing run, and the PR says so. If it touches the wrapper's PATH, it also needs `nix build .#checks.x86_64-linux.wrapper-has-sandbox-tools`.
+
 ## Need help?
 
 Run **`nixi-companion doctor`** first. It checks your mic and voice in a few seconds.
