@@ -317,7 +317,8 @@ if (ID === "snowflake" || ID === "robot") {
           u=u?{left:Math.min(u.left,r.left),top:Math.min(u.top,r.top),right:Math.max(u.right,r.right),bottom:Math.max(u.bottom,r.bottom)}:{left:r.left,top:r.top,right:r.right,bottom:r.bottom}; } }
       window.__wxU=u?{...u,width:u.right-u.left,height:u.bottom-u.top}:{left:0,top:0,right:0,bottom:0,width:0,height:0};` });
   const box = e => `(()=>{ const e=${e}; if(!e) return null; const r=e.getBoundingClientRect(); return r.width&&r.height?[r.left,r.top,r.right,r.bottom]:null; })()`;
-  const headphoneInk = `const bounds=(pts,pad=0)=>[Math.min(...pts.map(p=>p.x))-pad,Math.min(...pts.map(p=>p.y))-pad,Math.max(...pts.map(p=>p.x))+pad,Math.max(...pts.map(p=>p.y))+pad];
+  const headphoneInk = `if(+SIT_P.hf.getAttribute('opacity')<.9) return [null,null];   // (not drawn: never a pass)
+    const bounds=(pts,pad=0)=>[Math.min(...pts.map(p=>p.x))-pad,Math.min(...pts.map(p=>p.y))-pad,Math.max(...pts.map(p=>p.x))+pad,Math.max(...pts.map(p=>p.y))+pad];
     const path=SIT_P.bd.querySelector('path'), pm=path.getScreenCTM(), len=path.getTotalLength();
     const band=bounds(Array.from({length:60},(_,i)=>path.getPointAtLength(len*i/59).matrixTransform(pm)),5*Math.max(Math.hypot(pm.a,pm.b),Math.hypot(pm.c,pm.d)));
     const cups=[SIT_P.cL,SIT_P.cR].map(cu=>{ const m=cu.firstChild.getScreenCTM(); return bounds(Array.from({length:48},(_,i)=>{ const a=i*2*Math.PI/48; return new DOMPoint(18.5*Math.cos(a),29.5*Math.sin(a)).matrixTransform(m); })); });
