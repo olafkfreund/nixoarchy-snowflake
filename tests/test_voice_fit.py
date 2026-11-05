@@ -10,6 +10,7 @@ import time
 import unittest
 import urllib.request
 from pathlib import Path
+from _browser import start_browser
 
 REPO = Path(__file__).resolve().parent.parent
 BROWSER = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome-stable")
@@ -132,19 +133,7 @@ class VoiceFit(unittest.TestCase):
                     cwd=REPO, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )
             )
-            procs.append(
-                subprocess.Popen(
-                    [
-                        BROWSER, "--headless=new", "--disable-gpu", "--no-sandbox",
-                        "--no-proxy-server", "--use-angle=swiftshader", "--enable-unsafe-swiftshader",
-                        "--disable-gpu-compositing", "--autoplay-policy=no-user-gesture-required",
-                        f"--user-data-dir={home / 'chromium'}",
-                        f"--remote-debugging-port={cdp}",
-                        "--no-first-run", "about:blank",
-                    ],
-                    env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                )
-            )
+            procs.append(start_browser(BROWSER, cdp, home / "chromium", "--no-proxy-server", "--autoplay-policy=no-user-gesture-required", env=env))
             self.assertTrue(_wait(f"http://127.0.0.1:{port}/"), "server did not start")
             self.assertTrue(_wait(f"http://127.0.0.1:{cdp}/json/version"), "chromium did not start")
             for _ in range(40):
