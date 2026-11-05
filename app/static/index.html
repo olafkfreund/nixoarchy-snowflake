@@ -2168,7 +2168,7 @@ $('#mirBarBtn').addEventListener('click',e=>{ e.stopPropagation(); mirRevoke(); 
    Up to 3 wait (the oldest beyond that, and any not started in 120 s, stay in replay only); the last 5 are kept per turn,
    in memory. Each sentence is strict: never another voice. Stopping them is only speech, never /api/stop or the mic. */
 const agentLog=[], agentQ=[]; let agentCur=null, agentCheck=false, AGENT_GUARD=30000, AGENT_STALE=120000;
-const agentSplit=t=>(String(t).replace(/\s+/g,' ').trim().match(/[^.!?]+(?:[.!?]+['")\]]*|$)/g)||[]).map(x=>x.trim()).filter(Boolean);
+const agentSplit=t=>(String(t).replace(/\s+/g,' ').trim().match(/.+?(?:[.!?]+['")\]]*(?=\s|$)|$)/g)||[]).map(x=>x.trim()).filter(Boolean);   // (a full stop needs a space after it: "server.py", "1.5")
 function agentIn(ev){
   const e={from:ev.from,name:ev.name,turn:ev.turn,text:ev.text,kind:ev.kind,at:performance.now()};
   const i=agentLog.findIndex(x=>x.turn===e.turn); if(i>=0) agentLog.splice(i,1);
@@ -2177,28 +2177,34 @@ function agentIn(ev){
   if(setEl.classList.contains('on')) renderAgents();
 }
 function agentStop(){ agentQ.length=0; agentCur=null; shush(); }
+const agentBusy=()=>busy||rec||transcribing||pendingAppr||follow;     // (a summary never talks over any of these)
 async function agentTick(){
   if(agentCheck) return;
   if(hiddenNow){ if(agentCur||agentQ.length) agentStop(); return; }
   const now=performance.now();
   if(agentCur&&agentCur.sent){
+    if(sayEpoch!==agentCur.ep){ agentCur=null; return; }      // cut off by something else (a spoken question, a barge-in): not "finished"
     if(playing){ if(now-agentCur.sent>AGENT_GUARD){ agentCur=null; shush(); } return; }       // (a dropped event can't wedge him)
     agentCur.sent=0; agentCur.i++; }
   if(!agentCur){
     while(agentQ.length&&now-agentQ[0].at>AGENT_STALE) agentQ.shift();
-    if(!agentQ.length||busy||playing||rec||transcribing||pendingAppr||follow) return;
-    const e=agentQ.shift(); agentCur={e,ss:agentSplit(e.text),i:0,sent:0}; }
+    if(!agentQ.length||playing||agentBusy()) return;
+    const e=agentQ.shift(); agentCur={e,ss:agentSplit(e.text),i:0,sent:0,ep:0,reply:nextReply()}; }
   const c=agentCur;
   if(c.i>=c.ss.length){ agentCur=null; return; }
+  if(agentBusy()){ agentCur=null; return; }
   if(muted){ capShow(); setYou(''); himSet(c.e.text); capQuiet(); agentCur=null; return; }
-  agentCheck=true; let go=false;
-  try{ go=(await (await post('/api/agent-say/check')).json()).go===true; }catch(e){}
-  agentCheck=false;
-  if(agentCur!==c) return;                                   // stopped while checking
-  if(!go){ agentCur=null; return; }                          // (call, meeting, anything but "go": the rest of this summary is dropped)
-  if(c.i===0){ restore(Math.min(60000,4000+c.e.text.length*80),false); if(info.hover) await comeBack(); if(agentCur!==c) return;
-    agentMark(c.e.from,'done'); capShow(); setYou(''); himSet(''); }       // (no sfx, no tick: the finished alert already did)
-  c.sent=performance.now(); enqueue(c.ss[c.i],{follow:false,cap:true,strict:true,fresh:c.i===0});
+  agentCheck=true;      // held until this sentence is handed over: the 250 ms tick must not come in while we wait
+  try{
+    let go=false;
+    try{ go=(await (await post('/api/agent-say/check',{from:c.e.from})).json()).go===true; }catch(e){}
+    if(agentCur!==c) return;                                   // stopped while checking
+    if(!go||agentBusy()){ agentCur=null; return; }             // (call, meeting, anything but "go": the rest of this summary is dropped)
+    if(c.i===0){ restore(Math.min(60000,4000+c.e.text.length*80),false); if(info.hover) await comeBack(); if(agentCur!==c) return;
+      if(agentBusy()){ agentCur=null; return; }
+      agentMark(c.e.from,'done'); capShow(); setYou(''); himSet(''); }       // (no sfx, no tick: the finished alert already did)
+    c.sent=performance.now(); c.ep=sayEpoch; enqueue(c.ss[c.i],{follow:false,cap:true,strict:true,fresh:c.i===0,reply:c.reply});
+  } finally { agentCheck=false; }
 }
 setInterval(()=>agentTick().catch(()=>{ agentCheck=false; }),250);
 function onEvent(ev){
@@ -3649,8 +3655,8 @@ setEl.addEventListener('click',e=>{
   const bfb=g('fb'); if(bfb) return setSetting({tts_fallback:bfb.dataset.fb},'#elevenErr');
   const beprev=g('eprev'); if(beprev) return previewEleven(beprev.dataset.eprev,beprev);
   const bepick=g('epick'); if(bepick) return setSetting({eleven_voice:bepick.dataset.epick},'#elevenErr');
-  const barep=g('areplay'); if(barep){ const it=agentLog.find(x=>x.turn===barep.dataset.areplay)||agentLog[+barep.dataset.areplay]; if(it) enqueue(it.text,{follow:false,cap:true,strict:true}); return; }
-  if(g('amore')) return post('/api/agent-say/more');
+  const barep=g('areplay'); if(barep){ const it=agentLog.find(x=>x.turn===barep.dataset.areplay)||agentLog[+barep.dataset.areplay]; if(it){ agentQ.unshift({...it,at:performance.now()}); while(agentQ.length>3) agentQ.pop(); } return; }
+  if(g('amore')){ const l=agentLog[agentLog.length-1]; return l?post('/api/agent-say/more',{turn:l.turn}):null; }
   const bm=g('m'), bv=g('v'), bp=g('ps'), bi=g('idle'), bs=g('stt'), bt=g('trust'), bo=g('open'), bk=g('skin'), bsw=g('sw'), bpd=g('pdel');
   const part=e.target.closest('#lookPrev [data-part], #partChips [data-part]');
   if(part&&part.dataset.part) return selectPart(part.dataset.part);
@@ -3943,7 +3949,7 @@ addEventListener('keydown',e=>{ wake(); lastUser=performance.now();
   if(e.ctrlKey&&k==='h'){ e.preventDefault(); return openPanel('history'); }
   if(e.ctrlKey&&k===','){ e.preventDefault(); return settings(true); }
   if(e.key==='Enter'&&!askOn){ e.preventDefault(); return showAsk(); }
-  if(!e.ctrlKey&&!e.altKey&&!e.metaKey&&e.key.length===1&&document.activeElement!==input&&!setEl.classList.contains('on')&&!panelEl.classList.contains('on')) showAsk();
+  if(!e.ctrlKey&&!e.altKey&&!e.metaKey&&e.key.length===1&&document.activeElement!==input&&!setEl.classList.contains('on')&&!panelEl.classList.contains('on')){ if(agentCur) agentStop(); showAsk(); }
 });
 addEventListener('keyup',e=>{ if(e.code==='Space'){ spaceHeld=false; if(rec&&rec.mode==='ptt'){ e.preventDefault(); stopRec(false); } } });
 addEventListener('blur',()=>{ spaceHeld=false; if(rec&&rec.mode==='ptt') stopRec(false); });

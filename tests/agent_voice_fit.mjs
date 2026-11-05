@@ -21,11 +21,11 @@ const exc = new Set(); ws.addEventListener("message", e => { const m = JSON.pars
 await view(340, 460);
 await send("Page.navigate", { url: nativeUrl }); await sleep(4500);
 await ev(`setInterval(()=>{ nextFidAt=1e15; info.voice_native=!!window.__native; info.tts=true; },50); await post('/api/settings',{idle_mode:'off'}); if(window.setIdle) setIdle('full');
-  window.__calls=[]; window.__sfx=0; window.__tick=0; window.__native=true; window.__go=true; window.__autoend=true;
+  window.__calls=[]; window.__sfx=0; window.__tick=0; window.__native=true; window.__go=true; window.__autoend=true; window.__chk=0;
   const of=window.fetch;
   window.fetch=(u,o)=>{ const p=String(u).split('?')[0];
     if(['/api/say','/api/tts','/api/stop','/api/listen','/api/say/stop','/api/agent-say/check','/api/agent-say/more'].includes(p)){ __calls.push([p,o&&o.body?JSON.parse(o.body):null]);
-      if(p==='/api/agent-say/check') return Promise.resolve(new Response(JSON.stringify({go:window.__go}),{status:200}));
+      if(p==='/api/agent-say/check') return new Promise(r=>setTimeout(()=>r(new Response(JSON.stringify({go:window.__go}),{status:200})),window.__chk));
       if(p==='/api/tts') return window.__autoend?Promise.resolve(new Response(null,{status:204})):new Promise(()=>{});   // (never answers: a stuck sentence)
       return Promise.resolve(new Response('{"ok":true}',{status:200})); }
     return of(u,o); };
@@ -34,7 +34,7 @@ await ev(`setInterval(()=>{ nextFidAt=1e15; info.voice_native=!!window.__native;
   return 1`);
 const fails = [], check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} ${name}${extra ? "  " + extra : ""}`); if (!ok) fails.push(name); };
 const calls = async (...p) => (await ev("return __calls.slice()")).filter(c => !p.length || p.includes(c[0]));
-const reset = async (native = true) => { await ev(`agentStop(); agentLog.length=0; busy=false; muted=false; hiddenNow=false; AGENT_GUARD=30000; AGENT_STALE=120000; __native=${native}; __go=true; __autoend=true; __calls.length=0; __sfx=0; __tick=0; return 1`); await sleep(120); await ev("__calls.length=0; return 1"); };
+const reset = async (native = true) => { await ev(`agentStop(); agentLog.length=0; busy=false; muted=false; hiddenNow=false; AGENT_GUARD=30000; AGENT_STALE=120000; __native=${native}; __go=true; __autoend=true; __chk=0; __calls.length=0; __sfx=0; __tick=0; return 1`); await sleep(120); await ev("__calls.length=0; return 1"); };
 let n = 0;
 const say = (text, turn = "ab12cd34-" + (++n), from = "claude") => ev(`onEvent({t:'agent_say',from:${JSON.stringify(from)},name:'proj',turn:${JSON.stringify(turn)},text:${JSON.stringify(text)},kind:'short'}); return 1`);
 const waitFor = async (js, ms = 4000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await ev(`return !!(${js})`)) return true; await sleep(60); } return false; };
@@ -52,7 +52,11 @@ for (const native of [true, false]) {
       `${mode}: each sentence is sent strict`, JSON.stringify(sp));
     check(ck.length === 2, `${mode}: a check before every sentence`, String(ck.length));
     check((await ev("return [__sfx,__tick]")).join() === "0,0", `${mode}: no chime and no tick`);
-    check(await ls() === l0 && (await ev("return agentLog.length")) === 1, `${mode}: nothing stored, one replay entry`);
+    check(sp.length === 2 && !!sp[0][1].reply && sp[0][1].reply === sp[1][1].reply, `${mode}: one reply id for the whole summary`, JSON.stringify(sp.map(c => c[1].reply)));
+    await say("Third one."); await idle();
+    const sp2 = await calls(ep);
+    check(sp2.length === 3 && sp2[2][1].reply !== sp2[0][1].reply, `${mode}: the next summary gets a new reply id`);
+    check(await ls() === l0 && (await ev("return agentLog.length")) === 2, `${mode}: nothing stored, two replay entries`);
   }
 
   // 2. check says stop: nothing spoken, the rest of that summary dropped, the next summary still gets its check
@@ -122,6 +126,52 @@ for (const native of [true, false]) {
     check((await ev("return !agentCur&&!agentQ.length&&!playing")), `${mode}: sending a message ends the summary`);
     await ev("__autoend=true; return 1");
   }
+
+  // 9b. a sentence is split only at punctuation followed by a space
+  { const sp = await ev(`return [agentSplit("Version 1.5 of server.py passed. Next one!"), agentSplit("No stop")]`);
+    check(sp[0].join("|") === "Version 1.5 of server.py passed.|Next one!" && sp[1].join("|") === "No stop", `${mode}: a dot inside a word is no sentence end`, JSON.stringify(sp)); }
+
+  // 9c. hover mode: the tick must not re-enter while he comes back, so sentence 0 is said once
+  { await reset(native); await ev("window.__cb=comeBack; comeBack=async()=>{ await sleep(700); }; info.hover=true; return 1");
+    await say("Hovering. Again."); await idle();
+    const sp = (await calls(ep)).map(c => c[1].text);
+    check(sp.join("|") === "Hovering.|Again.", `${mode}: hover mode says sentence 0 once`, sp.join("|"));
+    await ev("comeBack=window.__cb; info.hover=false; return 1");
+  }
+
+  // 9d. something starts mid-summary (an approval, the mic) while the next check is out: the rest is dropped
+  { await reset(native); await ev("__chk=600; return 1");
+    await say("One here. Two there."); await waitFor("__calls.some(c=>c[0]==='"+ep+"')", 3000); await sleep(450);
+    await ev("busy=true; return 1"); await sleep(1200);
+    check((await calls(ep)).length === 1 && (await ev("return !agentCur")), `${mode}: busy after the check drops the rest of the summary`);
+    await ev("busy=false; __chk=0; return 1");
+  }
+
+  // 9e. cut off by something that is not agentStop (a spoken question, a barge-in): the rest is dropped
+  { await reset(native); await ev("__autoend=false; return 1");
+    await say("Cut me. Never said."); await waitFor("agentCur&&playing", 3000);
+    await ev("shush(); return 1"); await sleep(900);
+    check((await calls(ep)).length === 1 && (await ev("return !agentCur&&!agentQ.length")), `${mode}: a cut-off ends the summary, it is not "finished"`);
+    await ev("__autoend=true; return 1");
+  }
+
+  // 9f. typing into the ask box ends a running summary
+  { await reset(native); await ev("__autoend=false; return 1");
+    await say("Typing over. Me."); await waitFor("agentCur&&playing", 3000);
+    await ev("dispatchEvent(new KeyboardEvent('keydown',{key:'a',bubbles:true})); return 1"); await sleep(300);
+    check((await ev("return !agentCur&&!playing")), `${mode}: typing ends the summary`);
+    await ev("hideAsk(); input.value=''; __autoend=true; return 1");
+  }
+
+  // 9g. a strict sentence that is skipped still shows its words
+  { await reset(native); await ev("himSet(''); __autoend=false; return 1");
+    await say("Words stay."); 
+    if (native) { await waitFor("spkMap.size", 3000); await ev("for(const id of [...spkMap.keys()]) onEvent({t:'spk_skip',id}); return 1"); }
+    else await ev("__autoend=true; return 1");
+    const shown = await waitFor("(himEl.textContent+cap.textContent).includes('Words stay')", 3000);
+    check(shown, `${mode}: a skipped strict sentence shows as a caption`, await ev("return himEl.textContent+'|'+cap.textContent"));
+    await ev("__autoend=true; return 1");
+  }
 }
 
 // 10. Settings -> Voice -> Agents row (#191 step 4): switches, live list, Replay with strict, More on newest only, long title fit at 420x420, and <b> stays text
@@ -172,11 +222,24 @@ for (const native of [true, false]) {
   check(repSp.length === 1 && repSp[0][1].text === "Second summary for replay." && repSp[0][1].strict === true && repSp[0][1].follow === false,
     "Replay queues summary with strict:true and follow:false", JSON.stringify(repSp));
 
+  // Replay goes through the queue (check, guard): click and Space stop only the speech, and never open the mic
+  for (const [name, fire] of [["click", "E.body.dispatchEvent(new MouseEvent('click',{bubbles:true}))"],
+      ["Space", "dispatchEvent(new KeyboardEvent('keydown',{code:'Space',key:' ',bubbles:true}))"]]) {
+    await ev("__autoend=false; agentStop(); __calls.length=0; document.querySelector('#agentList [data-areplay]').click(); return 1");
+    const started = await waitFor("agentCur&&playing", 3000);
+    const ck = await calls("/api/agent-say/check");
+    await ev(`settings(false); ${fire}; return 1`); await sleep(500);
+    const st = await ev("return [!!agentCur, agentQ.length, !!rec, playing]");
+    const bad = await calls("/api/stop", "/api/listen");
+    check(started && ck.length >= 1 && st.join() === "false,0,false,false" && bad.length === 0, `Replay: ${name} stops only the speech`, JSON.stringify([started, ck.length, st, bad]));
+    await ev("dispatchEvent(new KeyboardEvent('keyup',{code:'Space',bubbles:true})); __autoend=true; settings(true,'voice'); return 1"); await sleep(200);
+  }
+
   // More posts to /api/agent-say/more
   await ev("__calls.length=0; document.querySelector('#agentList [data-amore]').click(); return 1");
   await sleep(100);
   const moreCalls = await calls("/api/agent-say/more");
-  check(moreCalls.length === 1, "Tell me more posts to /api/agent-say/more", JSON.stringify(moreCalls));
+  check(moreCalls.length === 1 && moreCalls[0][1].turn === "t2", "Tell me more posts the newest turn to /api/agent-say/more", JSON.stringify(moreCalls));
 
   // Long title fits at the smallest Settings size (420x420 and 320x400 viewport)
   await ev("setResize(420,420); return 1"); await sleep(300);

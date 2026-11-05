@@ -80,6 +80,33 @@ class AgentVoiceTest(_ServerEnv):
         self.assertEqual([e["id"] for e in self.events if e["t"] == "spk_skip"], [41])
         self.assertNotIn(41, S.strict)
 
+    def test_maker_reads_strict_in_the_block_that_pops(self):
+        s = self.server
+        S = s.Speaker
+        real, fired = S.cv, []
+
+        class CV:                      # a stop() slips in the moment the lock is released after the pop
+            def __enter__(self):
+                return real.__enter__()
+
+            def __exit__(self, *a):
+                r = real.__exit__(*a)
+                if not fired:
+                    fired.append(1)
+                    S.strict.clear()
+                return r
+
+            def __getattr__(self, n):
+                return getattr(real, n)
+        with real:
+            S.strict.add(42)
+            S.todo = [(S.gen, 42, "Race.", False, "elevenlabs", "r1", False)]
+        with mock.patch.object(S, "cv", CV()), mock.patch.object(S.cv, "wait", side_effect=StopIteration), \
+             mock.patch.object(s, "speak_sentence", return_value=None) as sp:
+            with self.assertRaises(StopIteration):
+                S._maker()
+        self.assertTrue(sp.call_args.kwargs["strict"])
+
     def test_cut_cloud_skips_strict_drops_and_keeps_rewritten_strict(self):
         s = self.server
         S = s.Speaker
@@ -205,11 +232,42 @@ class AgentEndpointsTest(_ServerEnv):
         self.assertFalse(self.events)
 
     def test_bad_input_and_secret(self):
-        for kw in ({"from": "bob"}, {"kind": "long"}, {"turn": "../x"}, {"turn": 5}, {"name": "n" * 81},
+        for kw in ({"from": "bob"}, {"kind": "long"}, {"turn": "../x"}, {"turn": 5}, {"name": 5},
                    {"text": "t" * 2001}, {"text": ""}, {"text": 5}):
             self.assertEqual(self.post("/api/agent-say", self.body(**kw))[0]["reason"], "bad-input", kw)
         self.assertEqual(self.post("/api/agent-say", self.body(text="password: hunter2"))[0]["reason"], "secret")
         self.assertFalse(self.events)
+
+    def test_name_is_cut_or_dropped_never_refused(self):
+        self.assertEqual(self.post("/api/agent-say", self.body(name="my project " * 10))[0], {"accepted": True})
+        self.assertEqual(self.events[-1]["name"], ("my project " * 10)[:80])
+        self.assertEqual(self.post("/api/agent-say", self.body(name="password: hunter2"))[0], {"accepted": True})
+        self.assertEqual(self.events[-1]["name"], "")
+
+    def test_check_also_applies_ready(self):
+        s = self.server
+        with mock.patch.object(s, "agent_say_run", return_value=True) as run:
+            self.assertEqual(self.post("/api/agent-say/check", {"from": "claude"})[0], {"go": True})
+            for frm in ("bob", None, 5):
+                self.assertEqual(self.post("/api/agent-say/check", {"from": frm})[0], {"go": False}, frm)
+            self.assertEqual(self.post("/api/agent-say/check", [])[0], {"go": False})
+            s.CFG["agent_voice_mute"] = ["claude"]
+            self.assertEqual(self.post("/api/agent-say/check", {"from": "claude"})[0], {"go": False})
+            s.CFG["agent_voice_mute"] = []
+            with mock.patch.object(s.Ambient, "meeting", True):
+                self.assertEqual(self.post("/api/agent-say/check", {"from": "claude"})[0], {"go": False})
+            with mock.patch.object(s.Wake, "asleep", True):
+                self.assertEqual(self.post("/api/agent-say/check", {"from": "claude"})[0], {"go": False})
+            self.assertEqual(run.call_count, 1)
+
+    def test_more_validates_turn(self):
+        s = self.server
+        with mock.patch.object(s, "agent_say_run", return_value=True) as run:
+            self.assertEqual(self.post("/api/agent-say/more", {"turn": self.TURN})[0], {"ok": True})
+            run.assert_called_once_with(["more", self.TURN], None)
+            for bad in ({}, {"turn": "../x"}, {"turn": 5}, []):
+                self.assertEqual(self.post("/api/agent-say/more", bad)[0], {"ok": False}, bad)
+            self.assertEqual(run.call_count, 1)
 
     def test_token_reach(self):
         s = self.server
@@ -222,24 +280,24 @@ class AgentEndpointsTest(_ServerEnv):
     def test_check_fails_closed_and_more_starts_without_shell(self):
         s = self.server
         with mock.patch.object(s.shutil, "which", return_value=None):
-            self.assertEqual(self.post("/api/agent-say/check", {})[0], {"go": False})
-            self.assertEqual(self.post("/api/agent-say/more", {})[0], {"ok": False})
+            self.assertEqual(self.post("/api/agent-say/check", {"from": "claude"})[0], {"go": False})
+            self.assertEqual(self.post("/api/agent-say/more", {"turn": self.TURN})[0], {"ok": False})
         with mock.patch.object(s.shutil, "which", return_value="/bin/agent-say"), \
              mock.patch.object(s.subprocess, "run", side_effect=s.subprocess.TimeoutExpired("x", 3)) as run:
-            self.assertEqual(self.post("/api/agent-say/check", {})[0], {"go": False})
+            self.assertEqual(self.post("/api/agent-say/check", {"from": "claude"})[0], {"go": False})
             self.assertEqual(run.call_args.args[0], ["/bin/agent-say", "held"])
             self.assertEqual(run.call_args.kwargs["timeout"], 3)
             self.assertNotIn("shell", run.call_args.kwargs)
         with mock.patch.object(s.shutil, "which", return_value="/bin/agent-say"), \
              mock.patch.object(s.subprocess, "run", return_value=mock.Mock(returncode=0)):
-            self.assertEqual(self.post("/api/agent-say/check", {})[0], {"go": True})
+            self.assertEqual(self.post("/api/agent-say/check", {"from": "claude"})[0], {"go": True})
         with mock.patch.object(s.shutil, "which", return_value="/bin/agent-say"), \
              mock.patch.object(s.subprocess, "run", return_value=mock.Mock(returncode=1)):
-            self.assertEqual(self.post("/api/agent-say/check", {})[0], {"go": False})
+            self.assertEqual(self.post("/api/agent-say/check", {"from": "claude"})[0], {"go": False})
         with mock.patch.object(s.shutil, "which", return_value="/bin/agent-say"), \
              mock.patch.object(s.subprocess, "Popen") as popen:
-            self.assertEqual(self.post("/api/agent-say/more", {})[0], {"ok": True})
-            self.assertEqual(popen.call_args.args[0], ["/bin/agent-say", "more"])
+            self.assertEqual(self.post("/api/agent-say/more", {"turn": self.TURN})[0], {"ok": True})
+            self.assertEqual(popen.call_args.args[0], ["/bin/agent-say", "more", self.TURN])
             self.assertNotIn("shell", popen.call_args.kwargs)
 
     def test_mute_setting_default_and_validation(self):

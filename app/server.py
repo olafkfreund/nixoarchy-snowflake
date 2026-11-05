@@ -1212,11 +1212,12 @@ def agent_say_accept(b):
     """Validate an agent summary and hand it to the page; returns at once. Never the old-voice fallback: he is running."""
     text, name = b.get("text"), b.get("name")
     if b.get("from") not in AGENT_NAMES or b.get("kind") not in ("short", "more") or not isinstance(b.get("turn"), str) \
-            or not _AGENT_TURN.fullmatch(b["turn"]) or not isinstance(name, str) or len(name) > 80 \
+            or not _AGENT_TURN.fullmatch(b["turn"]) or not isinstance(name, str) \
             or not isinstance(text, str) or not text.strip() or len(text) > 2000:
         return {"accepted": False, "reason": "bad-input"}
-    if SECRET_LINE.search(text) or SECRET_LINE.search(name):
+    if SECRET_LINE.search(text):
         return {"accepted": False, "reason": "secret"}
+    name = "" if SECRET_LINE.search(name) else name[:80]            # (a bad name loses the label, never the summary)
     r = agent_say_ready(b["from"])
     if not r["speak"]:
         return {"accepted": False, "reason": r["reason"]}
@@ -4098,12 +4099,11 @@ class Speaker:
                 while not cls.todo or len(cls.ready) >= 3:
                     cls.cv.wait()
                 g, sid, text, follow, engine, reply, local = cls.todo.pop(0)
+                strict = sid in cls.strict
                 cls.making = True
                 cls.making_item = (g, sid, text, follow, engine, reply, local)
             try:
                 t = time.monotonic()
-                with cls.cv:
-                    strict = sid in cls.strict
                 made = speak_sentence(text, g, reply, engine, local, sid=sid, strict=strict)
                 if made is None:
                     with cls.cv:
@@ -6342,10 +6342,16 @@ class Handler(BaseHTTPRequestHandler):
                 if p.endswith("/ready"):
                     return self._json(agent_say_ready(b.get("from")))
                 return self._json(agent_say_accept(b))
-            if p == "/api/agent-say/check":          # full token only: runs `agent-say held`; anything but exit 0 is stop
-                return self._json({"go": agent_say_run(["held"], 3)})
+            if p == "/api/agent-say/check":          # full token only: this agent still may speak, and `agent-say held` exits 0; anything else is stop
+                b = json.loads(self._body() or b"{}")
+                ok = isinstance(b, dict) and agent_say_ready(b.get("from"))["speak"]
+                return self._json({"go": bool(ok) and agent_say_run(["held"], 3)})
             if p == "/api/agent-say/more":           # full token only
-                return self._json({"ok": agent_say_run(["more"], None)})
+                b = json.loads(self._body() or b"{}")
+                turn = b.get("turn") if isinstance(b, dict) else None
+                if not isinstance(turn, str) or not _AGENT_TURN.fullmatch(turn):
+                    return self._json({"ok": False})
+                return self._json({"ok": agent_say_run(["more", turn], None)})
             if p == "/api/attention/focus":
                 f = json.loads(self._body() or b"{}").get("from")
                 return self._json({"ok": attention_focus(f) if isinstance(f, str) else False})
