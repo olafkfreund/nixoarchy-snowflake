@@ -8,6 +8,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import nixi_env
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BLOCK = '<<stage>>{"v":1,"kind":"commands","items":[{"label":"Install","cmd":"nix profile install nixpkgs#firefox"}]}'
 
@@ -21,7 +23,8 @@ class StageStreamTest(unittest.TestCase):
             os.environ[k] = os.path.join(cls.tmp, d)
             os.makedirs(os.environ[k], exist_ok=True)
         sys.path.insert(0, str(REPO_ROOT / "app"))
-        import server
+        with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": nixi_env.run_dir()}):
+            import server
         cls.server = server
 
     @classmethod

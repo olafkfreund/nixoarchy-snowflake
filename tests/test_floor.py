@@ -8,9 +8,13 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
+
+import nixi_env
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
-from floor import Floor
+with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": nixi_env.run_dir()}):
+    from floor import Floor
 
 
 CHILD = """import sys
