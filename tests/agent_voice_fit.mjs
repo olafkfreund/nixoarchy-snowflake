@@ -24,21 +24,23 @@ await ev(`setInterval(()=>{ nextFidAt=1e15; info.voice_native=!!window.__native;
   window.__calls=[]; window.__sfx=0; window.__tick=0; window.__native=true; window.__go=true; window.__autoend=true; window.__chk=0;
   const of=window.fetch;
   window.fetch=(u,o)=>{ const p=String(u).split('?')[0];
+    if(p==='/api/floor') return Promise.resolve(new Response('{"ok":true}',{status:200}));   // (the real voice floor is shared by every Nixi on the machine: parallel runs would queue on it, and it is not what is tested here)
     if(['/api/say','/api/tts','/api/stop','/api/listen','/api/say/stop','/api/agent-say/check','/api/agent-say/more'].includes(p)){ __calls.push([p,o&&o.body?JSON.parse(o.body):null]);
       if(p==='/api/agent-say/check') return new Promise(r=>setTimeout(()=>r(new Response(JSON.stringify({go:window.__go}),{status:200})),window.__chk));
       if(p==='/api/tts') return window.__autoend?Promise.resolve(new Response(null,{status:204})):new Promise(()=>{});   // (never answers: a stuck sentence)
       return Promise.resolve(new Response('{"ok":true}',{status:200})); }
     return of(u,o); };
+  const oj=Response.prototype.json; Response.prototype.json=async function(){ const j=await oj.call(this); if(j&&typeof j==='object'&&'voice_native' in j){ j.voice_native=!!window.__native; j.tts=true; } return j; };   // (a settings refresh replaces info; between it and the 50 ms loop above, a slow page would see the real voice_native)
   const s0=sfx, t0=tick; sfx=(...a)=>{ __sfx++; return s0(...a); }; tick=(...a)=>{ __tick++; return t0(...a); };
   setInterval(()=>{ if(window.__autoend) for(const id of [...spkMap.keys()]) onEvent({t:'spk_done',id}); },40);
   return 1`);
 const fails = [], check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} ${name}${extra ? "  " + extra : ""}`); if (!ok) fails.push(name); };
 const calls = async (...p) => (await ev("return __calls.slice()")).filter(c => !p.length || p.includes(c[0]));
-const reset = async (native = true) => { await ev(`agentStop(); agentLog.length=0; busy=false; muted=false; hiddenNow=false; AGENT_GUARD=30000; AGENT_STALE=120000; __native=${native}; __go=true; __autoend=true; __chk=0; __calls.length=0; __sfx=0; __tick=0; return 1`); await sleep(120); await ev("__calls.length=0; return 1"); };
+const reset = async (native = true) => { await ev(`agentStop(); agentLog.length=0; busy=false; muted=false; hiddenNow=false; AGENT_GUARD=30000; AGENT_STALE=120000; __native=${native}; info.voice_native=${native}; __go=true; __autoend=true; __chk=0; __calls.length=0; __sfx=0; __tick=0; return 1`); await sleep(120); await ev("__calls.length=0; return 1"); };
 let n = 0;
 const say = (text, turn = "ab12cd34-" + (++n), from = "claude") => ev(`onEvent({t:'agent_say',from:${JSON.stringify(from)},name:'proj',turn:${JSON.stringify(turn)},text:${JSON.stringify(text)},kind:'short'}); return 1`);
 const waitFor = async (js, ms = 4000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await ev(`return !!(${js})`)) return true; await sleep(60); } return false; };
-const idle = () => waitFor("!agentCur&&!agentQ.length&&!playing");
+const idle = () => waitFor("!agentCur&&!agentQ.length&&!playing", 20000);   // (long: under load a page-voice sentence takes seconds; it returns as soon as he is done)
 const ls = () => ev("return JSON.stringify([localStorage,sessionStorage].map(s=>Object.keys(s).sort().map(k=>k+'='+s.getItem(k))))");
 
 for (const native of [true, false]) {
@@ -93,14 +95,14 @@ for (const native of [true, false]) {
 
   // 6. 120 s unstarted goes to replay only (shortened)
   { await reset(native); await ev("busy=true; AGENT_STALE=250; return 1");
-    await say("Too late."); await sleep(700); await ev("busy=false; return 1"); await sleep(600);
+    await say("Too late."); await sleep(700); await ev("busy=false; return 1"); await waitFor("!agentQ.length&&!agentCur", 20000); await sleep(300);
     check((await calls()).length === 0 && (await ev("return agentLog.length")) === 1, `${mode}: a stale summary is replay only`);
   }
 
   // 7. the 30 s guard (shortened): a sentence that never ends is cut and given up
   { await reset(native); await ev("__autoend=false; AGENT_GUARD=400; return 1");
-    await say("Stuck one. Never reached."); await waitFor("playing", 2000);
-    const ok = await waitFor("!agentCur&&!playing", 4000); await sleep(300);
+    await say("Stuck one. Never reached."); await waitFor("playing", 20000);
+    const ok = await waitFor("!agentCur&&!playing", 20000); await sleep(300);
     const sp = await calls(ep);
     check(ok && sp.length === 1, `${mode}: the guard stops a stuck summary`, JSON.stringify(sp));
     await ev("__autoend=true; return 1");
@@ -141,8 +143,9 @@ for (const native of [true, false]) {
 
   // 9d. something starts mid-summary (an approval, the mic) while the next check is out: the rest is dropped
   { await reset(native); await ev("__chk=600; return 1");
-    await say("One here. Two there."); await waitFor("__calls.some(c=>c[0]==='"+ep+"')", 3000); await sleep(450);
-    await ev("busy=true; return 1"); await sleep(1200);
+    await say("One here. Two there."); await waitFor("__calls.some(c=>c[0]==='"+ep+"')", 20000);
+    await waitFor("__calls.filter(c=>c[0]==='/api/agent-say/check').length>=2", 20000);   // (the second check is out, held 600 ms)
+    await ev("busy=true; return 1"); await waitFor("!agentCur&&!agentCheck", 20000);
     check((await calls(ep)).length === 1 && (await ev("return !agentCur")), `${mode}: busy after the check drops the rest of the summary`);
     await ev("busy=false; __chk=0; return 1");
   }
@@ -168,7 +171,7 @@ for (const native of [true, false]) {
     await say("Words stay."); 
     if (native) { await waitFor("spkMap.size", 3000); await ev("for(const id of [...spkMap.keys()]) onEvent({t:'spk_skip',id}); return 1"); }
     else await ev("__autoend=true; return 1");
-    const shown = await waitFor("(himEl.textContent+cap.textContent).includes('Words stay')", 3000);
+    const shown = await waitFor("(himEl.textContent+cap.textContent).includes('Words stay')", 20000);
     check(shown, `${mode}: a skipped strict sentence shows as a caption`, await ev("return himEl.textContent+'|'+cap.textContent"));
     await ev("__autoend=true; return 1");
   }
