@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import nixi_env
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 AGENTS = [
@@ -28,7 +30,8 @@ class SessionsTest(unittest.TestCase):
             os.makedirs(os.environ[k], exist_ok=True)
         sys.path.insert(0, str(REPO_ROOT / "app"))
         import quick
-        import server
+        with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": nixi_env.run_dir()}):
+            import server
         cls.server, cls.quick = server, quick
 
     @classmethod

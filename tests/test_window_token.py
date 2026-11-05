@@ -8,6 +8,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import nixi_env
+
 APP = str(Path(__file__).resolve().parent.parent / "app")
 URL = "http://127.0.0.1:47777/?native=1"
 window = None
@@ -31,7 +33,8 @@ def setUpModule():
     for k in ("NIXI_COMPANION_LAYER_WHY", "WAYLAND_DISPLAY"):
         os.environ.pop(k, None)
     try:
-        import window as w
+        with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": nixi_env.run_dir()}):
+            import window as w
         window = w
     finally:
         os.sched_setaffinity(0, cores)                  # _cpu_split() may have halved it

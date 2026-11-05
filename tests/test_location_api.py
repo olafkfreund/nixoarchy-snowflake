@@ -9,6 +9,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import nixi_env
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -22,7 +24,8 @@ class LocationApiTest(unittest.TestCase):
             os.makedirs(os.environ[k], exist_ok=True)
         cls.dir = Path(cls.tmp, ".local/state/omarchy/settings")
         sys.path.insert(0, str(REPO_ROOT / "app"))
-        import server
+        with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": nixi_env.run_dir()}):
+            import server
         cls.s = server
 
     @classmethod

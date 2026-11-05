@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import nixi_env
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -19,6 +21,7 @@ class _ServerEnv(unittest.TestCase):
         for k, d in (("HOME", ""), ("XDG_CONFIG_HOME", ".config"), ("XDG_DATA_HOME", "data"), ("XDG_STATE_HOME", "state")):
             os.environ[k] = os.path.join(cls.tmp, d)
             os.makedirs(os.environ[k], exist_ok=True)
+        os.environ["XDG_RUNTIME_DIR"] = nixi_env.run_dir()
         sys.path.insert(0, str(REPO_ROOT / "app"))
         import server
         cls.server = server
@@ -26,6 +29,7 @@ class _ServerEnv(unittest.TestCase):
         # save_config() in the tests would write the user's real config.json (it happened: #176). Refuse loudly.
         if not str(server.CONF_PATH).startswith(tempfile.gettempdir()):
             raise RuntimeError(f"server.py was imported outside a throwaway HOME; CONF_PATH={server.CONF_PATH}")
+        nixi_env.check_floor_path(server.FLOOR.path)
 
     @classmethod
     def tearDownClass(cls):
