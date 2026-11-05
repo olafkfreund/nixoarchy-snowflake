@@ -7,6 +7,9 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
+
+import nixi_env
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 NIXI_SRC = Path(os.environ["NIXI_SRC"]) if os.environ.get("NIXI_SRC") else None
@@ -71,7 +74,8 @@ class BridgeTest(unittest.TestCase):
         app_dir = str(REPO_ROOT / "app")
         if app_dir not in sys.path:
             sys.path.insert(0, app_dir)
-        import server
+        with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": nixi_env.run_dir()}):
+            import server
 
         cls.server = server
         cls.server.ST.cwd = str(home)

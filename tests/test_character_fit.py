@@ -15,6 +15,7 @@ import time
 import unittest
 import urllib.request
 from pathlib import Path
+import nixi_env
 from _browser import start_browser
 
 REPO = Path(__file__).resolve().parent.parent
@@ -63,7 +64,7 @@ class CharacterFit(unittest.TestCase):
             (home / d).mkdir(parents=True, exist_ok=True)
         port = _free_port()
         (home / ".config/nixi-companion/config.json").write_text(json.dumps({"port": port}))
-        cls.procs.append(subprocess.Popen([sys.executable, str(tree / "app/server.py")], env=env,
+        cls.procs.append(subprocess.Popen([sys.executable, str(tree / "app/server.py")], env=nixi_env.server_env(env, home),
                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         assert _wait(f"http://127.0.0.1:{port}/"), "server did not start"
         rt = home / "data/nixi-companion/runtime.json"

@@ -10,6 +10,7 @@ import time
 import unittest
 import urllib.request
 from pathlib import Path
+import nixi_env
 from _browser import start_browser
 
 REPO = Path(__file__).resolve().parent.parent
@@ -130,7 +131,7 @@ class VoiceFit(unittest.TestCase):
             procs.append(
                 subprocess.Popen(
                     [sys.executable, "-c", RUNNER],
-                    cwd=REPO, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    cwd=REPO, env=nixi_env.server_env(env, home), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )
             )
             procs.append(start_browser(BROWSER, cdp, home / "chromium", "--no-proxy-server", "--autoplay-policy=no-user-gesture-required", env=env))
