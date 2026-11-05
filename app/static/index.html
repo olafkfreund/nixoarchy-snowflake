@@ -1293,11 +1293,12 @@ const CHARACTERS={snowflake:{label:'Snowflake',ball:snowPath(),back:nixLambdas()
     gloss:false,faceBox:[-74,-66,148,128],anchors:{head:[0,-20],face:[0,0],neck:[0,10],base:[0,4],left:[0,0],right:[0,0]},
     cupX:106,band:'M-105 -30C-128 -140 128 -140 105 -30',pivot:84,shadow:64,fits:new Set(['none','halo','crown','sprout','bow','nightcap','beanie','party','scarf','tie','headphones','shades','glasses','chat','feed','plug']),touch:'tTail'}};
 let BODY=CHARACTERS.snowflake;
+const bodyFits=(c,f)=>c===CHARACTERS.snowflake||c.fits.has(f)||(f.startsWith('plug:')&&c.fits.has('plug'));   // 'plug': every plugin prop fits
+const wornSkin=L=>bodyFits(CHARACTERS[L.character]||CHARACTERS.snowflake,String(L.skin))?L.skin:'none';
 function applyAnchors(character=BODY,roots=[$('#accBack'),$('#accFront'),$('#sitBack'),$('#sitFront')]){
   for(const root of roots) for(const e of root.querySelectorAll('.anc')){
     const [dx,dy]=character.anchors[e.dataset.a]||[0,0]; e.setAttribute('transform',`translate(${dx} ${dy})`);
-    const f=e.dataset.fit||'', ok=character.fits.has(f)||(f.startsWith('plug:')&&character.fits.has('plug'));   // 'plug': every plugin prop fits
-    e.style.display=character===CHARACTERS.snowflake||ok?'':'none'; }
+    e.style.display=bodyFits(character,e.dataset.fit||'')?'':'none'; }
 }
 function setCharacter(id){
   const next=CHARACTERS[id]||CHARACTERS.snowflake, changed=BODY!==next;
@@ -1598,7 +1599,7 @@ const paintEl=document.getElementById('paint');
 const REDUCED=matchMedia('(prefers-reduced-motion: reduce)');
 const wxAlpha=p=>.85*Math.sin(Math.PI*p);
 const wxAside=ts=>!sitOn.clear&&!!((AM&&ts<AM.until)||mirKind()||$('#cue').getAttribute('display')!=='none');   // (a clear sky is only the sun, which doesn't overlap)
-const wxHat=()=>LOOK.skin!=='none'||sitOn.party||sitOn.cold2||sitOn.night;   // (his hat takes the head slot, so the cloud already sits left at x≈-76, clear of the marks)
+const wxHat=()=>wornSkin(LOOK)!=='none'||sitOn.party||sitOn.cold2||sitOn.night;   // (his hat takes the head slot, so the cloud already sits left at x≈-76, clear of the marks)
 let wxOn=false;
 const wxEl=$('#wx'), WX_ASIDE=90;   // (to the right: the cloud clears the marks at x≈8, and a sun at x≈98 slides off rather than onto them)
 // the weather marks (#157): built once, every group display="none" until wxStep shows it; flat colours only. Particles are children of their cloud's group.
@@ -1894,7 +1895,7 @@ function frame(ts){
     SP2.wob.setAttribute('transform',`rotate(${w.toFixed(2)} ${pv[0]} ${pv[1]})`); }
   if(SP2.halo) SP2.halo.setAttribute('transform',`translate(0,${(Math.sin(t*1.6)*2.2).toFixed(2)})`);
   if(SIT_P){ sitStep(ts);       // looks: spring in/out about their anchors; the tie sways like the other hanging skins
-    const w=G.sitW.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)*.6, sp=(S_,on)=>S_.to(on?1:0,dt), skinless=LOOK.skin==='none';
+    const w=G.sitW.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)*.6, sp=(S_,on)=>S_.to(on?1:0,dt), skinless=wornSkin(LOOK)==='none';
     const tp=skinless&&sitOn.party, tb=skinless&&!tp&&sitOn.cold2, tn=skinless&&!tp&&!tb&&sitOn.night, ts6=sitOn.cold1&&!sitOn.meeting&&!SKIN_PARTS.baseProp;     // top zone: party hat > beanie > nightcap, only with no skin; the scarf yields to the tie and a base prop
     const ww=REDUCED.matches?0:w;
     const a=sp(G.sit,sitOn.meeting), b=sp(G.sitMusic,sitOn.music), c=sp(G.sitShade,sitOn.fullscreen), g=sp(G.sitGl,sitOn.coding&&!sitOn.fullscreen),   // eyes: shades > glasses
@@ -2411,7 +2412,7 @@ let SIT={meeting:false,music:false,cpu_hot:false,ram_low:false,fullscreen:false,
 const sitOn={meeting:false,music:false,fullscreen:false,coding:false,night:false,party:false,rain:false,snow:false,clear:false,partly:false,cloudy:false,windy:false,cold1:false,cold2:false}, sitSeen={...sitOn}, sitAt=Object.fromEntries(Object.keys(sitOn).map(k=>[k,0]));
 function sitStep(ts){ const weather={rain:SIT.weather==='rain',snow:SIT.weather==='snow',clear:SIT.weather==='clear',partly:SIT.weather==='partly',cloudy:SIT.weather==='cloudy',windy:SIT.windy,cold1:SIT.cold>=1,cold2:SIT.cold>=2};
   for(const k in sitOn){ const raw=k in weather?weather[k]&&!!info.look_weather:!!SIT[k]&&!!info['look_'+k]; if(raw!==sitSeen[k]){ sitSeen[k]=raw; sitAt[k]=ts; }
-  if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(['rain','snow','clear','partly','cloudy'].includes(k)) for(const other of ['rain','snow','clear','partly','cloudy']) if(other!==k) sitOn[other]=false; if(k==='meeting') G.jelly.kick(.35); if(k==='party'&&LOOK.skin==='none') confetti(18); }
+  if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(['rain','snow','clear','partly','cloudy'].includes(k)) for(const other of ['rain','snow','clear','partly','cloudy']) if(other!==k) sitOn[other]=false; if(k==='meeting') G.jelly.kick(.35); if(k==='party'&&wornSkin(LOOK)==='none') confetti(18); }
   else if(!raw&&sitOn[k]&&ts-sitAt[k]>=8000) sitOn[k]=false; } }
 const NOTE={mail:['✉','New mail','#4d6fb7','reading',2200,'pop'], chat:['💬','New message','#7fd6ae','curious',1800,'chat'],
   meeting:['📅','Meeting','#ffb02a','surprised',700,'remind'], video:['▶','New post','#e0569a','t_excited',1400,'ok'],
@@ -3422,7 +3423,7 @@ function selectPart(p){
 function renderParts(){ const L=curLook();
   const list=L.link?[['body','Body'],['pupL','Both pupils'],['whiteL','Both eye whites']]
     :[['body','Body'],['pupL','Left pupil'],['pupR','Right pupil'],['whiteL','Left eye white'],['whiteR','Right eye white']];
-  if(L.skin!=='none') list.push(['skin','Skin']);
+  if(wornSkin(L)!=='none') list.push(['skin','Skin']);
   $('#partChips').innerHTML=list.map(([p,l])=>`<button data-part="${p}" class="${pkPart===p?'on':''}"><i style="--c:${partColour(L,p)}"></i>${l}</button>`).join(''); }
 function drawPreview(){ const L=curLook(), svg=$('#lookPrev'); miniNixi(svg,L,true);
   const sel=L.link&&pkPart==='pupL'?['pupL','pupR']:L.link&&pkPart==='whiteL'?['whiteL','whiteR']:[pkPart];
@@ -3531,7 +3532,8 @@ function renderSettings(){
   const L=curLook();
   $('#characterGrid').innerHTML=Object.entries(CHARACTERS).map(([id,c])=>`<button type="button" data-character="${id}" class="${(L.character||'snowflake')===id?'on':''}" aria-pressed="${(L.character||'snowflake')===id}"><svg viewBox="-125 -150 250 250" aria-hidden="true"></svg>${c.label}</button>`).join('');
   $$('#characterGrid button').forEach(b=>miniNixi(b.querySelector('svg'),{...L,character:b.dataset.character,skin:'none'},false));
-  $('#skinGrid').innerHTML=(info.skins||Object.keys(SKIN_LABELS)).map(k=>`<button data-skin="${k}" class="${L.skin===k?'on':''}"><svg viewBox="-125 -150 250 250"></svg>${SKIN_LABELS[k]||k}</button>`).join('');
+  const worn=wornSkin(L), bodyL=CHARACTERS[L.character]||CHARACTERS.snowflake;
+  $('#skinGrid').innerHTML=(info.skins||Object.keys(SKIN_LABELS)).filter(k=>bodyFits(bodyL,k)).map(k=>`<button data-skin="${k}" class="${worn===k?'on':''}"><svg viewBox="-125 -150 250 250"></svg>${SKIN_LABELS[k]||k}</button>`).join('');
   for(const P of info.plugin_props||[]){   // plugin props: built node by node, the name only ever as text
     const b=document.createElement('button'), sk=document.createElementNS(SVGNS,'svg'); b.dataset.skin='plug:'+P.id; b.className=L.skin===b.dataset.skin?'on':'';
     sk.setAttribute('viewBox','-125 -150 250 250'); b.append(sk,document.createTextNode(P.name)); $('#skinGrid').appendChild(b); }
@@ -3832,7 +3834,9 @@ async function slash(cmd){
     const k=c==='body'?{body:v}:c.startsWith('white')?{whiteL:v,whiteR:v}:{pupL:v,pupR:v};
     return setLook({...k,random:false}).then(popPupils); }
   if(c==='skin'){ const k=(arg||'').toLowerCase().replace(/ ears?$/,'').replace(' hat','');
-    if(!SKIN_LABELS[k]) return tick('/skin <'+Object.keys(SKIN_LABELS).join('|')+'>',true); return setLook({skin:k}); }
+    if(!SKIN_LABELS[k]) return tick('/skin <'+Object.keys(SKIN_LABELS).join('|')+'>',true);
+    if(!bodyFits(BODY,k)) return tick(`${k} doesn't fit ${BODY.label}`,true);
+    return setLook({skin:k}); }
   if(c==='pupils'){ if(!PUP_STYLES.includes(arg)) return tick('/pupils <slit|circle|dot>',true); await setSetting({pupil_style:arg}); popPupils(); return; }
   if(c==='status'){ await refresh(); tick(`${info.cwd_display} · ${info.trust} · ${info.model} · voice ${info.tts||'none'}`); return; }
   tick('/new · /tidy · /context · /cd · /history · /memory · /remember · /look · /clip · /hover · /model · /voice · /eyes · /mute · /stop');
