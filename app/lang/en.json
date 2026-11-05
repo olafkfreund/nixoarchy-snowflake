@@ -49,6 +49,11 @@
     "page.tidy": "Okay, tidying up.",
     "page.voice_1": "hi! this is my new voice.",
     "page.voice_2": "how do i sound?",
-    "page.voice_3": "ooh, i like this one."
+    "page.voice_3": "ooh, i like this one.",
+    "page.agents": "Agents",
+    "page.agents_hint": "Speak turn summaries from your coding agents.",
+    "page.agents_empty": "No summaries yet.",
+    "page.agent_replay": "Replay",
+    "page.agent_more": "Tell me more"
   }
 }
