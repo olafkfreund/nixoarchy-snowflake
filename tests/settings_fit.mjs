@@ -509,6 +509,15 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   check(after[0] === true && +after[1] > .5 && after[3] > 400, "gear: one click opens Settings, and it stays open", JSON.stringify(after.slice(0, 4)));
   await ev("closePanels(); return 1"); await view(340, 460); }
 
+// #175: a feature refused with 403 must not reload the page (that lost the open panel); only a refused token asks for a new one
+{ const r = await ev(`const of=window.fetch; let body='{"error":"off in nixi mode"}';
+    window.fetch=(u,o)=>String(u)==='/x403'?Promise.resolve(new Response(body,{status:403})):of(u,o);
+    try{ sessionStorage.removeItem('nixi-reload'); __msgs.length=0; await post('/x403'); await new Promise(r=>setTimeout(r,80));
+      const off=__msgs.includes('reauth'); sessionStorage.removeItem('nixi-reload'); body='{"error":"forbidden"}'; __msgs.length=0;
+      await post('/x403'); await new Promise(r=>setTimeout(r,80)); const tok=__msgs.includes('reauth'); return [off,tok]; }
+    finally{ window.fetch=of; sessionStorage.removeItem('nixi-reload'); }`);
+  check(r[0] === false && r[1] === true, "a 403 that isn't about the token doesn't reload the page", JSON.stringify(r)); }
+
 check(exc.size === 0, "no page exceptions", [...exc].join(" ;; "));
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
 console.log(fails.length ? `\n${fails.length} failed: ${fails.join(", ")}` : "\nall pass");
