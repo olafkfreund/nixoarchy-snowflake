@@ -189,7 +189,7 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   await ev("menu(false); return 1");
 }
 
-// 6g. Stage card open: map card's Settings button collapses stage to tab (stageHide(true), stageWant=[300,0]) and opens Settings; closing Settings returns to the tab's want (size:300,0)
+// 6g. Stage card open: map card's Settings button collapses stage to tab (stageHide(true)) and opens Settings (a panel asks for no board room: size:244,266); closing Settings returns to the tab's want (size:300,0)
 { const mapUnset = { t: "stage", v: 1, kind: "place", trust: "mechanic", dest: "@home", unset: "home" };
   await ev(`stageClose(); await new Promise(r=>setTimeout(r,260)); onEvent(${JSON.stringify(mapUnset)}); await new Promise(r=>setTimeout(r,150)); return 1`);
   await clearMsgs();
@@ -201,12 +201,133 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   const mClose = nonRegion(await msgs());
   const stClose = await ev("return [stgState, stageWant[0], setEl.classList.contains('on'), setWant[0], setWant[1]]");
   check(stOpen[0] === "tab" && stOpen[1] === 300 && stOpen[3] && stOpen[4] === 244 && stOpen[5] === 266
-    && lastSize(mOpen) === "size:300,266" && lastWide(mOpen) === "wide:off"
+    && lastSize(mOpen) === "size:244,266" && lastWide(mOpen) === "wide:off"
     && stClose[0] === "tab" && stClose[1] === 300 && !stClose[2] && stClose[3] === 0 && stClose[4] === 0
     && lastSize(mClose) === "size:300,0" && lastWide(mClose) === "wide:off",
-    "transition: map stage Settings button collapses stage to tab (stageHide(true)) and closing Settings returns to size:300,0",
+    "transition: map stage Settings button collapses stage to tab (stageHide(true)) and closing Settings returns to size:300,0 (a panel asks for no board room: 244,266 open)",
     JSON.stringify({ mOpen, stOpen, mClose, stClose }));
   await ev("stageClose(); await new Promise(r=>setTimeout(r,260)); return 1");
+}
+
+
+// #196: while a panel is open (body.pnl) a board asks for no room, hides, holds a new board, and comes back on close
+{ const B1 = { t: "stage", v: 1, kind: "facts", trust: "mechanic", title: "Board one", points: ["a", "b"] },
+    B2 = { t: "stage", v: 1, kind: "facts", trust: "mechanic", title: "Board two", points: ["c"] },
+    B3 = { t: "stage", v: 1, kind: "facts", trust: "mechanic", title: "Board three", points: ["d"] };
+  const reset = () => ev(`settings(false); closePanels(); info.hover=false; setHoverClass(false); hiddenNow=false; stageClose(); await new Promise(r=>setTimeout(r,300)); return 1`);
+  const show = e => ev(`onEvent(${JSON.stringify(e)}); await new Promise(r=>setTimeout(r,250)); return 1`);
+  const disp = sel => ev(`return getComputedStyle(document.querySelector('${sel}')).display`);
+  const st = () => ev("return [stgState, stg&&stg.title, document.body.classList.contains('calm'), document.body.classList.contains('pnl')]");
+  await reset();
+  // baseline: Settings with no board
+  await ev("settings(true); return 1"); await sleep(450);
+  const baseLeft = await ev("return Math.round(setEl.getBoundingClientRect().left)");
+  await reset();
+
+  // open board, then Settings
+  await show(B1); await clearMsgs();
+  await ev("settings(true); return 1"); await sleep(450);
+  let m = nonRegion(await msgs()), left = await ev("return Math.round(setEl.getBoundingClientRect().left)");
+  check(lastSize(m) === "size:244,266" && left === baseLeft, "#196 open board, then Settings: size:244,266 and Settings sits where it does without a board", JSON.stringify({ m, left, baseLeft }));
+  check((await disp("#stg")) === "none", "#196 the board is hidden while Settings is open", await disp("#stg"));
+  await clearMsgs(); await ev("settings(false); return 1"); await sleep(300);
+  m = nonRegion(await msgs());
+  let s2 = await st();
+  check(lastSize(m) === "size:800,0" && s2[0] === "open" && !s2[2] && (await disp("#stg")) !== "none" && await ev("return stgEl.classList.contains('on')"),
+    "#196 closing Settings: size:800,0 and the board is open and visible", JSON.stringify({ m, s2 }));
+
+  // tab, then Settings
+  await ev("stageHide(true); await new Promise(r=>setTimeout(r,300)); return 1"); await clearMsgs();
+  await ev("settings(true); return 1"); await sleep(300);
+  m = nonRegion(await msgs());
+  check(lastSize(m) === "size:244,266" && (await disp("#stgTab")) === "none", "#196 tab, then Settings: size:244,266 and the tab is hidden", JSON.stringify({ m, d: await disp("#stgTab") }));
+  await clearMsgs(); await ev("settings(false); return 1"); await sleep(300);
+  m = nonRegion(await msgs());
+  check(lastSize(m) === "size:300,0" && (await st())[0] === "tab" && (await disp("#stgTab")) !== "none", "#196 closing Settings: size:300,0 and the tab is back", JSON.stringify({ m, s: await st() }));
+  await reset();
+
+  // stgSize(0) during Settings
+  await show(B1);
+  await ev("settings(true); return 1"); await clearMsgs();
+  await ev("stgSize(0); return 1");
+  m = nonRegion(await msgs());
+  check(lastSize(m) === "size:244,266", "#196 stgSize(0) during Settings sends no change of width", JSON.stringify(m));
+  await reset();
+
+  // the other rooms a board or a mail pop asks for (width and height) are left out too, and the chalk hides with the board
+  await show(B1); await ev("settings(true); return 1"); await clearMsgs();
+  const rooms = [];
+  for (const js of ["popWant=[260,0]", "popWant=[0,500]", "stageWant=[800,0]", "stageWant=[0,500]"]) {
+    await ev(`${js}; sizeWindow(); return 1`); rooms.push(lastSize(nonRegion(await msgs()))); await clearMsgs(); }
+  await ev("popWant=[0,0]; stageWant=[0,0]; return 1");
+  check(rooms.every(r => r === "size:244,266"), "#196 popWant and stageWant, width and height, add no room during Settings", JSON.stringify(rooms));
+  await reset();
+  await show({ t: "stage", v: 1, kind: "commands", trust: "mechanic", title: "Cmds", items: [{ label: "x", cmd: "ls" }] });
+  const chalkOn = await ev("return chalkEl.classList.contains('on')&&getComputedStyle(chalkEl).display!=='none'");
+  await ev("settings(true); return 1"); await sleep(300);
+  check(chalkOn && (await disp("#chalk")) === "none", "#196 the chalk hides while Settings is open", JSON.stringify({ chalkOn, d: await disp("#chalk") }));
+  await reset();
+
+  // a stage event during Settings: held, no caption, old board untouched; shown on close
+  await show(B1); await ev("settings(true); return 1"); await sleep(300);
+  const him0 = await ev("return himEl.textContent");
+  await ev(`onEvent(${JSON.stringify(B2)}); return 1`);
+  const him1 = await ev("return himEl.textContent"); s2 = await st();
+  check(him1 === him0 && s2[1] === "Board one" && s2[0] === "open", "#196 a stage event during Settings: no caption, the old board untouched", JSON.stringify({ him0, him1, s2 }));
+  await ev("settings(false); return 1"); await sleep(400); s2 = await st();
+  check(s2[0] === "open" && s2[1] === "Board two" && !s2[2], "#196 closing Settings shows the held board", JSON.stringify(s2));
+  await reset();
+  // two events: the newest
+  await show(B1); await ev("settings(true); return 1"); await sleep(300);
+  await ev(`onEvent(${JSON.stringify(B2)}); onEvent(${JSON.stringify(B3)}); return 1`);
+  await ev("settings(false); return 1"); await sleep(400); s2 = await st();
+  check(s2[0] === "open" && s2[1] === "Board three", "#196 two events during Settings: the newest wins", JSON.stringify(s2));
+  await reset();
+  // stage_close afterwards: none shown
+  await show(B1); await ev("settings(true); return 1"); await sleep(300);
+  await ev(`onEvent(${JSON.stringify(B2)}); onEvent({t:'stage_close'}); return 1`);
+  await ev("settings(false); return 1"); await sleep(400); s2 = await st();
+  check(s2[0] === "closed", "#196 stage_close during Settings drops the held board and closes", JSON.stringify(s2));
+  await reset();
+
+  // stageTick with an old stgUse during Settings
+  await show(B1); await ev("settings(true); return 1"); await sleep(300);
+  const tk = await ev("const old=performance.now()-100000; stgUse=stgQuiet=old; stageTick(); return [stgState, performance.now()-stgUse, performance.now()-stgQuiet]");
+  check(tk[0] === "open" && tk[1] < 1000 && tk[2] < 1000, "#196 stageTick during Settings keeps the board and refreshes stgUse/stgQuiet", JSON.stringify(tk));
+  await ev("settings(false); return 1"); await sleep(300);
+  await ev("stageTick(); return 1"); s2 = await st();
+  check(s2[0] === "open", "#196 after Settings closes the board doesn't close on the next tick", JSON.stringify(s2));
+  await reset();
+
+  // history panel, and Settings -> panel keeps the board hidden
+  await show(B1); await clearMsgs();
+  await ev("await openPanel('history'); return 1"); await sleep(400);
+  m = nonRegion(await msgs());
+  check(lastSize(m) === "size:0,0" && (await disp("#stg")) === "none", "#196 history panel: no board room and the board hidden", JSON.stringify({ m, d: await disp("#stg") }));
+  await ev("settings(true); return 1"); await sleep(300);
+  check((await disp("#stg")) === "none" && lastSize(nonRegion(await msgs())) === "size:244,266", "#196 Settings from the panel keeps the board hidden", String(await disp("#stg")));
+  await ev("settings(false); return 1"); await sleep(300); s2 = await st();
+  check(s2[0] === "open" && (await disp("#stg")) !== "none", "#196 after both close the board is back", JSON.stringify(s2));
+  await reset();
+
+  // a held board when Settings closes in hover, and with hiddenNow: today's rule (a caption, no board)
+  for (const [why, setup, undo] of [["hover", "info.hover=true; setHoverClass(true);", "info.hover=false; setHoverClass(false);"], ["hiddenNow", "hiddenNow=true;", "hiddenNow=false;"]]) {
+    await ev("settings(true); return 1"); await sleep(300);
+    await ev(`onEvent(${JSON.stringify(B2)}); ${setup} return 1`);
+    const h0 = await ev("return himEl.textContent");
+    await ev("settings(false); return 1"); await sleep(300);
+    const h1 = await ev("return himEl.textContent"); s2 = await st();
+    check(s2[0] === "closed" && h1.includes("Board two") && h1 !== h0, `#196 a held board closing in ${why}: a caption instead of a board`, JSON.stringify({ s2, h1 }));
+    await ev(`${undo} return 1`); await reset();
+  }
+
+  // hover turned on inside Settings with a board up, then closing
+  await show(B1); await ev("settings(true); return 1"); await sleep(300);
+  await ev("info.hover=true; setHoverClass(true); return 1");
+  await clearMsgs(); await ev("settings(false); return 1"); await sleep(300);
+  m = nonRegion(await msgs()); s2 = await st();
+  check(!(await ev("return !!window.__x")) && s2[0] !== undefined, "#196 hover turned on inside Settings, then close: no exception (the window ignores room in hover)", JSON.stringify({ m, s2 }));
+  await reset();
 }
 
 // 7. At 320x400 (fitK < 1), Settings is reachable and its body scrolls (pixel size not checked)
