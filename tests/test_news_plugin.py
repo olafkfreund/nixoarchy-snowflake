@@ -108,7 +108,7 @@ class NewsTest(unittest.TestCase):
             news.main()
         card = json.loads(output.getvalue())
         self.assertEqual((card["kind"], card["points"]), ("facts", ["No news feeds could be reached."]))
-        self.assertIn("2 couldn't be reached", card["source"])
+        self.assertEqual(card["source"], "2 couldn't be reached")
 
     def card(self, query, config, feeds_ok=True):
         stdin = json.dumps({"query": query, "config": config})

@@ -48,6 +48,25 @@
         }
       );
 
+      # nix develop -c python3 -B tests/test_plugin_sandbox.py: the sandbox tests run, or the run fails (#190)
+      devShells = forSystems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          default = pkgs.mkShell {
+            packages = [
+              pkgs.python3
+              pkgs.bubblewrap
+              pkgs.passt
+              pkgs.iproute2
+            ];
+            NIXI_SANDBOX_TESTS = "require";
+          };
+        }
+      );
+
       checks = forSystems (
         system:
         let
@@ -121,6 +140,13 @@
           status-module-assertions =
             assert badOk;
             pkgs.runCommand "status-module-assertions" { } "touch $out";
+
+          # the wrapper's PATH carries what the plugin sandbox needs (#190); reads the recipe, so it doesn't build the package
+          wrapper-has-sandbox-tools =
+            assert nixpkgs.lib.all (
+              p: nixpkgs.lib.hasInfix (builtins.unsafeDiscardStringContext (nixpkgs.lib.makeBinPath [ p ])) self.packages.${system}.nixi-companion.postFixup
+            ) [ pkgs.bubblewrap pkgs.passt pkgs.iproute2 ];
+            pkgs.runCommand "wrapper-has-sandbox-tools" { } "touch $out";
         }
       );
 
