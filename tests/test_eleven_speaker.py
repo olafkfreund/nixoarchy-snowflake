@@ -146,7 +146,7 @@ class ElevenSpeakerTest(_ServerEnv):
             w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050); w.writeframes(b"\0\0" * 1000)
         stopped = threading.Event()
         calls = []
-        def make(text, gen, reply, engine, local, sid=None):
+        def make(text, gen, reply, engine, local, sid=None, strict=False):
             calls.append((text, gen))
             if text == "Drop.":
                 S.stop()

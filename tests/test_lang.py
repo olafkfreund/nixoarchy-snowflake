@@ -345,7 +345,8 @@ class LinesTest(unittest.TestCase):
                     continue
                 self.assertIn(k, mine, (code, k))
                 self.assertEqual(self.slots(mine[k]), self.slots(v), (code, k))
-            self.assertEqual(self.lang.load(code)["_review"], [], code)    # (the user's native check cleared them, 2026-11-04)
+            self.assertEqual(self.lang.load(code)["_review"],
+                             ["page.agents", "page.agents_hint", "page.agents_empty", "page.agent_replay", "page.agent_more"], code)
 
     def test_t_speaks_the_active_language(self):
         self.lang.active = "nb"

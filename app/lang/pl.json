@@ -110,7 +110,18 @@
     "page.tidy": "Dobrze, porządkuję.",
     "page.voice_1": "cześć! to mój nowy głos.",
     "page.voice_2": "jak brzmię?",
-    "page.voice_3": "o, ten mi się podoba."
+    "page.voice_3": "o, ten mi się podoba.",
+    "page.agents": "Agenci",
+    "page.agents_hint": "Czytaj na głos podsumowania od agentów kodowania.",
+    "page.agents_empty": "Brak podsumowań.",
+    "page.agent_replay": "Powtórz",
+    "page.agent_more": "Powiedz więcej"
   },
-  "_review": []
+  "_review": [
+    "page.agents",
+    "page.agents_hint",
+    "page.agents_empty",
+    "page.agent_replay",
+    "page.agent_more"
+  ]
 }
