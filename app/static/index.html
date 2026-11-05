@@ -372,7 +372,7 @@ body.appr #stg{opacity:.35;pointer-events:none}
 @keyframes stgChalk{50%{translate:10px -4px}}
 #chalk.l.pt{animation-name:stgChalkL}
 @keyframes stgChalkL{50%{translate:-10px -4px}}
-body.bar #stg,body.hover #stg,body.calm #stg,body.bar #stgTab,body.hover #stgTab,body.bar #chalk,body.hover #chalk,body.bar #hat,body.hover #hat,body.calm #hat,body.bar #pop,body.hover #pop,body.calm #pop,body.bar #wtc,body.hover #wtc,body.calm #wtc{display:none}
+body.bar #stg,body.hover #stg,body.calm #stg,body.bar #stgTab,body.hover #stgTab,body.calm #stgTab,body.bar #chalk,body.hover #chalk,body.calm #chalk,body.bar #hat,body.hover #hat,body.calm #hat,body.bar #pop,body.hover #pop,body.calm #pop,body.bar #wtc,body.hover #wtc,body.calm #wtc{display:none}
 @media (prefers-reduced-motion:reduce){#stg,#stg.l,#stg.on,#stgTab,#stgTab.l,#stgTab.on{transform:none;transition:opacity .18s}#stg.go .ul path,#stg.go .sk .tm,#stg.cinema.go::before,#stg.cinema.go::after,#stg.desk.go .pg{animation:none}#stg .it.pt .n{animation:none}#chalk{display:none}}
 #cap.ntf #plate{pointer-events:auto;cursor:pointer;border:1px solid var(--line)}   /* a notification row is up: click opens it */
 #wk{position:absolute;left:50%;translate:-50% 0;max-width:316px;width:fit-content;padding:2px 8px;border-radius:999px;background:var(--cap-bg,#0b0b0be6);top:404px;text-align:center;font:11.5px var(--mono);color:var(--cap-dim,var(--dim));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}   /* nixi mode: what the agent is doing */
@@ -2317,7 +2317,8 @@ function onEvent(ev){
     else if(more&&document.body.classList.contains('bar')) flash('#e5a50a'); }
   else if(ev.t==='approve_done') approvalGone(ev.id);
   else if(ev.t==='stage'){ if(stageShow(ev)===false) himSet(((himEl.textContent||'').trim()+'\n'+stageText(ev)).trim()); }
-  else if(ev.t==='stage_update'){ if(ev.kind==='headlines') pressUpdate(ev); else gaugeUpdate(ev); }
+  else if(ev.t==='stage_update'){ if(stgHeld&&stgHeld.kind===ev.kind&&(ev.kind==='headlines'?ev.copy===stgHeld.copy:ev.refresh===stgHeld.refresh)) stgHeld={...stgHeld,...ev,t:'stage'};   // (a held board keeps its late updates: the server doesn't send them twice)
+    if(ev.kind==='headlines') pressUpdate(ev); else gaugeUpdate(ev); }
   else if(ev.t==='stage_status') stageStatus(ev);
   else if(ev.t==='stage_close') stageClosedByServer();
   else if(ev.t==='toast') tick(ev.text);
@@ -2474,7 +2475,7 @@ function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.c
 /* ================= answer stages (#144): the page only draws what the server sends, every field via textContent; Run, Copy and the rest go back as a token ================= */
 const stgEl=$('#stg'), stgTab=$('#stgTab'), chalkEl=$('#chalk'), hatEl=$('#hat'), popEl=$('#pop'), wtcEl=$('#wtc');
 let gaugeRef=null, gaugeHist={}, GAUGE_MS=5000;   // the live board's refresh loop and the last 24 readings per host+meter
-let stgPosted=false, stg=null, stgState='closed', stgSide='r', stgUse=0, stgQuiet=0, stgTimer=null, stgOffT=null, stgRunTok=null, stgTm=[];
+let stgPosted=false, stg=null, stgHeld=null, stgState='closed', stgSide='r', stgUse=0, stgQuiet=0, stgTimer=null, stgOffT=null, stgRunTok=null, stgTm=[];
 const hx=(tag,cls,txt)=>{ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; };
 const stgOpen=()=>stgState==='open';
 function stgSize(w){ stageWant=[w,0]; sizeWindow(); }
@@ -2696,6 +2697,7 @@ const clipLine=c=>{ const m=[c.channel,c.duration].filter(Boolean).join(', '); r
 function stageText(ev){ if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>{ const st=h.state||'up'; if(st==='down'||st==='stale') return [h.name+': '+gaugeOneText(h)]; return [...(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))), ...(h.badges||[]).map(b=>(many?h.name+' ':'')+b.k+': '+b.v), ...(h.lists||[]).map(l=>(many?h.name+' ':'')+l.title+': '+(l.items||[]).join(', '))]; })).join('\n'); } if(ev.kind==='headlines') return [ev.title||'News',...(ev.items||[]).map(it=>it.title+' \u2014 '+it.source+', '+pressAge(it.at)),...(ev.clips&&ev.clips.length?['Watch:',...ev.clips.map(clipLine)]:[]),...(ev.source?[ev.source]:[])].join('\n'); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
+  if(document.body.classList.contains('pnl')){ stgHeld=ev; return; }
   stgPosted=false; gaugeStop();
   if(hiddenNow||document.body.classList.contains('bar')||document.body.classList.contains('calm')||info.hover||SIT.fullscreen||SIT.locked||rec||pendingAppr){ if(stgState!=='closed') stageHide(false); return false; }
   stgTm.forEach(clearTimeout); stgTm=[]; clearTimeout(stgOffT);
@@ -2721,6 +2723,7 @@ function stageClose(){ if(stgState==='closed') return; stageHide(false); post('/
 function stageRestore(){ if(stgState!=='tab'||!stg) return; stgState='open'; if(stg.kind==='gauges') termContrast(); if(stg.kind==='headlines') pressAges(); stgUse=stgQuiet=performance.now(); stgTab.classList.remove('on'); stgTab.inert=true; stgEl.inert=false; stgEl.setAttribute('aria-hidden','false'); stgSize(800);
   stgTm.push(setTimeout(()=>{ if(!stgOpen()) return; stagePlace(); void stgEl.offsetWidth; stgEl.classList.add('on'); sendRegion(true); stagePost(true); },90)); clearInterval(stgTimer); stgTimer=setInterval(stageTick,1000); }
 function stageTick(){ const now=performance.now(), hov=stgEl.matches(':hover');
+  if(document.body.classList.contains('pnl')){ stgUse=stgQuiet=now; return; }
   if(hov) stgUse=now;
   if(playing||busy||hov||pendingAppr) stgQuiet=now;
   if(stg&&stg.kind==='headlines') pressAges();
@@ -2735,7 +2738,7 @@ function stageStatus(ev){ if(!stgOpen()&&stgState!=='tab') return;
   const st=row.querySelector('.st'); if(!st) return;
   const T={waiting:['waiting…',''],running:['running…',''],done:['✓ done','ok'],failed:['✕ '+(ev.error||'failed'),'bad'],other:['Nixi tried to run something else — stopped.','bad']}[ev.state]; if(!T) return;
   st.textContent=T[0]; st.className='st '+T[1]; stgUse=performance.now(); }
-function stageClosedByServer(){ if(stgState!=='closed') stageHide(false); }
+function stageClosedByServer(){ stgHeld=null; if(stgState!=='closed') stageHide(false); }
 $('#stgX').addEventListener('click',e=>{ e.stopPropagation(); stageClose(); });
 $('#stgBack').addEventListener('click',e=>{ e.stopPropagation(); post('/api/stage/act',{act:'back'}).catch(()=>{}); });
 stgTab.addEventListener('click',e=>{ e.stopPropagation(); stageRestore(); });
@@ -3004,7 +3007,8 @@ function panelSize(prevFocus){ const sOn=setEl.classList.contains('on'), pOn=pan
   if(sOn){ setSyncVars(); setWant=[Math.max(0,setW-340+24),Math.max(0,setH-460+46)]; native('wide:off'); sizeWindow(); }
   else if(pOn){ setWant=[0,0]; sizeWindow(); native('wide:on'); }
   else { setWant=[0,0]; native('wide:off'); sizeWindow(); reDock(); }
-  sendRegion(true); }
+  sendRegion(true);
+  if(!sOn&&!pOn&&stgHeld){ const e=stgHeld; stgHeld=null; onEvent(e); } }
 function closePanels(){ const was=panelEl.classList.contains('on')||setEl.classList.contains('on');
   panelEl.classList.remove('on'); panelKind=null; setEl.classList.remove('on'); if(was) panelSize(); }
 function reDock(){ if(!pnMoved) return; pnMoved=false;      // a panel dragged the notch away: back to its edge
@@ -3147,7 +3151,8 @@ function menu(on){ if(on) layoutMenu(); if(!on&&menuOn) menuShutAt=performance.n
 menuEl.addEventListener('click',e=>{ const b=e.target.closest('.mb'); if(!b) return; menu(false);
   ({talk:()=>startRec('auto'), bar:()=>toggleBar(), cd:()=>showAsk('/cd '), history:()=>openPanel('history'), plugins:()=>openPanel('plugins'),
     look:()=>{ endListening(); return shoot('screen').then(j=>{ if(j) showAsk(''); }); }, hover:toggleHover, mirror:mirRevoke, hide:dismiss, set:()=>settings(true)})[b.dataset.a](); });
-function dismiss(){ menu(false); hideAsk(); closePanels(); endListening(); if(!native('hide')) poke('sleepy',1200); }
+function dismiss(){ menu(false); hideAsk(); const held=stgHeld; stgHeld=null; closePanels(); if(held){ if(stgState!=='closed') stageHide(false); himSet(((himEl.textContent||'').trim()+'\n'+stageText(held)).trim()); }   // (he's going away: a held board follows the rule for a board arriving while hidden)
+  endListening(); if(!native('hide')) poke('sleepy',1200); }
 // Esc / hiding him: he stops listening — a recording in progress is dropped and the "just keep talking" window closes
 function endListening(){ if(rec&&rec.mode!=='approve') stopRec(true); post('/api/follow',{act:'cancel'}).catch(()=>{}); follow=false; hearRaw=0; }
 
@@ -3869,7 +3874,7 @@ function calmCheck(){ document.body.classList.toggle('calm', setEl.classList.con
 let fitK=1, layoutX=0, layoutY=0;
 // room for a long approval card / terminal sheet: ask the window for extra width and height (it shrinks back at [0,0])
 let cardWant=[0,0], sheetWant=[0,0], stageWant=[0,0], setWant=[0,0];
-function sizeWindow(){ const w=Math.max(cardWant[0],sheetWant[0],popWant[0],stageWant[0],setWant[0]), h=Math.max(cardWant[1],sheetWant[1],popWant[1],stageWant[1],setWant[1]);
+function sizeWindow(){ const pnl=document.body.classList.contains('pnl'), w=Math.max(cardWant[0],sheetWant[0],pnl?0:popWant[0],pnl?0:stageWant[0],setWant[0]), h=Math.max(cardWant[1],sheetWant[1],pnl?0:popWant[1],pnl?0:stageWant[1],setWant[1]);
   native('size:'+w+','+h); }   // (sent every time: the window ignores a repeat, and a lost message would leave the card clipped)
 function fit(){ const k=Math.min(1, innerWidth/340, innerHeight/460); fitK=k>0.995?1:k; const bs=document.body.style;
   bs.transformOrigin='0 0'; bs.margin='0'; bs.marginLeft=layoutX+'px'; bs.marginTop=layoutY+'px';
