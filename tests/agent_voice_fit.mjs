@@ -255,6 +255,30 @@ for (const native of [true, false]) {
   await view(340, 460);
 }
 
+// 10b. final-review fixes: a long sentence outlasts the guard; "stop" clears the queue; push-to-talk stops only the summary; muting partway prints nothing more
+{ await reset(true);
+  check((await ev("__autoend=false; AGENT_GUARD=300; return 1")) === 1, "guard setup");
+  await say("x".repeat(40) + ". Next one.");
+  await sleep(700);
+  check((await ev("return !!agentCur&&playing")) === true, "the guard allows for a long sentence", "");
+  await reset(true);
+  await ev("__autoend=false; return 1"); await say("One here. Two here."); await say("Second summary.");
+  await sleep(500);
+  await ev("playing=true; onEvent({t:'barge',listen:false,text:''}); return 1"); await sleep(400);
+  check((await ev("return [agentQ.length, !!agentCur]")).join() === "0,false", "saying stop clears the queue too", "");
+  await reset(true);
+  await ev("__autoend=false; return 1"); await say("One here. Two here."); await sleep(500);
+  await ev("__calls.length=0; return 1");
+  await ev("nixiCmd('ptt-down'); return 1"); await sleep(300);
+  check((await calls("/api/stop")).length === 0 && (await ev("return agentCur===null")) === true, "push-to-talk stops only the summary, with no /api/stop", "");
+  await ev("if(typeof stopRec==='function'&&rec) stopRec(true); return 1");
+  await reset(true);
+  await ev("__autoend=true; return 1"); await say("One here. Two here. Three here."); await waitFor("agentCur&&agentCur.i>=1");
+  await ev("muted=true; himSet('held'); return 1"); await sleep(600);
+  check((await ev("return [himEl.textContent.includes('Three here'), agentCur===null]")).join() === "false,true", "muting partway stops him without printing it all", "");
+  await reset(true);
+}
+
 // 11. a reload clears the queue and the replay
 { await reset(true); await ev("busy=true; return 1"); await say("Gone after reload.");
   await send("Page.reload"); await sleep(4500);

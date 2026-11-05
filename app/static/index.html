@@ -2184,7 +2184,7 @@ async function agentTick(){
   const now=performance.now();
   if(agentCur&&agentCur.sent){
     if(sayEpoch!==agentCur.ep){ agentCur=null; return; }      // cut off by something else (a spoken question, a barge-in): not "finished"
-    if(playing){ if(now-agentCur.sent>AGENT_GUARD){ agentCur=null; shush(); } return; }       // (a dropped event can't wedge him)
+    if(playing){ if(now-agentCur.sent>AGENT_GUARD+agentCur.ss[agentCur.i].length*150){ agentCur=null; shush(); } return; }       // (a dropped event can't wedge him; a long sentence just takes longer: about 7 characters a second at the slowest)
     agentCur.sent=0; agentCur.i++; }
   if(!agentCur){
     while(agentQ.length&&now-agentQ[0].at>AGENT_STALE) agentQ.shift();
@@ -2193,15 +2193,15 @@ async function agentTick(){
   const c=agentCur;
   if(c.i>=c.ss.length){ agentCur=null; return; }
   if(agentBusy()){ agentCur=null; return; }
-  if(muted){ capShow(); setYou(''); himSet(c.e.text); capQuiet(); agentCur=null; return; }
+  if(muted){ if(c.i===0){ capShow(); setYou(''); himSet(c.e.text); capQuiet(); } agentCur=null; return; }     // (muted partway: he just stops, without printing it all again)
   agentCheck=true;      // held until this sentence is handed over: the 250 ms tick must not come in while we wait
   try{
     let go=false;
     try{ go=(await (await post('/api/agent-say/check',{from:c.e.from})).json()).go===true; }catch(e){}
     if(agentCur!==c) return;                                   // stopped while checking
-    if(!go||agentBusy()){ agentCur=null; return; }             // (call, meeting, anything but "go": the rest of this summary is dropped)
+    if(!go||muted||agentBusy()){ agentCur=null; return; }             // (call, meeting, anything but "go": the rest of this summary is dropped)
     if(c.i===0){ restore(Math.min(60000,4000+c.e.text.length*80),false); if(info.hover) await comeBack(); if(agentCur!==c) return;
-      if(agentBusy()){ agentCur=null; return; }
+      if(muted||agentBusy()){ agentCur=null; return; }
       agentMark(c.e.from,'done'); capShow(); setYou(''); himSet(''); }       // (no sfx, no tick: the finished alert already did)
     c.sent=performance.now(); c.ep=sayEpoch; enqueue(c.ss[c.i],{follow:false,cap:true,strict:true,fresh:c.i===0,reply:c.reply});
   } finally { agentCheck=false; }
@@ -2224,7 +2224,7 @@ function onEvent(ev){
     poke('surprised',500); wake(); sfx('wake');
     if(ev.text && ev.text.split(/\s+/).length>=2) send(ev.text); else if(!busy) startRec('auto'); else tick("one sec — I'm still on the last thing");
   }
-  else if(ev.t==='barge'){ if(!playing) return; shush(); sfx('pop'); poke('surprised',600);
+  else if(ev.t==='barge'){ if(!playing) return; agentStop(); sfx('pop'); poke('surprised',600);
     if(ev.listen){ if(ev.text&&ev.text.split(/\s+/).length>=2) send(ev.text); else startRec('auto'); } else tick('okay, okay — shh'); }
   else if(ev.t==='remind'){ if(hiddenNow) native('show'); restore(12000,false); if(info.hover) comeBack(); sfx('remind'); poke('excited',1800); say(ev.text); tick('⏰ '+ev.text); }
   else if(ev.t==='spk'){ const it=spkMap.get(ev.id); if(!it) return; spkMap.delete(ev.id); spkGuard=performance.now()+ev.at+ev.dur*1000;
@@ -3786,7 +3786,7 @@ window.nixiCmd=async c=>{ hiddenNow=false; restore(15000,true);
   if(c==='listen'){ await comeBack(); if(rec) stopRec(false); else startRec('auto'); }
   else if(c==='look'){ await comeBack(); shoot('window').then(j=>{ if(j) startRec('auto'); }); }
   else if(c==='live'){ await comeBack(); toggleLive(); }
-  else if(c==='ptt-down'){ await comeBack(); if((busy||playing)&&!pendingAppr) await interrupt(); if(!rec) startRec('ptt'); }   // push-to-talk hotkey held
+  else if(c==='ptt-down'){ await comeBack(); if(agentCur) agentStop(); else if((busy||playing)&&!pendingAppr) await interrupt(); if(!rec) startRec('ptt'); }   // push-to-talk hotkey held
   else if(c==='ptt-up'){ if(rec&&rec.mode==='ptt') stopRec(false); }                                                          // …and let go
   else if(c==='hover') toggleHover(); else if(c==='hover-on') toggleHover(true); else if(c==='hover-off') toggleHover(false); };
 
