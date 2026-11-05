@@ -18,6 +18,14 @@ body{position:relative;width:340px;height:460px;margin:0;overflow:visible}   /* 
 html{background:transparent}
 body{background:radial-gradient(70% 52% at 50% 36%,var(--panel2) 0%,#090909 78%);color:var(--text);
   font:14px/1.45 "Inter",system-ui,sans-serif;user-select:none;-webkit-user-select:none}
+body.still .tCursor,body.still .tAntenna,body.still .tTail{animation-play-state:paused}
+@media (prefers-reduced-motion:reduce){.tCursor,.tAntenna,.tTail{animation:none!important}}
+@keyframes cursor-blink{0%,49%{opacity:1}50%,100%{opacity:.12}}
+@keyframes antenna-pulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.18);opacity:1}}
+@keyframes tail-swish{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(9deg)}}
+.tCursor{animation:cursor-blink 1.05s steps(1) infinite}
+.tAntenna{transform-origin:0px -102px;animation:antenna-pulse 1.8s ease-in-out infinite}
+.tTail{transform-origin:44px 48px;animation:tail-swish 2.5s ease-in-out infinite}
 html.native body{background:transparent}
 button{font:inherit;color:inherit}
 
@@ -742,6 +750,13 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <radialGradient id="glossG"><stop offset="0" stop-color="#fff" stop-opacity=".17"/><stop offset=".6" stop-color="#fff" stop-opacity=".05"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
       <linearGradient id="nixD" gradientUnits="userSpaceOnUse" x1="-80.6" y1="0" x2="-24.2" y2="97.7"><stop offset="0" stop-color="#3e5993"/><stop offset=".25" stop-color="#4564a5"/><stop offset="1" stop-color="#4d6fb7"/></linearGradient>
       <linearGradient id="nixL" gradientUnits="userSpaceOnUse" x1="-80.6" y1="0" x2="-24.2" y2="97.7"><stop offset="0" stop-color="#6d9bbc"/><stop offset=".25" stop-color="#72a9cf"/><stop offset="1" stop-color="#77b6e1"/></linearGradient>
+      <linearGradient id="termCase" x1="0" y1="-84" x2="0" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0" class="b0"/><stop offset=".55" class="b1"/><stop offset="1" class="b2"/></linearGradient>
+      <linearGradient id="termStand" x1="0" y1="58" x2="0" y2="92" gradientUnits="userSpaceOnUse"><stop offset="0" class="b1"/><stop offset="1" class="b2"/></linearGradient>
+      <linearGradient id="termGlare" x1="-74" y1="-64" x2="26" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".09"/><stop offset=".5" stop-color="#fff" stop-opacity=".02"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+      <linearGradient id="botShell" x1="0" y1="-78" x2="0" y2="82" gradientUnits="userSpaceOnUse"><stop offset="0" class="b0"/><stop offset=".55" class="b1"/><stop offset="1" class="b2"/></linearGradient>
+      <linearGradient id="botTrim" x1="0" y1="-80" x2="0" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0" class="b1"/><stop offset="1" class="b2"/></linearGradient>
+      <radialGradient id="devBody" cx="-24" cy="-30" r="118" gradientUnits="userSpaceOnUse"><stop offset="0" class="b0"/><stop offset=".55" class="b1"/><stop offset="1" class="b2"/></radialGradient>
+      <linearGradient id="devWing" x1="0" y1="-16" x2="0" y2="86" gradientUnits="userSpaceOnUse"><stop offset="0" class="b1"/><stop offset="1" class="b2"/></linearGradient>
       <clipPath id="clipL"><path id="cpL"/></clipPath>
       <clipPath id="clipR"><path id="cpR"/></clipPath>
     </defs>
@@ -764,6 +779,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
           <g id="eL"><path class="eye" id="pL"/><g clip-path="url(#clipL)"><path class="slit" id="hlL"/></g></g>
           <g id="eR"><path class="eye" id="pR"/><g clip-path="url(#clipR)"><path class="slit" id="hlR"/></g></g>
         </g>
+        <g class="ball bfront"></g>
         <g id="tears"></g>
         <!-- the glass dome: soft reflection + rim -->
         <ellipse cx="-30" cy="-46" rx="38" ry="15" transform="rotate(-30 -30 -46)" fill="url(#glossG)" pointer-events="none"/>
@@ -843,6 +859,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <label class="tg" style="margin-top:9px"><input type="checkbox" id="linkSw"><span class="sw"></span><span class="l">Matching eyes<small>Change both eyes (and both whites) together.</small></span></label>
         <label class="tg" style="margin-top:7px"><input type="checkbox" id="rndSw"><span class="sw"></span><span class="l">Surprise me<small>New random colours every time he pops up.</small></span></label>
       </div>
+      <div class="row"><div class="t">Character</div><div class="h">Changes his body, not his voice. To match, try the Robot voice with the robot (Voice tab).</div><div class="skins" id="characterGrid"></div></div>
       <div class="row"><div class="t">Skin</div><div class="h">Something to wear. The sprout sways.</div><div class="skins" id="skinGrid"></div></div>
       <div class="row"><div class="t">Resting pupils</div><div class="h">His everyday look — they still change with his mood.</div><div class="seg" id="pupChips"></div></div>
       <div class="row"><div class="t">When idle</div><div class="h">Pops back up when something happens.</div><div class="seg" id="idleChips"></div></div>
@@ -1108,6 +1125,7 @@ function applyLook(L){
   if(bk&&fr) SKIN_PARTS=drawSkin(bk,fr,LOOK);
   SIT_P=drawSit(LOOK);
   capColors();
+  setCharacter(LOOK.character || 'snowflake');
 }
 function randomLook(L){
   const hb=Math.random()*360, hp=Math.random()*360, hw=Math.random()*360, hp2=(hp+120+Math.random()*120)%360;
@@ -1118,7 +1136,7 @@ function randomLook(L){
 let lookShown='', lookRolled=false;
 function syncLook(reroll){
   const L=themed({...LOOK_DEFAULT,...(info.look||{})});
-  if(L.random){ if(reroll||!lookRolled){ applyLook({...L,...randomLook(L)}); lookRolled=true; lookShown=''; } else if(L.skin!==LOOK.skin) applyLook({...LOOK,skin:L.skin}); return; }
+  if(L.random){ if(reroll||!lookRolled){ applyLook({...L,...randomLook(L)}); lookRolled=true; lookShown=''; } else if(L.skin!==LOOK.skin||L.character!==LOOK.character) applyLook({...LOOK,skin:L.skin,character:L.character}); return; }
   lookRolled=false; const k=JSON.stringify([L,info.theme]); if(k!==lookShown){ applyLook(L); lookShown=k; }
 }
 const syncEye=syncLook;
@@ -1132,8 +1150,9 @@ let SKIN_PARTS={}, SIT_P=null, sitSettled=false, shivAt=0, shivT0=0;
 // and the skin picker never shows one. Flat paths only; frame() fades and scales them with springs.
 function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) return null; bk.innerHTML=''; fr.innerHTML='';
   const acc=L.skinColor||L.pupL, R=at=>({...at,'stroke-linejoin':'round','stroke-linecap':'round'});
-  const nc=sv('g',{opacity:0},fr), ph=sv('g',{opacity:0},fr), bn=sv('g',{opacity:0},fr), sc=sv('g',{opacity:0},fr);   // top zone, drawn first: the headphone band passes in front
-  const hb=sv('g',{opacity:0},bk), bd=sv('g',{},hb), tie=sv('g',{opacity:0},fr), hf=sv('g',{opacity:0},fr), gl=sv('g',{opacity:0},fr), sh=sv('g',{opacity:0},fr);
+  const prop=(par,anchor,fit)=>sv('g',{opacity:0},sv('g',{class:'anc','data-a':anchor,'data-fit':fit},par));
+  const nc=prop(fr,'head','nightcap'), ph=prop(fr,'head','party'), bn=prop(fr,'head','beanie'), sc=prop(fr,'neck','scarf');   // top zone, drawn first: the headphone band passes in front
+  const hb=prop(bk,'face','headphones'), bd=sv('g',{},hb), tie=prop(fr,'neck','tie'), hf=prop(fr,'face','headphones'), gl=prop(fr,'face','glasses'), sh=prop(fr,'face','shades');
   const wh=L.whiteL, pc=L.pupL, pd=shade(pc,-.3);
   // nightcap: a soft cone drooping to one side, a pom-pom, a pale brim
   const nci=sv('g',{transform:'translate(0 -62) scale(.6) translate(0 84)'},nc);   // (sized so even his biggest bounce keeps it in the window)
@@ -1181,7 +1200,7 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   const lens=()=>sv('path',R({d:'',fill:'#ffffff0d',stroke:acc,'stroke-width':2.6}),gl), line=w=>sv('path',R({d:'',fill:'none',stroke:w||acc,'stroke-width':w?2.4:2.6}),gl);
   const lensL=lens(), lensR=lens(), brg=line(), glintL=line('#ffffff60'), glintR=line('#ffffff60');
   // notification props, absolute coordinates, white / bright on his blue arms; frame() places them with put() and animates them while they show
-  const pk2='#0b0e14', chat=sv('g',{opacity:0},fr), feed=sv('g',{opacity:0},fr);
+  const pk2='#0b0e14', chat=prop(fr,'left','chat'), feed=prop(fr,'right','feed');
   sv('path',R({d:'M-88 -73H-60Q-56 -73 -56 -69V-55Q-56 -51 -60 -51H-72L-80 -43L-79 -51H-88Q-92 -51 -92 -55V-69Q-92 -73 -88 -73Z',fill:'#fff',stroke:'#2f8f66','stroke-width':3}),chat);
   const dots=[-82,-74,-66].map(x=>sv('circle',{cx:x,cy:-62,r:2.9,fill:'#2f8f66'},chat));
   const badge=sv('g',{display:'none'},chat); sv('circle',{cx:-58,cy:-74,r:8.5,fill:'#e5484d',stroke:'#fff','stroke-width':1.6},badge);
@@ -1194,48 +1213,51 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   return {chat:{g:chat,dots,badge,bt,n:0,img:ic(-99,-80,chat)},feed:{g:feed,scr,ant:tvA,img:ic(48,-70,feed)},tie,hb,bd,hf,bn,sc,scT,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,lensL,lensR,brg,glintL,glintR}; }
 // a plugin's prop (#149): the server already sanitised it to a node list; only createElementNS + setAttribute here, no ids, no markup
 const PROP_BOX={head:[-30,-112,60,54],left:[-98,-34,40,40],right:[58,-34,40,40],base:[-36,68,72,26]}, PROP_COL={acc:'var(--acc)',text:'var(--text)',dim:'var(--dim)'};
-function drawProp(par,P){   // a nested <svg> at the anchor box: it scales the prop and clips it to the box
+function drawProp(par,P){   // the anchor wrapper shifts this box; the nested svg scales and clips the prop
   const [x,y,width,height]=PROP_BOX[P.anchor]||PROP_BOX.head, els=[sv('svg',{x,y,width,height,viewBox:P.nodes[0].a.viewBox.join(' ')},par)];
   P.nodes.forEach((n,i)=>{ if(!i) return; const e=document.createElementNS(SVGNS,n.tag);
     for(const a in n.a){ if((a==='fill'||a==='stroke')&&PROP_COL[n.a[a]]) e.style.setProperty(a,PROP_COL[n.a[a]]); else e.setAttribute(a,n.a[a]); }   // (WebKitGTK: var() only works as a style)
     els[n.p].appendChild(e); els[i]=e; });
 }
 // simple, flat shapes in his own style: body-coloured (same glossy gradient as the ball) or one colour from his face
-function drawSkin(back,front,L,bodyFill='url(#ballG)'){
+function drawSkin(back,front,L,bodyFill='url(#ballG)',character=BODY){
   back.innerHTML=''; front.innerHTML='';
   const F=L.skinColor||bodyFill, acc=L.skinColor||L.pupL, soft=L.skinColor||L.whiteL, parts={pivots:{},baseProp:false};
   const R=(at)=>({...at,'stroke-linejoin':'round','stroke-linecap':'round'});
+  const prop=(par,anchor,fit)=>sv('g',{class:'anc','data-a':anchor,'data-fit':fit},par);
   switch(L.skin){
-    case 'halo': { const g=sv('g',{},front);
+    case 'halo': { const g=sv('g',{},prop(front,'head','halo'));
         sv('ellipse',{cx:0,cy:-114,rx:36,ry:6,fill:'none',stroke:soft,'stroke-width':4},g); parts.halo=g; break; }
-    case 'crown': { const g=sv('g',{transform:'translate(0 -58) scale(.85) translate(0 68)'},front);
+    case 'crown': { const g=sv('g',{transform:'translate(0 -58) scale(.85) translate(0 68)'},prop(front,'head','crown'));
         sv('path',R({d:'M-22 -68L-26 -94L-11 -80L0 -98L11 -80L26 -94L22 -68Z',fill:soft,stroke:soft,'stroke-width':6}),g); break; }
-    case 'sprout': { const g=sv('g',{},front);   // in front: the lambdas would hide it
+    case 'sprout': { const g=sv('g',{},prop(front,'head','sprout'));   // in front: the lambdas would hide it
         sv('path',R({d:'M0 -58Q-3 -76 2 -90',fill:'none',stroke:soft,'stroke-width':3.5}),g);
         sv('ellipse',{cx:-9,cy:-93,rx:10,ry:5,fill:soft,transform:'rotate(-28 -9 -93)'},g);
         sv('ellipse',{cx:13,cy:-96,rx:11,ry:5.5,fill:soft,transform:'rotate(26 13 -96)'},g);
         parts.wob=g; parts.pivots.wob=[0,-58]; break; }
-    case 'bow': { const g=sv('g',{transform:'translate(33.5 -58) rotate(30)'},front);
+    case 'bow': { const g=sv('g',{transform:'translate(33.5 -58) rotate(30)'},prop(front,'head','bow'));
         sv('path',{d:'M0 0C-8 -13 -24 -12 -24 0C-24 12 -8 13 0 0Z',fill:soft},g);
         sv('path',{d:'M0 0C8 -13 24 -12 24 0C24 12 8 13 0 0Z',fill:soft},g);
         sv('circle',{r:5,fill:shade(soft,-.15)},g); break; }
-    default: if(String(L.skin).startsWith('plug:')){ const P=((info&&info.plugin_props)||[]).find(p=>'plug:'+p.id===L.skin); if(P){ parts.baseProp=P.anchor==='base'; drawProp(P.layer==='back'?back:front,P); } }
+    default: if(String(L.skin).startsWith('plug:')){ const P=((info&&info.plugin_props)||[]).find(p=>'plug:'+p.id===L.skin); if(P){ parts.baseProp=P.anchor==='base'; drawProp(prop(P.layer==='back'?back:front,P.anchor,L.skin),P); } }
   }
+  applyAnchors(character,[back,front]);
   return parts;
 }
 // little mini-Nixi for the settings preview + skin gallery (static, clickable parts)
 let miniN=0;
 function miniNixi(svg,L,clickable){
-  svg.innerHTML=''; const id='mg'+(miniN++), [b0,b1,b2]=bodyStops(L.body);
+  svg.innerHTML=''; const id='mg'+(miniN++), [b0,b1,b2]=bodyStops(L.body), character=CHARACTERS[L.character]||CHARACTERS.snowflake;
   const defs=sv('defs',{},svg), gr=sv('radialGradient',{id,cx:-24,cy:-30,r:112,gradientUnits:'userSpaceOnUse'},defs);
   [[0,b0],[.55,b1],[1,b2]].forEach(([o,c])=>sv('stop',{offset:o,'stop-color':c},gr));
-  const back=sv('g',{'data-part':clickable?'skin':''},svg), ball=sv('path',{d:snowPath(),'stroke-linejoin':'round',fill:`url(#${id})`,stroke:lum(L.body)<.12?'#2a2a2a':shade(L.body,-.12),'stroke-width':1.6,'data-part':'body'},svg);
-  sv('g',{'data-part':'body'},svg).innerHTML=nixLambdas();
+  const back=sv('g',{'data-part':clickable?'skin':''},svg), ball=sv('path',{d:character.ball,'stroke-linejoin':'round',fill:`url(#${id})`,stroke:lum(L.body)<.12?'#2a2a2a':shade(L.body,-.12),'stroke-width':1.6,'data-part':'body'},svg);
+  sv('g',{'data-part':'body'},svg).innerHTML=character.back;
   for(const s of [-1,1]){ const k=s<0?'L':'R';
-    sv('ellipse',{cx:s*25.5,cy:-4.5,rx:23.5,ry:40.5,transform:`rotate(${-s*9} ${s*25.5} -4.5)`,fill:L['white'+k],'data-part':'white'+k},svg);
+    sv('ellipse',{cx:s*EYE.cx,cy:EYE.cy,rx:EYE.rx,ry:EYE.ry,transform:`rotate(${-s*EYE.tilt*180/Math.PI} ${s*EYE.cx} ${EYE.cy})`,fill:L['white'+k],'data-part':'white'+k},svg);
     sv('ellipse',{cx:s*10.5,cy:-4,rx:clickable?4.2:3.2,ry:12.5,transform:`rotate(${-s*8} ${s*10.5} -4)`,fill:L['pup'+k],'data-part':'pup'+k},svg); }
+  sv('g',{'data-part':'body'},svg).innerHTML=character.front;
   const front=sv('g',{'data-part':clickable?'skin':''},svg);
-  drawSkin(back,front,L,`url(#${id})`);
+  drawSkin(back,front,L,`url(#${id})`,character);
   svg.insertBefore(back,ball);
   return svg;
 }
@@ -1253,8 +1275,43 @@ const LAMBDA='M-78.5 31.4L-62.4 3.5L8.1 125.6L-24.2 125.6L-40.3 97.7L-56.4 125.6
 function snowPath(core=58){ const R=core/Math.cos(Math.PI/6);
   return 'M'+[0,1,2,3,4,5].map(i=>(R*Math.cos(i*Math.PI/3)).toFixed(1)+' '+(R*Math.sin(i*Math.PI/3)).toFixed(1)).join('L')+'Z'; }
 const nixLambdas=()=>[0,1,2,3,4,5].map(i=>`<path d="${LAMBDA}" transform="rotate(${i*60})" fill="url(#nix${i%2?'L':'D'})"/>`).join('');
-document.querySelectorAll('#body>path.ball').forEach(e=>e.setAttribute('d',snowPath()));
-document.querySelectorAll('#body>.nix').forEach(g=>g.innerHTML=nixLambdas());
+const CHARACTERS={snowflake:{label:'Snowflake',ball:snowPath(),back:nixLambdas(),front:'',gloss:true,
+  faceBox:[-76,-76,152,152],anchors:{head:[0,0],face:[0,0],neck:[0,0],base:[0,0],left:[0,0],right:[0,0]},
+  pivot:76,shadow:62,fits:new Set(['none','halo','crown','sprout','bow','nightcap','beanie','party','scarf','tie','headphones','shades','glasses','chat','feed']),touch:null},
+  terminal:{label:'Terminal',ball:'M-66 -84H66A26 26 0 0 1 92 -58V44A26 26 0 0 1 66 70H-66A26 26 0 0 1 -92 44V-58A26 26 0 0 1 -66 -84Z',
+    back:'<rect x="-20" y="64" width="40" height="18" rx="4" fill="url(#termStand)" stroke="var(--rim)" stroke-width="2"/><path d="M-52 78L52 78C60 78 64 85 66 91L-66 91C-64 85 -60 78 -52 78Z" fill="url(#termStand)" stroke="var(--rim)" stroke-width="2"/><g fill="var(--body0)" opacity=".55"><rect x="-46" y="82" width="12" height="5" rx="2"/><rect x="-30" y="82" width="12" height="5" rx="2"/><rect x="-14" y="82" width="28" height="5" rx="2"/><rect x="18" y="82" width="12" height="5" rx="2"/><rect x="34" y="82" width="12" height="5" rx="2"/></g><rect x="-92" y="-84" width="184" height="154" rx="26" fill="url(#termCase)" stroke="var(--rim)" stroke-width="2"/><line x1="-28" y1="-75" x2="-8" y2="-75" stroke="#081410" stroke-width="3" stroke-linecap="round"/><line x1="8" y1="-75" x2="28" y2="-75" stroke="#081410" stroke-width="3" stroke-linecap="round"/><rect class="accent" x="-78" y="-68" width="156" height="130" rx="16" fill="#0d221b" stroke="#34d399" stroke-width="2"/><g stroke="#34d399" stroke-opacity=".07" stroke-width="1.5"><line x1="-72" y1="-48" x2="72" y2="-48"/><line x1="-72" y1="-32" x2="72" y2="-32"/><line x1="-72" y1="-16" x2="72" y2="-16"/><line x1="-72" y1="0" x2="72" y2="0"/><line x1="-72" y1="16" x2="72" y2="16"/><line x1="-72" y1="32" x2="72" y2="32"/></g><path class="accent avoid" d="M-68 53L-61 56.5L-68 60Z" fill="#34d399" stroke="#05140f" stroke-width="1.5" stroke-linejoin="round"/><rect class="accent avoid tCursor" x="-57" y="53" width="8.5" height="7" rx="1.5" fill="#34d399" stroke="#05140f" stroke-width="1.5"/><circle class="accent" cx="68" cy="64" r="3" fill="#34d399" stroke="#05140f" stroke-width="1.5"/>',
+    front:'<path d="M-70 -64L20 -64L-35 56L-70 56C-74 56 -76 52 -76 46L-76 -56C-76 -61 -73 -64 -70 -64Z" fill="url(#termGlare)" pointer-events="none"/>',
+    gloss:false,faceBox:[-74,-64,148,120],anchors:{head:[0,-20],face:[0,0],neck:[0,18],base:[0,4],left:[0,0],right:[0,0]},
+    pivot:91,shadow:68,fits:new Set(['none','halo','crown','sprout','bow','nightcap','beanie','party','scarf','tie','shades','glasses','chat','feed','plug']),touch:'tCursor'},
+  robot:{label:'Robot',ball:'M-28 -78H28A56 56 0 0 1 84 -22V26A56 56 0 0 1 28 82H-28A56 56 0 0 1 -84 26V-22A56 56 0 0 1 -28 -78Z',
+    back:'<line x1="0" y1="-78" x2="0" y2="-96" stroke="#94a3b8" stroke-width="4.5" stroke-linecap="round"/><path d="M-15 -78A15 9 0 0 1 15 -78Z" fill="url(#botTrim)" stroke="var(--rim)" stroke-width="2"/><circle class="tAntenna" cx="0" cy="-102" r="11" fill="#38bdf8" opacity=".28"/><circle class="accent" cx="0" cy="-102" r="7.5" fill="#38bdf8" stroke="#082038" stroke-width="2"/><g fill="url(#botTrim)" stroke="var(--rim)" stroke-width="2"><rect x="-94" y="-20" width="12" height="32" rx="5"/><rect x="82" y="-20" width="12" height="32" rx="5"/><circle cx="-88" cy="-4" r="2.5" fill="#082038" stroke="none"/><circle cx="88" cy="-4" r="2.5" fill="#082038" stroke="none"/></g><rect x="-84" y="-78" width="168" height="160" rx="56" fill="url(#botShell)" stroke="var(--rim)" stroke-width="2"/><path d="M-48 -68Q0 -60 48 -68" fill="none" stroke="var(--rim)" stroke-width="2" opacity=".7"/><circle cx="-56" cy="-58" r="2.2" fill="#94a3b8" opacity=".75"/><circle cx="56" cy="-58" r="2.2" fill="#94a3b8" opacity=".75"/><rect class="accent" x="-74" y="-62" width="148" height="118" rx="28" fill="#0b1d36" stroke="#38bdf8" stroke-width="2"/><ellipse class="avoid" cx="-62" cy="40" rx="6" ry="3.5" fill="#38bdf8" opacity=".4"/><ellipse class="avoid" cx="62" cy="40" rx="6" ry="3.5" fill="#38bdf8" opacity=".4"/><g stroke="var(--rim)" stroke-width="3.2" stroke-linecap="round"><line x1="-18" y1="65" x2="18" y2="65"/><line x1="-12" y1="72" x2="12" y2="72"/></g>',
+    front:'',gloss:false,faceBox:[-72,-61,144,116],anchors:{head:[0,-20],face:[0,0],neck:[0,12],base:[0,2],left:[0,0],right:[0,0]},
+    pivot:82,shadow:64,fits:new Set(['none','halo','bow','scarf','tie','shades','glasses','chat','feed','plug']),touch:'tAntenna'},
+  devil:{label:'Devil',ball:'M0 -78C56 -78 86 -42 86 8C86 56 54 84 0 84C-54 84 -86 56 -86 8C-86 -42 -56 -78 0 -78Z',
+    back:'<g class="tTail"><path d="M44 48C70 56 72 18 80 8" fill="none" stroke="var(--body2)" stroke-width="6" stroke-linecap="round"/><path d="M80 8L75 -3L87 3L82 15Z" fill="url(#devWing)" stroke="var(--rim)" stroke-width="1.8" stroke-linejoin="round"/></g><path d="M-76 4C-94 -12 -96 8 -89 26C-83 19 -79 24 -74 32Z" fill="url(#devWing)" stroke="var(--rim)" stroke-width="2" stroke-linejoin="round"/><path d="M76 4C94 -12 96 8 89 26C83 19 79 24 74 32Z" fill="url(#devWing)" stroke="var(--rim)" stroke-width="2" stroke-linejoin="round"/><ellipse cx="-32" cy="82" rx="15" ry="9" fill="url(#devWing)" stroke="var(--rim)" stroke-width="1.8"/><ellipse cx="32" cy="82" rx="15" ry="9" fill="url(#devWing)" stroke="var(--rim)" stroke-width="1.8"/><path d="M0 -78C56 -78 86 -42 86 8C86 56 54 84 0 84C-54 84 -86 56 -86 8C-86 -42 -56 -78 0 -78Z" fill="url(#devBody)"/><ellipse cx="0" cy="62" rx="34" ry="14" fill="#fda4af" opacity=".16"/><path class="accent" d="M-54 -56C-68 -88 -46 -108 -28 -94C-35 -82 -35 -68 -30 -62Z" fill="#fbbf24" stroke="#451a03" stroke-width="2" stroke-linejoin="round"/><path class="accent" d="M54 -56C68 -88 46 -108 28 -94C35 -82 35 -68 30 -62Z" fill="#fbbf24" stroke="#451a03" stroke-width="2" stroke-linejoin="round"/><ellipse class="avoid" cx="-64" cy="40" rx="7" ry="4" fill="#fecdd3" opacity=".45"/><ellipse class="avoid" cx="64" cy="40" rx="7" ry="4" fill="#fecdd3" opacity=".45"/>',
+    front:'<path class="avoid" d="M-46 -64Q-26 -60 -10 -62" fill="none" stroke="#3b0714" stroke-width="3.2" stroke-linecap="round"/><path class="avoid" d="M46 -64Q26 -60 10 -62" fill="none" stroke="#3b0714" stroke-width="3.2" stroke-linecap="round"/><path class="avoid" d="M-18 55Q0 63 20 53" fill="none" stroke="#3b0714" stroke-width="3.2" stroke-linecap="round"/><polygon class="accent avoid" points="8,57 15,54 12,64" fill="#fef3c7" stroke="#3b0714" stroke-width="1.6" stroke-linejoin="round"/>',
+    gloss:false,faceBox:[-74,-66,148,128],anchors:{head:[0,-20],face:[0,0],neck:[0,10],base:[0,4],left:[0,0],right:[0,0]},
+    pivot:84,shadow:64,fits:new Set(['none','halo','crown','sprout','bow','nightcap','beanie','party','scarf','tie','shades','glasses','chat','feed','plug']),touch:'tTail'}};
+let BODY=CHARACTERS.snowflake;
+function applyAnchors(character=BODY,roots=[$('#accBack'),$('#accFront'),$('#sitBack'),$('#sitFront')]){
+  for(const root of roots) for(const e of root.querySelectorAll('.anc')){
+    const [dx,dy]=character.anchors[e.dataset.a]||[0,0]; e.setAttribute('transform',`translate(${dx} ${dy})`);
+    const f=e.dataset.fit||'', ok=character.fits.has(f)||(f.startsWith('plug:')&&character.fits.has('plug'));   // 'plug': every plugin prop fits
+    e.style.display=character===CHARACTERS.snowflake||ok?'':'none'; }
+}
+function setCharacter(id){
+  const next=CHARACTERS[id]||CHARACTERS.snowflake, changed=BODY!==next;
+  document.querySelectorAll('#body>path.ball').forEach(e=>e.setAttribute('d',next.ball));
+  document.querySelectorAll('#body>.nix').forEach(g=>{ g.innerHTML=next.back; if(next!==CHARACTERS.snowflake) g.classList.remove('glint'); });
+  document.querySelectorAll('#body>.bfront').forEach(g=>g.innerHTML=next.front);
+  document.querySelectorAll('#body>ellipse').forEach(e=>e.setAttribute('display',next.gloss?'':'none'));
+  BODY=next;
+  const [dx,dy]=BODY.anchors.base;
+  $('#shadow').setAttribute('cx',dx); $('#shadow').setAttribute('cy',108+dy); $('#shadow').setAttribute('rx',BODY.shadow);
+  applyAnchors();
+  if(changed) renderCue();
+}
+setCharacter(LOOK.character || 'snowflake');
 const EYE={rx:23.5, ry:40.5, cx:27.5, cy:-4.5, tilt:0.157};
 const EYE_HALFW=Math.hypot(EYE.rx*Math.cos(EYE.tilt),EYE.ry*Math.sin(EYE.tilt));   // half the width of one leaning eye
 /* pupils morph smoothly between shapes — all flat, solid colour:
@@ -1693,7 +1750,7 @@ function frame(ts){
   if(SIT.cold>=1&&m==='idle'&&!REDUCED.matches){ if(!shivAt) shivAt=ts+25000; if(ts>=shivAt){ shivT0=ts; shivAt=ts+(20+Math.random()*10)*1000; } } else { shivAt=0; shivT0=0; }
   const sp6=(ts-shivT0)/600, shiv=shivT0&&sp6>=0&&sp6<1?Math.sin(t*60)*1.5*Math.sin(Math.PI*sp6):0;   // 0.6 s, ~25 s apart, straight into dxp (a spring would filter 9 Hz away)
   const dxp=G.dx.to(0,dt)+shiv;
-  const bodyTr=`translate(${dxp.toFixed(2)},${(76*(1-sy*pump)).toFixed(2)}) rotate(${rot.toFixed(2)})`;
+  const bodyTr=`translate(${dxp.toFixed(2)},${(BODY.pivot*(1-sy*pump)).toFixed(2)}) rotate(${rot.toFixed(2)})`;
   E.body.setAttribute('transform',`${bodyTr} scale(${(sx*pump).toFixed(4)},${(sy*pump).toFixed(4)})`);
   E.shadow.setAttribute('transform',`scale(${sx.toFixed(3)},1)`);
 
@@ -1858,7 +1915,7 @@ function frame(ts){
         SIT_P.bd.setAttribute('transform',`translate(0 ${(-1.5*k).toFixed(2)})`);
         if(k>.6&&ts-nodAt>=200){ nodAt=ts; G.jelly.kick(.015*k); } } } }   // (nothing to write while all are off)
   { wxOn=wxAside(ts); const on=wxOn&&!wxHat(), dx=REDUCED.matches?(on?WX_ASIDE:0):G.wxAside.to(on?WX_ASIDE:0,dt);   // (#187: a notification mark must never sit under the cloud)
-    wxEl.setAttribute('transform',`translate(${dx.toFixed(1)} 0)`); }
+    const [hx,hy]=BODY.anchors.head; wxEl.setAttribute('transform',`translate(${(hx+dx).toFixed(1)} ${Math.max(hy,-3)})`); }   // (the weather follows his head, as far as the window lets it: 3 px of room above the clouds)
   wxStep(t,dt);
   { const k=mirKind(), bar=document.body.classList.contains('bar');       // the ai-mirror mark (nothing to write while it is gone)
     if(k||mirV>0){ if(k&&k!==mirLast){ mirLast=k; MX.ring.setAttribute('r','12'); MX.ring.setAttribute('stroke',k==='agent'?'#ff3b3b':k==='pending'?'#ffb02a':'#9ecbff'); MX.ring.setAttribute('display',k==='watch'?'none':'');
@@ -2134,7 +2191,7 @@ function renderCue(){ const k=ambKind(), g=$('#cue'), bar=document.body.classLis
   g.setAttribute('display',k&&!bar&&!AM&&!mirKind()?'':'none');   // (the agent mark stands in for the !)
   g.setAttribute('class',k);
   if(k){ $('#cueD').setAttribute('fill',CUES[k][0]); $('#cueT').textContent=CUES[k][1]; }
-  const w=!k&&!bar&&AMB.weather, fr=$('#frost');
+  const w=!k&&!bar&&AMB.weather&&BODY===CHARACTERS.snowflake, fr=$('#frost');
   if(!fr.firstChild) fr.innerHTML=[0,1,2,3,4,5].map(i=>`<g transform="rotate(${i*60})"><circle cx="-8" cy="124" r="4"/><circle cx="-24" cy="118" r="2.2"/><circle cx="-56" cy="120" r="2.6"/></g>`).join('');
   fr.setAttribute('display',w?'':'none'); fr.setAttribute('fill',AMB.weather==='cold'?'#e6f4ff':'#ffb36b'); fr.setAttribute('opacity',AMB.weather==='cold'?.9:.55); }   // frost on the tips / a slight warm thaw
 new MutationObserver(renderCue).observe(document.body,{attributes:true,attributeFilter:['class']});   // notch in / out: show or hide the mark
@@ -2255,7 +2312,7 @@ function onEvent(ev){
     SIT.weather=ev.weather||null; }
   else if(ev.t==='ambient'){ if(ev.alert) restore(12000,false); const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive) poke('confused',1500);
     if(ev.glint&&info.proactive){ poke('t_beam',1800); burstLines('#77b6e1',8); }      // a new NixOS generation: proud
-    if(ev.glint){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
+    if(ev.glint&&BODY===CHARACTERS.snowflake){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
     if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')) flash('#4d6fb7'); }   // (never spoken)
     else if(more&&document.body.classList.contains('bar')) flash('#e5a50a'); }
   else if(ev.t==='approve_done') approvalGone(ev.id);
@@ -3458,6 +3515,8 @@ function renderSettings(){
     :'<div class="h" style="margin:0">none yet</div>';
   // look
   const L=curLook();
+  $('#characterGrid').innerHTML=Object.entries(CHARACTERS).map(([id,c])=>`<button type="button" data-character="${id}" class="${(L.character||'snowflake')===id?'on':''}" aria-pressed="${(L.character||'snowflake')===id}"><svg viewBox="-125 -150 250 250" aria-hidden="true"></svg>${c.label}</button>`).join('');
+  $$('#characterGrid button').forEach(b=>miniNixi(b.querySelector('svg'),{...L,character:b.dataset.character,skin:'none'},false));
   $('#skinGrid').innerHTML=(info.skins||Object.keys(SKIN_LABELS)).map(k=>`<button data-skin="${k}" class="${L.skin===k?'on':''}"><svg viewBox="-125 -150 250 250"></svg>${SKIN_LABELS[k]||k}</button>`).join('');
   for(const P of info.plugin_props||[]){   // plugin props: built node by node, the name only ever as text
     const b=document.createElement('button'), sk=document.createElementNS(SVGNS,'svg'); b.dataset.skin='plug:'+P.id; b.className=L.skin===b.dataset.skin?'on':'';
@@ -3657,10 +3716,11 @@ setEl.addEventListener('click',e=>{
   const bepick=g('epick'); if(bepick) return setSetting({eleven_voice:bepick.dataset.epick},'#elevenErr');
   const barep=g('areplay'); if(barep){ const it=agentLog.find(x=>x.turn===barep.dataset.areplay)||agentLog[+barep.dataset.areplay]; if(it){ agentQ.unshift({...it,at:performance.now()}); while(agentQ.length>3) agentQ.pop(); } return; }
   if(g('amore')){ const l=agentLog[agentLog.length-1]; return l?post('/api/agent-say/more',{turn:l.turn}):null; }
-  const bm=g('m'), bv=g('v'), bp=g('ps'), bi=g('idle'), bs=g('stt'), bt=g('trust'), bo=g('open'), bk=g('skin'), bsw=g('sw'), bpd=g('pdel');
+  const bm=g('m'), bv=g('v'), bp=g('ps'), bi=g('idle'), bs=g('stt'), bt=g('trust'), bo=g('open'), bc=g('character'), bk=g('skin'), bsw=g('sw'), bpd=g('pdel');
   const part=e.target.closest('#lookPrev [data-part], #partChips [data-part]');
   if(part&&part.dataset.part) return selectPart(part.dataset.part);
   if(bsw){ const v=bsw.dataset.sw; if(v===''){ const L=curLook(); L.skinColor=''; setLook({skinColor:''}).then(()=>selectPart('skin')); } else setPart(v); return; }
+  if(bc){ const id=bc.dataset.character; setLook({character:id}).then(()=>{ const n=$(`#characterGrid [data-character="${id}"]`); if(n) n.focus(); }); return; }   // (the save redraws the row: keep the keyboard on the one you picked)
   if(bk){ setLook({skin:bk.dataset.skin}).then(()=>{ poke(bk.dataset.skin==='none'?'wink':'excited',900); }); return; }
   if(bm) setSetting({model:bm.dataset.m}).then(()=>tick('model → '+bm.textContent));
   if(bv){ if(bv.disabled) return; setSetting({voice:bv.dataset.v},'#voiceErr').then(ok=>{ if(!ok) return; const vv=(info.voices||[]).find(x=>x.id===bv.dataset.v);
@@ -3850,7 +3910,7 @@ addEventListener('transitionend',e=>{ if(e.target.matches&&e.target.matches('#me
 let downAt=null, dragged=false, clicks=[];
 E.body.addEventListener('mousedown',e=>{ if(e.button!==0) return; downAt=[e.clientX,e.clientY]; dragged=false; });
 // ---- idle (#140): after a while he shrinks into the corner nearest him (peek), then optionally hides without sleeping (doze)
-let idleSt='full', idleHoldUntil=0, lastUser=performance.now(), IDLE_K=1, eatClick=false, peekT=null, corner='br';
+let idleSt='full', idleHoldUntil=0, lastUser=performance.now(), IDLE_K=1, eatClick=false, peekT=null, corner='br', stillNow=false;
 const IDLE_SHRINK=45000, IDLE_DOZE=300000;
 window.nixiIdleScale=k=>{ IDLE_K=k; };      // test hook: multiplies the timers
 window.nixiCorner=c=>{ corner=c; const x=c[1]==='l'?-102:102, y=c[0]==='t'?-99:99; document.body.style.setProperty('--px',x+'px'); document.body.style.setProperty('--py',y+'px'); };
@@ -3870,6 +3930,8 @@ function restore(hold,focus){ const now=performance.now(); idleHoldUntil=Math.ma
   if(dozing){ native(focus?'show':'doze:show'); entrance(); }     // (not when the host already showed him: dozing is cleared first)
   setIdle('full'); }
 function idleCheck(){ const mode=info.idle_mode||'shrink', now=performance.now();
+  const st=now-Math.max(lastActive,lastUser)>60000&&!idleActive()&&!busy;
+  if(st!==stillNow){ stillNow=st; document.body.classList.toggle('still',st); }
   if(framePaused&&AM&&now>=AM.until){ AM=null; G.agent.x=0; G.agent.v=0; AMX.mk.setAttribute('opacity','0'); AMX.mk.setAttribute('pointer-events','none'); renderCue(); }   // (frame() isn't running to expire it)
   if(mode==='off'||idleActive()){ if(idleSt==='doze'&&!hiddenNow) restore(0); else setIdle('full'); return; }
   if(idleShowing()) return;
