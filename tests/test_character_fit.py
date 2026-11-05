@@ -15,6 +15,7 @@ import time
 import unittest
 import urllib.request
 from pathlib import Path
+from _browser import start_browser
 
 REPO = Path(__file__).resolve().parent.parent
 BROWSER = shutil.which("chromium") or shutil.which("chromium-browser")
@@ -47,11 +48,7 @@ class CharacterFit(unittest.TestCase):
         cls.cdp = _free_port()
         home = Path(tempfile.mkdtemp(prefix="nixi-charfit-"))
         cls.dirs.append(home)
-        cls.procs.append(subprocess.Popen([BROWSER, "--headless=new", "--disable-gpu", "--use-angle=swiftshader",
-                                           "--enable-unsafe-swiftshader", "--disable-gpu-compositing",
-                                           f"--user-data-dir={home / 'chromium'}", f"--remote-debugging-port={cls.cdp}",
-                                           "--no-first-run", "about:blank"],
-                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        cls.procs.append(start_browser(BROWSER, cls.cdp, home / "chromium"))
         cls.url = cls._serve(REPO)
         assert _wait(f"http://127.0.0.1:{cls.cdp}/json/version"), "chromium did not start"
 

@@ -14,6 +14,7 @@ import time
 import unittest
 import urllib.request
 from pathlib import Path
+from _browser import start_browser
 
 REPO = Path(__file__).resolve().parent.parent
 BROWSER = shutil.which("chromium") or shutil.which("chromium-browser")
@@ -53,11 +54,7 @@ class AccessoriesFit(unittest.TestCase):
         try:
             procs.append(subprocess.Popen([sys.executable, str(REPO / "app/server.py")], env=env,
                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
-            procs.append(subprocess.Popen([BROWSER, "--headless=new", "--disable-gpu", "--use-angle=swiftshader",
-                                           "--enable-unsafe-swiftshader", "--disable-gpu-compositing",
-                                           f"--user-data-dir={home / 'chromium'}", f"--remote-debugging-port={cdp}",
-                                           "--no-first-run", "about:blank"],
-                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+            procs.append(start_browser(BROWSER, cdp, home / "chromium"))
             self.assertTrue(_wait(f"http://127.0.0.1:{port}/"), "server did not start")
             self.assertTrue(_wait(f"http://127.0.0.1:{cdp}/json/version"), "chromium did not start")
             for _ in range(40):                              # runtime.json carries the page's token
