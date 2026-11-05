@@ -31,6 +31,14 @@ def load(d):
     return plugins.Plugin(m["id"], Path(d), m, "folder", None)
 
 
+def setUpModule():
+    if os.environ.get("NIXI_SANDBOX_TESTS") != "require":
+        return
+    missing = [n for n, ok in (("bwrap", shutil.which("bwrap") and plugins.bwrap_ok()), ("pasta", plugins.pasta_ok()), ("ip", shutil.which("ip"))) if not ok]
+    if missing:
+        raise RuntimeError("NIXI_SANDBOX_TESTS=require, but these don't work here: " + ", ".join(missing))
+
+
 @unittest.skipUnless(shutil.which("bwrap") and plugins.bwrap_ok(), "needs a working bwrap")
 class SandboxTest(unittest.TestCase):
     def setUp(self):
@@ -59,6 +67,7 @@ class SandboxTest(unittest.TestCase):
         self.assertEqual(a[0].rsplit("/", 1)[-1], "pasta")
         self.assertIn("--no-map-gw", a)
         self.assertNotIn("--map-host-loopback", a)
+        self.assertEqual(a[a.index("-t"):a.index("-t") + 8], ["-t", "none", "-u", "none", "-T", "none", "-U", "none"])
         a = a[a.index("bwrap"):]
         self.assertEqual(a[:8], ["bwrap", "--clearenv", "--unshare-all", "--unshare-user", "--disable-userns", "--cap-drop", "ALL", "--share-net"])
         self.assertEqual(a[a.index("/dev/shm") - 3:a.index("/dev/shm") + 1], ["--size", str(plugins.SHM_SIZE), "--tmpfs", "/dev/shm"])
@@ -96,10 +105,16 @@ class SandboxTest(unittest.TestCase):
 
     def serve(self):
         srv = socket.socket()
-        srv.bind(("127.0.0.1", 0))
-        srv.listen(5)
         self.addCleanup(srv.close)
-        return srv.getsockname()[1]
+        low = int(Path("/proc/sys/net/ipv4/ip_local_port_range").read_text().split()[0])
+        for port in range(low - 1, 1023, -1):         # below the ephemeral range: with `-T auto`, pasta didn't forward ephemeral ports, so one couldn't catch it (#190)
+            try:
+                srv.bind(("127.0.0.1", port))
+            except OSError:
+                continue
+            srv.listen(5)
+            return port
+        raise RuntimeError("no free port below %d" % low)
 
     PROBE = ("import json, socket\ns = socket.socket()\ns.settimeout(2)\n"
              "try:\n    s.connect(('127.0.0.1', int(open('port').read())))\n    r = 'connected'\nexcept OSError as e:\n    r = 'refused'\n"
@@ -410,7 +425,7 @@ class SandboxTest(unittest.TestCase):
         self.assertLess(time.monotonic() - start, plugins.TIME_DEFAULT)
         self.assertEqual((got["kind"], got["title"], got["points"]),
                          ("facts", "News", ["No news feeds could be reached."]))
-        self.assertIn("2 couldn't be reached", got["source"])
+        self.assertEqual(got["source"], "2 couldn't be reached")
 
 
 class ExamplesCheckTest(unittest.TestCase):

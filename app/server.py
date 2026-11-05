@@ -62,7 +62,7 @@ STATE_PATH = DATA_DIR / "state.json"
 # password helper) and only works for those: asking you to approve, looking at the screen, and the sudo card in root mode.
 TOKEN = secrets.token_urlsafe(24)
 TOOL_TOKEN = secrets.token_urlsafe(24)
-TOOL_PATHS = {"/api/approve", "/api/capture", "/api/askpass", "/api/theme"}   # /api/theme: the omarchy theme hook
+TOOL_PATHS = {"/api/approve", "/api/capture", "/api/askpass", "/api/theme", "/api/agent-say/ready", "/api/agent-say"}   # /api/theme: the omarchy theme hook
 
 VOICE_PROMPT = (
     "You are being driven from Nixi, a small voice-first desktop shell for Claude Code. "
@@ -215,7 +215,7 @@ DEFAULTS = {
     "idle_mode": "shrink",                  # when idle: off (stay) | shrink (peek at the edge) | doze
     "ambient_system": True, "ambient_calendar": False, "ambient_weather": False,
     # desktop awareness (#133): all off but the per-category sound and the spoken categories
-    "proactive": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"],
+    "proactive": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"], "agent_voice_mute": [],
     "notify_sound": True, "look_meeting": False, "look_music": False,
     "look_beat": False, "notify_speak_subject": False,
     "look_fullscreen": False, "react_load": False, "react_break": False, "react_welcome": False,
@@ -278,6 +278,7 @@ PEERS = peers.load()
 plugins.peers_allowed = lambda: CFG.get("peers_on") is True and bool(PEERS)
 
 SKINS = ["none", "halo", "crown", "sprout", "bow"]
+CHARACTERS = ("snowflake", "terminal", "robot", "devil")
 HEX = re.compile(r"#[0-9a-f]{6}")
 
 
@@ -287,11 +288,13 @@ def look():
     pup = ec if HEX.fullmatch(ec) else "#3e5993"
     wht = ew if HEX.fullmatch(ew) else "#ffffff"
     out = {"body": "#1b2a4a", "pupL": pup, "pupR": pup, "whiteL": wht, "whiteR": wht, "skin": "none",
-           "skinColor": "", "link": True, "random": ec == "random" or ew == "random", "follow_theme": True}
+           "skinColor": "", "link": True, "random": ec == "random" or ew == "random", "follow_theme": True, "character": "snowflake"}
     for k, v in lk.items():
         if k in ("body", "pupL", "pupR", "whiteL", "whiteR", "skinColor") and isinstance(v, str) and (HEX.fullmatch(v.lower()) or (k == "skinColor" and v == "")):
             out[k] = v.lower()
         elif k == "skin" and (v in SKINS or (isinstance(v, str) and v.startswith("plug:") and Plug.has_prop(v[5:]))):
+            out[k] = v
+        elif k == "character" and v in CHARACTERS:       # (a non-string is never in the tuple)
             out[k] = v
         elif k in ("link", "random", "follow_theme"):
             out[k] = bool(v)
@@ -1189,6 +1192,56 @@ def attention_parse(frm, hook):
             return None
     proj = os.path.basename(g("cwd").rstrip("/"))
     return kind, proj if re.fullmatch(r"[\w.@+-]{1,40}", proj) else "", why
+
+
+AGENT_NAMES = ("claude", "codex", "agy")
+_AGENT_TURN = re.compile(r"[0-9a-fA-F][0-9a-fA-F-]{7,63}")
+
+
+def agent_say_ready(frm):
+    """{speak: True}, or {speak: False, reason} when the summary needn't even be written."""
+    if frm not in AGENT_NAMES:
+        return {"speak": False, "reason": "bad-agent"}
+    if frm in (CFG.get("agent_voice_mute") or []):
+        return {"speak": False, "reason": "muted-agent"}
+    if Wake.asleep:
+        return {"speak": False, "reason": "hidden"}
+    if Ambient.meeting:
+        return {"speak": False, "reason": "meeting"}
+    return {"speak": True}
+
+
+def agent_say_accept(b):
+    """Validate an agent summary and hand it to the page; returns at once. Never the old-voice fallback: he is running."""
+    text, name = b.get("text"), b.get("name")
+    if b.get("from") not in AGENT_NAMES or b.get("kind") not in ("short", "more") or not isinstance(b.get("turn"), str) \
+            or not _AGENT_TURN.fullmatch(b["turn"]) or not isinstance(name, str) \
+            or not isinstance(text, str) or not text.strip() or len(text) > 2000:
+        return {"accepted": False, "reason": "bad-input"}
+    if SECRET_LINE.search(text):
+        return {"accepted": False, "reason": "secret"}
+    name = "" if SECRET_LINE.search(name) else name[:80]            # (a bad name loses the label, never the summary)
+    r = agent_say_ready(b["from"])
+    if not r["speak"]:
+        return {"accepted": False, "reason": r["reason"]}
+    if not BUS.subs:
+        return {"accepted": False, "reason": "no-page"}
+    BUS.pub(t="agent_say", **{"from": b["from"], "name": name, "turn": b["turn"], "text": text, "kind": b["kind"]})
+    return {"accepted": True}
+
+
+def agent_say_run(args, timeout):
+    """`agent-say <args>`, no shell. With a timeout: True only on exit 0 (fails closed). Without: started or not."""
+    exe = shutil.which("agent-say")
+    if not exe:
+        return False
+    try:
+        if timeout is None:
+            subprocess.Popen([exe, *args], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True
+        return subprocess.run([exe, *args], stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def attention_accept(frm, text, now=None, target=None, hook=None):
@@ -3379,7 +3432,7 @@ def clear_eleven_error(reply=None):
             _eleven_sticky.update(reply=reply, kind="")
 
 
-def speak_sentence(text, gen, reply=None, engine=None, local=False, sid=None):
+def speak_sentence(text, gen, reply=None, engine=None, local=False, sid=None, strict=False):
     """Make one sentence for either playback path; a stale cloud generation cannot send."""
     clear_eleven_error(reply)
     sending = object()
@@ -3395,6 +3448,8 @@ def speak_sentence(text, gen, reply=None, engine=None, local=False, sid=None):
             engine = tts_engine(local=True)
         if engine == "elevenlabs" and _eleven_sticky["kind"]:
             engine = tts_engine(local=True)
+    if strict and tts_mode() == "elevenlabs" and (local or engine != "elevenlabs"):
+        return None
     if engine != "elevenlabs":
         local = local or tts_mode() == "elevenlabs"
         engine = engine or tts_engine(local=local)
@@ -3403,7 +3458,8 @@ def speak_sentence(text, gen, reply=None, engine=None, local=False, sid=None):
         except NoVoice as fallback:
             if not local:
                 raise
-            BUS.pub(t="spk_skip", id=sid, reason=fallback.reason)
+            if not strict:
+                BUS.pub(t="spk_skip", id=sid, reason=fallback.reason)
             return None
     n = len(text)
     reserved = ok = False
@@ -3441,14 +3497,18 @@ def speak_sentence(text, gen, reply=None, engine=None, local=False, sid=None):
                 _eleven_sticky.update(reply=reply, kind=exc.kind)
         day = time.strftime("%Y-%m-%d")
         with Speaker.cv:
-            first_note = (day, exc.kind) not in _eleven_noted
-            _eleven_noted.add((day, exc.kind))
+            first_note = not strict and (day, exc.kind) not in _eleven_noted
+            if first_note:
+                _eleven_noted.add((day, exc.kind))
         if first_note:
             BUS.pub(t="note", text=str(exc) if exc.kind == "bad_voice" else f"ElevenLabs {exc.kind}; using the fallback voice.")
+        if strict and tts_mode() == "elevenlabs":
+            return None
         try:
             return (*synth(text, local=True), tts_engine(local=True))
         except NoVoice as fallback:
-            BUS.pub(t="spk_skip", id=sid, reason=fallback.reason)
+            if not strict:
+                BUS.pub(t="spk_skip", id=sid, reason=fallback.reason)
             return None
     finally:
         if reserved:
@@ -3920,6 +3980,7 @@ class Speaker:
     making = False
     making_item = None
     sending = set()
+    strict = set()
     current_engine = None
     current_sid = None
     queued_at = {}
@@ -3955,11 +4016,15 @@ class Speaker:
                 t.start()
 
     @classmethod
-    def say(cls, text, sid, epoch=None, follow=True, reply=None, local=False):
+    def say(cls, text, sid, epoch=None, follow=True, reply=None, local=False, strict=False):
         with cls.cv:
             if epoch is not None and epoch < cls.epoch:      # sent before you cut him off, arrived after
+                if strict:
+                    BUS.pub(t="spk_skip", id=sid)
                 return
             clear_eleven_error(reply)
+            if strict:
+                cls.strict.add(sid)
             cls.todo.append((cls.gen, sid, text, follow, tts_engine(local=local), reply, local))
             cls.queued_at[sid] = time.monotonic()
             if all(isinstance(x[1], int) for x in cls.todo):     # sentences can arrive out of order: play them in order
@@ -3980,6 +4045,7 @@ class Speaker:
             cls.drop_before = cls.gen
             cls.todo.clear()
             cls.ready.clear()
+            cls.strict.clear()
             cls.queued_at.clear()
             cls.current_engine = cls.current_sid = None
             p, cls.proc = cls.proc, None
@@ -4024,7 +4090,12 @@ class Speaker:
         for sid in dropped:
             with cls.cv:
                 cls.queued_at.pop(sid, None)
-            BUS.pub(t="spk_done", id=sid)
+                strict = sid in cls.strict
+                cls.strict.discard(sid)
+            if strict:
+                BUS.pub(t="spk_skip", id=sid)
+            else:
+                BUS.pub(t="spk_done", id=sid)
         BUS.pub(t="tts_gen", gen=cls.gen)
         return cls.gen
 
@@ -4036,12 +4107,18 @@ class Speaker:
                 while not cls.todo or len(cls.ready) >= 3:
                     cls.cv.wait()
                 g, sid, text, follow, engine, reply, local = cls.todo.pop(0)
+                strict = sid in cls.strict
                 cls.making = True
                 cls.making_item = (g, sid, text, follow, engine, reply, local)
             try:
                 t = time.monotonic()
-                made = speak_sentence(text, g, reply, engine, local, sid=sid)
+                made = speak_sentence(text, g, reply, engine, local, sid=sid, strict=strict)
                 if made is None:
+                    with cls.cv:
+                        skipped = sid in cls.strict
+                        cls.strict.discard(sid)
+                    if skipped:
+                        BUS.pub(t="spk_skip", id=sid)
                     continue
                 wav, rate, engine = made
                 wav, times, level = tidy_full(wav, text)
@@ -4066,6 +4143,8 @@ class Speaker:
                         cls.cv.notify_all()
             except Exception as e:  # noqa: BLE001
                 print(f"[nixi] speech: {e}", file=sys.stderr)
+                with cls.cv:
+                    cls.strict.discard(sid)
                 BUS.pub(t="spk_skip", id=sid)
             finally:
                 with cls.cv:
@@ -4176,6 +4255,8 @@ class Speaker:
             cls.stats["audio_s"] = round(cls.stats.get("audio_s", 0) + dur, 2)
             BUS.pub(t="spk", id=sid, at=round((start - now + cls.LAT) * 1000), dur=round(dur, 3), words=words,
                     level=level, step=lstep, engine=engine)
+            with cls.cv:
+                cls.strict.discard(sid)
             if not cls._write(pcm, g):
                 cls._release_if_idle()
                 continue
@@ -5773,6 +5854,7 @@ def state_info():
         **{k: bool(CFG.get(k, k == "ambient_system")) for k in Ambient.FLAG.values()},
         "projects": quick.projects(),
         **{k: bool(CFG.get(k, k == "notify_sound")) for k in NOTIFY_FLAGS}, "notify_speak": CFG.get("notify_speak", ["meeting"]),
+        "agent_voice_mute": CFG.get("agent_voice_mute") or [],
         "quick_actions": CFG.get("quick_actions") or [], "memory_count": len(mem_load()),
         "language": lang.norm(CFG.get("language")), "lang_active": lang.active, "lang_status": lang_status, "date_locale": lang.LANGS[lang.active]["date"], "lines": lang.lines(),
         "mic_device": CFG.get("mic_device") or "", "whisper_model": CFG.get("whisper_model") or "auto",
@@ -5942,7 +6024,7 @@ class Handler(BaseHTTPRequestHandler):
                     return None
                 with Speaker.cv:
                     gen, engine = Speaker.gen, tts_engine()
-                made = speak_sentence(text, gen, b.get("reply"), engine)
+                made = speak_sentence(text, gen, b.get("reply"), engine, strict=b.get("strict") is True)
                 if made is None:
                     self.send_response(204)
                     self.end_headers()
@@ -5979,7 +6061,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not text or (not tts_engine() and tts_mode() != "elevenlabs") or (Ambient.meeting and b.get("follow", True) is False):   # (no unasked speech in a meeting)
                     BUS.pub(t="spk_skip", id=b.get("id"))
                 else:
-                    Speaker.say(text, b.get("id"), b.get("epoch"), b.get("follow", True) is not False, b.get("reply"))
+                    Speaker.say(text, b.get("id"), b.get("epoch"), b.get("follow", True) is not False, b.get("reply"), strict=b.get("strict") is True)
                 return self._json({"ok": True})
             if p == "/api/say/stop":
                 Speaker.stop(json.loads(self._body() or b"{}").get("epoch"))
@@ -6094,6 +6176,9 @@ class Handler(BaseHTTPRequestHandler):
                         upd[key] = bool(b[key])
                 if "answer_stages" in b and not b["answer_stages"]:
                     stages_off()
+                am = b.get("agent_voice_mute")
+                if isinstance(am, list) and all(x in AGENT_NAMES for x in am):
+                    upd["agent_voice_mute"] = list(dict.fromkeys(am))
                 ns = b.get("notify_speak")
                 if isinstance(ns, list) and len(ns) <= 6 and all(x in NOTIFY_CATS for x in ns):
                     upd["notify_speak"] = list(dict.fromkeys(ns))
@@ -6264,6 +6349,23 @@ class Handler(BaseHTTPRequestHandler):
                 b = json.loads(self._body() or b"{}")
                 return self._json({"ok": True, "shown": attention_accept(b.get("from"), b.get("text"), target=b.get("target"),
                                                                   hook=b.get("hook") if isinstance(b.get("hook"), dict) and len(b["hook"]) <= 12 else None)})
+            if p in ("/api/agent-say/ready", "/api/agent-say"):
+                b = json.loads(self._body() or b"{}")
+                if not isinstance(b, dict):
+                    return self._json({"error": "bad request"}, 400)
+                if p.endswith("/ready"):
+                    return self._json(agent_say_ready(b.get("from")))
+                return self._json(agent_say_accept(b))
+            if p == "/api/agent-say/check":          # full token only: this agent still may speak, and `agent-say held` exits 0; anything else is stop
+                b = json.loads(self._body() or b"{}")
+                ok = isinstance(b, dict) and agent_say_ready(b.get("from"))["speak"]
+                return self._json({"go": bool(ok) and agent_say_run(["held"], 3)})
+            if p == "/api/agent-say/more":           # full token only
+                b = json.loads(self._body() or b"{}")
+                turn = b.get("turn") if isinstance(b, dict) else None
+                if not isinstance(turn, str) or not _AGENT_TURN.fullmatch(turn):
+                    return self._json({"ok": False})
+                return self._json({"ok": agent_say_run(["more", turn], None)})
             if p == "/api/attention/focus":
                 f = json.loads(self._body() or b"{}").get("from")
                 return self._json({"ok": attention_focus(f) if isinstance(f, str) else False})
