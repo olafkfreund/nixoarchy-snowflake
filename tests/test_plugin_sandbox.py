@@ -425,7 +425,7 @@ class SandboxTest(unittest.TestCase):
         self.assertLess(time.monotonic() - start, plugins.TIME_DEFAULT)
         self.assertEqual((got["kind"], got["title"], got["points"]),
                          ("facts", "News", ["No news feeds could be reached."]))
-        self.assertIn("2 couldn't be reached", got["source"])
+        self.assertEqual(got["source"], "2 couldn't be reached")
 
 
 class ExamplesCheckTest(unittest.TestCase):
