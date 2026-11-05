@@ -854,6 +854,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <label class="tg" style="margin-top:9px"><input type="checkbox" id="linkSw"><span class="sw"></span><span class="l">Matching eyes<small>Change both eyes (and both whites) together.</small></span></label>
         <label class="tg" style="margin-top:7px"><input type="checkbox" id="rndSw"><span class="sw"></span><span class="l">Surprise me<small>New random colours every time he pops up.</small></span></label>
       </div>
+      <div class="row"><div class="t">Character</div><div class="h">Changes his body, not his voice. To match, try the Robot voice with the robot (Voice tab).</div><div class="skins" id="characterGrid"></div></div>
       <div class="row"><div class="t">Skin</div><div class="h">Something to wear. The sprout sways.</div><div class="skins" id="skinGrid"></div></div>
       <div class="row"><div class="t">Resting pupils</div><div class="h">His everyday look — they still change with his mood.</div><div class="seg" id="pupChips"></div></div>
       <div class="row"><div class="t">When idle</div><div class="h">Pops back up when something happens.</div><div class="seg" id="idleChips"></div></div>
@@ -1233,16 +1234,17 @@ function drawSkin(back,front,L,bodyFill='url(#ballG)',character=BODY){
 // little mini-Nixi for the settings preview + skin gallery (static, clickable parts)
 let miniN=0;
 function miniNixi(svg,L,clickable){
-  svg.innerHTML=''; const id='mg'+(miniN++), [b0,b1,b2]=bodyStops(L.body);
+  svg.innerHTML=''; const id='mg'+(miniN++), [b0,b1,b2]=bodyStops(L.body), character=CHARACTERS[L.character]||CHARACTERS.snowflake;
   const defs=sv('defs',{},svg), gr=sv('radialGradient',{id,cx:-24,cy:-30,r:112,gradientUnits:'userSpaceOnUse'},defs);
   [[0,b0],[.55,b1],[1,b2]].forEach(([o,c])=>sv('stop',{offset:o,'stop-color':c},gr));
-  const back=sv('g',{'data-part':clickable?'skin':''},svg), ball=sv('path',{d:snowPath(),'stroke-linejoin':'round',fill:`url(#${id})`,stroke:lum(L.body)<.12?'#2a2a2a':shade(L.body,-.12),'stroke-width':1.6,'data-part':'body'},svg);
-  sv('g',{'data-part':'body'},svg).innerHTML=nixLambdas();
+  const back=sv('g',{'data-part':clickable?'skin':''},svg), ball=sv('path',{d:character.ball,'stroke-linejoin':'round',fill:`url(#${id})`,stroke:lum(L.body)<.12?'#2a2a2a':shade(L.body,-.12),'stroke-width':1.6,'data-part':'body'},svg);
+  sv('g',{'data-part':'body'},svg).innerHTML=character.back;
   for(const s of [-1,1]){ const k=s<0?'L':'R';
-    sv('ellipse',{cx:s*25.5,cy:-4.5,rx:23.5,ry:40.5,transform:`rotate(${-s*9} ${s*25.5} -4.5)`,fill:L['white'+k],'data-part':'white'+k},svg);
+    sv('ellipse',{cx:s*EYE.cx,cy:EYE.cy,rx:EYE.rx,ry:EYE.ry,transform:`rotate(${-s*EYE.tilt*180/Math.PI} ${s*EYE.cx} ${EYE.cy})`,fill:L['white'+k],'data-part':'white'+k},svg);
     sv('ellipse',{cx:s*10.5,cy:-4,rx:clickable?4.2:3.2,ry:12.5,transform:`rotate(${-s*8} ${s*10.5} -4)`,fill:L['pup'+k],'data-part':'pup'+k},svg); }
+  sv('g',{'data-part':'body'},svg).innerHTML=character.front;
   const front=sv('g',{'data-part':clickable?'skin':''},svg);
-  drawSkin(back,front,L,`url(#${id})`,CHARACTERS[L.character]||BODY);
+  drawSkin(back,front,L,`url(#${id})`,character);
   svg.insertBefore(back,ball);
   return svg;
 }
@@ -3459,6 +3461,8 @@ function renderSettings(){
     :'<div class="h" style="margin:0">none yet</div>';
   // look
   const L=curLook();
+  $('#characterGrid').innerHTML=Object.entries(CHARACTERS).map(([id,c])=>`<button type="button" data-character="${id}" class="${(L.character||'snowflake')===id?'on':''}" aria-pressed="${(L.character||'snowflake')===id}"><svg viewBox="-125 -150 250 250" aria-hidden="true"></svg>${c.label}</button>`).join('');
+  $$('#characterGrid button').forEach(b=>miniNixi(b.querySelector('svg'),{...L,character:b.dataset.character,skin:'none'},false));
   $('#skinGrid').innerHTML=(info.skins||Object.keys(SKIN_LABELS)).map(k=>`<button data-skin="${k}" class="${L.skin===k?'on':''}"><svg viewBox="-125 -150 250 250"></svg>${SKIN_LABELS[k]||k}</button>`).join('');
   for(const P of info.plugin_props||[]){   // plugin props: built node by node, the name only ever as text
     const b=document.createElement('button'), sk=document.createElementNS(SVGNS,'svg'); b.dataset.skin='plug:'+P.id; b.className=L.skin===b.dataset.skin?'on':'';
@@ -3638,10 +3642,11 @@ setEl.addEventListener('click',e=>{
   const bfb=g('fb'); if(bfb) return setSetting({tts_fallback:bfb.dataset.fb},'#elevenErr');
   const beprev=g('eprev'); if(beprev) return previewEleven(beprev.dataset.eprev,beprev);
   const bepick=g('epick'); if(bepick) return setSetting({eleven_voice:bepick.dataset.epick},'#elevenErr');
-  const bm=g('m'), bv=g('v'), bp=g('ps'), bi=g('idle'), bs=g('stt'), bt=g('trust'), bo=g('open'), bk=g('skin'), bsw=g('sw'), bpd=g('pdel');
+  const bm=g('m'), bv=g('v'), bp=g('ps'), bi=g('idle'), bs=g('stt'), bt=g('trust'), bo=g('open'), bc=g('character'), bk=g('skin'), bsw=g('sw'), bpd=g('pdel');
   const part=e.target.closest('#lookPrev [data-part], #partChips [data-part]');
   if(part&&part.dataset.part) return selectPart(part.dataset.part);
   if(bsw){ const v=bsw.dataset.sw; if(v===''){ const L=curLook(); L.skinColor=''; setLook({skinColor:''}).then(()=>selectPart('skin')); } else setPart(v); return; }
+  if(bc){ const id=bc.dataset.character; setLook({character:id}).then(()=>{ const n=$(`#characterGrid [data-character="${id}"]`); if(n) n.focus(); }); return; }   // (the save redraws the row: keep the keyboard on the one you picked)
   if(bk){ setLook({skin:bk.dataset.skin}).then(()=>{ poke(bk.dataset.skin==='none'?'wink':'excited',900); }); return; }
   if(bm) setSetting({model:bm.dataset.m}).then(()=>tick('model → '+bm.textContent));
   if(bv){ if(bv.disabled) return; setSetting({voice:bv.dataset.v},'#voiceErr').then(ok=>{ if(!ok) return; const vv=(info.voices||[]).find(x=>x.id===bv.dataset.v);

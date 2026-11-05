@@ -163,6 +163,14 @@ if (process.env.CHARACTER_ONLY === "face") await done(tab);   // (a quick run of
 
 // 5. a saved character and its anchors survive a reload and a colour change (applyLook)
 {
+  const row = await ev(`await setLook({character:'snowflake'}); settings(true,'look'); await new Promise(r=>setTimeout(r,200)); const grid=()=>[...document.querySelectorAll('#characterGrid button')], pick=grid().find(b=>b.dataset.character===__id), r=pick.getBoundingClientRect();
+    const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+    const drawn=grid().filter(b=>b.querySelector('svg path[data-part="body"]')?.getAttribute('d')===CHARACTERS[b.dataset.character].ball).length;
+    const reached=!!hit&&pick.contains(hit); pick.focus(); pick.click(); for(let i=0;i<20;i++){ await new Promise(r=>setTimeout(r,100)); await refresh(); if(info.look?.character===__id) break; }
+    const now=grid().find(b=>b.dataset.character===__id);
+    return {count:grid().length, drawn, reached, live:BODY===CHARACTERS[__id], saved:(await (await fetch('/api/state',{headers:hdr()})).json()).look?.character, pressed:now?.getAttribute('aria-pressed'), focused:document.activeElement===now};`);
+  check(row.count===4 && row.drawn===4 && row.reached && row.live && row.saved===ID && row.pressed==="true" && row.focused, `${ID}: Character row previews, picks, saves and keeps focus`, JSON.stringify(row));
+  await ev(`settings(false); return 1`);
   const anc = `const c=CHARACTERS[__id], w=[...document.querySelectorAll('.anc')], bad=[]; if(BODY!==c) bad.push('BODY'); if(document.querySelector('#body>path.ball').getAttribute('d')!==c.ball) bad.push('d');
     if(!w.length) bad.push('no .anc wrappers');
     for(const e of w){ const a=e.dataset.a, want=c.anchors[a]; if(!want){ bad.push('unknown anchor '+a); continue; }
