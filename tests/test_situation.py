@@ -80,7 +80,8 @@ class SituationTest(_ServerEnv):
     def test_wake_word_pauses_in_a_meeting(self):
         S = self.server
         S.CFG["wake_word"] = True
-        with mock.patch.object(S.Wake, "asleep", False), mock.patch.object(S.Wake, "speaking", return_value=False):
+        with mock.patch.object(S.Wake, "asleep", False), mock.patch.object(S.Wake, "speaking", return_value=False), \
+                mock.patch.object(S.FLOOR, "floor_overlaps", return_value=False):      # (not this machine's real voice lock)
             S.Ambient.meeting = False
             self.assertTrue(S.Wake.should_run())
             S.Ambient.meeting = True
