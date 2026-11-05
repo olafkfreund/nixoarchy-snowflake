@@ -49,7 +49,7 @@ class AgentVoiceFit(unittest.TestCase):
         (home / ".config/nixi-companion/config.json").write_text(json.dumps({"port": port}))
         procs = []
         try:
-            procs.append(subprocess.Popen([sys.executable, str(REPO / "app/server.py")], env=env,
+            procs.append(subprocess.Popen([sys.executable, str(REPO / "app/server.py")], env=dict(env, XDG_RUNTIME_DIR=str(home)),   # (not the machine's real voice lock)
                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
             procs.append(start_browser(BROWSER, cdp, home / "chromium"))
             self.assertTrue(_wait(f"http://127.0.0.1:{port}/"), "server did not start")
