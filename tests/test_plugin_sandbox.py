@@ -31,6 +31,14 @@ def load(d):
     return plugins.Plugin(m["id"], Path(d), m, "folder", None)
 
 
+def setUpModule():
+    if os.environ.get("NIXI_SANDBOX_TESTS") != "require":
+        return
+    missing = [n for n, ok in (("bwrap", shutil.which("bwrap") and plugins.bwrap_ok()), ("pasta", plugins.pasta_ok()), ("ip", shutil.which("ip"))) if not ok]
+    if missing:
+        raise RuntimeError("NIXI_SANDBOX_TESTS=require, but these don't work here: " + ", ".join(missing))
+
+
 @unittest.skipUnless(shutil.which("bwrap") and plugins.bwrap_ok(), "needs a working bwrap")
 class SandboxTest(unittest.TestCase):
     def setUp(self):
