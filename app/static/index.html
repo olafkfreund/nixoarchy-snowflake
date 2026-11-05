@@ -2260,7 +2260,8 @@ function onEvent(ev){
     else if(more&&document.body.classList.contains('bar')) flash('#e5a50a'); }
   else if(ev.t==='approve_done') approvalGone(ev.id);
   else if(ev.t==='stage'){ if(stageShow(ev)===false) himSet(((himEl.textContent||'').trim()+'\n'+stageText(ev)).trim()); }
-  else if(ev.t==='stage_update'){ if(ev.kind==='headlines') pressUpdate(ev); else gaugeUpdate(ev); }
+  else if(ev.t==='stage_update'){ if(stgHeld&&stgHeld.kind===ev.kind&&(ev.kind==='headlines'?ev.copy===stgHeld.copy:ev.refresh===stgHeld.refresh)) stgHeld={...stgHeld,...ev,t:'stage'};   // (a held board keeps its late updates: the server doesn't send them twice)
+    if(ev.kind==='headlines') pressUpdate(ev); else gaugeUpdate(ev); }
   else if(ev.t==='stage_status') stageStatus(ev);
   else if(ev.t==='stage_close') stageClosedByServer();
   else if(ev.t==='toast') tick(ev.text);
@@ -3085,7 +3086,8 @@ function menu(on){ if(on) layoutMenu(); if(!on&&menuOn) menuShutAt=performance.n
 menuEl.addEventListener('click',e=>{ const b=e.target.closest('.mb'); if(!b) return; menu(false);
   ({talk:()=>startRec('auto'), bar:()=>toggleBar(), cd:()=>showAsk('/cd '), history:()=>openPanel('history'), plugins:()=>openPanel('plugins'),
     look:()=>shoot('screen').then(j=>{ if(j) showAsk(''); }), hover:toggleHover, mirror:mirRevoke, hide:dismiss, set:()=>settings(true)})[b.dataset.a](); });
-function dismiss(){ menu(false); hideAsk(); closePanels(); endListening(); if(!native('hide')) poke('sleepy',1200); }
+function dismiss(){ menu(false); hideAsk(); const held=stgHeld; stgHeld=null; closePanels(); if(held){ if(stgState!=='closed') stageHide(false); himSet(((himEl.textContent||'').trim()+'\n'+stageText(held)).trim()); }   // (he's going away: a held board follows the rule for a board arriving while hidden)
+  endListening(); if(!native('hide')) poke('sleepy',1200); }
 // Esc / hiding him: he stops listening — a recording in progress is dropped and the "just keep talking" window closes
 function endListening(){ if(rec&&rec.mode!=='approve') stopRec(true); post('/api/follow',{act:'cancel'}).catch(()=>{}); follow=false; hearRaw=0; }
 

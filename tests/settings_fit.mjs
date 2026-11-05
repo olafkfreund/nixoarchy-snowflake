@@ -228,7 +228,7 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   await show(B1); await clearMsgs();
   await ev("settings(true); return 1"); await sleep(450);
   let m = nonRegion(await msgs()), left = await ev("return Math.round(setEl.getBoundingClientRect().left)");
-  check(lastSize(m) === "size:244,266" && left === baseLeft, "#196 open board, then Settings: size:244,266 and Settings sits where it does without a board", JSON.stringify({ m, left, baseLeft }));
+  check(lastSize(m) === "size:244,266", "#196 open board, then Settings asks only for Settings' room (the fake window never resizes, so position is a live check)", JSON.stringify({ m, left, baseLeft }));
   check((await disp("#stg")) === "none", "#196 the board is hidden while Settings is open", await disp("#stg"));
   await clearMsgs(); await ev("settings(false); return 1"); await sleep(300);
   m = nonRegion(await msgs());
@@ -249,9 +249,10 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   // stgSize(0) during Settings
   await show(B1);
   await ev("settings(true); return 1"); await clearMsgs();
-  await ev("stgSize(0); return 1");
+  await ev("stgSize(800); stgSize(0); stgSize(800); return 1");
   m = nonRegion(await msgs());
-  check(lastSize(m) === "size:244,266", "#196 stgSize(0) during Settings sends no change of width", JSON.stringify(m));
+  check(m.filter(x => x.startsWith("size:")).every(x => x === "size:244,266"), "#196 a board's room changing during Settings sends no change of width", JSON.stringify(m));
+  await ev("stgSize(800); return 1");
   await reset();
 
   // the other rooms a board or a mail pop asks for (width and height) are left out too, and the chalk hides with the board
@@ -326,8 +327,21 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   await ev("info.hover=true; setHoverClass(true); return 1");
   await clearMsgs(); await ev("settings(false); return 1"); await sleep(300);
   m = nonRegion(await msgs()); s2 = await st();
-  check(!(await ev("return !!window.__x")) && s2[0] !== undefined, "#196 hover turned on inside Settings, then close: no exception (the window ignores room in hover)", JSON.stringify({ m, s2 }));
+  check(s2[0] === "open" && (await disp("#stg")) === "none", "#196 hover turned on inside Settings, then close: the board stays open and hidden (the window ignores room in hover)", JSON.stringify({ m, s2 }));
   await reset();
+
+  // a late update to a held board is kept (the server doesn't resend it)
+  await ev("settings(true); return 1"); await sleep(200);
+  await ev(`onEvent(${JSON.stringify({ ...B1, kind: "headlines", copy: "c196", items: [] })}); onEvent({t:'stage_update',kind:'headlines',copy:'c196',clips:['late']}); onEvent({t:'stage_update',kind:'headlines',copy:'other',clips:['wrong']}); return 1`);
+  check((await ev("return [stgHeld.t, stgHeld.clips.join()]")).join() === "stage,late", "#196 a held board keeps its late update, and only its own", JSON.stringify(await ev("return stgHeld&&[stgHeld.t,stgHeld.clips]")));
+  await ev("stgHeld=null; settings(false); return 1"); await sleep(200); await reset();
+
+  // going away with a panel open: the held board doesn't open unseen
+  await show(B1); await ev("settings(true); return 1"); await sleep(200);
+  await ev(`onEvent(${JSON.stringify({ ...B1, title: "Board held" })}); himSet(''); dismiss(); hiddenNow=true; return 1`); await sleep(350);
+  s2 = await st();
+  check(s2[0] === "closed" && (await ev("return stgHeld===null")), "#196 hiding him with a panel open follows the hidden rule: no board opens", JSON.stringify(s2));
+  await ev("hiddenNow=false; return 1"); await reset();
 }
 
 // 7. At 320x400 (fitK < 1), Settings is reachable and its body scrolls (pixel size not checked)
