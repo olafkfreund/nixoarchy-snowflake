@@ -38,6 +38,7 @@ if (mode === "pixels") {
     happy: "poke('happy',1e12);",
     surprised: "poke('surprised',1e12);",
     bar: "transientUntil=0; document.body.classList.add('bar','bar-done','e-top');",
+    music: "transientUntil=0; info.look_music=true; info.look_beat=false; SIT.music=true; sitOn.music=true;",
   };
   const shoot = async (u) => {
     const tab = await Tab.open();
@@ -57,7 +58,8 @@ if (mode === "pixels") {
         let ts=1000; for(let i=0;i<700;i++){ ts+=16; __setT(ts); nextBlink=nextFidAt=saccadeAt=idleSwapAt=1e15; frame(ts); }
         __setT(20000); frame(20000); __raf.length=0; return 1`);
       await sleep(250);
-      out[name] = (await tab.send("Page.captureScreenshot", { format: "png" })).result.data;
+      out[name] = { png: (await tab.send("Page.captureScreenshot", { format: "png" })).result.data,
+        opacity: name === "music" ? await tab.ev("return +SIT_P.hf.getAttribute('opacity')") : null };
     }
     await tab.close(); return out;
   };
@@ -65,10 +67,11 @@ if (mode === "pixels") {
   const cmp = await Tab.open();
   for (const name of Object.keys(STATES)) {
     const r = await cmp.ev(`const px=async b=>{ const bm=await createImageBitmap(await (await fetch('data:image/png;base64,'+b)).blob()); const c=new OffscreenCanvas(bm.width,bm.height).getContext('2d'); c.drawImage(bm,0,0); return c.getImageData(0,0,bm.width,bm.height); };
-      const a=await px(${JSON.stringify(mine[name])}), b=await px(${JSON.stringify(base[name])}); if(a.width!==b.width||a.height!==b.height) return [-1,0,0];
-      let off=0, worst=0; for(let i=0;i<a.data.length;i+=4){ const d=Math.max(Math.abs(a.data[i]-b.data[i]),Math.abs(a.data[i+1]-b.data[i+1]),Math.abs(a.data[i+2]-b.data[i+2])); if(d>8) off++; if(d>worst) worst=d; }
+      const a=await px(${JSON.stringify(mine[name].png)}), b=await px(${JSON.stringify(base[name].png)}); if(a.width!==b.width||a.height!==b.height) return [-1,0,0];
+      let off=0, worst=0; for(let i=0;i<a.data.length;i+=4){ const d=Math.max(Math.abs(a.data[i]-b.data[i]),Math.abs(a.data[i+1]-b.data[i+1]),Math.abs(a.data[i+2]-b.data[i+2])); if(d>${name === "music" ? 0 : 8}) off++; if(d>worst) worst=d; }
       return [off,a.width*a.height,worst];`);
-    check(r[0] >= 0 && r[0] <= r[1] * 0.0005, `snowflake pixels match origin/main: ${name}`, `${r[0]} of ${r[1]} px off by >8 (worst ${r[2]})`);
+    check(r[0] >= 0 && (name === "music" ? mine[name].opacity === 1 && base[name].opacity === 1 && r[0] === 0 : r[0] <= r[1] * 0.0005),
+      `snowflake pixels match origin/main: ${name}`, `${r[0]} of ${r[1]} px off by >${name === "music" ? 0 : 8} (worst ${r[2]})${name === "music" ? `, opacity ${mine[name].opacity}/${base[name].opacity}` : ""}`);
   }
   await done(cmp);
 }
@@ -99,8 +102,9 @@ await ev(`window.bodyBox=el=>{ const b=el.getBBox(), m=document.getElementById('
     if(typeof c.label!=='string'||!c.label) bad.push('label'); if(typeof c.ball!=='string'||!c.ball) bad.push('ball');
     if(typeof c.back!=='string') bad.push('back'); if(typeof c.front!=='string') bad.push('front'); if(typeof c.gloss!=='boolean') bad.push('gloss');
     if(!Array.isArray(c.faceBox)||c.faceBox.length!==4||!c.faceBox.every(Number.isFinite)) bad.push('faceBox');
+    if(!Number.isFinite(c.cupX)) bad.push('cupX'); if(typeof c.band!=='string'||!c.band) bad.push('band');
     if(!A.every(k=>Array.isArray(c.anchors?.[k])&&c.anchors[k].length===2&&c.anchors[k].every(Number.isFinite))) bad.push('anchors');
-    if(__id==='snowflake'&&(!A.every(k=>c.anchors[k][0]===0&&c.anchors[k][1]===0)||c.pivot!==76||c.shadow!==62||!c.gloss)) bad.push('snowflake numbers');
+    if(__id==='snowflake'&&(!A.every(k=>c.anchors[k][0]===0&&c.anchors[k][1]===0)||c.pivot!==76||c.shadow!==62||!c.gloss||c.cupX!==88||c.band!=='M-84 -20C-100 -144 100 -144 84 -20')) bad.push('snowflake numbers');
     if(c.anchors?.face&&(c.anchors.face[0]||c.anchors.face[1])) bad.push('face anchor is not [0,0]');
     if(!Number.isFinite(c.pivot)) bad.push('pivot'); if(!Number.isFinite(c.shadow)) bad.push('shadow'); if(!(c.fits instanceof Set)) bad.push('fits');
     if(!(c.touch===null||typeof c.touch==='string')) bad.push('touch');
@@ -135,6 +139,33 @@ await ev(`window.bodyBox=el=>{ const b=el.getBBox(), m=document.getElementById('
 }
 
 if (process.env.CHARACTER_ONLY === "face") await done(tab);   // (a quick run of just the face box)
+// Cups may cover the case, ears and wings, but their ink must clear the face and marks.
+if (ID !== "snowflake") {
+  const r = await ev(`setCharacter(__id); idleSwapAt=nextFidAt=1e15; const on=()=>{ SIT.music=true; info.look_music=info.look_beat=true; }; on(); const hold=setInterval(on,60);   // (a refresh replaces info)
+    await new Promise(r=>setTimeout(r,4800)); const out=[], [fx,fy,fw,fh]=BODY.faceBox;
+    for(const gaze of [0,-14,14]) for(const lift of [0,1]){
+      gazeHook=()=>[gaze,0]; if(lift) poke('talking',1e9); else transientUntil=0;
+      await new Promise(r=>setTimeout(r,1400));
+      for(const sway of [0,-28,28]) for(const bt of [0,1]){
+        on(); const ts=lastTs+16; beat=bt?1+.016*8:0; beatAt=bt?ts:-1e9;
+        G.sitLift.x=lift; G.sitLift.v=0; G.sitW.x=sway/.9784; G.sitW.v=0; frame(ts);
+        const left=SIT_P.cL.getAttribute('transform'), head=SIT_P.hf.getAttribute('transform');
+        if(lift&&bt&&(!left.includes('rotate(-20.00)')||!left.includes('scale(1.070)'))) out.push([gaze,lift,sway,bt,'left cup '+left]);
+        if(Math.abs(sway)===28&&!head.includes('rotate('+Math.sign(sway)*7+'.00)')) out.push([gaze,lift,sway,bt,'head sway '+head]);
+        const marks=[...document.querySelectorAll('#body .avoid')].map(bodyBox);
+        for(const [side,cu] of [['left',SIT_P.cL],['right',SIT_P.cR]]){
+          const m=document.getElementById('body').getScreenCTM().inverse().multiply(cu.firstChild.getScreenCTM());
+          for(let i=0;i<48;i++){
+            const a=i*2*Math.PI/48, p=new DOMPoint(18.5*Math.cos(a),29.5*Math.sin(a)).matrixTransform(m);
+            if((p.x>fx&&p.x<fx+fw&&p.y>fy&&p.y<fy+fh)||marks.some(b=>p.x>b[0]&&p.x<b[2]&&p.y>b[1]&&p.y<b[3])) out.push([gaze,lift,sway,bt,side+' cup '+p.x.toFixed(2)+','+p.y.toFixed(2)]);
+          }
+        }
+      }
+    }
+    clearInterval(hold); gazeHook=null; transientUntil=0; SIT.music=false; info.look_music=false; return out;`);
+  check(r.length === 0, `${ID}: headphone cups clear face and marks`, r.slice(0,8).map(x=>x.join('/')).join('; '));
+}
+
 // 3. the whole body fits his window area
 {
   const b = await ev(`setCharacter(__id); let u=null; for(const e of document.querySelectorAll('#body>path.ball,#body>.nix,#body>.bfront')){ try{ const x=bodyBox(e); if(x[2]>x[0]) u=uni(u,x); }catch(e){} } return u;`);
@@ -186,6 +217,29 @@ if (process.env.CHARACTER_ONLY === "face") await done(tab);   // (a quick run of
   const after = await ev(anc);
   check(after.length === 0, `${ID}: character and anchors kept after a colour change`, after.join(", "));
   await ev(`applyLook({...LOOK, skin:'none'}); return 1`);
+}
+
+// A saved skin stays saved when this body cannot wear it, and returns on Snowflake.
+if (ID === "snowflake" || ID === "robot") {
+  const r = await ev(`settings(true,'look'); const tiles=()=>[...document.querySelectorAll('#skinGrid button')]; const out={};
+    await setLook({character:'snowflake',skin:'none'}); out.snow=tiles().map(b=>b.dataset.skin);
+    if(__id==='robot'){
+      await setLook({character:'robot',skin:'none'}); out.robot=tiles().map(b=>b.dataset.skin);
+      await setLook({skin:'crown'}); out.hidden=[info.look.skin,tiles().find(b=>b.dataset.skin==='none')?.classList.contains('on'),
+        !!document.querySelector('#partChips [data-part="skin"]'),wxHat()];
+      await setLook({skin:'bow'}); await slash('/skin crown'); out.slash=[info.look.skin,chip.textContent,chip.classList.contains('bad')];
+      await setLook({skin:'crown'}); await setLook({character:'snowflake'});
+      out.restored=[document.querySelector('#accFront .anc[data-fit="crown"]')?.style.display,
+        tiles().find(b=>b.dataset.skin==='crown')?.classList.contains('on')];
+    }
+    await setLook({character:__id,skin:'none'}); settings(false); return out;`);
+  if (ID === "snowflake") check(["none","halo","crown","sprout","bow"].every(k=>r.snow.includes(k)), `${ID}: all five skin tiles show`, r.snow.join());
+  else {
+    check(!r.robot.includes("crown") && !r.robot.includes("sprout"), `${ID}: crown and sprout tiles hidden`, r.robot.join());
+    check(r.hidden.join() === "crown,true,false,false", `${ID}: saved crown is unworn`, r.hidden.join());
+    check(r.slash.join() === "bow,crown doesn't fit Robot,true", `${ID}: /skin crown leaves bow saved`, r.slash.join());
+    check(r.restored.join() === ",true", `${ID}: saved crown returns on Snowflake`, r.restored.join());
+  }
 }
 
 // 6. the bar state: every .ball child of #body is invisible
@@ -261,10 +315,15 @@ if (process.env.CHARACTER_ONLY === "face") await done(tab);   // (a quick run of
           u=u?{left:Math.min(u.left,r.left),top:Math.min(u.top,r.top),right:Math.max(u.right,r.right),bottom:Math.max(u.bottom,r.bottom)}:{left:r.left,top:r.top,right:r.right,bottom:r.bottom}; } }
       window.__wxU=u?{...u,width:u.right-u.left,height:u.bottom-u.top}:{left:0,top:0,right:0,bottom:0,width:0,height:0};` });
   const box = e => `(()=>{ const e=${e}; if(!e) return null; const r=e.getBoundingClientRect(); return r.width&&r.height?[r.left,r.top,r.right,r.bottom]:null; })()`;
+  const headphoneInk = `const bounds=(pts,pad=0)=>[Math.min(...pts.map(p=>p.x))-pad,Math.min(...pts.map(p=>p.y))-pad,Math.max(...pts.map(p=>p.x))+pad,Math.max(...pts.map(p=>p.y))+pad];
+    const path=SIT_P.bd.querySelector('path'), pm=path.getScreenCTM(), len=path.getTotalLength();
+    const band=bounds(Array.from({length:60},(_,i)=>path.getPointAtLength(len*i/59).matrixTransform(pm)),5*Math.max(Math.hypot(pm.a,pm.b),Math.hypot(pm.c,pm.d)));
+    const cups=[SIT_P.cL,SIT_P.cR].map(cu=>{ const m=cu.firstChild.getScreenCTM(); return bounds(Array.from({length:48},(_,i)=>{ const a=i*2*Math.PI/48; return new DOMPoint(18.5*Math.cos(a),29.5*Math.sin(a)).matrixTransform(m); })); });
+    return [band,...cups];`;
   for (const c of cases) {
     await ev(c.on + " return 1"); await sleep(c.wait);
     let worst = null; const grow = b => { for (const r of b) if (r) worst = worst ? [Math.min(worst[0], r[0]), Math.min(worst[1], r[1]), Math.max(worst[2], r[2]), Math.max(worst[3], r[3])] : r; };
-    const sample = `const a=${box(c.el)}, b=${c.also ? box(c.also) : "null"}; return [a,b];`;
+    const sample = c.name === "headphones" ? headphoneInk : `const a=${box(c.el)}, b=${c.also ? box(c.also) : "null"}; return [a,b];`;
     for (let i = 0; i < 6; i++) { grow(await ev(sample)); await sleep(120); }
     if (!c.noBounce) {
       const during = (start, ms) => ev(`${start}; const out=[]; const t0=performance.now(); while(performance.now()-t0<${ms}){ const s=(()=>{${sample}})(); out.push(...s); await new Promise(r=>requestAnimationFrame(r)); } return out;`);
