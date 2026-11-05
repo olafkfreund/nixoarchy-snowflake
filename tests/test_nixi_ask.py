@@ -47,6 +47,9 @@ class NixiAskTest(unittest.TestCase):
             self.assertNotIn("nixi_ask", h(s) or {}, s)
 
     def test_open_in_nixi(self):
+        p = mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": nixi_env.run_dir()})   # (it may tell "the window" to step aside: not the live one)
+        p.start()
+        self.addCleanup(p.stop)
         s = self.server
         only_nixi = lambda n: "/bin/nixi" if n == "nixi" else None
         for ret, exc, want in ((0, None, "Over to Nixi."), (1, None, "Nixi's card is off. Turn it on in Setup → Plugins."),
