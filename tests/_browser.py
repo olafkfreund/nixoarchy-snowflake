@@ -8,18 +8,18 @@ import sys
 _CHILD = """
 import os
 try:
-    import ctypes
+    import ctypes, errno
     nr = {"x86_64": 56, "aarch64": 220}.get(os.uname().machine)  # SYS_clone; flake.nix builds these two
     if nr is None:
         os._exit(0)
-    libc = ctypes.CDLL(None)
+    libc = ctypes.CDLL(None, use_errno=True)
     libc.syscall.argtypes = [ctypes.c_long] * 6                  # syscall is variadic
     libc.syscall.restype = ctypes.c_long
     r = libc.syscall(nr, 0x10000000 | 17, 0, 0, 0, 0)            # CLONE_NEWUSER | SIGCHLD
     if r == 0:
         os._exit(0)
     if r < 0:
-        os._exit(1)
+        os._exit(1 if ctypes.get_errno() in (errno.ENOSYS, errno.EPERM) else 2)  # EAGAIN or ENOMEM isn't a denial
     os._exit(0 if os.waitpid(r, 0)[1] == 0 else 2)
 except Exception:
     os._exit(2)
