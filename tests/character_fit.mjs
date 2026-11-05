@@ -108,7 +108,8 @@ await ev(`window.bodyBox=el=>{ const b=el.getBBox(), m=document.getElementById('
     if(c.anchors?.face&&(c.anchors.face[0]||c.anchors.face[1])) bad.push('face anchor is not [0,0]');
     if(!Number.isFinite(c.pivot)) bad.push('pivot'); if(!Number.isFinite(c.shadow)) bad.push('shadow'); if(!(c.fits instanceof Set)) bad.push('fits');
     if(!(c.touch===null||typeof c.touch==='string')) bad.push('touch');
-    setCharacter(__id); if(BODY!==c) bad.push('BODY');
+    setCharacter(__id==='robot'?'devil':'robot'); setCharacter(__id); if(BODY!==c) bad.push('BODY');
+    if(![...SIT_P.bd.querySelectorAll('path')].every(p=>p.getAttribute('d')===c.band)) bad.push('band d');
     if(document.querySelector('#body>path.ball').getAttribute('d')!==c.ball||document.getElementById('rim').getAttribute('d')!==c.ball) bad.push('d');
     if(!document.querySelector('#body>.bfront')) bad.push('no .bfront');
     if([...document.querySelectorAll('#body>ellipse')].some(e=>(e.getAttribute('display')==='none')===c.gloss)) bad.push('gloss display');
@@ -148,7 +149,8 @@ if (ID !== "snowflake") {
       await new Promise(r=>setTimeout(r,1400));
       for(const sway of [0,-28,28]) for(const bt of [0,1]){
         on(); const ts=lastTs+16; beat=bt?1+.016*8:0; beatAt=bt?ts:-1e9;
-        G.sitLift.x=lift; G.sitLift.v=0; G.sitW.x=sway/.9784; G.sitW.v=0; frame(ts);
+        G.sitLift.x=lift; G.sitLift.v=0; G.sitW.x=sway/.9784; G.sitW.v=0;
+        frame(ts);
         const left=SIT_P.cL.getAttribute('transform'), head=SIT_P.hf.getAttribute('transform');
         if(lift&&bt&&(!left.includes('rotate(-20.00)')||!left.includes('scale(1.070)'))) out.push([gaze,lift,sway,bt,'left cup '+left]);
         if(Math.abs(sway)===28&&!head.includes('rotate('+Math.sign(sway)*7+'.00)')) out.push([gaze,lift,sway,bt,'head sway '+head]);
@@ -221,24 +223,24 @@ if (ID !== "snowflake") {
 
 // A saved skin stays saved when this body cannot wear it, and returns on Snowflake.
 if (ID === "snowflake" || ID === "robot") {
-  const r = await ev(`settings(true,'look'); const tiles=()=>[...document.querySelectorAll('#skinGrid button')]; const out={};
+  const r = await ev(`settings(true,'look'); const tiles=()=>[...document.querySelectorAll('#skinGrid button')], crown=()=>document.querySelector('#accFront .anc[data-fit="crown"]'); const out={};
     await setLook({character:'snowflake',skin:'none'}); out.snow=tiles().map(b=>b.dataset.skin);
     if(__id==='robot'){
       await setLook({character:'robot',skin:'none'}); out.robot=tiles().map(b=>b.dataset.skin);
-      await setLook({skin:'crown'}); out.hidden=[info.look.skin,tiles().find(b=>b.dataset.skin==='none')?.classList.contains('on'),
-        !!document.querySelector('#partChips [data-part="skin"]'),wxHat()];
+      await setLook({skin:'crown'}); sitOn.night=sitOn.party=sitOn.cold2=false; out.hidden=[info.look.skin,tiles().find(b=>b.dataset.skin==='none')?.classList.contains('on'),
+        !!document.querySelector('#partChips [data-part="skin"]'),wxHat(),crown()?.style.display];
       await setLook({skin:'bow'}); await slash('/skin crown'); out.slash=[info.look.skin,chip.textContent,chip.classList.contains('bad')];
       await setLook({skin:'crown'}); await setLook({character:'snowflake'});
-      out.restored=[document.querySelector('#accFront .anc[data-fit="crown"]')?.style.display,
+      out.restored=[crown()?.style.display==='',
         tiles().find(b=>b.dataset.skin==='crown')?.classList.contains('on')];
     }
     await setLook({character:__id,skin:'none'}); settings(false); return out;`);
   if (ID === "snowflake") check(["none","halo","crown","sprout","bow"].every(k=>r.snow.includes(k)), `${ID}: all five skin tiles show`, r.snow.join());
   else {
     check(!r.robot.includes("crown") && !r.robot.includes("sprout"), `${ID}: crown and sprout tiles hidden`, r.robot.join());
-    check(r.hidden.join() === "crown,true,false,false", `${ID}: saved crown is unworn`, r.hidden.join());
+    check(r.hidden.join() === "crown,true,false,false,none", `${ID}: saved crown is unworn`, r.hidden.join());
     check(r.slash.join() === "bow,crown doesn't fit Robot,true", `${ID}: /skin crown leaves bow saved`, r.slash.join());
-    check(r.restored.join() === ",true", `${ID}: saved crown returns on Snowflake`, r.restored.join());
+    check(r.restored.join() === "true,true", `${ID}: saved crown returns on Snowflake`, r.restored.join());
   }
 }
 
