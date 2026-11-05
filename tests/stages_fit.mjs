@@ -488,6 +488,142 @@ const acts = () => ev("return __acts.slice()");
   check(cons[0].includes("Searches YouTube for news clips (on by default; turn off in its settings)") && !cons[1].includes("Searches YouTube"), "press: consent card shows the YouTube line when videos is true", JSON.stringify(cons));
   await motion(null); await ev("stageClose(); return 1"); await sleep(320); }
 
+// A typed question must outlive the microphone it interrupts (#188).
+{ await ev(`window.__micFetch=window.fetch; window.__micSend=send; window.__sends=[]; window.__posts=[];
+    window.__streams=[]; window.__recordings=[]; window.__results=[]; window.__delayQuick=false; window.__delayCapture=false; window.__delayResume=false;
+    window.__frame=(i,e)=>__streams[i].enqueue(new TextEncoder().encode('data: '+JSON.stringify(e)+'\\n\\n'));
+    window.__start=mode=>{ const i=__recordings.length; __recordings.push(startRec(mode).then(v=>{__results[i]=v; return v})); return i; };
+    send=(t,o)=>{ __sends.push([t,o]); return __micSend(t,o); };
+    window.fetch=(u,o)=>{ const p=new URL(String(u),location.href).pathname;
+      if(!['/api/listen','/api/quick','/api/ask','/api/follow','/api/listen/stop','/api/sleep','/api/capture','/api/resume','/api/history'].includes(p)) return __micFetch(u,o);
+      const b=o?.body&&JSON.parse(o.body);
+      if(p==='/api/listen') return Promise.resolve(new Response(new ReadableStream({start(c){__streams.push(c)}})));
+      if(p==='/api/quick'){ if(__delayQuick) return new Promise(r=>{__quickResolve=()=>r(new Response('{}'))}); return Promise.resolve(new Response('{}')); }
+      if(p==='/api/ask'){ __posts.push([p,b]); return Promise.resolve(new Response(new ReadableStream({start(c){c.close()}}))); }
+      if(['/api/follow','/api/listen/stop','/api/sleep'].includes(p)){ __posts.push([p,b]); return Promise.resolve(new Response('{}')); }
+      if(p==='/api/capture'){ __posts.push([p,b]); if(__delayCapture) return new Promise(r=>{__captureResolve=()=>r(new Response(JSON.stringify({kind:'screen',label:'screen'})))}); return Promise.resolve(new Response(JSON.stringify({kind:'screen',label:'screen'}))); }
+      if(p==='/api/resume'){ __posts.push([p,b]); if(__delayResume) return new Promise(r=>{__resumeResolve=()=>r(new Response(JSON.stringify(info)))}); return Promise.resolve(new Response(JSON.stringify(info))); }
+      if(p==='/api/history') return Promise.resolve(new Response(JSON.stringify({items:[{you:'Earlier question',him:'Earlier answer',session:'s1',cwd:'/tmp',ts:Date.now()/1000}]}))); };
+    return 1`);
+  const poll = async js => { for(let n=0;n<100;n++){ if(await ev(`return !!(${js})`)) return true; await sleep(20); } return false; };
+  const reset = () => ev(`if(rec) stopRec(true); rec=null; transcribing=false; follow=false; busy=false; hiddenNow=false;
+    input.value=''; hideAsk(); stageClose(); closePanels(); atts=[]; renderAtts();
+    document.body.classList.remove('busy','bar','calm'); setEl.classList.remove('on');
+    info.hover=false; SIT.fullscreen=false; SIT.locked=false; pendingAppr=null;
+    await Promise.resolve(); await Promise.resolve(); __sends.length=0; __posts.length=0; return 1`);
+  const begin = async mode => { const i=await ev(`return __start(${JSON.stringify(mode)})`); check(await poll(`__streams.length>${i}`), `mic stream ${i} opened`); return i; };
+  const frame = (i,e) => ev(`__frame(${i},${JSON.stringify(e)}); return 1`);
+  const close = async i => { await ev(`__streams[${i}].close(); return 1`); return poll(`Object.hasOwn(__results,${i})`); };
+  const stage = JSON.stringify(FIX.facts);
+
+  await reset();
+  let i=await begin('auto'); await frame(i,{t:'open'});
+  await ev(`showAsk(); onEvent(${stage}); return 1`);
+  check(await ev("return rec===null && stgState==='open' && ask.classList.contains('on')"), 'typed question opens board while old mic stream is live');
+  check(await poll("__posts.some(x=>x[0]==='/api/listen/stop'&&x[1].cancel===true)"), 'dropping an open mic stops it');
+  await close(i); await reset();
+
+  i=await begin('auto'); await frame(i,{t:'open'});
+  await ev(`onEvent(${stage}); return 1`);
+  check(await ev("return !!rec && stgState==='closed' && himEl.textContent.includes('Two highs a day')"), 'real listening keeps board in caption');
+  await close(i); await reset();
+
+  for(const event of [{t:'open'},{t:'speech'},{t:'note',text:'late note'},{t:'transcribing'},{t:'text',text:'late words'},{t:'error',text:'late error'}]){
+    i=await begin('auto'); await ev("showAsk(); return 1");
+    const before=await ev("return [youEl.textContent,himEl.textContent,__sends.length]");
+    await frame(i,event);
+    if(event.t==='open') check(await poll("__posts.some(x=>x[0]==='/api/listen/stop'&&x[1].cancel===true)"), 'a mic dropped before it opened is stopped when it does');
+    check(await close(i), `cancelled ${event.t} stream completes`);
+    const after=await ev("return [youEl.textContent,himEl.textContent,__sends.length,rec,chip.textContent]");
+    check(after[0]===before[0] && after[1]===before[1] && after[2]===before[2] && after[3]===null && !after[4].includes('late note'), `cancelled ${event.t} changes no caption and sends nothing`, JSON.stringify(after));
+    await reset();
+  }
+
+  for(const action of ['Escape','hide']){
+    i=await begin('auto'); await frame(i,{t:'open'}); await frame(i,{t:'transcribing'});
+    check(await poll('transcribing'), `${action}: transcription started`);
+    if(action==='hide') await ev("nixiHidden(); return 1");
+    else await ev("dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true})); return 1");
+    await frame(i,{t:'text',text:'discarded speech'}); await close(i);
+    check(await ev("return __sends.length===0 && rec===null"), `${action} during transcription discards text`);
+    await reset();
+  }
+
+  i=await begin('auto'); await frame(i,{t:'open'}); await close(i);
+  check(await ev("return himEl.textContent.includes(\"didn't catch that\") && __sends.length===0"), 'empty recording shows silent mic caption');
+  await reset();
+  i=await begin('auto'); await frame(i,{t:'text',text:'spoken question?'}); await close(i);
+  check(await poll("__sends.some(x=>x[0]==='spoken question?')"), 'completed recording sends its text');
+  await poll("__posts.some(x=>x[0]==='/api/ask')"); await poll('!busy'); await reset();
+
+  { const n=await ev("__recordings.push(null); return __streams.length");   // (begin() numbers streams by __recordings)
+    await ev("dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true})); return 1");
+    check(await poll(`__streams.length>${n}`), 'Space starts a push-to-talk recording');
+    await ev("dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',repeat:true,bubbles:true})); return 1");
+    check(await ev("return rec?.mode==='ptt' && !ask.classList.contains('on')"), 'holding Space keeps the recording and the box shut');
+    await ev(`dispatchEvent(new KeyboardEvent('keyup',{key:' ',code:'Space',bubbles:true})); __streams[${n}].close(); return 1`);
+    await poll('!rec'); await reset(); }
+
+  i=await begin('approve'); await ev("showAsk(); return 1");
+  check(await ev("return rec?.mode==='approve'"), 'ask box spares approval recording');
+  await frame(i,{t:'text',text:'yes'}); await close(i);
+  check(await ev(`return __results[${i}]==='yes'`), 'approval recording returns its text');
+  await reset();
+
+  i=await begin('auto'); await ev("__delayQuick=true; send('Typed question?'); return 1");
+  check(await poll('!!__quickResolve'), 'send waits for quick answer');
+  check(await ev("return rec===null && __posts.every(x=>x[0]!=='/api/ask')"), 'send drops mic before quick answer');
+  await ev("__quickResolve(); __delayQuick=false; return 1");
+  await poll("__posts.some(x=>x[0]==='/api/ask')"); await poll('!busy'); await close(i); await reset();
+
+  await ev("openPanel('history'); return 1");
+  check(await poll("!!document.querySelector('#pBody [data-h=cont]')"), 'history row loaded');
+  i=await begin('auto'); await ev("__delayResume=true; document.querySelector('#pBody [data-h=cont]').click(); return 1");
+  check(await poll('!!__resumeResolve'), 'continue waits for resume');
+  check(await ev("return rec===null"), 'continue drops mic before resume answer');
+  await ev("__resumeResolve(); __delayResume=false; return 1");
+  check(await poll("youEl.textContent==='Earlier question' && himEl.textContent==='Earlier answer'"), 'continue restores caption');
+  await frame(i,{t:'text',text:'old speech'}); await close(i);
+  check(await ev("return youEl.textContent==='Earlier question' && himEl.textContent==='Earlier answer' && __sends.length===0"), 'old stream cannot replace resumed caption or send');
+  await reset();
+
+  await ev("info.quick_actions=[{label:'Screen task',prompt:'Describe the display?',attach:'screen'}]; openPanel('actions'); return 1");
+  i=await begin('auto'); await ev("__delayCapture=true; document.querySelector('#pBody [data-qa]').click(); return 1");
+  check(await poll('!!__captureResolve'), 'Quick action waits for capture');
+  await frame(i,{t:'text',text:'old voice question?'}); await close(i);
+  await ev("__captureResolve(); __delayCapture=false; return 1");
+  check(await poll("__sends.length===1"), 'Quick action sends after capture');
+  check(await ev("return __sends.length===1 && __sends[0][0]==='Describe the display?'"), 'Quick action sends only its prompt');
+  await poll("__posts.some(x=>x[0]==='/api/ask')"); await poll('!busy'); await reset();
+
+  i=await begin('auto'); await ev("__captureResolve=null; __delayCapture=true; document.querySelector('#menu [data-a=look]').click(); return 1");
+  check(await poll('!!__captureResolve'), 'Look waits for capture');
+  await frame(i,{t:'text',text:'old look speech?'}); await close(i);
+  await ev("__captureResolve(); __delayCapture=false; return 1");
+  check(await poll("ask.classList.contains('on')"), 'Look opens ask box');
+  check(await ev("return __sends.length===0"), 'Look sends no question');
+  await reset();
+
+  await ev("follow=true; send('Follow question?'); return 1");   // (no mic open: only the window can trigger the drop)
+  check(await poll("__posts.some(x=>x[0]==='/api/follow'&&x[1].act==='cancel')"), 'ordinary send cancels follow-up');
+  await poll("__posts.some(x=>x[0]==='/api/ask')"); await poll('!busy'); await reset();
+  await ev("follow=true; send('Follow question?',{follow:true}); return 1");
+  await poll("__posts.some(x=>x[0]==='/api/ask')"); await poll('!busy');
+  check(await ev("return !__posts.some(x=>x[0]==='/api/follow'&&x[1].act==='cancel')"), 'follow send preserves follow-up');
+  await reset();
+
+  await ev("showAsk(); showAsk(); hideAsk(); hideAsk(); return 1");
+  check(await poll("__posts.filter(x=>x[0]==='/api/follow'&&x[1].act==='hold').length===2"), 'hold posts arrived');
+  check(await ev("return JSON.stringify(__posts.filter(x=>x[0]==='/api/follow'&&x[1].act==='hold').map(x=>x[1].on))==='[true,false]'"), 'ask box posts one hold each way');
+  await reset(); await ev("showAsk(); return 1");
+  await ev("onEvent({t:'wake',follow:true,text:'follow words'}); return 1");
+  check(await ev("return __sends.length===0"), 'follow wake cannot send with ask box open');
+  await ev("onEvent({t:'wake',text:'hey Nixi what time is it?'}); return 1");
+  check(await poll("__sends.some(x=>x[0]==='hey Nixi what time is it?')"), 'hey Nixi still works with ask box open');
+  await poll("__posts.some(x=>x[0]==='/api/ask')"); await poll('!busy'); await reset();
+  await ev("window.fetch=__micFetch; send=__micSend; return 1");
+}
+
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
 console.log(fails.length ? `\n${fails.length} failed: ${fails.join(", ")}` : "\nall pass");
 process.exit(fails.length ? 1 : 0);
