@@ -1017,7 +1017,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), lerp=(a,b,k)=>a+(b-a)*k;
 const approach=(a,b,dt,rate)=>a+(b-a)*(1-Math.exp(-rate*dt));      // frame-rate independent smoothing
 const hdr=x=>Object.assign({'X-Nixi-Token':TOKEN},x||{});
 const post=(u,b,o)=>tokenReady.then(()=>fetch(u,Object.assign({method:'POST',headers:hdr({'Content-Type':'application/json'}),body:JSON.stringify(b||{})},o||{})))
-  .then(r=>{ if(r.status===403) staleToken(); return r; });
+  .then(r=>{ if(r.status===403) r.clone().json().then(j=>{ if(j.error==='forbidden') staleToken(); }).catch(()=>{}); return r; });   // (only a refused token: "off in nixi mode" is also a 403, and reloading for it lost the open panel, #175)
 function staleToken(){                       // the server restarted with a new token: ask the window for it (at most every 10 s)
   let last=0; try{ last=+sessionStorage.getItem('nixi-reload')||0; }catch(e){}
   if(Date.now()-last<10000) return;
@@ -2925,10 +2925,7 @@ const ago=ts=>{ const s=Date.now()/1000-ts; return s<60?'just now':s<3600?`${s/6
 let pnMoved=false, setW=0, setH=0, setWasOpen=false, setFocusBack=null;
 function setDefaultSize(){ return [Math.min(560,((screen&&screen.availWidth)||1920)-40), Math.min(680,Math.round(0.85*((screen&&screen.availHeight)||1080)))]; }
 function setSyncVars(){ if(!setW||!setH){ try{ const s=JSON.parse(localStorage.getItem('nixi.setSize')); if(Array.isArray(s)&&s.length===2&&s.every(n=>Number.isFinite(n)&&n>=420)) [setW,setH]=s; }catch(e){} if(!setW||!setH) [setW,setH]=setDefaultSize(); } setEl.style.setProperty('--setW',setW+'px'); setEl.style.setProperty('--setH',setH+'px'); }
-function panelTrace(m){ const r=setEl.getBoundingClientRect(), c=getComputedStyle(setEl), at=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);   // shortcut: temporary trace for the two-click Settings bug, remove with the fix
-  console.log(`[nixi] panel ${m} set=${setEl.classList.contains('on')} pn=${panelEl.classList.contains('on')} win=${innerWidth}x${innerHeight} layout=${layoutX},${layoutY} rect=${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)} opacity=${c.opacity} vis=${c.visibility} disp=${c.display} at=${at&&at.id||at&&at.tagName} hidden=${hiddenNow} idle=${idleSt} body=${document.body.className}`); }
 function panelSize(prevFocus){ const sOn=setEl.classList.contains('on'), pOn=panelEl.classList.contains('on');
-  panelTrace('size '+(new Error().stack||'').split('\n').slice(1,4).map(l=>l.trim().split(' ')[0]).join('<')); setTimeout(()=>panelTrace('size+1s'),1000);
   document.body.classList.toggle('pnl',sOn||pOn);
   if(sOn&&!setWasOpen){ setFocusBack=prevFocus!==undefined?prevFocus:document.activeElement; const b=$('#tabs button.on')||$('#tabs button'); if(b) b.focus(); }
   else if(!sOn&&setWasOpen){ const el=setFocusBack; setFocusBack=null; if(el&&el.isConnected&&typeof el.focus==='function') el.focus(); }
@@ -3079,7 +3076,7 @@ function menu(on){ if(on) layoutMenu(); if(!on&&menuOn) menuShutAt=performance.n
 menuEl.addEventListener('click',e=>{ const b=e.target.closest('.mb'); if(!b) return; menu(false);
   ({talk:()=>startRec('auto'), bar:()=>toggleBar(), cd:()=>showAsk('/cd '), history:()=>openPanel('history'), plugins:()=>openPanel('plugins'),
     look:()=>shoot('screen').then(j=>{ if(j) showAsk(''); }), hover:toggleHover, mirror:mirRevoke, hide:dismiss, set:()=>settings(true)})[b.dataset.a](); });
-function dismiss(){ panelTrace('dismiss'); menu(false); hideAsk(); closePanels(); endListening(); if(!native('hide')) poke('sleepy',1200); }
+function dismiss(){ menu(false); hideAsk(); closePanels(); endListening(); if(!native('hide')) poke('sleepy',1200); }
 // Esc / hiding him: he stops listening — a recording in progress is dropped and the "just keep talking" window closes
 function endListening(){ if(rec&&rec.mode!=='approve') stopRec(true); post('/api/follow',{act:'cancel'}).catch(()=>{}); follow=false; hearRaw=0; }
 
@@ -3773,8 +3770,8 @@ function toggleMute(){ muted=!muted; try{localStorage.setItem('nixi.muted',muted
 
 // hidden (Esc, hide, closing him) = fully off: he stops talking and the server closes the mic — no "hey Nixi" until
 // he's shown again (Start menu, your hotkey, or `nixi-companion`)
-window.nixiHidden=()=>{ panelTrace('nixiHidden'); hiddenNow=true; endListening(); menu(false); hideAsk(); agentStop(); post('/api/sleep',{on:true}).catch(()=>{}); };
-window.nixiShown=()=>{ panelTrace('nixiShown'); hiddenNow=false; dozing=false; restore(15000);   // (the host showed him: leave doze without another native message)
+window.nixiHidden=()=>{ hiddenNow=true; endListening(); menu(false); hideAsk(); agentStop(); post('/api/sleep',{on:true}).catch(()=>{}); };
+window.nixiShown=()=>{ hiddenNow=false; dozing=false; restore(15000);   // (the host showed him: leave doze without another native message)
   post('/api/sleep',{on:false}).catch(()=>{}); entrance(); wake(); refresh().then(()=>{ syncEye(true); if(pendingAppr||busy) return;
   if(info.listen_on_show&&!info.hover) setTimeout(()=>startRec('auto'),450); else setTimeout(()=>poke('wink',900),350); }); };
 async function comeBack(){ if(!info.hover) return; await toggleHover(false); await sleep(700); }
@@ -3805,8 +3802,9 @@ function fit(){ const k=Math.min(1, innerWidth/340, innerHeight/460); fitK=k>0.9
   bs.transform=fitK===1?'':`scale(${fitK})`;
   if(NATIVE&&fitK<1) console.log(`[nixi] window is ${innerWidth}x${innerHeight} (expected 340x460) — scaling the page to fit`); }
 // the window widened for a panel: it grew to the left by ox px, so shift the page back and he stays exactly where he was
-window.nixiLayout=(ox,oy)=>{ panelTrace(`layout ${ox},${oy}`); layoutX=ox|0; layoutY=oy|0; fit(); cardPlace(); stagePlace(); sendRegion(true); requestAnimationFrame(moveInd); };
+window.nixiLayout=(ox,oy)=>{ layoutX=ox|0; layoutY=oy|0; fit(); cardPlace(); stagePlace(); sendRegion(true); requestAnimationFrame(moveInd); };
 addEventListener('resize',()=>{ fit(); cardPlace(); sendRegion(true); moveInd(); }); fit();
+if(NATIVE){ native('wide:off'); sizeWindow(); }   // (a reload forgets any panel: the window must not keep its size)
 function sendRegion(force){
   calmCheck();
   if(!NATIVE) return;
