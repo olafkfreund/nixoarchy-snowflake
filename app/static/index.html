@@ -3929,7 +3929,7 @@ let downAt=null, dragged=false, clicks=[];
 E.body.addEventListener('mousedown',e=>{ if(e.button!==0) return; downAt=[e.clientX,e.clientY]; dragged=false; });
 // ---- idle (#140): after a while he shrinks into the corner nearest him (peek), then optionally hides without sleeping (doze)
 let idleSt='full', idleHoldUntil=0, lastUser=performance.now(), IDLE_K=1, eatClick=false, peekT=null, corner='br', stillNow=false;
-const IDLE_SHRINK=45000, IDLE_DOZE=300000;
+const IDLE_SHRINK=20000, IDLE_DOZE=60000;
 window.nixiIdleScale=k=>{ IDLE_K=k; };      // test hook: multiplies the timers
 window.nixiCorner=c=>{ corner=c; const x=c[1]==='l'?-102:102, y=c[0]==='t'?-99:99; document.body.style.setProperty('--px',x+'px'); document.body.style.setProperty('--py',y+'px'); };
 // idleActive: your own action, or something that needs you: he stays (or comes back) up. idleShowing: a passive indicator: he just doesn't shrink further.
