@@ -142,6 +142,43 @@ check(hit, "his body is under its own centre point");
 await click(bx, by);
 eq(await ev(`return [window.__rec, acts()];`), [["auto"], []], "a click on him with nothing showing starts listening and posts no act");
 
+// 9. the moving chat bubble opens the row currently on screen
+const bubble = async () => { await ev(`await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))); await new Promise(r=>setTimeout(r,150)); return 1;`);
+  const p = await centre("SIT_P.chat.g");
+  check(await ev(`return SIT_P.chat.g.contains(document.elementFromPoint(${p[0]},${p[1]}));`), "the bubble's centre is a real hit target", p);
+  return p; };
+await ev(`reset(); notifyIn(N('bubble','chat',{app:'teams-for-linux',source:'teams-for-linux'})); return 1;`);
+const [cx, cy] = await bubble();
+await click(cx, cy);
+eq(await ev(`return [acts(), window.__rec, notifyRow];`), [[{key:"bubble",how:"open"}], [], null], "bubble click opens the visible row without listening");
+
+await ev(`reset(); notifyIn(N('away','chat',{app:'teams-for-linux'})); return 1;`);
+await bubble();
+await click(bx, by);
+eq(await ev(`return [window.__rec, acts()];`), [["auto"], []], "clicking him away from the bubble still starts listening");
+
+await ev(`reset(); notifyIn(N('gone','chat',{app:'teams-for-linux'})); await new Promise(r=>setTimeout(r,3700)); return 1;`);
+const [gx, gy] = await centre("SIT_P.chat.g");
+const goneHit = await ev(`return E.body.contains(document.elementFromPoint(${gx},${gy}));`);
+await click(gx, gy);
+eq(await ev(`return [acts(), window.__rec, notifyRow&&notifyRow.key];`), [[], goneHit?["auto"]:[], "gone"], "after the bubble goes, its spot keeps its old click behaviour");
+
+for(const [count, key] of [[2,"two1"],[3,"three3"]]){
+  await ev(`reset(); const c={app:'teams-for-linux',source:'teams-for-linux'};
+    notifyIn(N('${count===2?"two1":"three1"}','chat',c)); notifyIn(N('${count===2?"two2":"three2"}','chat',c));
+    ${count===3?"notifyIn(N('three3','chat',c));":""} return 1;`);
+  const [x,y] = await bubble();
+  await click(x,y);
+  eq(await ev(`return [acts(), notifyQ.map(e=>e.key), window.__rec];`), [[{key,how:"open"}], [count===2?"two2":"three2"], []], `×${count} bubble opens the on-screen key and leaves the second queued`);
+  const next = await ev(`notifyAt=0; notifyDrain(performance.now()); return notifyRow&&notifyRow.key;`);
+  eq(next, count===2?"two2":"three2", `×${count} second row shows next`);
+}
+
+await ev(`reset(); notifyIn(N('redrawn','chat',{app:'teams-for-linux'})); applyLook({...LOOK}); return 1;`);
+const [lx,ly] = await bubble();
+await click(lx,ly);
+eq(await ev(`return [acts(), window.__rec];`), [[{key:"redrawn",how:"open"}], []], "bubble click survives a look redraw");
+
 if (fails.length) { console.log(`${fails.length} check(s) failed`); process.exit(1); }
 console.log("notify fit ok");
 process.exit(0);
