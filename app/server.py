@@ -283,8 +283,8 @@ CHARACTERS = ("snowflake", "terminal", "robot", "devil")
 HEX = re.compile(r"#[0-9a-f]{6}")
 
 
-def look():
-    lk = dict(CFG.get("look") or {})
+def look(raw=None):
+    lk = dict((CFG.get("look") if raw is None else raw) or {})
     ec, ew = (CFG.get("eye_color") or "#3e5993").lower(), (CFG.get("eye_white") or "#ffffff").lower()   # NixOS blues
     pup = ec if HEX.fullmatch(ec) else "#3e5993"
     wht = ew if HEX.fullmatch(ew) else "#ffffff"
@@ -5763,6 +5763,11 @@ def eleven_cap():
 
 def voice_settings(b, upd):
     """Check the voice-engine keys of a settings call and copy the good ones into upd → a sentence when one is refused."""
+    if "voice_by_character" in b:
+        m = b["voice_by_character"]
+        if not isinstance(m, dict) or any(k not in CHARACTERS or not isinstance(v, str) or v not in VOICES for k, v in m.items()):
+            return "A character's voice must be one of the voices listed."
+        upd["voice_by_character"] = m
     if "tts_fallback" in b:
         if b["tts_fallback"] not in ("auto", "kokoro", "piper", "espeak"):
             return "The fallback voice must be auto, kokoro, piper or espeak."
@@ -6170,8 +6175,7 @@ class Handler(BaseHTTPRequestHandler):
                 if isinstance(b.get("look"), dict):
                     cur = dict(CFG.get("look") or {})
                     cur.update(b["look"])
-                    CFG["look"] = cur
-                    upd["look"] = look()
+                    upd["look"] = look(cur)
                 if b.get("pupil_style") in ("slit", "circle", "dot"):
                     upd["pupil_style"] = b["pupil_style"]
                 if b.get("idle_mode") in ("off", "shrink", "doze"):
@@ -6240,6 +6244,10 @@ class Handler(BaseHTTPRequestHandler):
                             save_config(**upd)
                         if "language" in upd or "whisper_model" in upd:
                             request_language(lang.norm(CFG.get("language")), force="whisper_model" in upd)
+                    if "look" in upd or "voice_by_character" in upd:
+                        name = lang_voice_name(lang.active)
+                        if name:
+                            fetch_voice(name)
                     if cut_cloud:
                         Speaker.cut_cloud()
                     if peers_changed:
