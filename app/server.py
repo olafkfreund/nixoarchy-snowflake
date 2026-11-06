@@ -2118,6 +2118,44 @@ class Nudge:
         BUS.pub(t="nudge", kind=kind, text=text, speak=speak)
 
 
+def _focused_addr():
+    if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") or not shutil.which("hyprctl"):
+        return None
+    try:
+        r = _run(["hyprctl", "activewindow", "-j"], timeout=3)
+        if r.returncode or not r.stdout:
+            return None
+        window = json.loads(r.stdout)
+        return window.get("address", "") if isinstance(window, dict) else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def _window_for(entry, app, source):
+    r = _run(["hyprctl", "clients", "-j"], timeout=3)
+    r.check_returncode()
+    names = {n.lower() for n in (entry["id"], entry["wmclass"], app, source) if n}
+    for win in sorted(json.loads(r.stdout), key=lambda w: w.get("focusHistoryID", 0)):
+        if any((win.get(k) or "").lower() in names for k in ("class", "initialClass")):
+            return win.get("address")
+    return None
+
+
+def _focus(addr):
+    if not re.fullmatch(r"0x[0-9a-f]+", addr):
+        return
+    r = _run(["hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:{addr}" }})'], timeout=3)
+    if r.returncode:
+        _run(["hyprctl", "dispatch", "focuswindow", f"address:{addr}"], timeout=3)
+
+
+def _launch(id):
+    if shutil.which("gtk-launch"):
+        quick._spawn(["gtk-launch", id])
+    else:
+        BUS.pub(t="toast", text="I can't start apps here: gtk-launch isn't installed.")
+
+
 class Inbox:
     """Notifications the shell hands to the companion (#133), only while this thread holds a lease on the shell's IPC
     socket (renewed every second). Row text is never logged, written to disk or sent to the agent."""
@@ -2134,6 +2172,7 @@ class Inbox:
     thread = None
     wanted = False                                            # a lease is out
     unseen = {}                                               # key -> when it was sent to the page; 5 s unseen and the shell shows it
+    origin = {}                                               # key -> (app, source, time), never row text
 
     @classmethod
     def _derived(cls):
@@ -2222,6 +2261,9 @@ class Inbox:
     @classmethod
     def tick(cls):
         now = time.monotonic()
+        for key, (_, _, t) in list(cls.origin.items()):
+            if now - t > 600:
+                cls.origin.pop(key, None)
         for key, t in list(cls.unseen.items()):               # (handler threads pop from it)
             if now - t > 5:                                   # the page never drew it: the shell shows it as a popup
                 cls.unseen.pop(key, None)
@@ -2231,6 +2273,12 @@ class Inbox:
             cls.wanted = out is not None
             for row in cls.rows(out):
                 cls.unseen[row["key"]] = now
+                if (row["category"] in ("mail", "chat") and
+                        row["app"].strip().lower().replace("-", " ") not in Icons.BROWSERS and
+                        not Icons.HOST.fullmatch(row["source"].strip().lower())):
+                    cls.origin[row["key"]] = (row["app"], row["source"], now)
+                    if len(cls.origin) > 64:
+                        cls.origin.pop(min(cls.origin, key=lambda key: cls.origin[key][2]))
                 BUS.pub(t="notify", **row)
         else:
             cls.release()
@@ -2238,6 +2286,25 @@ class Inbox:
     @classmethod
     def seen(cls, key):
         cls.unseen.pop(key, None)
+
+    @classmethod
+    def follow_up(cls, app, source, before):
+        try:
+            time.sleep(1.5)
+            now = _focused_addr()
+            if now is None or now != before:
+                return
+            entry = Icons.desktop_for(app, source)
+            if entry is None:
+                BUS.pub(t="toast", text=f"I couldn't find {app or source} on this machine.")
+                return
+            win = _window_for(entry, app, source)
+            if win is None:
+                _launch(entry["id"])
+            elif win != now:
+                _focus(win)
+        except Exception as e:  # noqa: BLE001  (a malformed desktop/window reply must never kill a handler thread)
+            print(f"[nixi] inbox follow-up: {type(e).__name__}", file=sys.stderr)
 
     @classmethod
     def loop(cls):
@@ -2271,6 +2338,7 @@ class Icons:
     TTL = 600
     served = {}                                                # id -> path
     names = {}                                                 # lower-case id / WM class / Name -> Icon= value
+    apps = {}                                                  # exact id / WM class / full Name -> launch entry or collision
     slugs = {}                                                 # Quick Web Apps host slug -> Icon= value
     built = 0.0
     cache = {}                                                 # (app, source) -> (when, path|None)
@@ -2290,7 +2358,7 @@ class Icons:
 
     @classmethod
     def _build(cls):
-        names, slugs = {}, {}
+        names, slugs, apps, ids = {}, {}, {}, set()
         for base in cls._data():
             d = os.path.join(base, "applications")
             try:
@@ -2312,6 +2380,18 @@ class Icons:
                                 kv.setdefault(k, v.strip())
                 except OSError:
                     continue
+                real = f[:-8]
+                first = real not in ids                # (the same id in a later data dir is the same app: the first one counts)
+                ids.add(real)
+                if (first and kv.get("Type") == "Application" and kv.get("Hidden", "").lower() != "true" and
+                        kv.get("NoDisplay", "").lower() != "true" and not real.startswith("-")):
+                    entry = {"id": real, "wmclass": kv.get("StartupWMClass", "").lower()}
+                    for k in (real.lower(), entry["wmclass"], kv.get("Name", "").lower()):
+                        if k:
+                            if k in apps and apps[k] is not entry:
+                                apps[k] = None
+                            else:
+                                apps[k] = entry
                 icon = kv.get("Icon")
                 if not icon:
                     continue
@@ -2324,7 +2404,22 @@ class Icons:
                 m = re.match(r"io\.github\..+\.quickwebapps\.(.+)-[^-]+$", fid)
                 if m:
                     slugs.setdefault(m.group(1), icon)
-        cls.names, cls.slugs, cls.built = names, slugs, time.time()
+        cls.names, cls.slugs, cls.apps, cls.built = names, slugs, apps, time.time()
+
+    @classmethod
+    def desktop_for(cls, app, source):
+        with cls.lock:
+            if not cls.built:
+                cls._build()
+            for key in (app.strip().lower(), source.strip().lower()):
+                if key in cls.apps:
+                    return cls.apps[key]
+            if time.time() - cls.built > cls.TTL:
+                cls._build()
+                for key in (app.strip().lower(), source.strip().lower()):
+                    if key in cls.apps:
+                        return cls.apps[key]
+        return None
 
     @classmethod
     def _resolve(cls, icon):
@@ -6108,7 +6203,14 @@ class Handler(BaseHTTPRequestHandler):
                 key = str(b.get("key") or "")
                 if not Inbox.KEY.fullmatch(key) or b.get("how") not in ("open", "dismiss"):
                     return self._json({"error": "bad request"}, 400)
-                return self._json({"ok": Inbox.call("activateKey" if b["how"] == "open" else "dismissKey", key) == "ok"})
+                origin = Inbox.origin.pop(key, None)
+                if b["how"] == "dismiss":
+                    return self._json({"ok": Inbox.call("dismissKey", key) == "ok"})
+                before = _focused_addr() if origin else None
+                ok = Inbox.call("activateKey", key) == "ok"
+                if ok and origin and before is not None:
+                    threading.Thread(target=Inbox.follow_up, args=(origin[0], origin[1], before), daemon=True).start()
+                return self._json({"ok": ok})
             if p == "/api/notify/seen":            # the page drew it
                 Inbox.seen(str(json.loads(self._body() or b"{}").get("key") or ""))
                 return self._json({"ok": True})
