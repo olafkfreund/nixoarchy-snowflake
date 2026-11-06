@@ -1201,6 +1201,10 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   const lensL=lens(), lensR=lens(), brg=line(), glintL=line('#ffffff60'), glintR=line('#ffffff60');
   // notification props, absolute coordinates, white / bright on his blue arms; frame() places them with put() and animates them while they show
   const pk2='#0b0e14', chat=prop(fr,'left','chat'), feed=prop(fr,'right','feed');
+  chat.addEventListener('click',e=>{ if(dragged||!(propOn&&propOn.cat==='chat'&&performance.now()<propOn.until)) return;   // (a drag stays a drag; E.body clears it)
+    if(e.detail>1){ e.stopPropagation(); return; }                   // (the second click of a double click must not open the mic)
+    if(!(notifyRow&&notifyRow.span&&notifyRow.span.isConnected)) return;
+    e.stopPropagation(); notifyAct('open'); });
   sv('path',R({d:'M-88 -73H-60Q-56 -73 -56 -69V-55Q-56 -51 -60 -51H-72L-80 -43L-79 -51H-88Q-92 -51 -92 -55V-69Q-92 -73 -88 -73Z',fill:'#fff',stroke:'#2f8f66','stroke-width':3}),chat);
   const dots=[-82,-74,-66].map(x=>sv('circle',{cx:x,cy:-62,r:2.9,fill:'#2f8f66'},chat));
   const badge=sv('g',{display:'none'},chat); sv('circle',{cx:-58,cy:-74,r:8.5,fill:'#e5484d',stroke:'#fff','stroke-width':1.6},badge);
@@ -3924,6 +3928,7 @@ function sendRegion(force){
   if(ask.classList.contains('on')) add(ask,4);
   if(chip.classList.contains('act')&&chip.classList.contains('on')) add(chip,4);
   if(cap.classList.contains('ntf')) add(plate,4);
+  if(SIT_P&&notifyRow&&notifyRow.span&&notifyRow.span.isConnected&&propOn&&propOn.cat==='chat'&&performance.now()<propOn.until) add(SIT_P.chat.g,4);
   if($('#mailPop').classList.contains('on')){ add($('#mailPop'),4); add($('#mailPop .lt'),2); }
   if(stgEl.classList.contains('on')) add(stgEl,4);
   if(stgTab.classList.contains('on')) add(stgTab,2);

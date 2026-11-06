@@ -28,9 +28,64 @@ class IconsTest(_ServerEnv):
         self.addCleanup(p.stop)
         self.I.built, self.I.cache, self.I.served = 0.0, {}, {}
 
-    def desktop(self, fid, icon, name="", wm=""):
+    def desktop(self, fid, icon, name="", wm="", extra="", kind="Application"):
         (self.share / "applications" / fid).write_text(
-            f"[Desktop Entry]\nName={name}\nIcon={icon}\n" + (f"StartupWMClass={wm}\n" if wm else "") + "[Desktop Action x]\nName=Other\n")
+            f"[Desktop Entry]\nType={kind}\nName={name}\nIcon={icon}\n" + (f"StartupWMClass={wm}\n" if wm else "") + extra + "[Desktop Action x]\nName=Other\n")
+
+    def test_desktop_for_exact_identity_and_iconless(self):
+        self.desktop("org.foo.Bar.desktop", "", "Foo Mail - Inbox", "FooWM")
+        self.desktop("org.visualstudio.Code.desktop", "", "Visual Studio Code")
+        want = {"id": "org.foo.Bar", "wmclass": "foowm"}
+        for app, source in (("org.foo.bar", ""), ("other", "FOOWM"), ("Foo Mail - Inbox", "")):
+            self.assertEqual(self.I.desktop_for(app, source), want)
+        for app in ("Foo Mail", "code"):
+            self.assertIsNone(self.I.desktop_for(app, ""))
+        self.assertEqual(self.I.desktop_for("Visual Studio Code", "")["id"], "org.visualstudio.Code")
+        self.assertIsNone(self.I.lookup("org.foo.Bar", ""))
+
+    def test_desktop_for_refuses_hidden_non_apps_and_collisions(self):
+        for fid, extra in (("hidden", "Hidden=true\n"), ("nodisplay", "NoDisplay=true\n"), ("-refused", "")):
+            self.desktop(fid + ".desktop", "", fid, extra=extra)
+        self.desktop("link.desktop", "", "Link", kind="Link")
+        self.assertIsNone(self.I.desktop_for("hidden", ""))
+        self.assertIsNone(self.I.desktop_for("nodisplay", ""))
+        self.assertIsNone(self.I.desktop_for("link", ""))
+        self.assertIsNone(self.I.desktop_for("-refused", ""))
+        self.desktop("one.desktop", "", "Shared")
+        self.desktop("two.desktop", "", "Shared")
+        self.I.built = 0
+        self.assertIsNone(self.I.desktop_for("shared", "one"))
+        self.assertEqual(self.I.desktop_for("one", ""), {"id": "one", "wmclass": ""})
+
+    def test_desktop_for_own_id_beats_a_shared_name(self):
+        self.desktop("discord.desktop", "d", name="Discord")
+        self.desktop("omarchy-Discord.desktop", "d", name="Discord")
+        self.assertEqual(self.I.desktop_for("discord", "")["id"], "discord")
+        self.desktop("a.desktop", "x", name="Twin")
+        self.desktop("b.desktop", "x", name="Twin")
+        self.I.built = 0.0
+        self.assertIsNone(self.I.desktop_for("twin", ""))
+
+    def test_desktop_for_same_id_in_two_data_dirs_is_one_app(self):
+        self.desktop("org.foo.Bar.desktop", "foo", name="Foo", wm="FooWM")
+        other = self.root / "other"
+        (other / "applications").mkdir(parents=True)
+        (other / "applications" / "org.foo.Bar.desktop").write_text((self.share / "applications" / "org.foo.Bar.desktop").read_text())
+        hidden = self.root / "hidden"
+        (hidden / "applications").mkdir(parents=True)
+        (hidden / "applications" / "org.gone.App.desktop").write_text("[Desktop Entry]\nType=Application\nName=Gone\nHidden=true\n")
+        (other / "applications" / "org.gone.App.desktop").write_text("[Desktop Entry]\nType=Application\nName=Gone\n")
+        with mock.patch.dict(os.environ, {"XDG_DATA_DIRS": f"{hidden}:{self.share}:{other}"}):
+            self.I.built = 0.0
+            self.assertEqual(self.I.desktop_for("Foo", "")["id"], "org.foo.Bar")
+            self.assertIsNone(self.I.desktop_for("Gone", ""))   # (a file hiding an app earlier in the path wins)
+
+    def test_desktop_for_rebuilds_on_expired_miss(self):
+        self.assertIsNone(self.I.desktop_for("new", ""))
+        self.desktop("New.desktop", "", "New")
+        self.assertIsNone(self.I.desktop_for("new", ""))
+        self.I.built -= self.I.TTL + 1
+        self.assertEqual(self.I.desktop_for("new", "")["id"], "New")
 
     def theme_icon(self, name, size="64x64", data=PNG, ext=".png"):
         d = self.share / "icons" / "hicolor" / size / "apps"
