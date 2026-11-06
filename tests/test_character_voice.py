@@ -33,7 +33,7 @@ class CharacterVoiceTest(_ServerEnv):
 
     def test_character_wins_and_others_use_their_own(self):
         s = self.server
-        s.CFG.update(voice="girl", voice_by_lang={"pl": "guy"},
+        s.CFG.update(voice="girl", voice_by_lang={"pl": "cute"},   # (cute and deep are different Polish voices)
                      voice_by_character={"snowflake": "deep", "devil": "british"})
         self.assertEqual(s.voice_preset()["label"], "Deep")
         self.assertEqual(s.lang_voice_name("en"), s.VOICES["deep"]["piper"])
@@ -43,7 +43,7 @@ class CharacterVoiceTest(_ServerEnv):
         self.assertEqual(s.lang_voice_name("pl"), "pl_PL-mc_speech-medium")
         s.CFG["look"] = {"character": "terminal"}
         self.assertEqual(s.voice_preset()["label"], "Girl")
-        self.assertEqual(s.lang_voice_name("pl"), "pl_PL-darkman-medium")
+        self.assertEqual(s.lang_voice_name("pl"), "pl_PL-gosia-medium")
 
     def test_character_and_language_changes_do_not_write_user_choices(self):
         s = self.server
@@ -83,6 +83,22 @@ class CharacterVoiceTest(_ServerEnv):
             self.assertEqual(s.voice_preset()["label"], "Robot")
             self.assertIsNone(s.lang_voice_name("en"))
 
+    def test_synth_speaks_robot_with_espeak_despite_pins(self):
+        s = self.server
+        s.CFG.update(voice_by_character={"snowflake": "robot"}, tts="auto", kokoro_voice="pinned", piper_voice="/pinned.onnx")
+        with mock.patch.object(s.shutil, "which", return_value="/bin/espeak-ng"), \
+             mock.patch.object(s, "kokoro_ready", return_value=True), \
+             mock.patch.object(s, "piper_voice", return_value="/pinned.onnx"), \
+             mock.patch.object(s, "kokoro_synth") as kokoro, mock.patch.object(s.subprocess, "run") as run:
+            s.synth("hello")
+        kokoro.assert_not_called()
+        self.assertEqual(run.call_args.args[0][:3], ["espeak-ng", "-v", "en-us+m3"])
+
+    def test_no_entry_does_not_read_the_look(self):
+        s = self.server
+        with mock.patch.object(s, "look", side_effect=AssertionError("read the look")):
+            self.assertEqual(s.voice_key(), "girl")
+
     def test_bad_maps_and_values_are_ignored(self):
         s = self.server
         for value in (None, [], "robot", {"snowflake": "missing"}, {"snowflake": ["robot"]}):
@@ -117,10 +133,10 @@ class CharacterVoiceTest(_ServerEnv):
         s = self.server
         with mock.patch.object(s, "claude_bin", return_value=None):
             s.CFG["voice_by_character"] = {"snowflake": "deep"}
-            self.assertIn("(voice: girl, speaking: deep)", s.diagnostics())
+            self.assertIn("(voice: girl, character: deep)", s.diagnostics())
             s.CFG["voice_by_character"] = {}
             self.assertIn("(voice: girl)", s.diagnostics())
-            self.assertNotIn("speaking:", s.diagnostics())
+            self.assertNotIn("character:", s.diagnostics())
 
 
 class CharacterVoiceSettingsTest(_ServerEnv):
@@ -187,6 +203,20 @@ class CharacterVoiceSettingsTest(_ServerEnv):
         s.fetch_voice.reset_mock()
         self.assertEqual(self.post({"look": {"character": "devil"}})[0], 200)
         s.fetch_voice.assert_called_once_with("en_US-ryan-medium")
+
+    def test_saving_a_character_voice_leaves_your_own_choices_alone(self):
+        s = self.server
+        s.CFG.update(voice="cute", voice_by_lang={"pl": "guy"})
+        self.assertEqual(self.post({"look": {"character": "devil"}, "voice_by_character": {"devil": "deep"}})[0], 200)
+        self.assertEqual((s.CFG["voice"], s.CFG["voice_by_lang"]), ("cute", {"pl": "guy"}))
+        saved = json.loads(s.CONF_PATH.read_text())
+        self.assertNotIn("voice", saved)
+        self.assertNotIn("voice_by_lang", saved)
+
+    def test_look_save_with_no_character_voices_fetches_nothing(self):
+        s = self.server
+        self.assertEqual(self.post({"look": {"body": "#abcdef"}})[0], 200)
+        s.fetch_voice.assert_not_called()
 
     def test_no_fetch_for_robot_cloud_or_pin(self):
         s = self.server

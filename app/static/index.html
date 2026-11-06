@@ -3399,6 +3399,7 @@ function hex2hsv(hex){ const [r,g,b]=hex2rgb(hex), mx=Math.max(r,g,b), mn=Math.m
   let h=0; if(d){ h=mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4; h*=60; if(h<0) h+=360; } return [h, mx?d/mx:0, mx]; }
 function voiceSample(){ if(muted) toggleMute(); shush(); say([pageLine('page.voice_1','hi! this is my new voice.'),pageLine('page.voice_2','how do i sound?'),pageLine('page.voice_3','ooh, i like this one.')][Math.random()*3|0]); }
 function otherVoiceLine(){ if(!info.voice_speaking||info.voice_speaking===info.voice) return '';
+  if(info.tts_choice==='elevenlabs'||(info.voice_pinned&&info.voice_speaking!=='robot')) return '';   // (the cloud or a pinned voice is what speaks)
   const v=(info.voices||[]).find(x=>x.id===info.voice_speaking);
   return `The ${(CHARACTERS[curLook().character]||CHARACTERS.snowflake).label} speaks as ${v?v.label:info.voice_speaking}. Change it in Look.`; }
 function curLook(){ return themed({...LOOK_DEFAULT,...(info.look||{})}); }
@@ -3539,8 +3540,8 @@ function renderSettings(){
   $$('#characterGrid button').forEach(b=>miniNixi(b.querySelector('svg'),{...L,character:b.dataset.character,skin:'none'},false));
   const worn=wornSkin(L), bodyL=CHARACTERS[L.character]||CHARACTERS.snowflake;
   { const ch=L.character||'snowflake', sel=$('#charVoice'); $('#charVoiceLabel').textContent=`Voice for the ${bodyL.label}`;
-    sel.replaceChildren(new Option('My voice',''));
-    for(const v of info.voices||[]){ const o=new Option(v.label+(v.downloading?' ⇣':''),v.id); o.disabled=v.id==='robot'&&v.ready===false; sel.appendChild(o); }
+    const opts=[['My voice','',false],...(info.voices||[]).map(v=>[v.label+(v.downloading?' ⇣':''),v.id,v.id==='robot'&&v.ready===false])], sig=JSON.stringify(opts);
+    if(sel.dataset.sig!==sig){ sel.dataset.sig=sig; sel.replaceChildren(...opts.map(([l,id,off])=>{ const o=new Option(l,id); o.disabled=off; return o; })); }   // (settings redraw every 2 s during a download: an open list stays open)
     sel.value=(info.voice_by_character||{})[ch]||'';
     $('#charVoiceNote').textContent=info.tts_choice==='elevenlabs'?'The cloud voice comes first. This is used when it falls back to a local voice.':info.voice_pinned?'A pinned voice is in charge, except for Robot.':''; }
   $('#skinGrid').innerHTML=(info.skins||Object.keys(SKIN_LABELS)).filter(k=>bodyFits(bodyL,k)).map(k=>`<button data-skin="${k}" class="${worn===k?'on':''}"><svg viewBox="-125 -150 250 250"></svg>${SKIN_LABELS[k]||k}</button>`).join('');
@@ -3778,7 +3779,8 @@ setEl.addEventListener('change',e=>{
   const id=e.target.id, on=e.target.checked, ag=e.target.dataset&&e.target.dataset.agent;
   if(id==='charVoice'){ const c=curLook().character||'snowflake', m={...(info.voice_by_character||{})};
     if(e.target.value) m[c]=e.target.value; else delete m[c];
-    return setSetting({voice_by_character:m}).then(ok=>{ if(ok) voiceSample(); }); }
+    return setSetting({voice_by_character:m}).then(ok=>{ if(!ok) return; const vv=(info.voices||[]).find(x=>x.id===e.target.value);
+      if(vv&&!vv.ready) tick('downloading that voice… using another one till it lands'); voiceSample(); }); }
   if(ag){ const l=(info.agent_voice_mute||[]).filter(x=>x!==ag), m=on?l:[...l,ag]; info.agent_voice_mute=m; return setSetting({agent_voice_mute:m}); }
   if(id==='rootSw') setSetting(on?{root:true}:{root:false,trust:'ask'}).then(()=>{ tick(on?'root mode ON — he can run anything (I\'ll ask for your sudo password)':'root mode off',on); poke(on?'scared':'happy',900); });
   if(id==='speakSw'){ if(on&&info.tts_choice==='off') setSetting({tts:'auto'},'#voiceErr'); if(on===muted) toggleMute(); }

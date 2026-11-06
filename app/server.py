@@ -3611,7 +3611,7 @@ def localize(v, code=None, key=None):
 def voice_key(code=None):
     """The preset that speaks. The current character's own voice wins; otherwise the user's own choice."""
     m = CFG.get("voice_by_character")
-    v = m.get(look()["character"]) if isinstance(m, dict) else None
+    v = m.get(look()["character"]) if m and isinstance(m, dict) else None
     # Robot is espeak only: if it can't speak here, the character quietly uses your own voice
     if isinstance(v, str) and v in VOICES and (not VOICES[v].get("espeak") or voice_ready(VOICES[v])):
         return v
@@ -5723,7 +5723,7 @@ def diagnostics():
             cv = "found (version unknown)"
     add("claude code", cv)
     chosen, speaking = CFG.get("voice") or "girl", voice_key()
-    add("voice engine", f"{tts_engine() or 'none'} (voice: {chosen}{', speaking: ' + speaking if speaking != chosen else ''})")
+    add("voice engine", f"{tts_engine() or 'none'} (voice: {chosen}{', character: ' + speaking if speaking != chosen else ''})")
     add("elevenlabs", f"{'on' if CFG.get('eleven_on') is True else 'off'}, key {'present' if eleven.has_key() else 'absent'}, "
                       f"used {eleven.today()['used']}/{eleven_cap()}")
     add("tts first-sound ms", Speaker.stats.get("first_sound_ms", "—"))
@@ -6244,7 +6244,7 @@ class Handler(BaseHTTPRequestHandler):
                             save_config(**upd)
                         if "language" in upd or "whisper_model" in upd:
                             request_language(lang.norm(CFG.get("language")), force="whisper_model" in upd)
-                    if "look" in upd or "voice_by_character" in upd:
+                    if "voice_by_character" in upd or ("look" in upd and CFG.get("voice_by_character")):
                         name = lang_voice_name(lang.active)
                         if name:
                             fetch_voice(name)
