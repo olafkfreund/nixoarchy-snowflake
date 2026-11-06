@@ -142,8 +142,8 @@ After a while with nothing going on, it **shrinks into the corner of its spot** 
 Settings → Look → *When idle*:
 
 - **Stay:** never shrinks.
-- **Shrink** (the default): shrinks after about 45 seconds.
-- **Shrink, then hide:** shrinks, then after about 5 minutes hides. It is still awake: the wake word, notifications
+- **Shrink** (the default): shrinks after about 20 seconds.
+- **Shrink, then hide:** shrinks, then after about a minute hides. It is still awake: the wake word, notifications
   and agent alerts keep working.
 
 It pops back up when something happens: you speak or call it, an agent needs you or finishes, a reminder or a
