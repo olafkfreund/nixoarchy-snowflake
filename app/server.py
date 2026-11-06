@@ -2135,7 +2135,9 @@ def _window_for(entry, app, source):
     r = _run(["hyprctl", "clients", "-j"], timeout=3)
     r.check_returncode()
     names = {n.lower() for n in (entry["id"], entry["wmclass"], app, source) if n}
-    for win in sorted(json.loads(r.stdout), key=lambda w: w.get("focusHistoryID", 0)):
+    # (-1 means never focused: last, not first; an unmapped window isn't one you can bring up)
+    wins = [w for w in json.loads(r.stdout) if w.get("mapped", True)]
+    for win in sorted(wins, key=lambda w: w["focusHistoryID"] if w.get("focusHistoryID", 0) >= 0 else float("inf")):
         if any((win.get(k) or "").lower() in names for k in ("class", "initialClass")):
             return win.get("address")
     return None
@@ -2145,7 +2147,7 @@ def _focus(addr):
     if not re.fullmatch(r"0x[0-9a-f]+", addr):
         return
     r = _run(["hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:{addr}" }})'], timeout=3)
-    if r.returncode:
+    if r.returncode or (r.stdout or b"").strip() != b"ok":   # (hyprctl exits 0 even when a dispatch fails)
         _run(["hyprctl", "dispatch", "focuswindow", f"address:{addr}"], timeout=3)
 
 
@@ -2275,7 +2277,8 @@ class Inbox:
                 cls.unseen[row["key"]] = now
                 if (row["category"] in ("mail", "chat") and
                         row["app"].strip().lower().replace("-", " ") not in Icons.BROWSERS and
-                        not Icons.HOST.fullmatch(row["source"].strip().lower())):
+                        (row["source"].strip().lower() == row["app"].strip().lower() or   # (a native app's source is its own name, even a dotted one)
+                         not Icons.HOST.fullmatch(row["source"].strip().lower()))):
                     cls.origin[row["key"]] = (row["app"], row["source"], now)
                     if len(cls.origin) > 64:
                         cls.origin.pop(min(cls.origin, key=lambda key: cls.origin[key][2]))
@@ -2358,7 +2361,7 @@ class Icons:
 
     @classmethod
     def _build(cls):
-        names, slugs, apps, ids = {}, {}, {}, set()
+        names, slugs, apps, ids, own = {}, {}, {}, set(), {}
         for base in cls._data():
             d = os.path.join(base, "applications")
             try:
@@ -2386,6 +2389,7 @@ class Icons:
                 if (first and kv.get("Type") == "Application" and kv.get("Hidden", "").lower() != "true" and
                         kv.get("NoDisplay", "").lower() != "true" and not real.startswith("-")):
                     entry = {"id": real, "wmclass": kv.get("StartupWMClass", "").lower()}
+                    own.setdefault(real.lower(), entry)
                     for k in (real.lower(), entry["wmclass"], kv.get("Name", "").lower()):
                         if k:
                             if k in apps and apps[k] is not entry:
@@ -2404,6 +2408,7 @@ class Icons:
                 m = re.match(r"io\.github\..+\.quickwebapps\.(.+)-[^-]+$", fid)
                 if m:
                     slugs.setdefault(m.group(1), icon)
+        apps.update(own)                               # (a file's own id beats another file's Name or WM class)
         cls.names, cls.slugs, cls.apps, cls.built = names, slugs, apps, time.time()
 
     @classmethod

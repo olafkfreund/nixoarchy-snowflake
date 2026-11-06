@@ -57,6 +57,15 @@ class IconsTest(_ServerEnv):
         self.assertIsNone(self.I.desktop_for("shared", "one"))
         self.assertEqual(self.I.desktop_for("one", ""), {"id": "one", "wmclass": ""})
 
+    def test_desktop_for_own_id_beats_a_shared_name(self):
+        self.desktop("discord.desktop", "d", name="Discord")
+        self.desktop("omarchy-Discord.desktop", "d", name="Discord")
+        self.assertEqual(self.I.desktop_for("discord", "")["id"], "discord")
+        self.desktop("a.desktop", "x", name="Twin")
+        self.desktop("b.desktop", "x", name="Twin")
+        self.I.built = 0.0
+        self.assertIsNone(self.I.desktop_for("twin", ""))
+
     def test_desktop_for_same_id_in_two_data_dirs_is_one_app(self):
         self.desktop("org.foo.Bar.desktop", "foo", name="Foo", wm="FooWM")
         other = self.root / "other"

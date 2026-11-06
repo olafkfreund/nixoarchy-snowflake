@@ -1,3 +1,4 @@
+import subprocess
 import json
 import os
 import socketserver
@@ -268,6 +269,42 @@ class InboxTest(_ServerEnv):
             S._launch("org.foo.Bar")
             spawn.assert_not_called()
             pub.assert_called_once_with(t="toast", text="I can't start apps here: gtk-launch isn't installed.")
+
+    def test_window_for_ignores_never_focused_and_unmapped(self):
+        S = self.server
+        entry = {"id": "foo", "wmclass": ""}
+        clients = [{"address": "0x9", "class": "foo", "focusHistoryID": -1}, {"address": "0x8", "class": "foo", "mapped": False, "focusHistoryID": 0},
+                   {"address": "0x1", "class": "foo", "focusHistoryID": 2}]
+        with mock.patch.object(S, "_run", return_value=mock.Mock(stdout=json.dumps(clients).encode(), returncode=0, check_returncode=lambda: None)):
+            self.assertEqual(S._window_for(entry, "", ""), "0x1")
+
+    def test_a_failing_clients_call_starts_nothing(self):
+        S = self.server
+        failed = subprocess.CompletedProcess(["hyprctl"], 1, b"", b"")
+        with mock.patch.object(S.time, "sleep"), mock.patch.object(S, "_focused_addr", return_value="0x1"), mock.patch.object(S, "_run", return_value=failed), \
+             mock.patch.object(S.Icons, "desktop_for", return_value={"id": "foo", "wmclass": ""}), mock.patch.object(S.quick, "_spawn") as spawn, mock.patch.object(S.BUS, "pub") as pub:
+            S.Inbox.follow_up("foo", "", "0x1")
+        spawn.assert_not_called()
+        pub.assert_not_called()
+
+    def test_focus_falls_back_when_hyprctl_says_it_failed_with_exit_0(self):
+        S = self.server
+        bad, ok = mock.Mock(returncode=0, stdout=b"warning: nope\n"), mock.Mock(returncode=0, stdout=b"ok\n")
+        with mock.patch.object(S, "_run", side_effect=[bad, ok]) as run:
+            S._focus("0xabc")
+        self.assertIn('hl.dsp.focus({ window = "address:0xabc" })', run.call_args_list[0].args[0])
+        self.assertEqual(run.call_args_list[1].args[0][:3], ["hyprctl", "dispatch", "focuswindow"])
+        with mock.patch.object(S, "_run", return_value=ok) as run:
+            S._focus("0xabc")
+        run.assert_called_once()
+
+    def test_a_native_app_with_a_dotted_name_still_follows_up(self):
+        S = self.server
+        row = {"key": "d1", "app": "org.foo.Bar", "source": "org.foo.Bar", "category": "chat", "summary": "", "body": ""}
+        with mock.patch.object(S.Inbox, "want", return_value=True), mock.patch.object(S.Inbox, "call", return_value="[]"), \
+             mock.patch.object(S.Inbox, "rows", return_value=[row]), mock.patch.object(S.BUS, "pub"):
+            S.Inbox.tick()
+        self.assertIn("d1", S.Inbox.origin)
 
     def test_window_match_and_focus_commands_are_address_only(self):
         S = self.server

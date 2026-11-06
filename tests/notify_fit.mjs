@@ -179,6 +179,28 @@ const [lx,ly] = await bubble();
 await click(lx,ly);
 eq(await ev(`return [acts(), window.__rec];`), [[{key:"redrawn",how:"open"}], []], "bubble click survives a look redraw");
 
+// a drag that ends on the bubble stays a drag; the second click of a double click opens nothing and doesn't start listening
+await ev(`reset(); notifyIn(N('drag','chat',{app:'teams-for-linux'})); return 1;`);
+const [dx, dy] = await bubble();
+await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: dx, y: dy, buttons: 0 });
+await send("Input.dispatchMouseEvent", { type: "mousePressed", x: dx, y: dy, button: "left", buttons: 1, clickCount: 1 });
+await ev(`dragged=true; return 1;`);                // (what moving more than 5 px does; the window moves with him, so the release lands on the bubble)
+await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: dx, y: dy, button: "left", buttons: 0, clickCount: 1 });
+await sleep(120);
+eq(await ev(`return [acts(), dragged];`), [[], false], "a drag ending on the bubble opens nothing");
+await ev(`reset(); notifyIn(N('dbl','chat',{app:'teams-for-linux'})); return 1;`);
+const [e2x, e2y] = await bubble();
+await click(e2x, e2y);
+for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x: e2x, y: e2y, button: "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: 2 });
+await sleep(150);
+eq(await ev(`return [acts(), window.__rec];`), [[{ key: "dbl", how: "open" }], []], "a double click opens once and doesn't start listening");
+// his words wiped the row: the bubble's click carries on to him
+await ev(`reset(); notifyIn(N('wiped','chat',{app:'teams-for-linux'})); return 1;`);
+const [wx, wy] = await bubble();
+await ev(`himEl.textContent=''; return 1;`);
+await click(wx, wy);
+eq(await ev(`return [acts(), window.__rec];`), [[], ["auto"]], "with the row wiped, a bubble click goes to him");
+
 if (fails.length) { console.log(`${fails.length} check(s) failed`); process.exit(1); }
 console.log("notify fit ok");
 process.exit(0);
