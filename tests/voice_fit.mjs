@@ -621,6 +621,59 @@ check(langTest.spokenFallback[0] === "Control is back with you."
   && ["hi! this is my new voice.", "how do i sound?", "ooh, i like this one."].includes(langTest.spokenFallback[5]),
   "page-spoken lines did not fall back to English", JSON.stringify(langTest.spokenFallback));
 
+// 9b. A voice for each character: the Look select, its notes, and the Voice tab's line while it is active.
+const cv = await ev(`
+  const W = ms => new Promise(r => setTimeout(r, ms));
+  await setSetting({ tts: 'auto', voice: 'guy', voice_by_character: {} }); await W(300);
+  settings(true, 'look'); await W(300);
+  const sel = () => document.getElementById('charVoice');
+  const opts = [...sel().options].map(o => o.value);
+  const ids = (info.voices || []).map(v => v.id);
+  const label0 = document.getElementById('charVoiceLabel').textContent;
+  const plain = { noteEmpty: document.getElementById('charVoiceNote').textContent === '' };
+  const realVoices = info.voices;
+  info.voices = realVoices.map(v => ({ ...v, ready: false }));   // (a preset not downloaded yet stays selectable: only Robot disables)
+  renderSettings();
+  const disabled = [...sel().options].filter(o => o.disabled).map(o => o.value);
+  info.voices = realVoices; renderSettings();
+  const pin = info.voice_pinned; info.voice_pinned = true; renderSettings();
+  const pinNote = document.getElementById('charVoiceNote').textContent;
+  info.voice_pinned = pin; const tc = info.tts_choice; info.tts_choice = 'elevenlabs'; renderSettings();
+  const cloudNote = document.getElementById('charVoiceNote').textContent;
+  info.tts_choice = tc; renderSettings();
+  const clearedNote = document.getElementById('charVoiceNote').textContent;
+  const said = []; const origSay = window.say; window.say = t => { said.push(t); };
+  sel().value = 'deep'; sel().dispatchEvent(new Event('change', { bubbles: true })); await W(500);
+  const map = info.voice_by_character, speaking = info.voice_speaking, voice = info.voice, sampled1 = said.length;
+  const kept = document.getElementById('charVoice') === sel();
+  settings(true, 'voice'); await W(300);
+  const other = document.getElementById('voiceOther'), tap = document.getElementById('voiceTap');
+  const shown = { other: !other.hidden, txt: other.textContent, tapHidden: tap.hidden };
+  said.length = 0;
+  document.querySelector('#voiceChips button[data-v="girl"]')?.click(); await W(500);
+  const afterChip = { voice: info.voice, said: said.length, other: !document.getElementById('voiceOther').hidden };
+  const ticks = []; const origTick = window.tick; window.tick = t => { ticks.push(t); };
+  await slash('/voice guy'); await W(500);
+  window.tick = origTick;
+  settings(true, 'look'); await W(300);
+  sel().value = ''; sel().dispatchEvent(new Event('change', { bubbles: true })); await W(500);
+  settings(true, 'voice'); await W(300);
+  said.length = 0;
+  const back = { other: !document.getElementById('voiceOther').hidden, tap: !document.getElementById('voiceTap').hidden };
+  document.querySelector('#voiceChips button[data-v="guy"]').click(); await W(500);
+  back.said = said.length;
+  window.say = origSay;
+  return { opts, ids, label0, plain, disabled, pinNote, cloudNote, clearedNote, map, speaking, voice, sampled1, kept, shown, afterChip, ticks, back };
+`);
+check(cv.opts[0] === "" && cv.opts.slice(1).join() === cv.ids.join() && cv.label0 === "Voice for the Snowflake", "character voice select options or label", JSON.stringify(cv));
+check(cv.disabled.join() === "robot", "only an unready Robot may be disabled", JSON.stringify(cv.disabled));
+check(cv.pinNote === "A pinned voice is in charge, except for Robot." && /^The cloud voice comes first/.test(cv.cloudNote) && cv.clearedNote === "" && cv.plain.noteEmpty, "character voice note", JSON.stringify([cv.pinNote, cv.cloudNote, cv.clearedNote]));
+check(cv.map && cv.map.snowflake === "deep" && cv.speaking === "deep" && cv.voice === "guy" && cv.sampled1 >= 1 && cv.kept, "choosing a character voice did not save or sample", JSON.stringify(cv));
+check(cv.shown.other && /speaks as/.test(cv.shown.txt) && cv.shown.tapHidden, "voice tab did not show the character's voice line", JSON.stringify(cv.shown));
+check(cv.afterChip.voice === "girl" && cv.afterChip.said === 0 && cv.afterChip.other, "chip tap while a character voice is active must save and stay silent", JSON.stringify(cv.afterChip));
+check(cv.ticks.some(x => /speaks as/.test(x)), "/voice did not mention the character's voice", JSON.stringify(cv.ticks));
+check(!cv.back.other && cv.back.tap && cv.back.said >= 1, "back on My voice the line must hide and a tap must sample", JSON.stringify(cv.back));
+
 // 10. Zero off-origin requests.
 check(offOrigin.length === 0, "off-origin requests made", offOrigin.join(", "));
 
