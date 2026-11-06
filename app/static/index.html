@@ -859,7 +859,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <label class="tg" style="margin-top:9px"><input type="checkbox" id="linkSw"><span class="sw"></span><span class="l">Matching eyes<small>Change both eyes (and both whites) together.</small></span></label>
         <label class="tg" style="margin-top:7px"><input type="checkbox" id="rndSw"><span class="sw"></span><span class="l">Surprise me<small>New random colours every time he pops up.</small></span></label>
       </div>
-      <div class="row"><div class="t">Character</div><div class="h">Changes his body, not his voice. To match, try the Robot voice with the robot (Voice tab).</div><div class="skins" id="characterGrid"></div></div>
+      <div class="row"><div class="t">Character</div><div class="h">Each character can have its own voice. My voice uses your choice in the Voice tab.</div><div class="skins" id="characterGrid"></div><label for="charVoice" id="charVoiceLabel" class="h" style="display:block;margin:9px 0 5px"></label><select id="charVoice"></select><div class="h" id="charVoiceNote"></div></div>
       <div class="row"><div class="t">Skin</div><div class="h">Something to wear. The sprout sways.</div><div class="skins" id="skinGrid"></div></div>
       <div class="row"><div class="t">Resting pupils</div><div class="h">His everyday look — they still change with his mood.</div><div class="seg" id="pupChips"></div></div>
       <div class="row"><div class="t">When idle</div><div class="h">Pops back up when something happens.</div><div class="seg" id="idleChips"></div></div>
@@ -895,7 +895,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
     <div class="tab" id="panel-voice" role="tabpanel" aria-labelledby="tab-voice" data-tab="voice">
       <div class="row" id="langRow"><div class="t">Language</div><div class="h" id="langHint">First switch downloads a speech model (≈150 MB for base) and voice.</div><div class="seg" id="langChips"></div><div class="h" id="langStatus" style="margin:5px 0 0"></div><div class="h verr" id="langErr"></div></div>
       <div class="row" id="engRow"><div class="t">Speech engine</div><div class="h">Local voices run on your computer. <span id="voiceEng"></span></div><div class="seg" id="engChips"></div><div class="h" id="engWhy" style="margin:5px 0 0"></div><div class="h verr" id="voiceErr"></div></div>
-      <div class="row"><div class="t">His voice</div><div class="h">Tap one to hear it.</div><div class="voices" id="voiceChips"></div></div>
+      <div class="row"><div class="t">His voice</div><div class="h" id="voiceTap">Tap one to hear it.</div><div class="h" id="voiceOther" hidden></div><div class="voices" id="voiceChips"></div></div>
       <div class="row" id="elevenRow">
         <div class="t">ElevenLabs<span class="pct">cloud</span></div>
         <div class="h" id="elevenKey"></div>
@@ -3397,6 +3397,11 @@ let pkPart='pupL', pkHSV=[150,.6,.6], saveT=null;
 const hsv2hex=(h,s,v)=>{ const f=n=>{ const k=(n+h/60)%6; return v-v*s*Math.max(0,Math.min(k,4-k,1)); }; return rgb2hex([f(5),f(3),f(1)]); };
 function hex2hsv(hex){ const [r,g,b]=hex2rgb(hex), mx=Math.max(r,g,b), mn=Math.min(r,g,b), d=mx-mn;
   let h=0; if(d){ h=mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4; h*=60; if(h<0) h+=360; } return [h, mx?d/mx:0, mx]; }
+function voiceSample(){ if(muted) toggleMute(); shush(); say([pageLine('page.voice_1','hi! this is my new voice.'),pageLine('page.voice_2','how do i sound?'),pageLine('page.voice_3','ooh, i like this one.')][Math.random()*3|0]); }
+function otherVoiceLine(){ if(!info.voice_speaking||info.voice_speaking===info.voice) return '';
+  if(info.tts_choice==='elevenlabs'||(info.voice_pinned&&info.voice_speaking!=='robot')) return '';   // (the cloud or a pinned voice is what speaks)
+  const v=(info.voices||[]).find(x=>x.id===info.voice_speaking);
+  return `The ${(CHARACTERS[curLook().character]||CHARACTERS.snowflake).label} speaks as ${v?v.label:info.voice_speaking}. Change it in Look.`; }
 function curLook(){ return themed({...LOOK_DEFAULT,...(info.look||{})}); }
 function partColour(L,p){ return p==='skin'?(L.skinColor||L.body):L[p]; }
 function editKeys(L,p){ if(L.link&&(p==='pupL'||p==='pupR')) return ['pupL','pupR']; if(L.link&&(p==='whiteL'||p==='whiteR')) return ['whiteL','whiteR'];
@@ -3456,6 +3461,7 @@ function renderSettings(){
   $('#effortChips').innerHTML=['',...EFFORTS].map(e=>`<button data-eff="${e}" class="${(info.effort||'')===e?'on':''}">${e||'default'}</button>`).join('');
   $('#modelChips').innerHTML=MODELS.map(([id,l])=>`<button data-m="${id}" class="${cur===id?'on':''}">${l}</button>`).join('');
   syncLangUI();
+  { const ol=otherVoiceLine(), vo=$('#voiceOther'), vt=$('#voiceTap'); if(vo){ vo.textContent=ol; vo.hidden=!ol; } if(vt) vt.hidden=!!ol; }
   { const vc=$('#voiceChips'); if(vc){ vc.replaceChildren();
     for(const v of info.voices||[]){
       const b=hx('button',info.voice===v.id?'on':'',v.label); b.type='button'; b.dataset.v=v.id;
@@ -3533,6 +3539,11 @@ function renderSettings(){
   $('#characterGrid').innerHTML=Object.entries(CHARACTERS).map(([id,c])=>`<button type="button" data-character="${id}" class="${(L.character||'snowflake')===id?'on':''}" aria-pressed="${(L.character||'snowflake')===id}"><svg viewBox="-125 -150 250 250" aria-hidden="true"></svg>${c.label}</button>`).join('');
   $$('#characterGrid button').forEach(b=>miniNixi(b.querySelector('svg'),{...L,character:b.dataset.character,skin:'none'},false));
   const worn=wornSkin(L), bodyL=CHARACTERS[L.character]||CHARACTERS.snowflake;
+  { const ch=L.character||'snowflake', sel=$('#charVoice'); $('#charVoiceLabel').textContent=`Voice for the ${bodyL.label}`;
+    const opts=[['My voice','',false],...(info.voices||[]).map(v=>[v.label+(v.downloading?' ⇣':''),v.id,v.id==='robot'&&v.ready===false])], sig=JSON.stringify(opts);
+    if(sel.dataset.sig!==sig){ sel.dataset.sig=sig; sel.replaceChildren(...opts.map(([l,id,off])=>{ const o=new Option(l,id); o.disabled=off; return o; })); }   // (settings redraw every 2 s during a download: an open list stays open)
+    sel.value=(info.voice_by_character||{})[ch]||'';
+    $('#charVoiceNote').textContent=info.tts_choice==='elevenlabs'?'The cloud voice comes first. This is used when it falls back to a local voice.':info.voice_pinned?'A pinned voice is in charge, except for Robot.':''; }
   $('#skinGrid').innerHTML=(info.skins||Object.keys(SKIN_LABELS)).filter(k=>bodyFits(bodyL,k)).map(k=>`<button data-skin="${k}" class="${worn===k?'on':''}"><svg viewBox="-125 -150 250 250"></svg>${SKIN_LABELS[k]||k}</button>`).join('');
   for(const P of info.plugin_props||[]){   // plugin props: built node by node, the name only ever as text
     const b=document.createElement('button'), sk=document.createElementNS(SVGNS,'svg'); b.dataset.skin='plug:'+P.id; b.className=L.skin===b.dataset.skin?'on':'';
@@ -3741,7 +3752,7 @@ setEl.addEventListener('click',e=>{
   if(bm) setSetting({model:bm.dataset.m}).then(()=>tick('model → '+bm.textContent));
   if(bv){ if(bv.disabled) return; setSetting({voice:bv.dataset.v},'#voiceErr').then(ok=>{ if(!ok) return; const vv=(info.voices||[]).find(x=>x.id===bv.dataset.v);
     if(vv&&!vv.ready) tick('downloading that voice… using another one till it lands');
-    if(muted) toggleMute(); shush(); say([pageLine('page.voice_1','hi! this is my new voice.'),pageLine('page.voice_2','how do i sound?'),pageLine('page.voice_3','ooh, i like this one.')][Math.random()*3|0]); }); }
+    if(!otherVoiceLine()) voiceSample(); }); }
   if(bp) setSetting({pupil_style:bp.dataset.ps}).then(()=>{ idlePu=null; idleSwapAt=performance.now()+12000; popPupils(); });
   if(bi) setSetting({idle_mode:bi.dataset.idle});
   if(bs) setSetting({whisper_model:bs.dataset.stt},'#sttErr').then(ok=>{ if(ok) tick('speech recognition: '+bs.textContent+' (loading…)'); });
@@ -3766,6 +3777,10 @@ const costLbl=()=>{ const v=+$('#costIn').value; $('#costVal').textContent=v?'$'
 setEl.addEventListener('input',e=>{ if(e.target.id==='costIn') costLbl(); });
 setEl.addEventListener('change',e=>{
   const id=e.target.id, on=e.target.checked, ag=e.target.dataset&&e.target.dataset.agent;
+  if(id==='charVoice'){ const c=curLook().character||'snowflake', m={...(info.voice_by_character||{})};
+    if(e.target.value) m[c]=e.target.value; else delete m[c];
+    return setSetting({voice_by_character:m}).then(ok=>{ if(!ok) return; const vv=(info.voices||[]).find(x=>x.id===e.target.value);
+      if(vv&&!vv.ready) tick('downloading that voice… using another one till it lands'); voiceSample(); }); }
   if(ag){ const l=(info.agent_voice_mute||[]).filter(x=>x!==ag), m=on?l:[...l,ag]; info.agent_voice_mute=m; return setSetting({agent_voice_mute:m}); }
   if(id==='rootSw') setSetting(on?{root:true}:{root:false,trust:'ask'}).then(()=>{ tick(on?'root mode ON — he can run anything (I\'ll ask for your sudo password)':'root mode off',on); poke(on?'scared':'happy',900); });
   if(id==='speakSw'){ if(on&&info.tts_choice==='off') setSetting({tts:'auto'},'#voiceErr'); if(on===muted) toggleMute(); }
@@ -3822,7 +3837,7 @@ async function slash(cmd){
   if(c==='forget') return send('forget '+arg);
   if(c==='effort'){ if(!EFFORTS.includes(arg)) return tick('/effort <'+EFFORTS.join('|')+'>',true); await setSetting({effort:arg}); return tick('effort → '+arg); }
   if(c==='model'){ await setSetting({model:arg||'default'}); tick('model → '+(info.model||'default')); return; }
-  if(c==='voice'){ if(arg) await setSetting({voice:arg}); else settings(true,'voice'); return; }
+  if(c==='voice'){ if(arg){ const ok=await setSetting({voice:arg}); const l=ok&&otherVoiceLine(); if(l) tick(l); } else settings(true,'voice'); return; }
   if(c==='settings') return settings(true);
   if(['eyes','eye','pupil','white','whites','body'].includes(c)){ if(!arg) return settings(true,'look');
     const a=arg.toLowerCase(), named={green:'#3d9b74',blue:'#3a86e0',teal:'#24b5c4',purple:'#8a5cf0',pink:'#e0569a',red:'#d8453a',amber:'#e89a2c',

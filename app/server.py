@@ -175,6 +175,7 @@ DEFAULTS = {
     # (engine: Kokoro if installed, else piper — piper voices download on first use)
     "voice": "girl",
     "voice_by_lang": {},     # the preset chosen in each language: {"pl": "guy"}; the switcher restores it
+    "voice_by_character": {},  # a character's own preset: {"robot": "robot"}; a character with no entry uses "voice"
     # root mode: Claude may run anything, incl. sudo (you get a password box each time it needs root)
     "root_mode": False,
     "cpu_split": True,       # face (window) and voice/brain (server) on separate CPU cores (4+ cores only)
@@ -282,8 +283,8 @@ CHARACTERS = ("snowflake", "terminal", "robot", "devil")
 HEX = re.compile(r"#[0-9a-f]{6}")
 
 
-def look():
-    lk = dict(CFG.get("look") or {})
+def look(raw=None):
+    lk = dict((CFG.get("look") if raw is None else raw) or {})
     ec, ew = (CFG.get("eye_color") or "#3e5993").lower(), (CFG.get("eye_white") or "#ffffff").lower()   # NixOS blues
     pup = ec if HEX.fullmatch(ec) else "#3e5993"
     wht = ew if HEX.fullmatch(ew) else "#ffffff"
@@ -3607,6 +3608,18 @@ def localize(v, code=None, key=None):
             "pitch": v.get("pitch", 1.0), "lang_espeak": code}
 
 
+def voice_key(code=None):
+    """The preset that speaks. The current character's own voice wins; otherwise the user's own choice."""
+    m = CFG.get("voice_by_character")
+    v = m.get(look()["character"]) if m and isinstance(m, dict) else None
+    # Robot is espeak only: if it can't speak here, the character quietly uses your own voice
+    if isinstance(v, str) and v in VOICES and (not VOICES[v].get("espeak") or voice_ready(VOICES[v])):
+        return v
+    if code is not None:
+        return (CFG.get("voice_by_lang") or {}).get(code) or CFG.get("voice") or "girl"
+    return CFG.get("voice") or "girl"
+
+
 def lang_voice_name(code):
     """The piper voice to download so `code` can speak with the chosen preset (None: nothing to download: Robot, or piper isn't what will speak)."""
     mode = tts_mode()
@@ -3614,7 +3627,7 @@ def lang_voice_name(code):
         return None
     if code == "en" and CFG.get("piper_voice"):        # (a pinned English voice is the user's own file)
         return None
-    preset = VOICES.get(CFG.get("voice_by_lang", {}).get(code) or CFG.get("voice") or "girl", VOICES["girl"])
+    preset = VOICES.get(voice_key(code), VOICES["girl"])
     return (preset if code == "en" else localize(preset, code)).get("piper")
 
 
@@ -3699,7 +3712,7 @@ def kokoro_synth(text, voice, speed):
 
 
 def voice_preset():
-    k = CFG.get("voice") or "girl"
+    k = voice_key()
     return localize(VOICES.get(k, VOICES["girl"]), key=k)
 
 
@@ -5709,7 +5722,8 @@ def diagnostics():
         except Exception:  # noqa: BLE001
             cv = "found (version unknown)"
     add("claude code", cv)
-    add("voice engine", f"{tts_engine() or 'none'} (voice: {CFG.get('voice')})")
+    chosen, speaking = CFG.get("voice") or "girl", voice_key()
+    add("voice engine", f"{tts_engine() or 'none'} (voice: {chosen}{', character: ' + speaking if speaking != chosen else ''})")
     add("elevenlabs", f"{'on' if CFG.get('eleven_on') is True else 'off'}, key {'present' if eleven.has_key() else 'absent'}, "
                       f"used {eleven.today()['used']}/{eleven_cap()}")
     add("tts first-sound ms", Speaker.stats.get("first_sound_ms", "—"))
@@ -5749,6 +5763,11 @@ def eleven_cap():
 
 def voice_settings(b, upd):
     """Check the voice-engine keys of a settings call and copy the good ones into upd → a sentence when one is refused."""
+    if "voice_by_character" in b:
+        m = b["voice_by_character"]
+        if not isinstance(m, dict) or any(k not in CHARACTERS or not isinstance(v, str) or v not in VOICES for k, v in m.items()):
+            return "A character's voice must be one of the voices listed."
+        upd["voice_by_character"] = m
     if "tts_fallback" in b:
         if b["tts_fallback"] not in ("auto", "kokoro", "piper", "espeak"):
             return "The fallback voice must be auto, kokoro, piper or espeak."
@@ -5820,7 +5839,7 @@ def voice_ready(v):
     if v.get("espeak") and mode in ("kokoro", "piper"):
         return False
     v = localize(v)
-    return (bool(v.get("espeak")) or (bool(v.get("kokoro")) and tts_engine(local=True) == "kokoro")
+    return (bool(v.get("espeak") and shutil.which("espeak-ng")) or (bool(v.get("kokoro")) and tts_engine(local=True) == "kokoro")
             or voice_file(v.get("piper", "")).exists())
 
 
@@ -5828,6 +5847,8 @@ def state_info():
     evoices, eerr = eleven_voices()
     wl = lang.LANGS[lang.active]["whisper"]
     evoices = sorted(evoices, key=lambda v: not any(str(c).lower().split("-")[0] == wl for c in v.get("languages") or []))   # (voices speaking the language first)
+    eng = tts_engine(True)
+    by_character = CFG.get("voice_by_character")
     return {
         "bridge": BRIDGED, "theme": THEME,
         "version": VERSION, "update": Updates.status(), "update_check": bool(CFG.get("update_check", True)),
@@ -5862,7 +5883,10 @@ def state_info():
         "eye_color": CFG.get("eye_color") or "#3e5993", "eye_white": CFG.get("eye_white") or "#ffffff",
         "pupil_style": CFG.get("pupil_style") or "slit",
         "idle_mode": CFG.get("idle_mode") if CFG.get("idle_mode") in ("off", "shrink", "doze") else "shrink",
-        "voice": CFG.get("voice") or "girl", "voice_pitch": voice_preset().get("pitch", 1.0),
+        "voice": CFG.get("voice") or "girl", "voice_speaking": voice_key(),
+        "voice_pinned": bool(eng == "kokoro" and CFG.get("kokoro_voice") or eng == "piper" and lang.active == "en" and CFG.get("piper_voice")),
+        "voice_by_character": {k: v for k, v in by_character.items() if k in CHARACTERS and isinstance(v, str) and v in VOICES} if isinstance(by_character, dict) else {},
+        "voice_pitch": voice_preset().get("pitch", 1.0),
         "voices": [{"id": k, "label": v["label"],
                     "ready": voice_ready(v),
                     "downloading": localize(v).get("piper") in _downloading or (bool(v.get("kokoro")) and "kokoro" in _downloading)}
@@ -6151,8 +6175,7 @@ class Handler(BaseHTTPRequestHandler):
                 if isinstance(b.get("look"), dict):
                     cur = dict(CFG.get("look") or {})
                     cur.update(b["look"])
-                    CFG["look"] = cur
-                    upd["look"] = look()
+                    upd["look"] = look(cur)
                 if b.get("pupil_style") in ("slit", "circle", "dot"):
                     upd["pupil_style"] = b["pupil_style"]
                 if b.get("idle_mode") in ("off", "shrink", "doze"):
@@ -6221,6 +6244,10 @@ class Handler(BaseHTTPRequestHandler):
                             save_config(**upd)
                         if "language" in upd or "whisper_model" in upd:
                             request_language(lang.norm(CFG.get("language")), force="whisper_model" in upd)
+                    if "voice_by_character" in upd or ("look" in upd and CFG.get("voice_by_character")):
+                        name = lang_voice_name(lang.active)
+                        if name:
+                            fetch_voice(name)
                     if cut_cloud:
                         Speaker.cut_cloud()
                     if peers_changed:
