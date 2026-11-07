@@ -653,6 +653,19 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
     finally{ window.fetch=of; sessionStorage.removeItem('nixi-reload'); }`);
   check(r[0] === false && r[1] === true, "a 403 that isn't about the token doesn't reload the page", JSON.stringify(r)); }
 
+// #208: the Reactions switch: off by default, disabled while Proactive is off, saves, help names the signal switches that are off
+{ await ev("await post('/api/settings',{proactive:false,reactions:false}).then(r=>r.json()).then(j=>{info=j;}); settings(true); renderSettings(); return 1");
+  const q = "const e=document.getElementById('reactSw'); return [e.checked, e.disabled, document.getElementById('reactHelp').textContent]";
+  const a = await ev(q);
+  check(a[0] === false && a[1] === true && /Silent\./.test(a[2]) && /Headphones for music/.test(a[2]), "Reactions: off by default, disabled without Proactive, help names the switches that are off", JSON.stringify(a));
+  await ev("await setSetting({proactive:true}); renderSettings(); return 1");
+  const b = await ev(q);
+  check(b[1] === false, "Reactions: enabled once Proactive is on", JSON.stringify(b));
+  await ev("document.getElementById('reactSw').click(); await new Promise(r=>setTimeout(r,500)); return 1");
+  const c = await ev("return [info.reactions, document.getElementById('reactSw').checked]");
+  check(c[0] === true && c[1] === true, "Reactions: the switch saves", JSON.stringify(c));
+  await ev("await post('/api/settings',{proactive:false,reactions:false}); settings(false); return 1"); }
+
 check(exc.size === 0, "no page exceptions", [...exc].join(" ;; "));
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
 console.log(fails.length ? `\n${fails.length} failed: ${fails.join(", ")}` : "\nall pass");
