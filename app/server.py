@@ -833,8 +833,8 @@ def _is_gog_send(text):
 
 def click_only(cmd):
     raw, clean = _send_texts(cmd)
-    # any shell expansion ($…, `…`) in a gog command can assemble a send word ("${U:-se}nd"), so it counts
-    return any("herdr" in t.lower() or _is_gog_send(t) or (_GOG_RE.search(t) and re.search(r"[$`]", raw))
+    # any shell expansion or pattern ($…, `…`, {a,b}, s{e..e}nd, *, ?, [..]) in a gog command can assemble a send word
+    return any("herdr" in t.lower() or _is_gog_send(t) or (_GOG_RE.search(t) and re.search(r"[$`{}*?\[]", raw))
                for t in (raw, clean))
 
 
@@ -844,7 +844,8 @@ def send_detail(cmd):
     if not any(_is_gog_send(t) for t in (raw, clean)):
         m = _HERDR_WRITE_RE.search(clean)
         return {"kind": "herdr", "pane": m.group(1) if m else ""}
-    heredoc = "<<" in raw or "\n" in raw.replace("\\\n", "")   # stdin or another command: no recipient from it
+    # stdin, another command or an expansion: no recipient from it
+    heredoc = "<<" in raw or "\n" in raw.replace("\\\n", "") or bool(re.search(r"[$`]", raw))
     try:
         lex = shlex.shlex(raw.replace("\\\n", ""), posix=True, punctuation_chars=True)
         lex.whitespace_split = True

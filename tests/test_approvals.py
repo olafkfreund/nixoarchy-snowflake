@@ -99,6 +99,9 @@ class ApprovalsTest(unittest.TestCase):
         self.assertTrue(self.s.click_only('echo "${UNSET:-$(gog gmail send --to a@b --body hello)}"'))
         self.assertTrue(self.s.click_only('gog gmail "${UNSET:-se}nd" --to a@b --body hello'))
         self.assertTrue(self.s.click_only("gog gmail `echo send` --to a@b"))
+        for cmd in ("gog gmail s{e..e}nd --to a@b", "gog gmail {se,x}nd --to a@b", "gog gmail s?nd --to a@b", "gog gmail s[e]nd --to a@b"):
+            self.assertTrue(self.s.click_only(cmd), cmd)
+        self.assertEqual(self.s.send_detail("gog gmail send --to actual@example.com --body=$(printf %s --bcc=secret@example.com)")["to"], "")
         self.assertEqual(self.s.send_detail("gog gmail send --to actual@example.com --body-file - <<'EOF'\n--bcc=secret@example.com\nEOF")["to"], "")
         d = self.s.send_detail('gog gmail send --to actual@example.com --body="private "--bcc=secret@example.com')
         self.assertNotIn("secret", json.dumps(d))
