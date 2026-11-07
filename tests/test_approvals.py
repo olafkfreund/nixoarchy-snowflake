@@ -95,6 +95,11 @@ class ApprovalsTest(unittest.TestCase):
         for cmd in ("g$'o'g gmail send x", "g${X}og gmail send x", "gog calendar respond c e", "gog calendar rsvp c e"):
             self.assertTrue(self.s.click_only(cmd), cmd)
 
+    def test_expansion_and_word_boundaries(self):
+        self.assertTrue(self.s.click_only('echo "${UNSET:-$(gog gmail send --to a@b --body hello)}"'))
+        d = self.s.send_detail('gog gmail send --to actual@example.com --body="private "--bcc=secret@example.com')
+        self.assertNotIn("secret", json.dumps(d))
+
     def test_detail(self):
         d = self.s.send_detail
         self.assertEqual(d("gog gmail send --to=a@b --cc c@d"), {"kind": "gog", "command": "gmail send", "to": "a@b,c@d"})
