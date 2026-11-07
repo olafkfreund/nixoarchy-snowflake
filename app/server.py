@@ -6017,6 +6017,137 @@ def mail_options():
     return {"accounts": accounts, "models": models}
 
 
+def mail_addresses(value):
+    """Parse a used address header, refusing any address that cannot be sent as a bare address."""
+    if not isinstance(value, str) or "\r" in value or "\n" in value:
+        raise ValueError("header")
+    addresses = email.utils.getaddresses([value])
+    if not addresses or any(not MAIL_ADDR.fullmatch(address) for _, address in addresses):
+        raise ValueError("address")
+    return [address for _, address in addresses]
+
+
+def mail_draft(token, body, reply_all):
+    global DRAFT_GEN, MAIL_DRAFT
+    if not isinstance(token, str) or not isinstance(body, str) or type(reply_all) is not bool:
+        return {"ok": False}
+    if len(body.encode("utf-8")) > 20000:
+        return {"ok": False}
+    got_token = STAGES.get(token)
+    if not got_token or got_token[0] != "mail_reply" or not isinstance(got_token[1], dict):
+        return {"ok": False}
+    current = STAGES.current()
+    if not current or current.get("kind") != "mail":
+        return {"ok": False}
+    item = got_token[1]
+    account, message_id, thread = (item.get(k) for k in ("account", "id", "thread"))
+    if not all(isinstance(x, str) and x for x in (account, message_id, thread)):
+        return {"ok": False}
+    try:
+        if account not in mail_accounts():
+            return {"ok": False}
+    except Exception as e:  # noqa: BLE001
+        print("mail:", type(e).__name__, file=sys.stderr)
+        return {"ok": False}
+    with MAIL_LOCK:
+        if not CFG.get("mail_on"):
+            return {"ok": False}
+        DRAFT_GEN += 1
+        mine = DRAFT_GEN
+        MAIL_DRAFT = None
+    try:
+        got = _gog(["--readonly", "--json", "-a", account, "gmail", "get", message_id, "--format=metadata"])
+        headers = got["headers"]
+        message = got["message"]
+        if not isinstance(headers, dict) or not isinstance(message, dict):
+            raise ValueError("metadata")
+        if any(not isinstance(v, str) or "\r" in v or "\n" in v for v in headers.values()):
+            raise ValueError("header")
+        if message.get("id") != message_id or message.get("threadId") != thread:
+            raise ValueError("id")
+        sender = mail_addresses(headers.get("from", ""))
+        if len(sender) != 1:
+            raise ValueError("from")
+        target = mail_addresses(headers["reply_to"]) if headers.get("reply_to") else sender
+        if len(target) != 1:
+            raise ValueError("to")
+        to = target[0]
+        cc = []
+        if reply_all:
+            original = mail_addresses(headers.get("to", "")) + (mail_addresses(headers["cc"]) if headers.get("cc") else [])
+            signed_in = _gog(["auth", "list", "--json"]).get("accounts") or []
+            own = {a["email"].lower() for a in signed_in if isinstance(a, dict) and isinstance(a.get("email"), str)}
+            seen = {to.lower()}
+            for address in original:
+                if address.lower() not in own and address.lower() not in seen:
+                    cc.append(address)
+                    seen.add(address.lower())
+        if 1 + len(cc) > 20:
+            raise ValueError("recipients")
+        subject = mail_clean(headers.get("subject", ""), 200)
+        subject = subject if subject.startswith("Re:") else "Re: " + subject
+        draft = {"draft": secrets.token_urlsafe(24), "account": account, "to": [to], "cc": cc,
+                 "subject": subject, "body": body, "from": sender[0], "reply_to_differs": to != sender[0],
+                 "id": message_id, "thread": thread, "made": time.monotonic()}
+    except Exception as e:  # noqa: BLE001
+        print("mail:", type(e).__name__, file=sys.stderr)
+        return {"ok": False}
+    with MAIL_LOCK:
+        if DRAFT_GEN != mine or not CFG.get("mail_on") or STAGES.current() is not current or STAGES.get(token) != got_token:
+            return {"error": "that reply was replaced"}
+        MAIL_DRAFT = draft
+    return {k: draft[k] for k in ("draft", "account", "to", "cc", "subject", "body", "from", "reply_to_differs")}
+
+
+def mail_cancel(draft_id):
+    global DRAFT_GEN, MAIL_DRAFT
+    with MAIL_LOCK:
+        if not isinstance(draft_id, str) or not draft_id:
+            return {"ok": False}
+        DRAFT_GEN += 1
+        if MAIL_DRAFT is not None and draft_id == MAIL_DRAFT["draft"]:
+            MAIL_DRAFT = None
+            return {"ok": True}
+    return {"ok": False}
+
+
+def mail_send(draft_id, text):
+    global MAIL_DRAFT
+    with MAIL_LOCK:
+        draft = MAIL_DRAFT
+        if not CFG.get("mail_on") or draft is None or not isinstance(draft_id, str) or draft_id != draft["draft"]:
+            return {"ok": False}
+        if time.monotonic() - draft["made"] >= 600:
+            MAIL_DRAFT = None
+            return {"ok": False}
+        if not isinstance(text, str) or text.encode("utf-8") != draft["body"].encode("utf-8"):
+            return {"error": "the words changed, review them again"}
+        try:
+            if draft["account"] not in mail_accounts():
+                return {"ok": False}
+        except Exception as e:  # noqa: BLE001
+            print("mail:", type(e).__name__, file=sys.stderr)
+            return {"error": type(e).__name__}
+        MAIL_DRAFT = None
+        argv = ["gog", "--json", "-a", draft["account"], "gmail", "send", "--to", ",".join(draft["to"])]
+        if draft["cc"]:
+            argv += ["--cc", ",".join(draft["cc"])]
+        argv += ["--subject", draft["subject"], "--reply-to-message-id", draft["id"], "--body-file", "-"]
+        command = shlex.join(argv)
+        if not click_only(command):
+            return {"error": "guard"}
+        sends_log(send_detail(command), "allow")
+    try:
+        result = _gog(argv[1:], stdin=draft["body"].encode("utf-8"), timeout=30)
+        sent_thread = (result.get("threadId") or (result.get("message") or {}).get("threadId")) if isinstance(result, dict) else None
+        return {"sent": True, "thread": sent_thread} if sent_thread == draft["thread"] else {"sent": True, "other_thread": True}
+    except subprocess.TimeoutExpired:
+        return {"unknown": True}
+    except Exception as e:  # noqa: BLE001
+        print("mail:", type(e).__name__, file=sys.stderr)
+        return {"error": type(e).__name__}
+
+
 def refresh_stage(token):
     got = STAGES.get(token)
     if not got or got[0] != "refresh" or Desk.locked() is True:
@@ -7075,6 +7206,15 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/mail/hear":
                 b = json.loads(self._body() or b"{}")
                 return self._json(mail_hear(b.get("token") if isinstance(b, dict) else None))
+            if p == "/api/mail/draft":
+                b = json.loads(self._body() or b"{}")
+                return self._json(mail_draft(b.get("token"), b.get("text"), b.get("all")) if isinstance(b, dict) else {"ok": False})
+            if p == "/api/mail/cancel":
+                b = json.loads(self._body() or b"{}")
+                return self._json(mail_cancel(b.get("draft")) if isinstance(b, dict) else {"ok": False})
+            if p == "/api/mail/send":
+                b = json.loads(self._body() or b"{}")
+                return self._json(mail_send(b.get("draft"), b.get("text")) if isinstance(b, dict) else {"ok": False})
             if p == "/api/nixi-ask":
                 if not BRIDGED:
                     return self._json({"error": "only in nixi mode"}, 403)

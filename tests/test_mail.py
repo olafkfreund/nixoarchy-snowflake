@@ -18,6 +18,9 @@ import json
 import io
 import contextlib
 import subprocess
+import shlex
+import threading
+import ast
 import unittest
 import urllib.request
 from pathlib import Path
@@ -51,6 +54,8 @@ class Gog:
         if rest[:2] == ["auth", "list"]:
             base = fixture("auth_list.json")["accounts"][0]
             out = {"accounts": [dict(base, email=ME), dict(base, email=OTHER), dict(base, email=NOMAIL, services=["calendar"])]}
+        elif "send" in rest:
+            out = {"threadId": "fixture0000000001"}
         else:
             acct = rest[rest.index("-a") + 1]
             if acct in self.fail:
@@ -561,6 +566,214 @@ class MailBoardTest(_ServerEnv):
         for leak in ("Lunch", "sender@example.com", "fixture0000", "Traceback"):
             self.assertNotIn(leak, text)
         self.assertIn("CalledProcessError", text)
+
+    # ---- Draft and send
+    def review(self, text="My reply", all=False):
+        row = self.board()["rows"][-1]
+        return self.post("/api/mail/draft", {"token": row["reply"], "text": text, "all": all})[1]
+
+    def test_draft_refetch_and_reply_all_addresses(self):
+        s = self.server
+        self.gog.get["headers"].update({"from": '"Sender, Example" <sender@example.com>',
+                                         "reply_to": '"Reply, Desk" <reply@example.com>',
+                                         "to": f'"Me, First" <{ME}>, One <one@example.com>, {NOMAIL}',
+                                         "cc": f'{OTHER}, Two <two@example.com>, one@example.com'})
+        draft = self.review(all=True)
+        self.assertEqual(draft["to"], ["reply@example.com"])
+        self.assertEqual(draft["cc"], ["one@example.com", "two@example.com"])
+        self.assertEqual((draft["from"], draft["reply_to_differs"]), ("sender@example.com", True))
+        self.assertEqual(draft["subject"], "Re: Lunch on Friday?")
+        self.assertEqual([c for c in self.gog.calls if "get" in c][-1][-2:], ["fixture0000000001", "--format=metadata"])
+        self.assertEqual(s.MAIL_DRAFT["body"], "My reply")
+
+    def test_draft_refusals_and_body_byte_limit(self):
+        for edit in ({"subject": "bad\nsubject"}, {"from": "bad address"}, {"reply_to": "bad address"},
+                     {"to": "bad address"}, {"cc": "bad address"}):
+            with self.subTest(edit=edit):
+                self.gog.get = fixture("get_plain.json")
+                self.gog.get["headers"].update(edit)
+                self.assertFalse(self.review(all=True).get("draft"))
+                self.assertIsNone(self.server.MAIL_DRAFT)
+        self.gog.get = fixture("get_plain.json")
+        del self.gog.get["message"]["threadId"]
+        self.assertFalse(self.review().get("draft"))
+        self.gog.get = fixture("get_plain.json")
+        del self.gog.get["message"]["id"]
+        self.assertFalse(self.review().get("draft"))
+        self.gog.get = fixture("get_plain.json")
+        self.gog.get["headers"]["reply_to"] = "one@example.com, two@example.com"
+        self.assertFalse(self.review().get("draft"))
+        self.gog.get = fixture("get_plain.json")
+        self.gog.get["headers"]["to"] = ",".join(f"u{i}@example.com" for i in range(21))
+        self.assertFalse(self.review(all=True).get("draft"))
+        self.gog.get = fixture("get_plain.json")
+        self.assertTrue(self.review("x" * 20000).get("draft"))
+        self.assertFalse(self.review("x" * 20001).get("draft"))
+        self.assertFalse(self.review("é" * 10001).get("draft"))
+
+    def test_draft_race_cancel_and_setting_change(self):
+        s = self.server
+        row = self.board()["rows"][-1]
+        real = s._gog
+        started, release = threading.Event(), threading.Event()
+        def delayed(args, **kw):
+            if "get" in args and threading.current_thread().name == "older":
+                started.set()
+                release.wait(5)
+            return real(args, **kw)
+        answers = []
+        with mock.patch.object(s, "_gog", side_effect=delayed):
+            older = threading.Thread(name="older", target=lambda: answers.append(s.mail_draft(row["reply"], "older", False)))
+            older.start()
+            self.assertTrue(started.wait(5))
+            newer = s.mail_draft(row["reply"], "newer", False)
+            release.set(); older.join(5)
+        self.assertEqual(s.MAIL_DRAFT["body"], "newer")
+        self.assertEqual(answers, [{"error": "that reply was replaced"}])
+        self.assertEqual(s.mail_cancel(newer["draft"]), {"ok": True})
+        self.assertIsNone(s.MAIL_DRAFT)
+        self.assertEqual(s.mail_cancel(newer["draft"]), {"ok": False})
+        for setting_change in (False, True):
+            existing = s.mail_draft(row["reply"], "existing", False)
+            started.clear(); release.clear(); answers.clear()
+            with mock.patch.object(s, "_gog", side_effect=delayed):
+                older = threading.Thread(name="older", target=lambda: answers.append(s.mail_draft(row["reply"], "late", False)))
+                older.start(); self.assertTrue(started.wait(5))
+                if setting_change:
+                    s.mail_reset()
+                else:
+                    s.mail_cancel(existing["draft"])
+                release.set(); older.join(5)
+            self.assertIsNone(s.MAIL_DRAFT)
+            self.assertFalse(answers[0].get("draft"))
+        self.assertEqual(self.post("/api/mail/draft", {"token": row["hear"], "text": "x", "all": False})[1], {"ok": False})
+
+    def test_send_argv_audit_and_one_use(self):
+        s = self.server
+        draft = self.review("Body stays on stdin")
+        self.gog.calls.clear()
+        sent = self.post("/api/mail/send", {"draft": draft["draft"], "text": draft["body"]})[1]
+        argv = [c for c in self.gog.calls if "send" in c][0]
+        self.assertEqual(sent, {"sent": True, "thread": "fixture0000000001"})
+        self.assertEqual(argv, ["gog", "--json", "-a", ME, "gmail", "send", "--to", "sender@example.com",
+                                "--subject", "Re: Lunch on Friday?", "--reply-to-message-id", "fixture0000000001", "--body-file", "-"])
+        self.assertTrue(s.click_only(shlex.join(argv)))
+        self.assertFalse(any(flag in argv for flag in ("--readonly", "--reply-all", "--from")))
+        self.assertEqual(self.post("/api/mail/send", {"draft": draft["draft"], "text": draft["body"]})[1], {"ok": False})
+        log = (s.DATA_DIR / "sends.log").read_text()
+        self.assertIn("sender@example.com", log)
+        self.assertNotIn("Body stays on stdin", log)
+        self.assertNotIn("Lunch on Friday?", log)
+
+    def test_send_spies_guard_and_thread_difference(self):
+        s = self.server
+        draft = self.review()
+        events = []
+        real = self.gog
+        def run(argv, **kw):
+            if "send" in argv:
+                events.append(("run", argv, kw))
+                return subprocess.CompletedProcess(argv, 0, stdout=b'{"threadId":"different"}')
+            return real(argv, **kw)
+        with mock.patch.object(s, "click_only", side_effect=lambda cmd: events.append(("click", cmd)) or True), \
+             mock.patch.object(s, "send_detail", side_effect=lambda cmd: events.append(("detail", cmd)) or {"kind": "gog"}), \
+             mock.patch.object(s, "sends_log", side_effect=lambda detail, decision: events.append(("log", detail, decision))), \
+             mock.patch.object(s.subprocess, "run", side_effect=run):
+            self.assertEqual(s.mail_send(draft["draft"], draft["body"]), {"sent": True, "other_thread": True})
+        argv = events[-1][1]
+        self.assertEqual([e[0] for e in events], ["click", "detail", "log", "run"])
+        self.assertEqual(events[0][1], shlex.join(argv))
+        self.assertEqual(events[1][1], shlex.join(argv))
+        self.assertEqual(events[-1][2]["input"], draft["body"].encode())
+        self.assertEqual(events[-1][2]["timeout"], 30)
+        draft = self.review()
+        with mock.patch.object(s, "click_only", return_value=False), mock.patch.object(s, "sends_log") as log:
+            self.gog.calls.clear()
+            self.assertEqual(s.mail_send(draft["draft"], draft["body"]), {"error": "guard"})
+            log.assert_not_called()
+            self.assertFalse([c for c in self.gog.calls if "send" in c])
+
+    def test_timeout_crash_and_second_send(self):
+        s = self.server
+        for error, expected in ((subprocess.TimeoutExpired("gog", 30), {"unknown": True}), (OSError("private"), {"error": "OSError"})):
+            with self.subTest(error=type(error).__name__):
+                draft = self.review()
+                path = s.DATA_DIR / "sends.log"
+                before = len(path.read_text().splitlines()) if path.exists() else 0
+                def failing_send(argv, **kw):
+                    if "send" in argv:
+                        raise error
+                    return self.gog(argv, **kw)
+                with mock.patch.object(s.subprocess, "run", side_effect=failing_send):
+                    self.assertEqual(s.mail_send(draft["draft"], draft["body"]), expected)
+                self.assertEqual(len(path.read_text().splitlines()), before + 1)
+                self.assertEqual(s.mail_send(draft["draft"], draft["body"]), {"ok": False})
+
+    def test_stale_changed_expired_or_unlisted_sends_nothing(self):
+        s = self.server
+        for mutate in (lambda d: "wrong", lambda d: d["draft"]):
+            draft = self.review()
+            self.assertEqual(s.mail_send(mutate(draft), draft["body"] + "x"), {"error": "the words changed, review them again"} if mutate(draft) == draft["draft"] else {"ok": False})
+        draft = self.review()
+        with mock.patch.object(s.time, "monotonic", return_value=s.MAIL_DRAFT["made"] + 601):
+            self.assertEqual(s.mail_send(draft["draft"], draft["body"]), {"ok": False})
+        draft = self.review(); s.CFG["mail_on"] = False
+        self.assertEqual(s.mail_send(draft["draft"], draft["body"]), {"ok": False})
+        s.CFG["mail_on"] = True
+        draft = self.review(); s.CFG["mail_accounts"] = []
+        self.gog.calls.clear()
+        self.assertEqual(s.mail_send(draft["draft"], draft["body"]), {"ok": False})
+        self.assertFalse([c for c in self.gog.calls if "send" in c])
+
+    def test_two_threads_send_one_draft_once(self):
+        s = self.server
+        draft = self.review()
+        self.gog.calls.clear()
+        barrier = threading.Barrier(3)
+        answers = []
+        def worker():
+            barrier.wait()
+            answers.append(s.mail_send(draft["draft"], draft["body"]))
+        workers = [threading.Thread(target=worker) for _ in range(2)]
+        for worker_thread in workers: worker_thread.start()
+        barrier.wait()
+        for worker_thread in workers: worker_thread.join(5)
+        self.assertEqual(len([c for c in self.gog.calls if "send" in c]), 1)
+        self.assertEqual(len(answers), 2)
+
+    def test_mail_routes_reject_tool_token(self):
+        for path, payload in (("/api/mail/draft", {}), ("/api/mail/send", {}), ("/api/mail/cancel", {}),
+                              ("/api/mail/hear", {}), ("/api/mail/open", {})):
+            self.assertEqual(self.post(path, payload, token=self.server.TOOL_TOKEN)[0], 403, path)
+        self.assertEqual(self.get("/api/mail/options", token=self.server.TOOL_TOKEN)[0], 403)
+
+    def test_no_agent_turn_or_claude_for_mail_flow(self):
+        s = self.server
+        with mock.patch.object(s, "run_bridge") as bridge, mock.patch.object(s, "run_claude") as claude, \
+             mock.patch.object(s.subprocess, "Popen") as popen, mock.patch.object(s.Desk, "locked", return_value=True):
+            row = self.board()["rows"][-1]
+            self.post("/api/mail/hear", {"token": row["hear"]})
+            draft = self.post("/api/mail/draft", {"token": row["reply"], "text": "Hi", "all": False})[1]
+            self.post("/api/mail/send", {"draft": draft["draft"], "text": "Hi"})
+        bridge.assert_not_called(); claude.assert_not_called(); popen.assert_not_called()
+
+    def test_notification_does_not_change_draft(self):
+        draft = self.review()
+        before = dict(self.server.MAIL_DRAFT)
+        self.server.BUS.pub(t="notification", text="A notice")
+        self.assertEqual(self.server.MAIL_DRAFT, before)
+
+    def test_send_source_has_one_guard_and_one_send_route(self):
+        source = (Path(__file__).resolve().parent.parent / "app" / "server.py").read_text()
+        tree = ast.parse(source)
+        for name in ("click_only", "send_detail", "sends_log"):
+            self.assertEqual(sum(isinstance(n, ast.FunctionDef) and n.name == name for n in tree.body), 1)
+        send_lists = []
+        for fn in (n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))):
+            for node in ast.walk(fn):
+                if isinstance(node, ast.List) and any(isinstance(v, ast.Constant) and v.value == "send" for v in node.elts):
+                    send_lists.append(fn.name)
+        self.assertEqual(send_lists, ["mail_send"])
 
     # ---- the real handler
     def _handler(self, path, body, token):
