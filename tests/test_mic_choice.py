@@ -1,5 +1,6 @@
 """Mic selection and silence notices, without accessing the host audio stack."""
 
+import itertools
 import json
 import struct
 from unittest import mock
@@ -91,7 +92,7 @@ class MicChoiceTest(_ServerEnv):
         mic = mock.Mock()
         mic.read.return_value = b""
         with mock.patch.object(s, "open_mic", return_value=(mic, "fake", frames)), \
-             mock.patch.object(s.Wake, "should_run", side_effect=[True, False]), \
+             mock.patch.object(s.Wake, "should_run", side_effect=itertools.chain([True], itertools.repeat(False))), \
              mock.patch.object(s.Wake, "speaking", return_value=False), \
              mock.patch.object(s.Wake, "window_open", return_value=False):
             s.Wake.session()

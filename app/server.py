@@ -796,6 +796,139 @@ def is_nixi_see(cmd):
 # commands that run other commands: "always" for one of these would approve whatever is chained after it
 CHAINED_RE = re.compile(r"&&|\|\||[;|&<>`\n]|\$\(")
 
+# A click-only command is a herdr write or a gog send: it needs a click, never a key, a voice yes or "always".
+# Python twin of isHerdrWrite / isGogSend / gogSendDetail in bridge/send-policy.js (nixi-nixarchy): keep the rules equal.
+# Fail-safe, not a parser: a miss is a hidden send, so a false positive (an extra card) is accepted.
+# Known residual: a wrapper script or alias without the word "gog" / "herdr" in the command.
+_GOG_SEND_WORDS = r"api|send|reply|reply-all|replyall|forward|fwd|autoreply|post|create|respond|rsvp"
+_GOG_RE = re.compile(r"\bgog\b", re.I)
+_GOG_WORD_RE = re.compile(r"\b(?:%s)\b" % _GOG_SEND_WORDS, re.I)          # \b, as the JS twin: "send-later" counts
+_GOG_DRAFT_RE = re.compile(r"\bdrafts\s+(?:create|reply|forward|update)\b", re.I)
+_HERDR_WRITE_RE = re.compile(r"\bherdr\b(?:\s+--session\s+\S+)?\s+(?:agent|pane)\s+[\w-]+\s*(\S*)")   # the write verbs stay out of this file (test_no_herdr_writes)
+_GOG_LISTED = {"send", "gmail send", "gmail reply", "gmail reply-all", "gmail forward", "gmail autoreply", "gmail drafts send",
+               "chat messages send", "api", "mail send", "gmail replyall", "gmail fwd", "gmail drafts post",
+               "chat messages create", "chat messages post", "chat dm send", "chat dm create", "chat dm post",
+               "calendar respond", "calendar rsvp", "calendar reply"}
+_GOG_POSITIONAL = {"gmail reply", "gmail reply-all", "gmail replyall", "gmail forward", "gmail fwd", "gmail drafts send",
+                   "gmail drafts post", "chat messages send", "chat messages create", "chat messages post",
+                   "chat dm send", "chat dm create", "chat dm post"}
+# gog's global flags may come before the command words (`gog -a "$ACCT" --no-input gmail send …`); these take a value
+_GOG_GLOBAL_VALUE = {"-a", "--account", "--color", "--home", "--client", "--access-token", "--quota-project",
+                     "--enable-commands", "--enable-commands-exact", "--disable-commands", "--select"}
+
+
+_GOG_VALUE_FLAGS = {"--body", "--body-html", "--body-file", "--raw-file", "--subject", "--text", "--html", "--file", "--attach"}
+_GOG_ADDRESS_RE = re.compile(r"[^\s@,'\"]+@[^\s@,'\"]+")
+
+
+def _send_texts(cmd):
+    cmd = " ".join(map(str, cmd)) if isinstance(cmd, (list, tuple)) else str(cmd or "")
+    # ${…} and $ go too: g$'o'g and g${X}og are gog to the shell
+    return cmd, re.sub(r"['\"\\$]", "", re.sub(r"\$\{[^}]*\}", "", cmd.replace("\\\n", "")))
+
+
+def _send_defaults(cmd):
+    """A third reading that keeps a default's word: g${U:-o}g is gog when U is unset."""
+    return re.sub(r"['\"\\]", "", re.sub(r"\$\{[^}:]*:?[-=+?]([^}]*)\}", r"\1", cmd))
+
+
+def _is_gog_send(text):
+    return bool(_GOG_RE.search(text)) and bool(_GOG_WORD_RE.search(_GOG_DRAFT_RE.sub(" ", text)))
+
+
+def click_only(cmd):
+    raw, clean = _send_texts(cmd)
+    # any shell expansion or pattern ($…, `…`, {a,b}, s{e..e}nd, *, ?, [..]) in a gog command can assemble a send word
+    return any("herdr" in t.lower() or _is_gog_send(t) or (_GOG_RE.search(t) and re.search(r"[$`{}*?\[]", raw))
+               for t in (raw, clean, _send_defaults(raw)))
+
+
+def send_detail(cmd):
+    """What sends.log may say about a click-only command: read from fixed places only, never the body or subject."""
+    raw, clean = _send_texts(cmd)
+    if not any(_is_gog_send(t) for t in (raw, clean)):
+        m = _HERDR_WRITE_RE.search(clean)
+        return {"kind": "herdr", "pane": m.group(1) if m else ""}
+    # stdin, another command or an expansion: no recipient from it
+    heredoc = "<<" in raw or "\n" in raw.replace("\\\n", "") or bool(re.search(r"[$`]|[<>]\(", raw))
+    try:
+        lex = shlex.shlex(raw.replace("\\\n", ""), posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        toks = list(lex)
+    except ValueError:
+        return {"kind": "gog", "command": "unknown", "to": ""}
+    segs, cur = [], []
+    for t in toks:
+        if t and set(t) <= set(";&|()<>"):
+            segs.append(cur)
+            cur = []
+        else:
+            cur.append(t)
+    segs.append(cur)
+    best = None
+    for seg in segs:
+        i = next((n for n, t in enumerate(seg) if os.path.basename(t) == "gog"), None)
+        if i is None:
+            continue
+        rest = seg[i + 1:]
+        while rest and rest[0].startswith("-"):
+            rest = rest[2:] if rest[0] in _GOG_GLOBAL_VALUE else rest[1:]
+        words = []
+        for t in rest:
+            if t.startswith("-"):
+                break
+            words.append(t)
+        for k in range(len(words), 0, -1):                       # the command words are a prefix; a positional may follow
+            if " ".join(words[:k]) in _GOG_LISTED:
+                name, words = " ".join(words[:k]), words[k:]
+                break
+        else:
+            name, words = "unknown", []
+        if best is None or (best[0] == "unknown" and name != "unknown"):
+            best = (name, words, rest)
+    if best is None:
+        return {"kind": "gog", "command": "unknown", "to": ""}
+    name, extra, rest = best
+    to, n = [], 0
+    while n < len(rest):
+        t = rest[n]
+        n += 1
+        if t in _GOG_VALUE_FLAGS:                                # its value is message text, whatever it looks like
+            n += 1
+            continue
+        m = re.fullmatch(r"(--to|--cc|--bcc)(?:=(.*))?", t, re.S)
+        if not m:
+            continue
+        if m.group(2) is None:
+            value, n = (rest[n] if n < len(rest) else ""), n + 1
+        else:
+            value = m.group(2)
+        if not all(_GOG_ADDRESS_RE.fullmatch(one.strip()) for one in value.split(",")):
+            return {"kind": "gog", "command": name, "to": ""}   # only addresses are kept: anything else may be text
+        to.append(value)
+    if not to and name in _GOG_POSITIONAL and len(extra) == 1:
+        to.append(extra[0])
+    return {"kind": "gog", "command": name, "to": "" if heredoc else ",".join(to)}
+
+
+_SENDS_LOG_FIXED = False
+
+
+def sends_log(detail, decision):
+    """One body-free JSON line per click-only decision. Mode 0600, as the bridge's send audit."""
+    global _SENDS_LOG_FIXED
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        fd = os.open(DATA_DIR / "sends.log", os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "a") as f:
+            if not _SENDS_LOG_FIXED:
+                os.fchmod(f.fileno(), 0o600)
+                _SENDS_LOG_FIXED = True
+            f.write(json.dumps({"ts": datetime.datetime.now(datetime.timezone.utc).isoformat(), **detail,
+                                "decision": decision}) + "\n")
+    except OSError:
+        pass
+
 
 class Tickets:
     """One-time, short-lived tickets: the browser fallback (no window to hand over the token) opens the page with one
@@ -840,8 +973,11 @@ class Approvals:
                                  if isinstance(inp, dict) else "")
         else:
             key = tool
-        can_always = not (tool == "Bash" and CHAINED_RE.search(cmd))
-        if key in self.always:
+        co = tool == "Bash" and click_only(cmd)
+        if trust() in ("trust", "root") and not co:
+            return {"ok": True}                        # bypassPermissions + the Bash-only send hook: only a send asks
+        can_always = not (tool == "Bash" and CHAINED_RE.search(cmd)) and not co
+        if not co and key in self.always:
             return {"ok": True, "why": "the user said yes to this exact command for this chat"}
         ev = threading.Event()
         aid = secrets.token_hex(4)
@@ -849,11 +985,13 @@ class Approvals:
         with self.lock:
             self.pending[aid] = item
         BUS.pub(t="approve", id=aid, tool=tool, detail=item["detail"], key=key, say=approval_say(tool, inp),
-                always=can_always)
+                always=can_always, confirm="click" if co else None)
         ev.wait(timeout)
         with self.lock:
             self.pending.pop(aid, None)
         ans = item["ans"] or "no"
+        if co:
+            sends_log(send_detail(cmd), "timeout" if item["ans"] is None else "allow" if ans in ("yes", "always") else "deny")
         if ans == "always" and not can_always:
             ans = "yes"                                           # just this once
         BUS.pub(t="approve_done", id=aid, ans=ans)
@@ -4899,6 +5037,18 @@ def hooks_file():
     return str(HOOKS_PATH)
 
 
+SEND_HOOKS_PATH = DATA_DIR / "send-hooks.json"
+
+
+def send_hooks_file():
+    """Trust / Root run with bypassPermissions; this Bash-only hook still sends click-only commands to approve.py."""
+    cmd = f"{shlex.quote(sys.executable)} {shlex.quote(str(APP_DIR / 'approve.py'))}"
+    data = {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": cmd, "timeout": 900}]}]}}
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    SEND_HOOKS_PATH.write_text(json.dumps(data, indent=1))
+    return str(SEND_HOOKS_PATH)
+
+
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 LEAN_TOOLS = "Bash,Read,Edit,Write,Glob,Grep,WebFetch,WebSearch"
 
@@ -4922,7 +5072,7 @@ def build_cmd(binary, partial):
         c.append("--include-partial-messages")
     tr = trust()
     if tr in ("root", "trust"):
-        c += ["--permission-mode", "bypassPermissions"]
+        c += ["--permission-mode", "bypassPermissions", "--settings", send_hooks_file()]
     elif tr == "readonly":
         c += ["--permission-mode", "plan"]
     else:
