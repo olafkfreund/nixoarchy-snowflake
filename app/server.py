@@ -3277,7 +3277,9 @@ class HeardCounts:
     _lock = threading.RLock()
     _days = None
     _saved = 0.0
+    _flush = None                            # a save waiting for the minute to pass, so a late count isn't held for hours
     last = None
+    turn = last_turn = 0                     # which turn is running, and which one `last` belongs to
 
     @classmethod
     def _prune(cls):
@@ -3328,6 +3330,16 @@ class HeardCounts:
             counts[outcome] = counts.get(outcome, 0) + 1
             if time.monotonic() - cls._saved >= 60:
                 cls.save()
+            elif cls._flush is None:
+                cls._flush = threading.Timer(60, cls._timed_save)
+                cls._flush.daemon = True
+                cls._flush.start()
+
+    @classmethod
+    def _timed_save(cls):
+        with cls._lock:
+            cls._flush = None
+            cls.save()
 
     @classmethod
     def snapshot(cls):
@@ -3558,10 +3570,12 @@ class Wake:
                 BUS.pub(t="barge", listen=False, text="")
                 cls.hush()
                 HeardCounts.mark_not_me()
-            elif HeardCounts.mark_not_me():
-                if ST.lock.locked():                     # still working on that answer: drop it, as Esc does
-                    stop_proc()
-                Speaker.say("Sorry.", None, None, False, None)
+            else:
+                own = HeardCounts.last_turn == HeardCounts.turn      # (the running turn is the marked one, not a later typed one)
+                if HeardCounts.mark_not_me():
+                    if own and ST.lock.locked():                     # still working on that answer: drop it, as Esc does
+                        stop_proc()
+                    Speaker.say("Sorry.", None, None, False, None)
             return
         if cls.speaking():
             if _stop_re(stages.lang_active()).fullmatch(phrase):
@@ -6907,10 +6921,12 @@ class Handler(BaseHTTPRequestHandler):
         if not ST.lock.acquire(timeout=180 if ST.compacting else 0):    # (tidying its notes: wait, don't refuse)
             return self._json({"error": "still working on the last one"}, 409)
         try:
+            with HeardCounts._lock:
+                HeardCounts.turn += 1
+                if heard:
+                    HeardCounts.last, HeardCounts.last_turn = (*heard, time.monotonic()), HeardCounts.turn
             if heard:
                 HeardCounts.add(*heard, "sent")
-                with HeardCounts._lock:
-                    HeardCounts.last = (*heard, time.monotonic())
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")

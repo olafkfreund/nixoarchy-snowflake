@@ -231,10 +231,28 @@ class HeardCountsTest(_ServerEnv):
              mock.patch.object(W, "speaking", return_value=False), \
              mock.patch.object(s.ST, "lock") as lock:
             lock.locked.return_value = True
-            C.last = ("wake", "on", time.monotonic())
+            C.last, C.last_turn = ("wake", "on", time.monotonic()), C.turn
             W.check(b"\0" * 32000, time.monotonic())
-        stop.assert_called_once()
-        say.assert_called_once_with("Sorry.", None, None, False, None)
+            stop.assert_called_once()
+            say.assert_called_once_with("Sorry.", None, None, False, None)
+            stop.reset_mock(); say.reset_mock()
+            C.last, C.last_turn = ("wake", "on", time.monotonic()), C.turn - 1    # a later typed turn is running
+            W.check(b"\0" * 32000, time.monotonic())
+            stop.assert_not_called()                                             # (the earlier answer is marked, the new turn runs on)
+            say.assert_called_once_with("Sorry.", None, None, False, None)
+
+    def test_a_late_count_is_saved_by_a_timer(self):
+        C = self.server.HeardCounts
+        with mock.patch.object(self.server.threading, "Timer") as timer, mock.patch.object(C, "save") as save:
+            C._saved, C._flush = time.monotonic(), None
+            C.add("wake", "off", "sent")
+            C.add("wake", "off", "ignored")
+            timer.assert_called_once()
+            self.assertEqual(timer.call_args.args[0], 60)
+            save.assert_not_called()
+            timer.call_args.args[1]()                    # the minute passes
+            save.assert_called_once()
+            self.assertIsNone(C._flush)
 
 
 if __name__ == "__main__":
