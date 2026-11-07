@@ -77,8 +77,8 @@ Turn it off in the same place. Text already sent may still count on your ElevenL
 
 He can show your notifications himself, in place of the shell's popups. A click on one opens the app that sent it.
 
-These switches are in the **Nixi card**, not in the companion's settings: open the card, then Settings → Desktop.
-Nothing happens until you turn on the first two.
+Right-click him, choose settings and open the **Look** tab. The same switches are in the Nixi card's Settings → Desktop,
+which is where nixi's README names them. Nothing happens until you turn on the first two:
 
 1. **Desktop companion** is the master switch.
 2. **Show notifications through him** makes him show them.

@@ -417,9 +417,9 @@ trust level come from nixi's own config (`agent`, `model`, `reasoningEffort`). U
 | `mic_device` | `""` | The input to record from. Empty means the system default; `nixi-companion doctor` lists them |
 | `mic_cmd` | `""` | An optional recorder of your own. It must write raw s16le, 16 kHz, mono to stdout |
 | `whisper_model` | `"auto"` | Speech-to-text model: `"auto"` (`small.en` on an NVIDIA GPU, `base.en` on CPU), or pin `tiny.en`, `base.en`, `small.en` or `medium.en` |
-| `whisper_device` | `"auto"` | Speech-to-text device (`"auto"`, `"cpu"`, `"cuda"`) |
+| `whisper_device` | `"auto"` | `"cpu"` keeps speech-to-text on the CPU. Anything else uses an NVIDIA GPU when there is one |
 | `whisper_beam` | `5` | Beam size for speech-to-text decoding |
-| `stt_prewarm` | `true` | Get the speech model ready ahead of time |
+| `stt_prewarm` | `true` | Load the speech model when he starts, not at your first word (with the wake word on, it loads at start anyway) |
 | `stt_hint` | `"Hey Nixi, Claude, ..."` | Vocabulary hint passed to Whisper (add your project or host names) |
 | `tts` | `"auto"` | Voice engine: `"auto"` (`kokoro` → `piper` → `espeak`), `"kokoro"`, `"piper"`, `"espeak"`, `"elevenlabs"`, `"off"` |
 | `tts_fallback` | `"auto"` | Local fallback engine when ElevenLabs fails or hits the daily cap (`"auto"`, `"kokoro"`, `"piper"`, `"espeak"`, `"off"`) |
@@ -451,8 +451,8 @@ trust level come from nixi's own config (`agent`, `model`, `reasoningEffort`). U
 | `code_face` | `"you"` | Which way the terminal faces: `"you"` (readable) or `"him"` (you see the back, mirrored) |
 | `answer_stages` | `true` | A board or notebook beside him for commands and facts; off means captions only |
 | `peers_on` | `false` | Let plugins show your other machines' status (the **Other machines** switch in the Plugins tab) |
-| `notify_done` | `true` | Send a desktop notification when a task finishes while he is hidden |
-| `popup_done` | `false` | Pop back up when a task finishes while he is hidden |
+| `notify_done` | `true` | A desktop notification when a long task finishes while he is hidden |
+| `popup_done` | `false` | Pop back up when a long task finishes while he is hidden |
 | `proactive` | `false` | The **Desktop companion** master switch |
 | `notifications_takeover` | `false` | Show desktop notifications through him instead of the shell's popups |
 | `notify_details` | `false` | Show the notification sender and body text (when off, only kind and app) |
@@ -462,18 +462,18 @@ trust level come from nixi's own config (`agent`, `model`, `reasoningEffort`). U
 | `ambient_system` | `true` | A mark on his tip when a user service fails, and a glint after each new NixOS generation (local) |
 | `ambient_calendar` | `false` | Next calendar item (uses `gog`): ten minutes before, a calendar mark and the title |
 | `ambient_weather` | `false` | Weather look (uses omarchy weather): frost on his tips below 0 °C, a slight thaw above 28 °C |
-| `look_meeting` | `false` | Wear a tie during meetings |
-| `look_music` | `false` | Wear headphones while music plays |
+| `look_meeting` | `false` | A tie while Meeting Mode is on, or when a calendar item is a minute away |
+| `look_music` | `false` | Headphones while a player is playing |
 | `look_beat` | `false` | Pulse to the beat: he listens to what is playing (not your mic) while music plays |
-| `look_fullscreen` | `false` | Wear shades while a window is fullscreen |
-| `look_coding` | `false` | Wear glasses after a minute in a terminal or editor |
+| `look_fullscreen` | `false` | Shades while a window is fullscreen |
+| `look_coding` | `false` | Glasses after a minute in a terminal or editor. Only the kind of window is checked, never its title |
 | `look_night` | `false` | Wear a nightcap between 23:00 and 05:00 |
-| `look_weather` | `false` | Show weather above him and dress for the cold |
-| `look_party` | `false` | Wear a party hat on New Year, Christmas and calendar birthdays |
-| `react_load` | `false` | Sweat when CPU load stays high and warn when memory runs low |
-| `react_break` | `false` | Suggest a stretch after an hour unlocked |
-| `react_welcome` | `false` | Welcome you back after half an hour away |
-| `react_quips` | `false` | Show an occasional silent quip bubble |
+| `look_weather` | `false` | Weather above his head: a rain or snow cloud, sun, moon and clouds, and (with a place set) a scarf and beanie when it is cold |
+| `look_party` | `false` | A party hat on New Year, Christmas, and birthdays in your calendar (needs the calendar on) |
+| `react_load` | `false` | A sweat drop when the CPU works hard for a while; a word when memory runs low |
+| `react_break` | `false` | After an hour unlocked he suggests a stretch. A lock of five minutes or more counts as a break |
+| `react_welcome` | `false` | After half an hour away: how many notifications came in, and your next meeting if the calendar is on |
+| `react_quips` | `false` | Now and then a short line about the weather, the hour or a long session. Never spoken |
 
 ## Commands
 
@@ -527,7 +527,7 @@ window manager you need a compositor running, e.g. `picom`.
 
 ## Starting at login
 
-Start it from your session config, for example `exec-once = nixi-companion show` on Hyprland, or `exec nixi-companion`
+Start it from your session config, for example `exec-once = nixi-companion show` on Hyprland, or `exec nixi-companion show`
 on sway / i3. The Nix module does not add a systemd unit or a bind for you.
 
 ## Troubleshooting
@@ -550,8 +550,8 @@ tests the voice. To share a report when asking for help, run `nixi-companion dia
   retries with safer render modes. Pick one yourself with `nixi-companion render nocomp`, or reset with
   `nixi-companion render default`.
 - **Black box around it:** nothing is doing transparency. On a bare X11 window manager start a compositor (`picom`).
-- The voice is played by the server straight to PipeWire/Pulse (`pw-play` / `paplay` / `aplay`), or in the window when
-  native playback is unavailable.
+- The voice is played by the server straight to PipeWire/Pulse (`paplay` or `aplay`). `"voice_out": "page"` in the
+  config plays it in the window instead.
 
 ## How it works
 

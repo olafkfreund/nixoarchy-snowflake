@@ -181,7 +181,7 @@ Hey Nixi
 
 ### 9. Messages through him (optional)
 
-**Do** — open the **Nixi card**, then Settings → Desktop, and turn on **Desktop companion** and **Show notifications through him**. These two switches are in the nixi card, not in the companion's settings.
+**Do** — right-click him, choose settings, open the **Look** tab, and turn on **Desktop companion** and **Show notifications through him**. The Nixi card's Settings → Desktop has the same switches, as nixi's README says.
 
 **You should see** your notifications appear on him instead of in the shell's popups. A click opens them.
 
@@ -249,7 +249,7 @@ Run **`nixi-companion doctor`** first. It checks your window, mic and voice in a
 | It can't hear me (step 6) | Check the level in `nixi-companion doctor`, then pick the right mic in Settings → Voice. |
 | “Hey Nixi” does nothing (step 7) | Check the wake word switch, then use push-to-talk (**Ctrl+Alt+Space**). |
 | No sound, or a robot voice (step 8) | Switch on **Speak replies out loud**. A robot voice means only espeak is available. |
-| Notifications still pop up in the shell (step 9) | The shell needs nixarchy's notification patch (903). |
+| Notifications still pop up in the shell (step 9) | Check the first two switches in settings → **Look**. If they are on, the shell needs nixarchy's notification patch (903). |
 | The trust level looks old (step 10) | Run `nixi-companion restart`. |
 | Something else | See [Troubleshooting](docs/GUIDE.md#troubleshooting). |
 
