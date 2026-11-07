@@ -4436,7 +4436,7 @@ class Speaker:
     making_item = None
     sending = set()
     strict = set()
-    mail_sids = set()    # mail audio gets a second privacy check when it is ready to play
+    mail_sids = {}       # sid -> MAIL_GEN when queued: mail audio gets a second privacy check when it is ready to play
     current_engine = None
     current_sid = None
     queued_at = {}
@@ -4574,7 +4574,7 @@ class Speaker:
                     with cls.cv:
                         skipped = sid in cls.strict
                         cls.strict.discard(sid)
-                        cls.mail_sids.discard(sid)
+                        cls.mail_sids.pop(sid, None)
                     if skipped:
                         BUS.pub(t="spk_skip", id=sid)
                     continue
@@ -4603,7 +4603,7 @@ class Speaker:
                 print(f"[nixi] speech: {type(e).__name__ if sid in cls.mail_sids else e}", file=sys.stderr)
                 with cls.cv:
                     cls.strict.discard(sid)
-                    cls.mail_sids.discard(sid)
+                    cls.mail_sids.pop(sid, None)
                 BUS.pub(t="spk_skip", id=sid)
             finally:
                 with cls.cv:
@@ -4700,9 +4700,8 @@ class Speaker:
                 cls._release_if_idle()
                 continue
             with cls.cv:
-                mail_item = sid in cls.mail_sids
-                cls.mail_sids.discard(sid)
-            if mail_item and not mail_may_speak():
+                mail_gen = cls.mail_sids.pop(sid, None)
+            if mail_gen is not None and not mail_play_ok(mail_gen):
                 BUS.pub(t="spk_skip", id=sid)
                 cls._release_if_idle()
                 continue
@@ -5845,12 +5844,24 @@ def mail_may_speak():
     return Desk.locked() is False and not Ambient.meeting
 
 
-def mail_hear_current(token, gen):
+def mail_play_ok(gen):
+    """Mail audio plays only if he may speak now, and mail was not switched or its board closed since it was queued."""
+    if not mail_may_speak():
+        return False
     with MAIL_LOCK:
-        valid = gen == MAIL_GEN and CFG.get("mail_on")
+        cur = STAGES.current()
+        return gen == MAIL_GEN and bool(CFG.get("mail_on")) and bool(cur and cur.get("kind") == "mail")
+
+
+def _mail_hear_ok(token, gen):         # (caller holds MAIL_LOCK, or does not need the gen to stay put)
     got = STAGES.get(token)
     cur = STAGES.current()
-    return bool(valid and cur and cur.get("kind") == "mail" and got and got[0] == "mail_hear")
+    return bool(gen == MAIL_GEN and CFG.get("mail_on") and cur and cur.get("kind") == "mail" and got and got[0] == "mail_hear")
+
+
+def mail_hear_current(token, gen):
+    with MAIL_LOCK:
+        return _mail_hear_ok(token, gen)
 
 
 def mail_hear_work(token, account, message_id, model, gen):
@@ -5884,18 +5895,21 @@ def mail_hear_work(token, account, message_id, model, gen):
                     result["summary"] = f"Summary of an email to {account} from {address}: {answer}"
             except Exception as e:  # noqa: BLE001
                 print("mail:", type(e).__name__, file=sys.stderr)
-        if not mail_hear_current(token, gen):
-            return {"ok": False}
-        if mail_may_speak():
-            with Speaker.cv:
-                MAIL_SID += 1
-                sid = MAIL_SID
-                Speaker.mail_sids.add(sid)
+        speak = mail_may_speak()                 # (may ask Hyprland: not under the lock)
+        with MAIL_LOCK:                          # the last check and the registration are one step: nothing can switch mail between them
+            if not _mail_hear_ok(token, gen):
+                return {"ok": False}
+            if speak:
+                with Speaker.cv:
+                    MAIL_SID += 1
+                    sid = MAIL_SID
+                    Speaker.mail_sids[sid] = gen
+        if speak:
             try:
                 Speaker.say(result["summary"], sid, local=True)
             except Exception:
                 with Speaker.cv:
-                    Speaker.mail_sids.discard(sid)
+                    Speaker.mail_sids.pop(sid, None)
                 raise
         return result
     except Exception as e:  # noqa: BLE001
@@ -5961,7 +5975,8 @@ def mail_on_screen():
     """A mail board or a reply draft is up."""
     cur = STAGES.current()
     with MAIL_LOCK:
-        return bool(cur and cur.get("kind") == "mail") or MAIL_DRAFT is not None
+        live = MAIL_DRAFT is not None and time.monotonic() - MAIL_DRAFT.get("made", time.monotonic()) < 600     # (an expired draft is gone)
+        return bool(cur and cur.get("kind") == "mail") or live
 
 
 def mail_stage(st, before):
@@ -6017,14 +6032,18 @@ def mail_options():
     return {"accounts": accounts, "models": models}
 
 
-def mail_addresses(value):
-    """Parse a used address header, refusing any address that cannot be sent as a bare address."""
+def mail_addresses(value, original=False):
+    """Parse a used address header, refusing any address that cannot be sent as a bare address (none may start with "-":
+    after --to it would read as a flag). `original`: a Reply-all's old To or Cc, where an empty or group-only header
+    ("undisclosed-recipients:;") has no addresses to give instead of being refused."""
     if not isinstance(value, str) or "\r" in value or "\n" in value:
         raise ValueError("header")
-    addresses = email.utils.getaddresses([value])
-    if not addresses or any(not MAIL_ADDR.fullmatch(address) for _, address in addresses):
+    addresses = [address for _, address in email.utils.getaddresses([value])]
+    if original:
+        addresses = [a for a in addresses if a]
+    if (not addresses and not original) or any(a.startswith("-") or not MAIL_ADDR.fullmatch(a) for a in addresses):
         raise ValueError("address")
-    return [address for _, address in addresses]
+    return addresses
 
 
 def mail_draft(token, body, reply_all):
@@ -6074,7 +6093,7 @@ def mail_draft(token, body, reply_all):
         to = target[0]
         cc = []
         if reply_all:
-            original = mail_addresses(headers.get("to", "")) + (mail_addresses(headers["cc"]) if headers.get("cc") else [])
+            original = mail_addresses(headers.get("to", ""), True) + mail_addresses(headers.get("cc", ""), True)
             signed_in = _gog(["auth", "list", "--json"]).get("accounts") or []
             own = {a["email"].lower() for a in signed_in if isinstance(a, dict) and isinstance(a.get("email"), str)}
             seen = {to.lower()}
@@ -6102,10 +6121,10 @@ def mail_draft(token, body, reply_all):
 def mail_cancel(draft_id):
     global DRAFT_GEN, MAIL_DRAFT
     with MAIL_LOCK:
-        if not isinstance(draft_id, str) or not draft_id:
-            return {"ok": False}
-        DRAFT_GEN += 1
-        if MAIL_DRAFT is not None and draft_id == MAIL_DRAFT["draft"]:
+        # "pending": the card closed while a Review was on its way, so that request must not install. Any other id
+        # cancels only the current draft; a stale id does nothing, so it can't void a newer Review.
+        if draft_id == "pending" or (MAIL_DRAFT is not None and draft_id == MAIL_DRAFT["draft"]):
+            DRAFT_GEN += 1
             MAIL_DRAFT = None
             return {"ok": True}
     return {"ok": False}
@@ -6113,21 +6132,25 @@ def mail_cancel(draft_id):
 
 def mail_send(draft_id, text):
     global MAIL_DRAFT
+    with MAIL_LOCK:                              # (a look only: a stale id never reaches gog)
+        if not CFG.get("mail_on") or MAIL_DRAFT is None or not isinstance(draft_id, str) or draft_id != MAIL_DRAFT["draft"]:
+            return {"ok": False}
+    try:
+        listed = mail_accounts()                 # gog auth list takes seconds: never under MAIL_LOCK
+    except Exception as e:  # noqa: BLE001
+        print("mail:", type(e).__name__, file=sys.stderr)
+        return {"error": type(e).__name__}
     with MAIL_LOCK:
         draft = MAIL_DRAFT
-        if not CFG.get("mail_on") or draft is None or not isinstance(draft_id, str) or draft_id != draft["draft"]:
+        if not CFG.get("mail_on") or draft is None or draft_id != draft["draft"]:
             return {"ok": False}
         if time.monotonic() - draft["made"] >= 600:
             MAIL_DRAFT = None
             return {"ok": False}
         if not isinstance(text, str) or text.encode("utf-8") != draft["body"].encode("utf-8"):
             return {"error": "the words changed, review them again"}
-        try:
-            if draft["account"] not in mail_accounts():
-                return {"ok": False}
-        except Exception as e:  # noqa: BLE001
-            print("mail:", type(e).__name__, file=sys.stderr)
-            return {"error": type(e).__name__}
+        if draft["account"] not in listed:
+            return {"ok": False}
         MAIL_DRAFT = None
         argv = ["gog", "--json", "-a", draft["account"], "gmail", "send", "--to", ",".join(draft["to"])]
         if draft["cc"]:
@@ -6139,9 +6162,11 @@ def mail_send(draft_id, text):
         sends_log(send_detail(command), "allow")
     try:
         result = _gog(argv[1:], stdin=draft["body"].encode("utf-8"), timeout=30)
-        sent_thread = (result.get("threadId") or (result.get("message") or {}).get("threadId")) if isinstance(result, dict) else None
+        if not isinstance(result, dict):         # it ran and answered, so it may have sent
+            return {"unknown": True}
+        sent_thread = result.get("threadId") or (result.get("message") or {}).get("threadId")
         return {"sent": True, "thread": sent_thread} if sent_thread == draft["thread"] else {"sent": True, "other_thread": True}
-    except subprocess.TimeoutExpired:
+    except (subprocess.TimeoutExpired, ValueError):   # (ValueError: the run finished but its output isn't JSON)
         return {"unknown": True}
     except Exception as e:  # noqa: BLE001
         print("mail:", type(e).__name__, file=sys.stderr)

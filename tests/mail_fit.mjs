@@ -152,6 +152,17 @@ const s12 = await ev(`window.__posts.length=0; const c=document.querySelector('#
   return window.__posts.filter(p=>p.u==='/api/settings').map(p=>p.b);`);
 eq(s12, [{ mail_accounts: ["you@example.com", "other@example.com"] }, { mail_model: "gemma4:e4b" }, { mail_on: false }], "ticking an address, choosing a model and the switch post their settings");
 
+// 12. no orphan drafts: a stale answer's draft is cancelled, and closing during a Review cancels the one on its way
+const o12 = await ev(`closePanels(); await openCard(0); window.__q.draft=[{d:{...${JSON.stringify(DRAFT)},draft:'stale'},delay:300}]; window.__posts.length=0;
+  btn('Review').click(); const ta=stgEl.querySelector('.mcard textarea'); ta.value+=' more'; ta.dispatchEvent(new Event('input')); await new Promise(r=>setTimeout(r,600));
+  const a=mp().map(p=>[p.u,p.b.draft||null]);
+  await openCard(0); window.__q.draft=[{d:{...${JSON.stringify(DRAFT)},draft:'late'},delay:300}]; window.__posts.length=0;
+  btn('Review').click(); await new Promise(r=>setTimeout(r,50)); stageClose(); await new Promise(r=>setTimeout(r,100)); const mid=mp().map(p=>[p.u,p.b.draft||null]);
+  await new Promise(r=>setTimeout(r,500)); return [a, mid, mp().map(p=>[p.u,p.b.draft||null])];`);
+eq(o12[0], [["/api/mail/draft", null], ["/api/mail/cancel", "stale"]], "a draft answer nobody wants is cancelled");
+eq(o12[1], [["/api/mail/draft", null], ["/api/mail/cancel", "pending"]], "closing while a Review is on its way cancels it at once");
+eq(o12[2].filter(x => x[1] === "late").length, 1, "and the draft that then arrives is cancelled too");
+
 if (fails.length) { console.log(`${fails.length} check(s) failed`); process.exit(1); }
 console.log("mail fit ok");
 process.exit(0);

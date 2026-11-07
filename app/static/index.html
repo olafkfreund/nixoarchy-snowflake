@@ -2536,7 +2536,9 @@ function stageBuild(ev){
 /* ---- mail (#210): the rows come from the server with two tokens each, never an id. Every mail field is drawn with textContent.
    Reply -> Review (the server builds the draft) -> Send, which only a real pointer click can press. */
 let mailSeq=0, mailCard=null;      // mailCard: {el, ta, draft} while the reply card is open; mailSeq: the newest Review/edit, an older answer is ignored
-function mailCardDrop(cancel){ const c=mailCard; mailCard=null; mailSeq++; if(!c) return; if(cancel&&c.draft) post('/api/mail/cancel',{draft:c.draft}).catch(()=>{}); c.el.remove(); }
+function mailCardDrop(cancel){ const c=mailCard; mailCard=null; mailSeq++; if(!c) return;
+  if(cancel&&(c.draft||c.flight)) post('/api/mail/cancel',{draft:c.flight?'pending':c.draft}).catch(()=>{});   // (a Review still on its way has no id yet: any cancel makes the server drop it)
+  c.el.remove(); }
 function stageMail(ev,bd,acts,fn){
   const rows=ev.rows||[];
   if(!rows.length) bd.appendChild(hx('div','pt1','No unread mail from the last three days'));
@@ -2555,10 +2557,11 @@ function mailCardOpen(bd,r){ mailCardDrop(true);
   const edited=()=>{ mailSeq++; rev.textContent=''; msg.textContent=''; };      // an edit hides Send until Review is pressed again, and voids an answer still on its way
   ta.addEventListener('input',()=>{ stgUse=performance.now(); edited(); }); all.addEventListener('change',edited);
   const review=stageBtn('Review',()=>{ const text=ta.value; if(!text.trim()){ msg.textContent='Write your reply first'; return; }
-    const my=++mailSeq; rev.textContent=''; msg.textContent='Preparing\u2026';
-    post('/api/mail/draft',{token:r.reply,text,all:all.checked}).then(x=>x.json()).then(d=>{ if(my!==mailSeq||mailCard!==card) return;
+    const my=++mailSeq; card.flight=my; rev.textContent=''; msg.textContent='Preparing\u2026';
+    post('/api/mail/draft',{token:r.reply,text,all:all.checked}).then(x=>x.json()).then(d=>{ if(card.flight===my) card.flight=0;
+      if(my!==mailSeq||mailCard!==card){ if(d&&d.draft) post('/api/mail/cancel',{draft:d.draft}).catch(()=>{}); return; }       // (an answer nobody wants: drop its draft)
       if(!d||!d.draft){ msg.textContent=(d&&d.error)||"Couldn't prepare that reply"; return; }
-      card.draft=d.draft; msg.textContent=''; mailReview(card,rev,msg,d); }).catch(()=>{ if(my===mailSeq&&mailCard===card) msg.textContent="Couldn't prepare that reply"; }); });
+      card.draft=d.draft; msg.textContent=''; mailReview(card,rev,msg,d); }).catch(()=>{ if(card.flight===my) card.flight=0; if(my===mailSeq&&mailCard===card) msg.textContent="Couldn't prepare that reply"; }); });
   const act=hx('div','mact'); act.appendChild(review); act.appendChild(stageBtn('Close',()=>mailCardDrop(true)));
   el.appendChild(ta); el.appendChild(lab); el.appendChild(act); el.appendChild(rev); el.appendChild(msg); bd.appendChild(el); ta.focus();
 }

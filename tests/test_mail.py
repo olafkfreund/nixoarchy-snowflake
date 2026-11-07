@@ -18,9 +18,11 @@ import json
 import io
 import contextlib
 import subprocess
+import time
 import shlex
 import threading
 import ast
+import inspect
 import unittest
 import urllib.request
 from pathlib import Path
@@ -356,7 +358,7 @@ class MailBoardTest(_ServerEnv):
         self.assertGreater(sid, 1_000_000)
         self.assertIn(sid, s.Speaker.mail_sids)
         self.assertEqual(reply, {"from": "sender@example.com", "subject": "Lunch on Friday?", "summary": line})
-        s.Speaker.mail_sids.discard(sid)
+        s.Speaker.mail_sids.pop(sid, None)
 
     def test_otp_from_message_scrubs_model_output(self):
         s = self.server
@@ -368,7 +370,7 @@ class MailBoardTest(_ServerEnv):
         self.assertIn("[code]", say.call_args.args[0])
         self.assertNotIn("482913", say.call_args.args[0])
         self.assertIn("[code]", reply["summary"])
-        s.Speaker.mail_sids.discard(say.call_args.args[1])
+        s.Speaker.mail_sids.pop(say.call_args.args[1], None)
 
     def test_subject_otp_and_body_secrets_are_kept_out_of_the_prompt(self):
         s = self.server
@@ -382,7 +384,7 @@ class MailBoardTest(_ServerEnv):
                 self.assertNotIn(forbidden, summary.call_args.args[1])
                 self.assertNotIn(forbidden, say.call_args.args[0])
                 self.assertNotIn(forbidden, json.dumps(reply))
-                s.Speaker.mail_sids.discard(say.call_args.args[1])
+                s.Speaker.mail_sids.pop(say.call_args.args[1], None)
 
     def test_hear_refuses_an_unlisted_account_without_fetching(self):
         s = self.server
@@ -528,7 +530,7 @@ class MailBoardTest(_ServerEnv):
         s.CFG["mail_model"] = "gemma4:e4b"
         sid = 1_000_000_777
         S = s.Speaker
-        S.mail_sids.add(sid)
+        S.mail_sids[sid] = s.MAIL_GEN
         S.ready.append((S.gen, sid, "private mail", b"\0\0", 22050, None, None, 0.1, False, "local", None))
         self.addCleanup(S.ready.clear)
         with mock.patch.object(s.Desk, "locked", return_value=True), mock.patch.object(s.FLOOR, "hold", return_value=True), mock.patch.object(S, "_player"), \
@@ -555,7 +557,7 @@ class MailBoardTest(_ServerEnv):
         spoken, sid = say.call_args.args
         self.assertNotIn("<<", spoken)
         self.assertEqual(len(spoken.split(": ", 1)[1]), 400)
-        s.Speaker.mail_sids.discard(sid)
+        s.Speaker.mail_sids.pop(sid, None)
 
     def test_nothing_is_printed_or_written(self):
         out = self.server.sys
@@ -642,7 +644,8 @@ class MailBoardTest(_ServerEnv):
                 if setting_change:
                     s.mail_reset()
                 else:
-                    s.mail_cancel(existing["draft"])
+                    self.assertEqual(s.mail_cancel("stale-id"), {"ok": False})   # a stale id can't void the request in flight
+                    s.mail_cancel("pending")                                     # the page closes a card mid-Review
                 release.set(); older.join(5)
             self.assertIsNone(s.MAIL_DRAFT)
             self.assertFalse(answers[0].get("draft"))
@@ -740,6 +743,104 @@ class MailBoardTest(_ServerEnv):
         for worker_thread in workers: worker_thread.join(5)
         self.assertEqual(len([c for c in self.gog.calls if "send" in c]), 1)
         self.assertEqual(len(answers), 2)
+
+    # ---- step 6.2 review fixes
+    def play_queued(self, gen, board=True, locked=False):
+        """Run the player on one ready mail item queued at `gen`; -> (written, events)."""
+        s, S = self.server, self.server.Speaker
+        sid = 1_000_000_888
+        S.mail_sids[sid] = gen
+        S.ready.append((S.gen, sid, "private mail", b"\0\0", 22050, None, None, 0.1, False, "local", None))
+        self.addCleanup(S.ready.clear)
+        self.events.clear()
+        with mock.patch.object(s.Desk, "locked", return_value=locked), mock.patch.object(s.Ambient, "meeting", False), mock.patch.object(s.FLOOR, "hold", return_value=True), \
+             mock.patch.object(S, "_player"), mock.patch.object(S, "_write") as write, mock.patch.object(S, "_release_if_idle", side_effect=StopIteration):
+            try:
+                S._player_loop()
+            except StopIteration:
+                pass
+        self.assertNotIn(sid, S.mail_sids)
+        return write.called, [e for e in self.events if e.get("t") == "spk_skip"]
+
+    def test_queued_mail_speech_drops_after_a_switch_or_the_board_goes(self):
+        s = self.server
+        self.board()
+        with mock.patch.object(s.Desk, "locked", return_value=False), mock.patch.object(s.Ambient, "meeting", False):
+            self.assertTrue(s.mail_play_ok(s.MAIL_GEN))             # nothing changed: it may play
+        gen = s.MAIL_GEN
+        s.mail_reset()                                              # mail switched after it was queued
+        self.board()
+        self.assertEqual(self.play_queued(gen)[1], [{"t": "spk_skip", "id": 1_000_000_888}])
+        s.CFG["mail_on"] = False
+        self.assertEqual(self.play_queued(s.MAIL_GEN)[1], [{"t": "spk_skip", "id": 1_000_000_888}])
+        s.CFG["mail_on"] = True
+        self.board()
+        s.STAGES.close()                                            # the board is gone
+        self.assertEqual(self.play_queued(s.MAIL_GEN)[1], [{"t": "spk_skip", "id": 1_000_000_888}])
+        self.board()
+        self.assertEqual(self.play_queued(s.MAIL_GEN, locked=True)[1], [{"t": "spk_skip", "id": 1_000_000_888}])
+        self.assertIn("return Desk.locked() is False and not Ambient.meeting", inspect.getsource(s.mail_may_speak))
+
+    def test_hear_registers_the_sid_with_the_gen_it_checked(self):
+        s = self.server
+        row = self.board()["rows"][0]
+        with mock.patch.object(s.Desk, "locked", return_value=False), mock.patch.object(s.Ambient, "meeting", False), mock.patch.object(s.Speaker, "say") as say:
+            self.post("/api/mail/hear", {"token": row["hear"]})
+        self.assertEqual(s.Speaker.mail_sids[say.call_args.args[1]], s.MAIL_GEN)
+
+    def test_an_expired_draft_no_longer_counts_as_mail_on_screen(self):
+        s = self.server
+        s.MAIL_DRAFT = {"draft": "d", "made": time.monotonic()}
+        self.assertTrue(s.mail_on_screen())
+        s.MAIL_DRAFT["made"] -= 601
+        self.assertFalse(s.mail_on_screen())
+
+    def test_a_send_with_unreadable_output_is_unknown_not_an_error(self):
+        s = self.server
+        for out, expected in ((b"sent!", {"unknown": True}), (b"[1]", {"unknown": True}), (b"", {"unknown": True})):
+            draft = self.review()
+            def run(argv, **kw):
+                if "send" in argv:
+                    return subprocess.CompletedProcess(argv, 0, stdout=out)
+                return self.gog(argv, **kw)
+            with mock.patch.object(s.subprocess, "run", side_effect=run):
+                self.assertEqual(s.mail_send(draft["draft"], draft["body"]), expected, out)
+        draft = self.review()
+        def failing(argv, **kw):
+            if "send" in argv:
+                raise subprocess.CalledProcessError(1, argv)
+            return self.gog(argv, **kw)
+        with mock.patch.object(s.subprocess, "run", side_effect=failing):
+            self.assertEqual(s.mail_send(draft["draft"], draft["body"]), {"error": "CalledProcessError"})
+
+    def test_an_address_that_starts_with_a_dash_is_refused(self):
+        for header in ("from", "reply_to", "to", "cc"):
+            self.gog.get = fixture("get_plain.json")
+            self.gog.get["headers"][header] = "-oProxy@example.com"
+            self.assertFalse(self.review(all=True).get("draft"), header)
+            self.assertIsNone(self.server.MAIL_DRAFT)
+
+    def test_send_never_holds_the_lock_while_gog_runs(self):
+        s = self.server
+        draft = self.review()
+        held = []
+        def run(argv, **kw):
+            held.append(s.MAIL_LOCK.locked())
+            return self.gog(argv, **kw)
+        with mock.patch.object(s.subprocess, "run", side_effect=run):
+            self.assertTrue(s.mail_send(draft["draft"], draft["body"]).get("sent"))
+        self.assertTrue(held)
+        self.assertFalse(any(held))
+
+    def test_reply_all_ignores_an_empty_or_group_only_to_and_cc(self):
+        for to, cc in (("undisclosed-recipients:;", ""), ("", ""), ("undisclosed-recipients:;", "undisclosed-recipients:;")):
+            self.gog.get = fixture("get_plain.json")
+            self.gog.get["headers"].update({"to": to, "cc": cc})
+            draft = self.review(all=True)
+            self.assertEqual((bool(draft.get("draft")), draft.get("cc")), (True, []), (to, cc))
+        self.gog.get = fixture("get_plain.json")
+        self.gog.get["headers"]["from"] = "undisclosed-recipients:;"             # From keeps the strict rule
+        self.assertFalse(self.review(all=True).get("draft"))
 
     def test_mail_routes_reject_tool_token(self):
         for path, payload in (("/api/mail/draft", {}), ("/api/mail/send", {}), ("/api/mail/cancel", {}),
