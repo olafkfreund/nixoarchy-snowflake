@@ -99,6 +99,8 @@ class ApprovalsTest(unittest.TestCase):
         self.assertTrue(self.s.click_only('echo "${UNSET:-$(gog gmail send --to a@b --body hello)}"'))
         self.assertTrue(self.s.click_only('gog gmail "${UNSET:-se}nd" --to a@b --body hello'))
         self.assertTrue(self.s.click_only("gog gmail `echo send` --to a@b"))
+        self.assertTrue(self.s.click_only("g${UNSET:-o}g gmail send --to a@b --body hello"))
+        self.assertEqual(self.s.send_detail("gog gmail send --to actual@example.com --body-file <(printf %s --bcc=secret@example.com)")["to"], "")
         for cmd in ("gog gmail s{e..e}nd --to a@b", "gog gmail {se,x}nd --to a@b", "gog gmail s?nd --to a@b", "gog gmail s[e]nd --to a@b"):
             self.assertTrue(self.s.click_only(cmd), cmd)
         self.assertEqual(self.s.send_detail("gog gmail send --to actual@example.com --body=$(printf %s --bcc=secret@example.com)")["to"], "")

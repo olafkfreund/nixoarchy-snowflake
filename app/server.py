@@ -827,6 +827,11 @@ def _send_texts(cmd):
     return cmd, re.sub(r"['\"\\$]", "", re.sub(r"\$\{[^}]*\}", "", cmd.replace("\\\n", "")))
 
 
+def _send_defaults(cmd):
+    """A third reading that keeps a default's word: g${U:-o}g is gog when U is unset."""
+    return re.sub(r"['\"\\]", "", re.sub(r"\$\{[^}:]*:?[-=+?]([^}]*)\}", r"\1", cmd))
+
+
 def _is_gog_send(text):
     return bool(_GOG_RE.search(text)) and bool(_GOG_WORD_RE.search(_GOG_DRAFT_RE.sub(" ", text)))
 
@@ -835,7 +840,7 @@ def click_only(cmd):
     raw, clean = _send_texts(cmd)
     # any shell expansion or pattern ($…, `…`, {a,b}, s{e..e}nd, *, ?, [..]) in a gog command can assemble a send word
     return any("herdr" in t.lower() or _is_gog_send(t) or (_GOG_RE.search(t) and re.search(r"[$`{}*?\[]", raw))
-               for t in (raw, clean))
+               for t in (raw, clean, _send_defaults(raw)))
 
 
 def send_detail(cmd):
@@ -845,7 +850,7 @@ def send_detail(cmd):
         m = _HERDR_WRITE_RE.search(clean)
         return {"kind": "herdr", "pane": m.group(1) if m else ""}
     # stdin, another command or an expansion: no recipient from it
-    heredoc = "<<" in raw or "\n" in raw.replace("\\\n", "") or bool(re.search(r"[$`]", raw))
+    heredoc = "<<" in raw or "\n" in raw.replace("\\\n", "") or bool(re.search(r"[$`]|[<>]\(", raw))
     try:
         lex = shlex.shlex(raw.replace("\\\n", ""), posix=True, punctuation_chars=True)
         lex.whitespace_split = True
