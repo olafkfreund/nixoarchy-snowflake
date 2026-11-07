@@ -121,8 +121,7 @@ It sends “Done in 42s” (or “Failed after 42s (exit 1)”) with only the co
 notification, so he shows it with a proud face. `commandDone.seconds` sets the threshold (default `30`). Inside herdr,
 tmux or zellij it cannot tell whether you are watching that pane, so it notifies there even when you are.
 
-**Privacy.** Notification text stays on your machine. He never logs it, never writes it to disk, and never gives it to
-the agent. Critical alerts and anything carrying a code (2FA, one-time passwords) keep the shell's own popup, and he
+**Privacy.** He never logs notification text, never writes it to disk, and never gives it to the agent. With ElevenLabs as his voice, whatever he says about a notification (“New mail from …”, or the subject if you turn that on) goes to ElevenLabs to be spoken. Critical alerts and anything carrying a code (2FA, one-time passwords) keep the shell's own popup, and he
 never reads a code aloud. Nothing he says on his own opens the microphone. In a meeting he says nothing unasked; he
 still answers when you ask him something, and “hey Nixi” is paused.
 

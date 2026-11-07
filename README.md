@@ -227,12 +227,12 @@ nixi-companion restart
 
 - Speech-to-text: the words you say are turned into text here.
 - The local voices (Kokoro, piper, espeak).
-- Notification text. He never logs it, writes it to disk, or gives it to the agent.
+- Notification text. He never logs it, writes it to disk, or gives it to the agent, unless ElevenLabs speaks it (below).
 
 **Leaves your machine**
 
 - What you ask goes to the agent's provider, through nixi.
-- The text he speaks goes to ElevenLabs when you switch ElevenLabs on. It is off by default.
+- The text he speaks goes to ElevenLabs when you switch ElevenLabs on. That includes what he says about notifications, such as “New mail from …” or a subject you chose to hear. It is off by default.
 
 ## Next
 

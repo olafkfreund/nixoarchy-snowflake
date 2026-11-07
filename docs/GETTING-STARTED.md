@@ -81,7 +81,7 @@ The rest are optional:
 - **Notification sounds** gives each kind a short sound.
 - **Say out loud** picks which kinds he speaks. Meetings only, by default.
 
-Notification text stays on your machine. He never logs it, never writes it to disk and never gives it to the agent.
+He never logs notification text, never writes it to disk and never gives it to the agent. With ElevenLabs as his voice, whatever he says about a notification (“New mail from …”, or the subject if you turn that on) goes to ElevenLabs to be spoken.
 Critical alerts, and anything with a code in it (2FA, one-time passwords), keep the shell's own popup, and he never
 reads a code aloud.
 
