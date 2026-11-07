@@ -81,6 +81,11 @@ class ApprovalsTest(unittest.TestCase):
         for c in NOT:
             self.assertFalse(self.s.click_only(c), c)
 
+    def test_detail_never_keeps_flag_looking_text(self):
+        for cmd in ('gog gmail send --to a@b --body "--bcc=private body"', 'gog gmail send --to a@b --body "--to=confidential"',
+                    "gog gmail send --to a@b --subject --cc secret", 'gog gmail send "--to=private words here"'):
+            self.assertNotRegex(json.dumps(self.s.send_detail(cmd)), "private|confidential|secret", cmd)
+
     def test_detail(self):
         d = self.s.send_detail
         self.assertEqual(d("gog gmail send --to=a@b --cc c@d"), {"kind": "gog", "command": "gmail send", "to": "a@b,c@d"})

@@ -812,6 +812,10 @@ _GOG_POSITIONAL = {"gmail reply", "gmail reply-all", "gmail replyall", "gmail fo
                    "gmail drafts post", "chat messages send", "chat messages create", "chat messages post"}
 
 
+_GOG_VALUE_FLAGS = {"--body", "--body-html", "--body-file", "--raw-file", "--subject", "--text", "--html", "--file", "--attach"}
+_GOG_ADDRESS_RE = re.compile(r"[^\s@,'\"]+@[^\s@,'\"]+")
+
+
 def _send_texts(cmd):
     cmd = " ".join(map(str, cmd)) if isinstance(cmd, (list, tuple)) else str(cmd or "")
     return cmd, re.sub(r"['\"\\]", "", cmd.replace("\\\n", ""))
@@ -868,13 +872,23 @@ def send_detail(cmd):
     if best is None:
         return {"kind": "gog", "command": "unknown", "to": ""}
     name, extra, rest = best
-    to = []
-    for n, t in enumerate(rest):
-        for flag in ("--to", "--cc", "--bcc"):
-            if t == flag and n + 1 < len(rest):
-                to.append(rest[n + 1])
-            elif t.startswith(flag + "="):
-                to.append(t[len(flag) + 1:])
+    to, n = [], 0
+    while n < len(rest):
+        t = rest[n]
+        n += 1
+        if t in _GOG_VALUE_FLAGS:                                # its value is message text, whatever it looks like
+            n += 1
+            continue
+        m = re.fullmatch(r"(--to|--cc|--bcc)(?:=(.*))?", t, re.S)
+        if not m:
+            continue
+        if m.group(2) is None:
+            value, n = (rest[n] if n < len(rest) else ""), n + 1
+        else:
+            value = m.group(2)
+        if not all(_GOG_ADDRESS_RE.fullmatch(one.strip()) for one in value.split(",")):
+            return {"kind": "gog", "command": name, "to": ""}   # only addresses are kept: anything else may be text
+        to.append(value)
     if not to and name in _GOG_POSITIONAL and len(extra) == 1:
         to.append(extra[0])
     return {"kind": "gog", "command": name, "to": ",".join(to)}
