@@ -155,6 +155,8 @@ What can you do?
 
 ### 6. Let him hear you
 
+<p align="center"><img src="docs/media/settings-voice.png" width="420" alt="The Voice tab in his settings: language, speech engine and his voice"></p>
+
 **Do** — right-click him, choose settings, open the **Voice** tab and pick your mic under **Microphone**. Then:
 
 ```bash

@@ -1,5 +1,7 @@
 # Getting started
 
+<p align="center"><img src="media/companion.png" width="200" alt="Nixi, a blue snowflake with big eyes"></p>
+
 You finished the [README](../README.md) steps and he answers. This page is the first day: what to choose, and why.
 Every setting is in the companion's settings. Right-click him and choose settings. The tabs are **Look**, **Voice**,
 **Brain**, **Plugins** and **More**. The full list is in the [Guide](GUIDE.md).
@@ -63,6 +65,8 @@ characters by default). Over the cap, or if ElevenLabs cannot be reached, **Fall
 Turn it off in the same place. Text already sent may still count on your ElevenLabs account.
 
 ## Messages and notifications
+
+<p align="center"><img src="media/message.png" width="240" alt="A new Teams message shown under him, with a chat badge on his face"></p>
 
 He can show your notifications himself, in place of the shell's popups. A click on one opens the app that sent it.
 
