@@ -2878,8 +2878,34 @@ class MicAuto:
             cls.soft = max(1.0, 0.5 / pk)
 
 
+MIC_TARGET = ""
+_MIC_NOTE_LAST = None
+_MIC_NOTE_CHOICE = None
+
+
+def _mic_note(text):
+    global _MIC_NOTE_LAST
+    if text != _MIC_NOTE_LAST:
+        BUS.pub(t="note", text=text)
+        print(f"[nixi] mic: {text}", file=sys.stderr)
+        _MIC_NOTE_LAST = text
+
+
 def mic_cmds():
+    global MIC_TARGET, _MIC_NOTE_LAST, _MIC_NOTE_CHOICE
     dev = (CFG.get("mic_device") or "").strip()
+    chosen = dev
+    if chosen != _MIC_NOTE_CHOICE:
+        _MIC_NOTE_LAST, _MIC_NOTE_CHOICE = None, chosen
+    if chosen:
+        mics = list_mics()
+        if mics:
+            if not any(m["id"] == chosen for m in mics):
+                dev = ""
+                _mic_note(f"The mic you chose ({chosen}) is gone. I'm using the default mic, so I may hear your speakers.")
+            else:
+                _MIC_NOTE_LAST = None
+    MIC_TARGET = dev
     cmds = []
     if CFG.get("mic_cmd"):
         cmds.append(shlex.split(CFG["mic_cmd"]))
@@ -3293,12 +3319,15 @@ class Wake:
             except Exception as e:  # noqa: BLE001
                 if str(e) != last:                   # (no mic plugged in: say so once, then check now and then)
                     print(f"[nixi] wake word: {e}", file=sys.stderr)
+                    _mic_note(f"I can't open the mic: {e}")
                 time.sleep(5 if str(e) != last else 30)
                 last = str(e)
 
     @classmethod
     def session(cls):
         mic, _name, buf = open_mic()
+        mic_target = MIC_TARGET if not CFG.get("mic_cmd") else ""  # shortcut: custom recorders may ignore the device; check them if mic_cmd uses one
+        zero_frames, zero_noted = 0, False
         fl = Floor()
         floor, voiced, seg, in_speech, last_voice, started = None, 0, bytearray(), False, 0.0, 0.0
         pre, n, vad_at, vad_last = bytearray(), 0, 0.0, 0.0
@@ -3311,6 +3340,11 @@ class Wake:
                     return
                 while len(buf) >= FRAME:
                     fr, buf = buf[:FRAME], buf[FRAME:]
+                    if mic_target and not zero_noted:
+                        zero_frames = zero_frames + 1 if not any(fr) else 0
+                        if zero_frames >= 10 * RATE * 2 // FRAME:
+                            _mic_note(f"The mic you chose ({mic_target}) sends no sound.")
+                            zero_noted = True
                     s = memoryview(fr).cast("h")
                     rms = (sum(x * x for x in s) / (len(fr) // 2)) ** 0.5 / 32768.0 * MicAuto.soft
                     # (his own voice, and the first seconds of yours, don't count as background)
