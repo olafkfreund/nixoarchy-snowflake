@@ -15,6 +15,8 @@ Mail code reads only these fields. hostile.json holds the spec's hostile cases, 
 """
 
 import json
+import io
+import contextlib
 import subprocess
 import unittest
 import urllib.request
@@ -38,6 +40,7 @@ class Gog:
 
     def __init__(self, fail=()):
         self.calls, self.fail, self.search = [], set(fail), fixture("search.json")
+        self.get = fixture("get_plain.json")
 
     def __call__(self, argv, **kw):
         assert isinstance(argv, list) and not kw.get("shell"), argv
@@ -52,7 +55,7 @@ class Gog:
             acct = rest[rest.index("-a") + 1]
             if acct in self.fail:
                 raise subprocess.CalledProcessError(1, argv)
-            out = self.search
+            out = self.get if "get" in rest else self.search
         return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(out).encode())
 
     def searches(self):
@@ -74,6 +77,8 @@ class MailBoardTest(_ServerEnv):
         s.STAGES.clear()
         self.addCleanup(s.STAGES.clear)
         self.addCleanup(lambda: setattr(s, "MAIL_DRAFT", None))
+        s.Speaker.mail_sids.clear()
+        self.addCleanup(s.Speaker.mail_sids.clear)
 
     def board(self):
         self.server.mail_stage(None, self.server.STAGES.current())
@@ -173,6 +178,21 @@ class MailBoardTest(_ServerEnv):
         s.mail_stage(None, None)                          # the stage it started from is gone
         self.assertEqual(s.STAGES.current()["kind"], "facts")
 
+    def test_turning_mail_off_during_list_publishes_and_speaks_nothing(self):
+        s = self.server
+        real = s.mail_accounts
+        def late():
+            accounts = real()
+            s.CFG["mail_on"] = False
+            s.mail_reset()
+            return accounts
+        self.events.clear()
+        with mock.patch.object(s, "mail_accounts", side_effect=late), mock.patch.object(s.Speaker, "say") as say:
+            s.mail_stage(None, None)
+        self.assertIsNone(s.STAGES.current())
+        self.assertFalse([e for e in self.events if e.get("t") == "stage"])
+        say.assert_not_called()
+
     def test_changing_a_mail_setting_closes_the_board_and_drops_a_draft(self):
         s = self.server
         for body in ({"mail_on": False}, {"mail_accounts": [OTHER]}, {"mail_model": "gemma4:e4b"}):
@@ -225,7 +245,7 @@ class MailBoardTest(_ServerEnv):
             for act in ("copy", "open", "play", "session", "terminal"):
                 for key in ("hear", "reply"):
                     self.assertFalse(s.stage_act(page["rows"][0][key], act)["ok"])
-            popen.assert_not_called()
+            self.assertFalse([c for c in popen.call_args_list if c.args and c.args[0] and c.args[0][0] == "claude"])
 
     def test_the_phrases_open_the_board_without_an_agent_turn(self):
         s = self.server
@@ -255,6 +275,282 @@ class MailBoardTest(_ServerEnv):
         self.assertEqual(self.get("/api/mail/options", token=s.TOOL_TOKEN)[0], 403)
         with mock.patch.object(urllib.request, "urlopen", side_effect=OSError):
             self.assertEqual(self.get("/api/mail/options"), (200, {"accounts": [ME, OTHER], "models": []}))
+
+    def test_mail_clean_drops_controls_links_and_secret_lines(self):
+        s = self.server
+        raw = "Start\x07\u202e https://example.com/path\npassword=hidden\nEnd\u200b"
+        self.assertEqual(s.mail_clean(raw, 100), "Start [link]\nEnd")
+        self.assertEqual(s.mail_clean("ééé", 5), "éé")
+        self.assertEqual(len(s.mail_clean("é" * 5000, 8000).encode()), 8000)
+
+    def test_mail_scrub_uses_one_messages_otp_result(self):
+        s = self.server
+        fields = ["Verification code", "482913 expires soon", "Case 2026"]
+        self.assertTrue(s.mail_otp(fields))
+        self.assertEqual(s.mail_scrub(fields), ["Verification code", "[code] expires soon", "Case [code]"])
+        self.assertEqual(s.mail_scrub(["Case 2026"], False), ["Case 2026"])
+        self.assertEqual(s.mail_scrub(["login code ab12cd34 and 123 456"]), ["login code [code] and [code]"])
+        self.assertEqual(s.mail_scrub(["code ab12cd34"], True), ["code [code]"])
+
+    def test_html_text_drops_script_style_and_fetches_nothing(self):
+        s = self.server
+        with mock.patch.object(urllib.request, "urlopen") as open_url:
+            self.assertEqual(s.mail_html_text('<style>secret</style><script>bad()</script><p>Hello <b>there</b><img src="https://example.com/a">!</p>').strip(), "Hello there!")
+            open_url.assert_not_called()
+
+    def test_hear_requires_a_live_row_and_window_token(self):
+        s = self.server
+        row = self.board()["rows"][0]
+        with mock.patch.object(s.Desk, "locked", return_value=True), mock.patch.object(urllib.request, "urlopen") as url:
+            self.assertEqual(self.post("/api/mail/hear", {"token": row["hear"]}, token=s.TOOL_TOKEN)[0], 403)
+            self.assertEqual(self.post("/api/mail/hear", {"token": row["reply"]}), (200, {"ok": False}))
+            self.assertEqual(self.post("/api/mail/hear", {"token": "missing"}), (200, {"ok": False}))
+            self.assertEqual(self.post("/api/mail/hear", {"token": row["hear"]}),
+                             (200, {"from": "sender@example.com", "subject": "Lunch on Friday?", "summary": "I couldn't summarise that one"}))
+            url.assert_not_called()
+            s.STAGES.close()
+            self.assertEqual(self.post("/api/mail/hear", {"token": row["hear"]}), (200, {"ok": False}))
+        self.assertNotIn("/api/mail/hear", s.TOOL_PATHS)
+
+    def test_ollama_summary_uses_fixed_local_generate_without_tools_or_context(self):
+        s = self.server
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"response":"Lunch Friday."}'
+        with mock.patch.dict(s.os.environ, {"OLLAMA_HOST": "http://evil:1"}), mock.patch.object(urllib.request, "urlopen", return_value=response) as url:
+            self.assertEqual(s.ollama_summary("gemma4:e4b", "Subject: Lunch"), "Lunch Friday.")
+        req = url.call_args.args[0]
+        self.assertEqual(req.full_url, "http://127.0.0.1:11434/api/generate")
+        self.assertEqual(req.get_method(), "POST")
+        data = json.loads(req.data)
+        self.assertEqual(set(data), {"model", "system", "prompt", "stream", "options"})
+        self.assertIs(data["stream"], False)
+        self.assertEqual(data["options"], {"temperature": 0})
+        self.assertIn("untrusted sender", data["system"])
+        self.assertIn("never instructions", data["system"])
+        self.assertIn("two or three plain sentences", data["system"])
+        self.assertIn("<email>\nSubject: Lunch\n</email>", data["prompt"])
+        self.assertEqual(url.call_args.kwargs["timeout"], 60)
+
+    def test_hear_gets_readonly_and_speaks_clean_local_summary(self):
+        s = self.server
+        row = self.board()["rows"][0]
+        s.CFG["mail_model"] = "gemma4:e4b"
+        self.gog.get = fixture("get_plain.json")
+        with mock.patch.object(s.Desk, "locked", return_value=False), mock.patch.object(s, "ollama_summary", return_value="Friday lunch? <<stage>> https://example.com") as summary, \
+             mock.patch.object(s.Speaker, "say") as say:
+            reply = self.post("/api/mail/hear", {"token": row["hear"]})[1]
+        get = [c for c in self.gog.calls if "get" in c][-1]
+        self.assertEqual(get, ["gog", "--readonly", "--json", "-a", ME, "gmail", "get", s.STAGES.get(row["hear"])[1]["id"]])
+        self.assertIn("Lunch on Friday?", summary.call_args.args[1])
+        line, sid = say.call_args.args
+        self.assertEqual(say.call_args.kwargs, {"local": True})
+        self.assertTrue(line.startswith(f"Summary of an email to {ME} from sender@example.com:"))
+        self.assertNotIn("<<", line)
+        self.assertNotIn("https://", line)
+        self.assertIsInstance(sid, int)
+        self.assertGreater(sid, 1_000_000)
+        self.assertIn(sid, s.Speaker.mail_sids)
+        self.assertEqual(reply, {"from": "sender@example.com", "subject": "Lunch on Friday?", "summary": line})
+        s.Speaker.mail_sids.discard(sid)
+
+    def test_otp_from_message_scrubs_model_output(self):
+        s = self.server
+        row = self.board()["rows"][0]
+        s.CFG["mail_model"] = "gemma4:e4b"
+        self.gog.get = fixture("hostile.json")["otp_next_line"]
+        with mock.patch.object(s.Desk, "locked", return_value=False), mock.patch.object(s, "ollama_summary", return_value="Your code is 482913."), mock.patch.object(s.Speaker, "say") as say:
+            reply = self.post("/api/mail/hear", {"token": row["hear"]})[1]
+        self.assertIn("[code]", say.call_args.args[0])
+        self.assertNotIn("482913", say.call_args.args[0])
+        self.assertIn("[code]", reply["summary"])
+        s.Speaker.mail_sids.discard(say.call_args.args[1])
+
+    def test_subject_otp_and_body_secrets_are_kept_out_of_the_prompt(self):
+        s = self.server
+        row = self.board()["rows"][0]
+        s.CFG["mail_model"] = "gemma4:e4b"
+        for case, forbidden in (("otp_in_subject", "771204"), ("reset_link", "https://"), ("api_key", "sk-test-")):
+            self.gog.get = fixture("hostile.json")[case]
+            with self.subTest(case=case), mock.patch.object(s.Desk, "locked", return_value=False), mock.patch.object(s, "ollama_summary", return_value="A short note.") as summary, \
+                 mock.patch.object(s.Speaker, "say") as say:
+                reply = self.post("/api/mail/hear", {"token": row["hear"]})[1]
+                self.assertNotIn(forbidden, summary.call_args.args[1])
+                self.assertNotIn(forbidden, say.call_args.args[0])
+                self.assertNotIn(forbidden, json.dumps(reply))
+                s.Speaker.mail_sids.discard(say.call_args.args[1])
+
+    def test_hear_refuses_an_unlisted_account_without_fetching(self):
+        s = self.server
+        row = self.board()["rows"][0]
+        s.CFG["mail_accounts"] = [OTHER]
+        self.gog.calls.clear()
+        with mock.patch.object(s, "ollama_summary") as summary, mock.patch.object(s.Speaker, "say") as say:
+            self.assertEqual(self.post("/api/mail/hear", {"token": row["hear"]}), (200, {"ok": False}))
+        self.assertFalse([c for c in self.gog.calls if "get" in c])
+        summary.assert_not_called()
+        say.assert_not_called()
+
+    def test_previous_board_and_reply_tokens_refuse_without_gog(self):
+        s = self.server
+        row = self.board()["rows"][0]
+        self.gog.calls.clear()
+        self.assertEqual(self.post("/api/mail/hear", {"token": row["reply"]}), (200, {"ok": False}))
+        self.assertEqual(self.gog.calls, [])
+        s.STAGES.put(s.stages.validate({"v": 1, "kind": "facts", "title": "Other", "points": ["a"]}))
+        self.assertEqual(self.post("/api/mail/hear", {"token": row["hear"]}), (200, {"ok": False}))
+        self.assertEqual(self.gog.calls, [])
+
+    def test_model_failure_returns_subject_and_speaks_fixed_line(self):
+        s = self.server
+        row = self.board()["rows"][0]
+        s.CFG["mail_model"] = "gemma4:e4b"
+        with mock.patch.object(s.Desk, "locked", return_value=False), mock.patch.object(urllib.request, "urlopen", side_effect=OSError("fixture private")), \
+             mock.patch.object(s.Speaker, "say") as say:
+            reply = self.post("/api/mail/hear", {"token": row["hear"]})[1]
+        self.assertEqual(reply, {"from": "sender@example.com", "subject": "Lunch on Friday?", "summary": "I couldn't summarise that one"})
+        self.assertEqual(say.call_args.args[0], reply["summary"])
+        self.assertEqual(say.call_args.kwargs, {"local": True})
+
+    def test_hostile_fields_reach_only_cleaned_model_prompt_and_reply(self):
+        s = self.server
+        row = self.board()["rows"][0]
+        s.CFG["mail_model"] = "gemma4:e4b"
+        cases = ("otp_next_line", "otp_in_subject", "reset_link", "api_key", "control_chars", "html_body", "stage_injection")
+        prompts = []
+        def url(req, **kw):
+            data = json.loads(req.data)
+            prompts.append(data["prompt"])
+            response = mock.MagicMock()
+            response.__enter__.return_value.read.return_value = json.dumps({"response": "<<stage>> Code 482913 https://example.com" if "[code]" in data["prompt"] else "<<stage>> A note https://example.com"}).encode()
+            return response
+        with mock.patch.object(urllib.request, "urlopen", side_effect=url), mock.patch.object(s.Desk, "locked", return_value=True), \
+             mock.patch.object(s.subprocess, "Popen") as popen, mock.patch.object(s.Speaker, "say") as say:
+            for case in cases:
+                self.gog.get = fixture("hostile.json")[case]
+                reply = self.post("/api/mail/hear", {"token": row["hear"]})[1]
+                joined = json.dumps(reply) + prompts[-1]
+                for forbidden in ("771204", "https://", "sk-test-", "\u202e", "\u200b", "\u0007", "<<"):
+                    self.assertNotIn(forbidden, joined, case)
+                if case in ("otp_next_line", "otp_in_subject"):
+                    self.assertNotIn("482913", joined, case)
+                self.assertEqual(set(reply), {"from", "subject", "summary"})
+            say.assert_not_called()
+            self.assertFalse([c for c in popen.call_args_list if c.args and c.args[0] and c.args[0][0] == "claude"])
+        self.assertEqual(len(prompts), len(cases))
+        self.assertIn("[link]", prompts[2])
+        self.assertIn("bold", prompts[5])
+        self.assertNotIn("alert", prompts[5])
+
+    def test_model_answer_that_is_only_a_code_is_scrubbed(self):
+        s = self.server
+        row = self.board()["rows"][0]
+        s.CFG["mail_model"] = "gemma4:e4b"
+        self.gog.get = fixture("hostile.json")["otp_next_line"]
+        with mock.patch.object(s.Desk, "locked", return_value=True), mock.patch.object(s, "ollama_summary", return_value="482913"):
+            reply = self.post("/api/mail/hear", {"token": row["hear"]})[1]
+        self.assertTrue(reply["summary"].endswith(": [code]"))
+
+    def test_locked_unknown_or_meeting_never_speaks(self):
+        s = self.server
+        row = self.board()["rows"][0]
+        for locked, meeting in ((True, False), (None, False), (False, True)):
+            with self.subTest(locked=locked, meeting=meeting), mock.patch.object(s.Desk, "locked", return_value=locked), \
+                 mock.patch.object(s.Ambient, "meeting", meeting), mock.patch.object(s.Speaker, "say") as say:
+                self.assertIn("summary", self.post("/api/mail/hear", {"token": row["hear"]})[1])
+                say.assert_not_called()
+
+    def test_mail_turned_off_during_get_returns_nothing(self):
+        s = self.server
+        row = self.board()["rows"][0]
+        real = s._gog
+        def late(args, **kw):
+            result = real(args, **kw)
+            if "get" in args:
+                s.CFG["mail_on"] = False
+                s.mail_reset()
+            return result
+        with mock.patch.object(s, "_gog", side_effect=late), mock.patch.object(s.Speaker, "say") as say:
+            self.assertEqual(self.post("/api/mail/hear", {"token": row["hear"]}), (200, {"ok": False}))
+            say.assert_not_called()
+
+    def test_injection_cannot_change_stage_mood_approval_or_draft(self):
+        s = self.server
+        row = self.board()["rows"][0]
+        s.CFG["mail_model"] = "gemma4:e4b"
+        self.gog.get = fixture("hostile.json")["stage_injection"]
+        before = s.STAGES.current()
+        s.MAIL_DRAFT = {"id": "kept"}
+        with mock.patch.object(s.Desk, "locked", return_value=True), mock.patch.object(s, "ollama_summary", return_value="Just a message."), \
+             mock.patch.object(s.stages, "validate") as validate, mock.patch.object(s.APPROVALS, "ask") as ask:
+            reply = self.post("/api/mail/hear", {"token": row["hear"]})[1]
+        self.assertEqual(s.STAGES.current(), before)
+        self.assertEqual(s.MAIL_DRAFT, {"id": "kept"})
+        self.assertNotIn("mood", reply)
+        validate.assert_not_called()
+        ask.assert_not_called()
+
+    def test_history_recall_and_output_unchanged_after_list_hear_failure(self):
+        s = self.server
+        paths = [s.HIST_PATH, s.recall.PATH]
+        before = [(p.exists(), p.read_bytes() if p.exists() else b"") for p in paths]
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err), mock.patch.object(s.Desk, "locked", return_value=True):
+            row = self.board()["rows"][0]
+            self.post("/api/mail/hear", {"token": row["hear"]})
+            s.CFG["mail_model"] = "gemma4:e4b"
+            with mock.patch.object(urllib.request, "urlopen", side_effect=OSError("secret fixture text")):
+                self.post("/api/mail/hear", {"token": row["hear"]})
+        self.assertEqual(before, [(p.exists(), p.read_bytes() if p.exists() else b"") for p in paths])
+        self.assertNotIn("secret fixture text", out.getvalue() + err.getvalue())
+        for field in ("Lunch on Friday?", "sender@example.com", "fixture0000000001"):
+            self.assertNotIn(field, out.getvalue() + err.getvalue())
+
+    def test_a_changed_board_or_setting_stops_work_before_speech(self):
+        s = self.server
+        row = self.board()["rows"][0]
+        s.CFG["mail_model"] = "gemma4:e4b"
+        with mock.patch.object(s, "ollama_summary", side_effect=lambda *_: s.STAGES.close()), mock.patch.object(s.Speaker, "say") as say:
+            self.assertEqual(self.post("/api/mail/hear", {"token": row["hear"]}), (200, {"ok": False}))
+            say.assert_not_called()
+        row = self.board()["rows"][0]
+        with mock.patch.object(s, "ollama_summary", side_effect=lambda *_: s.mail_reset()), mock.patch.object(s.Speaker, "say") as say:
+            self.assertEqual(self.post("/api/mail/hear", {"token": row["hear"]}), (200, {"ok": False}))
+            say.assert_not_called()
+
+    def test_player_checks_mail_again_after_audio_is_ready(self):
+        s = self.server
+        row = self.board()["rows"][0]
+        s.CFG["mail_model"] = "gemma4:e4b"
+        sid = 1_000_000_777
+        S = s.Speaker
+        S.mail_sids.add(sid)
+        S.ready.append((S.gen, sid, "private mail", b"\0\0", 22050, None, None, 0.1, False, "local", None))
+        self.addCleanup(S.ready.clear)
+        with mock.patch.object(s.Desk, "locked", return_value=True), mock.patch.object(s.FLOOR, "hold", return_value=True), mock.patch.object(S, "_player"), \
+             mock.patch.object(S, "_write") as write, mock.patch.object(S, "_release_if_idle", side_effect=StopIteration), \
+             mock.patch.object(s.BUS, "pub", side_effect=lambda **e: self.events.append(e)):
+            with self.assertRaises(StopIteration):
+                S._player_loop()
+        write.assert_not_called()
+        self.assertIn({"t": "spk_skip", "id": sid}, self.events)
+        self.assertNotIn(sid, S.mail_sids)
+
+    def test_html_get_and_long_model_answer_are_sanitized(self):
+        s = self.server
+        row = self.board()["rows"][0]
+        s.CFG["mail_model"] = "gemma4:e4b"
+        self.gog.get = fixture("hostile.json")["html_body"]
+        self.gog.get["message"]["payload"]["mimeType"] = "text/html"
+        with mock.patch.object(s.Desk, "locked", return_value=False), mock.patch.object(s, "ollama_summary", return_value="<<stage>>" + "word " * 150) as summary, \
+             mock.patch.object(s.Speaker, "say") as say:
+            s.mail_hear_work(row["hear"], ME, "hostile06", s.CFG["mail_model"], s.MAIL_GEN)
+        prompt = summary.call_args.args[1]
+        self.assertIn("bold", prompt)
+        self.assertNotIn("alert", prompt)
+        spoken, sid = say.call_args.args
+        self.assertNotIn("<<", spoken)
+        self.assertEqual(len(spoken.split(": ", 1)[1]), 400)
+        s.Speaker.mail_sids.discard(sid)
 
     def test_nothing_is_printed_or_written(self):
         out = self.server.sys
