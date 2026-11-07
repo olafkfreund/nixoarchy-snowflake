@@ -3211,6 +3211,22 @@ class Beat:
             cls.thread.start()
 
 
+def media_playing():
+    """True if some stream is uncorked, unmuted, not Nixi's own, on an unmuted sink; False if none; None if unknown (#216)."""
+    if not shutil.which("pactl"):
+        return None
+    try:
+        ins = json.loads(Ambient.run(["pactl", "-f", "json", "list", "sink-inputs"]) or "")
+        live = [i.get("sink") for i in ins if not i.get("corked") and not i.get("mute")
+                and (i.get("properties") or {}).get("application.name") != "Nixi"]
+        if not live:
+            return False
+        sinks = json.loads(Ambient.run(["pactl", "-f", "json", "list", "sinks"]) or "")
+        return any(not s.get("mute") for s in sinks if s.get("index") in live)
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
 # what the speech model "hears" in background noise — never treat these as a follow-up request
 NOISE_WORDS = {"you", "thank you", "thanks", "bye", "thanks for watching", "thank you for watching", "uh", "um", "hmm"}
 WAKE_RE = re.compile(r"^\W*(?:(?:hey|hi|hay|okay|ok|yo|oi|hei|hallo|hej|cześć)\W+)?(nixi's|nixi|nixie|nixy|nixey|nixee|nicksy|nicksie|niksi)\b\W*(.*)$", re.I | re.S)
