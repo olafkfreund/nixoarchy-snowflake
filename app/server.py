@@ -11,6 +11,7 @@ Local server (127.0.0.1 only) that:
 import argparse
 import array
 import collections
+import datetime
 import hashlib
 import io
 import json
@@ -3164,6 +3165,13 @@ _STOP_TAIL = r"(?:\W+(?:nixi|please|now))?"
 @lru_cache(maxsize=3)
 def _stop_re(lang):
     return re.compile(_STOP_WRAP + r"(?:" + _STOP_WORDS + ("|" + _STOP_EXTRA[lang] if lang in _STOP_EXTRA else "") + r")" + _STOP_TAIL)
+
+
+@lru_cache(maxsize=3)
+def _not_me_re(lang):
+    words = {"en": r"that wasn't for you|not you|i wasn't talking to you|that wasn't meant for you",
+             "nb": r"det var ikke til deg|ikke deg", "pl": r"to nie do ciebie|nie ty"}
+    return re.compile(_STOP_WRAP + r"(?:" + words.get(lang, words["en"]) + r")" + _STOP_TAIL)
 # sent ahead of a follow-up (said without "hey Nixi") so Claude can tell if it was even meant for him
 FOLLOW_NOTE = ("(Voice note from Nixi: the mic picked this up a few seconds after your last reply, without \"hey Nixi\". "
                "If it is clearly not meant for you, e.g. the user thinking out loud, talking to themselves or to someone "
@@ -3251,6 +3259,112 @@ def media_playing():
         return any(not s.get("mute") for s in sinks if s.get("index") in live)
     except (ValueError, TypeError, AttributeError):
         return None
+
+
+class HeardCounts:
+    PATHS = ("wake", "follow", "barge")
+    MEDIA = ("on", "off", "unknown")
+    OUTCOMES = ("sent", "ignored", "not_me")
+    _lock = threading.RLock()
+    _days = None
+    _saved = 0.0
+    last = None
+
+    @classmethod
+    def _prune(cls):
+        today = datetime.datetime.now().date()
+        cls._days = {day: cells for day, cells in cls._days.items()
+                     if 0 <= (today - datetime.date.fromisoformat(day)).days < 14}
+
+    @classmethod
+    def _load(cls):
+        if cls._days is not None:
+            return
+        cls._days = {}
+        try:
+            raw = json.loads((DATA_DIR / "heard-counts.json").read_text())
+            if isinstance(raw, dict):
+                for day, paths in raw.items():
+                    try:
+                        datetime.date.fromisoformat(day)
+                    except (TypeError, ValueError):
+                        continue
+                    if not isinstance(paths, dict):
+                        continue
+                    cells = {}
+                    for path, medias in paths.items():
+                        if path not in cls.PATHS or not isinstance(medias, dict):
+                            continue
+                        for media, outcomes in medias.items():
+                            if media not in cls.MEDIA or not isinstance(outcomes, dict):
+                                continue
+                            for outcome, count in outcomes.items():
+                                if outcome in cls.OUTCOMES and type(count) is int and count >= 0:
+                                    cells.setdefault(path, {}).setdefault(media, {})[outcome] = count
+                    if cells:
+                        cls._days[day] = cells
+        except (OSError, ValueError, TypeError):
+            pass
+        cls._prune()
+
+    @classmethod
+    def add(cls, path, media, outcome):
+        if path not in cls.PATHS or media not in cls.MEDIA or outcome not in cls.OUTCOMES:
+            return
+        with cls._lock:
+            cls._load()
+            cls._prune()
+            cells = cls._days.setdefault(datetime.datetime.now().date().isoformat(), {})
+            counts = cells.setdefault(path, {}).setdefault(media, {})
+            counts[outcome] = counts.get(outcome, 0) + 1
+            if time.monotonic() - cls._saved >= 60:
+                cls.save()
+
+    @classmethod
+    def snapshot(cls):
+        with cls._lock:
+            cls._load()
+            cls._prune()
+            today = datetime.datetime.now().date()
+            days = {day: cells for day, cells in cls._days.items() if (today - datetime.date.fromisoformat(day)).days < 7}
+            totals = {}
+            for paths in days.values():
+                for path, medias in paths.items():
+                    for media, outcomes in medias.items():
+                        for outcome, count in outcomes.items():
+                            cell = totals.setdefault(path, {}).setdefault(media, {})
+                            cell[outcome] = cell.get(outcome, 0) + count
+            return {"days": days, "totals": totals}
+
+    @classmethod
+    def save(cls):
+        with cls._lock:
+            cls._load()
+            cls._prune()
+            path = DATA_DIR / "heard-counts.json"
+            tmp = path.with_suffix(".json.nixi-tmp")
+            try:
+                DATA_DIR.mkdir(parents=True, exist_ok=True)
+                tmp.write_text(json.dumps(cls._days))
+                os.replace(tmp, path)
+                cls._saved = time.monotonic()
+            except OSError:
+                pass
+
+    @classmethod
+    def mark_open(cls):
+        with cls._lock:
+            return cls.last is not None and time.monotonic() - cls.last[2] < 120
+
+    @classmethod
+    def mark_not_me(cls):
+        with cls._lock:
+            if not cls.mark_open():
+                return False
+            path, media, _ = cls.last
+            cls.last = None
+            cls.add(path, media, "not_me")
+            return True
 
 
 # what the speech model "hears" in background noise — never treat these as a follow-up request
@@ -3429,25 +3543,35 @@ class Wake:
         except Exception as e:  # noqa: BLE001
             print(f"[nixi] wake word stt: {e}", file=sys.stderr)
             return
+        media = {True: "on", False: "off", None: "unknown"}[media_playing()]
+        phrase = (text or "").strip(" .,!?").casefold()
+        if _not_me_re(stages.lang_active()).fullmatch(phrase):
+            if cls.speaking():
+                BUS.pub(t="barge", listen=False, text="", path="barge", media=media)
+                cls.hush()
+                HeardCounts.mark_not_me()
+            elif HeardCounts.mark_not_me():
+                Speaker.say("Sorry.", None, None, False, None)
+            return
         if cls.speaking():
-            if _stop_re(stages.lang_active()).fullmatch((text or "").strip(" .,!?").casefold()):
-                BUS.pub(t="barge", listen=False, text="")
+            if _stop_re(stages.lang_active()).fullmatch(phrase):
+                BUS.pub(t="barge", listen=False, text="", path="barge", media=media)
                 cls.hush()
                 return
         m = WAKE_RE.match(text or "")
         if cls.speaking():
             if m:
-                BUS.pub(t="barge", listen=True, text=m.group(2).strip(" .,!?"))
+                BUS.pub(t="barge", listen=True, text=m.group(2).strip(" .,!?"), path="barge", media=media)
                 cls.hush()
             return
         if m:
             rest = m.group(2).strip(" .,!?")
-            BUS.pub(t="wake", text=rest)
+            BUS.pub(t="wake", text=rest, path="wake", media=media)
         elif follow and cls.in_window(started):          # (cancelled while we were transcribing)
             said = (text or "").strip(" .,!?")
             if len(said.split()) >= 2 and said.lower() not in NOISE_WORDS:     # (a stray word isn't a request)
                 cls.follow_until = 0.0
-                BUS.pub(t="wake", text=said, follow=True)
+                BUS.pub(t="wake", text=said, follow=True, path="follow", media=media)
 
 
 def doctor():
@@ -6121,6 +6245,10 @@ class Handler(BaseHTTPRequestHandler):
             if not secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
                 return self._json({"error": "forbidden"}, 403)
             return self._json(plugins_api())
+        if p == "/api/heard":
+            if not secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
+                return self._json({"error": "forbidden"}, 403)
+            return self._json({**HeardCounts.snapshot(), "mark_open": HeardCounts.mark_open()})
         if p.startswith("/api/eleven/preview/"):
             if not secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
                 return self._json({"error": "forbidden"}, 403)
@@ -6180,6 +6308,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"theme": THEME})
             if p == "/api/ask":
                 return self.ask()
+            if p == "/api/heard/not-me":
+                return self._json({"ok": HeardCounts.mark_not_me()})
             if p in ("/api/companion-plugins", "/api/companion-plugins/reload", "/api/companion-plugins/consent"):      # (window token only: not in TOOL_PATHS)
                 b = json.loads(self._body() or b"{}")
                 b = b if isinstance(b, dict) else {}
@@ -6710,6 +6840,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def ask(self):
         body = json.loads(self._body() or b"{}")
+        heard = body.get("heard")
+        heard = (heard["path"], heard["media"]) if isinstance(heard, dict) and heard.get("path") in HeardCounts.PATHS and heard.get("media") in HeardCounts.MEDIA else None
         said = (body.get("prompt") or "").strip()
         run_cmd = tok = None                                   # a stage's Run: the command comes from the store, never from the page
         if BRIDGED and stages_on() and not body.get("attach") and not (body.get("stage") and body.get("act") == "run"):
@@ -6763,6 +6895,10 @@ class Handler(BaseHTTPRequestHandler):
         if not ST.lock.acquire(timeout=180 if ST.compacting else 0):    # (tidying its notes: wait, don't refuse)
             return self._json({"error": "still working on the last one"}, 409)
         try:
+            if heard:
+                HeardCounts.add(*heard, "sent")
+                with HeardCounts._lock:
+                    HeardCounts.last = (*heard, time.monotonic())
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
@@ -6784,6 +6920,8 @@ class Handler(BaseHTTPRequestHandler):
                     said_so_far = gate["text"].strip().lower()
                     if said_so_far.startswith(IGNORE):                   # not meant for him: drop the whole reply
                         gate["open"] = gate["ignored"] = True
+                        if heard:
+                            HeardCounts.add(*heard, "ignored")
                         return send_ev({"t": "ignored"})
                     if t == "delta" and IGNORE.startswith(said_so_far):    # could still turn into "[ignore]"
                         gate["held"].append(kw)
@@ -7028,6 +7166,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        HeardCounts.save()
         BRIDGE.close()
 
 

@@ -96,7 +96,8 @@ class WakeWordsTest(_ServerEnv):
                  mock.patch.object(s.FLOOR, "floor_overlaps", return_value=False), \
                  mock.patch.object(s.Wake, "speaking", return_value=True), \
                  mock.patch.object(s, "speech_seconds", return_value=1), \
+                 mock.patch.object(s, "media_playing", return_value=False), \
                  mock.patch.object(s, "transcribe_pcm", return_value=phrase), \
                  mock.patch.object(s.BUS, "pub") as pub, mock.patch.object(s.Wake, "hush"):
                 s.Wake.check(b"\0" * 64000, time.monotonic())
-                pub.assert_called_once_with(t="barge", listen=False, text="")
+                pub.assert_called_once_with(t="barge", listen=False, text="", path="barge", media="off")
