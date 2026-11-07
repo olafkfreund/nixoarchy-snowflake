@@ -800,16 +800,21 @@ CHAINED_RE = re.compile(r"&&|\|\||[;|&<>`\n]|\$\(")
 # Python twin of isHerdrWrite / isGogSend / gogSendDetail in bridge/send-policy.js (nixi-nixarchy): keep the rules equal.
 # Fail-safe, not a parser: a miss is a hidden send, so a false positive (an extra card) is accepted.
 # Known residual: a wrapper script or alias without the word "gog" / "herdr" in the command.
-_GOG_SEND_WORDS = r"api|send|reply|reply-all|replyall|forward|fwd|autoreply|post|create"
+_GOG_SEND_WORDS = r"api|send|reply|reply-all|replyall|forward|fwd|autoreply|post|create|respond|rsvp"
 _GOG_RE = re.compile(r"\bgog\b", re.I)
 _GOG_WORD_RE = re.compile(r"\b(?:%s)\b" % _GOG_SEND_WORDS, re.I)          # \b, as the JS twin: "send-later" counts
 _GOG_DRAFT_RE = re.compile(r"\bdrafts\s+(?:create|reply|forward|update)\b", re.I)
 _HERDR_WRITE_RE = re.compile(r"\bherdr\b(?:\s+--session\s+\S+)?\s+(?:agent|pane)\s+[\w-]+\s*(\S*)")   # the write verbs stay out of this file (test_no_herdr_writes)
 _GOG_LISTED = {"send", "gmail send", "gmail reply", "gmail reply-all", "gmail forward", "gmail autoreply", "gmail drafts send",
                "chat messages send", "api", "mail send", "gmail replyall", "gmail fwd", "gmail drafts post",
-               "chat messages create", "chat messages post"}
+               "chat messages create", "chat messages post", "chat dm send", "chat dm create", "chat dm post",
+               "calendar respond", "calendar rsvp", "calendar reply"}
 _GOG_POSITIONAL = {"gmail reply", "gmail reply-all", "gmail replyall", "gmail forward", "gmail fwd", "gmail drafts send",
-                   "gmail drafts post", "chat messages send", "chat messages create", "chat messages post"}
+                   "gmail drafts post", "chat messages send", "chat messages create", "chat messages post",
+                   "chat dm send", "chat dm create", "chat dm post"}
+# gog's global flags may come before the command words (`gog -a "$ACCT" --no-input gmail send …`); these take a value
+_GOG_GLOBAL_VALUE = {"-a", "--account", "--color", "--home", "--client", "--access-token", "--quota-project",
+                     "--enable-commands", "--enable-commands-exact", "--disable-commands", "--select"}
 
 
 _GOG_VALUE_FLAGS = {"--body", "--body-html", "--body-file", "--raw-file", "--subject", "--text", "--html", "--file", "--attach"}
@@ -818,7 +823,8 @@ _GOG_ADDRESS_RE = re.compile(r"[^\s@,'\"]+@[^\s@,'\"]+")
 
 def _send_texts(cmd):
     cmd = " ".join(map(str, cmd)) if isinstance(cmd, (list, tuple)) else str(cmd or "")
-    return cmd, re.sub(r"['\"\\]", "", cmd.replace("\\\n", ""))
+    # ${…} and $ go too: g$'o'g and g${X}og are gog to the shell
+    return cmd, re.sub(r"['\"\\$]", "", re.sub(r"\$\{[^}]*\}", "", cmd.replace("\\\n", "")))
 
 
 def _is_gog_send(text):
@@ -856,6 +862,8 @@ def send_detail(cmd):
         if i is None:
             continue
         rest = seg[i + 1:]
+        while rest and rest[0].startswith("-"):
+            rest = rest[2:] if rest[0] in _GOG_GLOBAL_VALUE else rest[1:]
         words = []
         for t in rest:
             if t.startswith("-"):

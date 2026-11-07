@@ -86,6 +86,15 @@ class ApprovalsTest(unittest.TestCase):
                     "gog gmail send --to a@b --subject --cc secret", 'gog gmail send "--to=private words here"'):
             self.assertNotRegex(json.dumps(self.s.send_detail(cmd)), "private|confidential|secret", cmd)
 
+    def test_global_flags_and_new_forms(self):
+        d = self.s.send_detail
+        self.assertEqual(d('gog -a "me@x.y" --no-input gmail send --to a@b --body hi'),
+                         {"kind": "gog", "command": "gmail send", "to": "a@b"})
+        self.assertEqual(d("gog --account=me@x.y -j chat dm send a@b --text hi"),
+                         {"kind": "gog", "command": "chat dm send", "to": "a@b"})
+        for cmd in ("g$'o'g gmail send x", "g${X}og gmail send x", "gog calendar respond c e", "gog calendar rsvp c e"):
+            self.assertTrue(self.s.click_only(cmd), cmd)
+
     def test_detail(self):
         d = self.s.send_detail
         self.assertEqual(d("gog gmail send --to=a@b --cc c@d"), {"kind": "gog", "command": "gmail send", "to": "a@b,c@d"})
