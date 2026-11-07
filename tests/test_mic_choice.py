@@ -59,6 +59,14 @@ class MicChoiceTest(_ServerEnv):
         s.mic_cmds()
         self.assertEqual(len(self.notes()), 2)
 
+    def test_silent_note_is_not_repeated_by_each_new_session(self):
+        s = self.server
+        self.mics.append({"name": "chosen"})
+        for _ in range(2):
+            s.mic_cmds()
+            s._mic_note("The mic you chose (chosen) sends no sound.")
+        self.assertEqual(self.notes(), ["The mic you chose (chosen) sends no sound."])
+
     def test_empty_list_keeps_device_and_change_resets_notice(self):
         s = self.server
         s.mic_cmds()

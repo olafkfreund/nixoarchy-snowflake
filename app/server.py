@@ -2902,10 +2902,11 @@ def mic_cmds(check=True):
     if check and chosen and ":" not in chosen:      # (an ALSA name like hw:1,0 is never a Pulse source: arecord -D still gets it)
         mics = list_mics()
         if mics:
+            gone = f"The mic you chose ({chosen}) is gone. I'm using the default mic, so I may hear your speakers."
             if not any(m["id"] == chosen for m in mics):
                 dev = ""
-                _mic_note(f"The mic you chose ({chosen}) is gone. I'm using the default mic, so I may hear your speakers.")
-            else:
+                _mic_note(gone)
+            elif _MIC_NOTE_LAST == gone:            # found again: a later loss is said again (other notes stay said)
                 _MIC_NOTE_LAST = None
     if check:
         MIC_TARGET = dev
@@ -6933,6 +6934,8 @@ class Handler(BaseHTTPRequestHandler):
                         gate["open"] = gate["ignored"] = True
                         if heard:
                             HeardCounts.add(*heard, "ignored")
+                            with HeardCounts._lock:      # he never answered it: nothing to say "that wasn't me" to
+                                HeardCounts.last = None
                         return send_ev({"t": "ignored"})
                     if t == "delta" and IGNORE.startswith(said_so_far):    # could still turn into "[ignore]"
                         gate["held"].append(kw)

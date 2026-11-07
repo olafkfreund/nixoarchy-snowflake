@@ -174,7 +174,7 @@ class HeardCountsTest(_ServerEnv):
         totals = C.snapshot()["totals"]
         self.assertEqual(totals["wake"]["on"]["sent"], 1)
         self.assertEqual(totals["follow"]["unknown"], {"sent": 1, "ignored": 1})
-        self.assertEqual(C.last[:2], ("follow", "unknown"))
+        self.assertIsNone(C.last)      # an ignored reply has nothing to mark "that wasn't me"
 
     def test_busy_and_stage_answers_do_not_count_or_replace_last(self):
         s, C = self.server, self.server.HeardCounts
