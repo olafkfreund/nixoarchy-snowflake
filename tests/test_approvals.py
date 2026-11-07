@@ -97,6 +97,9 @@ class ApprovalsTest(unittest.TestCase):
 
     def test_expansion_and_word_boundaries(self):
         self.assertTrue(self.s.click_only('echo "${UNSET:-$(gog gmail send --to a@b --body hello)}"'))
+        self.assertTrue(self.s.click_only('gog gmail "${UNSET:-se}nd" --to a@b --body hello'))
+        self.assertTrue(self.s.click_only("gog gmail `echo send` --to a@b"))
+        self.assertEqual(self.s.send_detail("gog gmail send --to actual@example.com --body-file - <<'EOF'\n--bcc=secret@example.com\nEOF")["to"], "")
         d = self.s.send_detail('gog gmail send --to actual@example.com --body="private "--bcc=secret@example.com')
         self.assertNotIn("secret", json.dumps(d))
 

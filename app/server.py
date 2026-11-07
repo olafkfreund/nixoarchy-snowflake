@@ -833,7 +833,9 @@ def _is_gog_send(text):
 
 def click_only(cmd):
     raw, clean = _send_texts(cmd)
-    return any("herdr" in t.lower() or _is_gog_send(t) for t in (raw, clean))
+    # any shell expansion ($…, `…`) in a gog command can assemble a send word ("${U:-se}nd"), so it counts
+    return any("herdr" in t.lower() or _is_gog_send(t) or (_GOG_RE.search(t) and re.search(r"[$`]", raw))
+               for t in (raw, clean))
 
 
 def send_detail(cmd):
@@ -842,6 +844,7 @@ def send_detail(cmd):
     if not any(_is_gog_send(t) for t in (raw, clean)):
         m = _HERDR_WRITE_RE.search(clean)
         return {"kind": "herdr", "pane": m.group(1) if m else ""}
+    heredoc = "<<" in raw or "\n" in raw.replace("\\\n", "")   # stdin or another command: no recipient from it
     try:
         lex = shlex.shlex(raw.replace("\\\n", ""), posix=True, punctuation_chars=True)
         lex.whitespace_split = True
@@ -899,7 +902,7 @@ def send_detail(cmd):
         to.append(value)
     if not to and name in _GOG_POSITIONAL and len(extra) == 1:
         to.append(extra[0])
-    return {"kind": "gog", "command": name, "to": ",".join(to)}
+    return {"kind": "gog", "command": name, "to": "" if heredoc else ",".join(to)}
 
 
 _SENDS_LOG_FIXED = False
