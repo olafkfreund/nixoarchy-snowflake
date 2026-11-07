@@ -6,78 +6,223 @@
 Say “Hey Nixi” and the agent does the work, under nixi's rules.</p>
 
 <p align="center">
-  <a href="#install"><b>Install</b></a> &nbsp;·&nbsp;
-  <a href="#your-first-two-minutes"><b>First steps</b></a> &nbsp;·&nbsp;
-  <a href="#what-is-off-in-nixi-mode"><b>What's off</b></a> &nbsp;·&nbsp;
+  <a href="#set-up-step-by-step"><b>Set up</b></a> &nbsp;·&nbsp;
+  <a href="#what-stays-on-your-machine-and-what-doesnt"><b>Privacy</b></a> &nbsp;·&nbsp;
+  <a href="docs/GETTING-STARTED.md"><b>Getting started</b></a> &nbsp;·&nbsp;
   <a href="docs/GUIDE.md"><b>Full guide</b></a> &nbsp;·&nbsp;
   <a href="#need-help"><b>Help</b></a>
 </p>
 
-Nixi is a small snowflake with a face that floats on your desktop. You talk or type; it hands your words to the
-[nixi](https://github.com/olafkfreund/nixi-nixarchy) bridge, which runs the agent. So everything the agent may do is
-decided by nixi's trust levels, not by the companion:
+## What it is
 
-- **Guide** (default): the agent explains and suggests, and does not change your files.
-- **Mechanic**: the agent may edit, and asks you first. Approval cards appear next to the snowflake; say "yes", "no" or
-  "always", or click.
+Nixi is a small snowflake with a face that floats on your desktop. You talk or type, and he hands your words to the [nixi](https://github.com/olafkfreund/nixi-nixarchy) bridge, which runs the agent.
+Nixi's trust levels decide what the agent may do, not the companion. In **Guide** (the default) the agent explains and changes nothing. In **Mechanic** it may edit, and asks you first.
 
-Type `/mechanic` or `/guide` to switch. The current level is shown in Settings → Brain (it is set by nixi, not by the
-companion).
+## Before you start
 
-## Install
+Each line has a command that tells you if it is ready.
 
-You need [nixi](https://github.com/olafkfreund/nixi-nixarchy) set up with an agent. The companion is a Nix package and
-talks to the agent only through nixi's bridge, so there is nothing else to sign in to.
+- [ ] **NixOS with Home Manager and flakes.** `nix config show experimental-features` lists `flakes`.
+- [ ] **nixi, with an agent signed in.** `command -v nixi` prints a path. Ask the nixi card something: it must answer.
+- [ ] **A microphone.** `pactl list short sources` lists an input that does not end in `.monitor`.
+- [ ] **Speakers or headphones.** `speaker-test -t sine -l 1` makes a sound.
 
-**With the nixi Home Manager module** (recommended; this wires the bridge in for you):
+Just want to look at him? `nix run github:olafkfreund/nixoarchy-snowflake` starts him without the bridge, so the agent is not connected.
 
-```nix
-inputs.nixi-companion.url = "github:olafkfreund/nixoarchy-snowflake";
+## Set up, step by step
 
-# in your Home Manager config
-services.nixi.companion = {
-  enable = true;
-  package = inputs.nixi-companion.packages.${pkgs.system}.default;
-};
-```
+### 0. Get nixi working first
 
-**Just try it** (without the bridge, so the agent part is not connected):
+The companion has no agent of its own. Without nixi he cannot answer. On nixarchy, nixi is already on. Anywhere else, install it from [its README](https://github.com/olafkfreund/nixi-nixarchy#install).
+
+**Do**
 
 ```bash
-nix run github:olafkfreund/nixoarchy-snowflake
-# or
-nix profile install github:olafkfreund/nixoarchy-snowflake
+nixi --tui
 ```
 
-Models for speech (faster-whisper, piper) download into `~/.cache/nixi-companion` the first time you use them.
+**You should see** a terminal chat. Ask it a question and it answers.
 
-## Your first two minutes
+**If not**, the agent is not signed in. Sign in to the agent first (Claude Code, for example), then try again. Nothing below works until this does.
 
-| | Do this | What happens |
-|:-:|---|---|
-| **1** | Run `nixi-companion` | The snowflake appears in the bottom-right corner. Drag it anywhere; it remembers the spot. |
-| **2** | Say **"Hey Nixi"** | The ring lights up and moves with your voice. (Or just **click** it.) |
-| **3** | Ask for something | It goes to the agent through the bridge. Watch the little terminal for each step. |
-| **4** | **Right-click** it | Its menu: talk, folder, hover mode, settings, hide. |
-| **5** | **Push it into a screen edge** | It merges into the edge as a notch with just its eyes. Drag it out to get the snowflake back. |
+### 1. Add the flake input
 
-Bind a hotkey on your desktop, for example on Hyprland: `bind = SUPER, A, exec, nixi-companion listen`.
+**Do** — in your flake:
 
-> [!TIP]
-> Say **"stop"** to interrupt, hold **Space** for push-to-talk, or just start **typing**. **Esc** backs out of anything.
-> **Ctrl+N** (or saying "new chat") starts a fresh conversation.
+```nix
+{
+  inputs.nixi-companion.url = "github:olafkfreund/nixoarchy-snowflake";
+}
+```
 
-## What is off in nixi mode
+**You should see** nothing yet. This only names where the companion comes from.
 
-Because the agent runs under nixi's rules, these are hidden and refused by the companion's server:
+**If not**, and Nix says it cannot fetch the input, check your network and that the URL is spelled as above.
 
-- trust and root modes, and the sudo password card
-- the model picker, thinking effort, cost meter and compact (set `agent`, `model` and `reasoningEffort` in nixi's config)
-- plug-ins, update checks and the "start at login" toggle (your Nix config owns those)
-- history, memory and projects
-- screenshots, live view and `see`
+### 2. Turn it on
 
-Everything else is unchanged: voice in and out, the face and its moods, skins and colours, hover mode and the edge notch.
+**Do** — in your Home Manager config:
+
+```nix
+{
+  services.nixi.companion = {
+    enable = true;
+    package = inputs.nixi-companion.packages.${pkgs.system}.default;
+  };
+}
+```
+
+**You should see** no error when you evaluate the config. `package` is needed: without it the module has no companion to install.
+
+**If not**, and Nix says `services.nixi.companion` does not exist, nixi's Home Manager module is not imported. Add `imports = [ inputs.nixi.homeModules.default ];` (see nixi's README).
+
+### 3. Switch
+
+**Do** — rebuild the way you always do. If Home Manager is part of your NixOS config:
+
+```bash
+sudo nixos-rebuild switch --flake .#<your-host>
+```
+
+If you run Home Manager on its own:
+
+```bash
+home-manager switch --flake .#<your-user>
+```
+
+Then check:
+
+```bash
+command -v nixi-companion
+```
+
+**You should see** a path from `command -v`.
+
+**If not**, the switch failed before it finished. Read its last error. The most common one is `package` unset in step 2.
+
+### 4. Start him, and keep him starting
+
+The module installs the companion. It does not start him at login and does not bind a key. You do both.
+
+**Do** — the first start:
+
+```bash
+nixi-companion
+```
+
+**You should see** the snowflake in the bottom-right corner. Drag it anywhere: it remembers the spot. Running `nixi-companion` again shows or hides it.
+
+Now add start at login and a key. On nixarchy, in a file your `bindings.lua` loads:
+
+```lua
+o.exec_on_start("nixi-companion show")
+o.bind("SUPER + ALT + S", "Nixi companion: show or hide", "nixi-companion")
+o.bind("SUPER + ALT + SHIFT + S", "Nixi companion: listen", "nixi-companion listen")
+```
+
+On plain Hyprland, in `hyprland.conf`:
+
+```ini
+exec-once = nixi-companion show
+bind = SUPER ALT, S, exec, nixi-companion
+bind = SUPER ALT SHIFT, S, exec, nixi-companion listen
+```
+
+**You should see** him again after you log out and in, and the key shows or hides him.
+
+**If not**, and nothing appears, run `nixi-companion doctor`: its "window" part says if the window can start. Then read the log with `nixi-companion log`.
+
+### 5. Type to him
+
+**Do** — click him, or just start typing, then press Enter:
+
+```text
+What can you do?
+```
+
+**You should see** your words, then the agent's answer. The little terminal shows each step.
+
+**If not**, and he never answers, nixi is not reachable. Go back to step 0, and check that `services.nixi.companion.package` is set: without it he has no bridge.
+
+### 6. Let him hear you
+
+**Do** — right-click him, choose settings, open the **Voice** tab and pick your mic under **Microphone**. Then:
+
+```bash
+nixi-companion doctor
+```
+
+**You should see** a bar for the loudest sound in 3 seconds, then `-> looks good`, then `heard:` with the words it understood.
+
+**If not**, and it says `NO VOICE` or `very quiet`, it is the wrong mic, or a muted one. Pick another under **Microphone** and run it again.
+
+> [!NOTE]
+> Speakers on your desk can make him hear his own voice. An echo-cancelled source, if you have one, helps. Headphones always do. [Getting started](docs/GETTING-STARTED.md) has the details.
+
+### 7. Say “Hey Nixi”
+
+**Do** — in the **Voice** tab, check that **“Hey Nixi” wake word** is on (the setting is `wake_word`, on by default). Then say:
+
+```text
+Hey Nixi
+```
+
+**You should see** the ring light up and move with your voice. Then ask. Say “stop” to interrupt. The first time, the speech model downloads under `~/.cache`.
+
+**If not**, he does not wake. Check step 6 first. Then use push-to-talk: hold **Ctrl+Alt+Space**, or click him.
+
+### 8. Give him a voice
+
+**Do** — in the **Voice** tab, tap a voice under **His voice**. The `tts` setting is `auto` by default: Kokoro if installed, then piper, then espeak. Local voices need no account. ElevenLabs is optional, and is in the same tab.
+
+**You should see** that voice speak when you tap it, and speak his replies while **Speak replies out loud** is on.
+
+**If not**, and he is silent, check **Speak replies out loud** and that your speakers are the system output. A robotic voice means only espeak is available. A piper voice downloads the first time you use it.
+
+### 9. Messages through him (optional)
+
+**Do** — open the **Nixi card**, then Settings → Desktop, and turn on **Desktop companion** and **Show notifications through him**. These two switches are in the nixi card, not in the companion's settings.
+
+**You should see** your notifications appear on him instead of in the shell's popups. A click opens them.
+
+**If not**, and the shell's popups still show, your shell lacks nixarchy's notification patch (903). Without it, the popups stay as they are.
+
+### 10. Choose how much he may do
+
+**Do** — type this to him (or say it):
+
+```text
+/mechanic
+```
+
+`/guide` goes back. If you change the level in the nixi card instead, restart him so he reads it:
+
+```bash
+nixi-companion restart
+```
+
+**You should see** the new level in his settings, on the **Brain** tab ("set by nixi: type /mechanic or /guide"). Typing is instant. A change made in the card shows only after the restart.
+
+**If not**, and the level is still the old one after a card change, run the restart again and check that nixi works on its own.
+
+## What stays on your machine, and what doesn't
+
+**Stays on your machine**
+
+- Speech-to-text: the words you say are turned into text here.
+- The local voices (Kokoro, piper, espeak).
+- Notification text. He never logs it, writes it to disk, or gives it to the agent.
+
+**Leaves your machine**
+
+- What you ask goes to the agent's provider, through nixi.
+- The text he speaks goes to ElevenLabs when you switch ElevenLabs on. It is off by default.
+
+## Next
+
+- [Getting started](docs/GETTING-STARTED.md): the first day, one choice at a time.
+- [Guide](docs/GUIDE.md): every setting and command.
+- Tips, and what is off in nixi mode: [Getting started](docs/GETTING-STARTED.md#handy-to-know).
 
 ## Working on it
 
@@ -91,12 +236,21 @@ A PR that touches `app/plugins.py`, `tests/test_plugin_sandbox.py` or the wrappe
 
 ## Need help?
 
-Run **`nixi-companion doctor`** first. It checks your mic and voice in a few seconds.
+Run **`nixi-companion doctor`** first. It checks your window, mic and voice in a few seconds.
 
 | Problem | Fix |
 |---|---|
-| It can't hear me | Check the level meter in `nixi-companion doctor`, then pick the right mic in Settings → Voice. |
-| The agent doesn't answer | Check that nixi works on its own, and that `services.nixi.companion.package` is set. |
+| nixi will not answer (step 0) | Sign the agent in, and test with `nixi --tui`. |
+| The flake input cannot be fetched (step 1) | Check the network and the URL. |
+| `services.nixi.companion` does not exist (step 2) | Import nixi's Home Manager module. |
+| `nixi-companion` is not found (step 3) | The switch failed. Read its last error, and check `package` is set. |
+| No snowflake, or none after login (step 4) | Run `nixi-companion doctor`, then `nixi-companion log`. Add the start-at-login line. |
+| The agent doesn't answer (step 5) | Check that nixi works on its own, and that `services.nixi.companion.package` is set. |
+| It can't hear me (step 6) | Check the level in `nixi-companion doctor`, then pick the right mic in Settings → Voice. |
+| “Hey Nixi” does nothing (step 7) | Check the wake word switch, then use push-to-talk (**Ctrl+Alt+Space**). |
+| No sound, or a robot voice (step 8) | Switch on **Speak replies out loud**. A robot voice means only espeak is available. |
+| Notifications still pop up in the shell (step 9) | The shell needs nixarchy's notification patch (903). |
+| The trust level looks old (step 10) | Run `nixi-companion restart`. |
 | Something else | See [Troubleshooting](docs/GUIDE.md#troubleshooting). |
 
 <br>
@@ -104,6 +258,6 @@ Run **`nixi-companion doctor`** first. It checks your mic and voice in a few sec
 Nixi is a fork of [Void](https://github.com/PLAYER99-void/void) by PLAYER99 (MIT).
 
 <p align="center">
-  <sub>Speech-to-text by <a href="https://github.com/SYSTRAN/faster-whisper">faster-whisper</a> · voice by piper and espeak-ng ·
-  everything runs on your computer · <a href="LICENSE">MIT license</a></sub>
+  <sub>Speech-to-text by <a href="https://github.com/SYSTRAN/faster-whisper">faster-whisper</a> · voice by Kokoro, piper and espeak-ng ·
+  <a href="LICENSE">MIT license</a></sub>
 </p>
