@@ -11,6 +11,7 @@ Local server (127.0.0.1 only) that:
 import argparse
 import array
 import collections
+import datetime
 import hashlib
 import io
 import json
@@ -2878,8 +2879,37 @@ class MicAuto:
             cls.soft = max(1.0, 0.5 / pk)
 
 
-def mic_cmds():
+MIC_TARGET = ""
+_MIC_NOTE_LAST = None
+_MIC_NOTE_CHOICE = None
+
+
+def _mic_note(text):
+    global _MIC_NOTE_LAST
+    if text != _MIC_NOTE_LAST:
+        BUS.pub(t="note", text=text)
+        print(f"[nixi] mic: {text}", file=sys.stderr)
+        _MIC_NOTE_LAST = text
+
+
+def mic_cmds(check=True):
+    """The recorders to try. check=False (state, doctor): no pactl call, no note, MIC_TARGET left alone."""
+    global MIC_TARGET, _MIC_NOTE_LAST, _MIC_NOTE_CHOICE
     dev = (CFG.get("mic_device") or "").strip()
+    chosen = dev
+    if check and chosen != _MIC_NOTE_CHOICE:
+        _MIC_NOTE_LAST, _MIC_NOTE_CHOICE = None, chosen
+    if check and chosen and ":" not in chosen:      # (an ALSA name like hw:1,0 is never a Pulse source: arecord -D still gets it)
+        mics = list_mics()
+        if mics:
+            gone = f"The mic you chose ({chosen}) is gone. I'm using the default mic, so I may hear your speakers."
+            if not any(m["id"] == chosen for m in mics):
+                dev = ""
+                _mic_note(gone)
+            elif _MIC_NOTE_LAST == gone:            # found again: a later loss is said again (other notes stay said)
+                _MIC_NOTE_LAST = None
+    if check:
+        MIC_TARGET = dev
     cmds = []
     if CFG.get("mic_cmd"):
         cmds.append(shlex.split(CFG["mic_cmd"]))
@@ -3117,12 +3147,18 @@ def request_language(code, force=False):
 def list_mics():
     if not shutil.which("pactl"):
         return []
-    out = subprocess.run(["pactl", "-f", "json", "list", "sources"], capture_output=True, text=True).stdout
+    try:
+        out = subprocess.run(["pactl", "-f", "json", "list", "sources"], capture_output=True, text=True, timeout=3).stdout
+    except subprocess.SubprocessError:
+        return []
     try:
         return [{"id": s["name"], "label": s.get("description") or s["name"]} for s in json.loads(out)
                 if ".monitor" not in s.get("name", "")]
     except ValueError:
-        out = subprocess.run(["pactl", "list", "short", "sources"], capture_output=True, text=True).stdout
+        try:
+            out = subprocess.run(["pactl", "list", "short", "sources"], capture_output=True, text=True, timeout=3).stdout
+        except subprocess.SubprocessError:
+            return []
         return [{"id": ln.split("\t")[1], "label": ln.split("\t")[1]} for ln in out.splitlines()
                 if "\t" in ln and ".monitor" not in ln]
 
@@ -3138,6 +3174,13 @@ _STOP_TAIL = r"(?:\W+(?:nixi|please|now))?"
 @lru_cache(maxsize=3)
 def _stop_re(lang):
     return re.compile(_STOP_WRAP + r"(?:" + _STOP_WORDS + ("|" + _STOP_EXTRA[lang] if lang in _STOP_EXTRA else "") + r")" + _STOP_TAIL)
+
+
+@lru_cache(maxsize=3)
+def _not_me_re(lang):
+    words = {"en": r"that wasn't for you|not you|i wasn't talking to you|that wasn't meant for you",
+             "nb": r"det var ikke til deg|ikke deg", "pl": r"to nie do ciebie|nie ty"}
+    return re.compile(_STOP_WRAP + r"(?:" + words["en"] + ("|" + words[lang] if lang in words and lang != "en" else "") + r")" + _STOP_TAIL)   # (English always works, as with stop)
 # sent ahead of a follow-up (said without "hey Nixi") so Claude can tell if it was even meant for him
 FOLLOW_NOTE = ("(Voice note from Nixi: the mic picked this up a few seconds after your last reply, without \"hey Nixi\". "
                "If it is clearly not meant for you, e.g. the user thinking out loud, talking to themselves or to someone "
@@ -3209,6 +3252,140 @@ class Beat:
         if cls.want() and not (cls.thread and cls.thread.is_alive()):
             cls.thread = threading.Thread(target=cls.run, daemon=True)
             cls.thread.start()
+
+
+def media_playing():
+    """True if some stream is uncorked, unmuted, not Nixi's own, on an unmuted sink; False if none; None if unknown (#216)."""
+    if not shutil.which("pactl"):
+        return None
+    try:
+        ins = json.loads(Ambient.run(["pactl", "-f", "json", "list", "sink-inputs"]) or "")
+        live = [i.get("sink") for i in ins if not i.get("corked") and not i.get("mute")
+                and (i.get("properties") or {}).get("application.name") != "Nixi"]
+        if not live:
+            return False
+        sinks = json.loads(Ambient.run(["pactl", "-f", "json", "list", "sinks"]) or "")
+        return any(not s.get("mute") for s in sinks if s.get("index") in live)
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+class HeardCounts:
+    PATHS = ("wake", "follow", "barge")
+    MEDIA = ("on", "off", "unknown")
+    OUTCOMES = ("sent", "ignored", "not_me")
+    _lock = threading.RLock()
+    _days = None
+    _saved = 0.0
+    _flush = None                            # a save waiting for the minute to pass, so a late count isn't held for hours
+    last = None
+    turn = last_turn = 0                     # which turn is running, and which one `last` belongs to
+
+    @classmethod
+    def _prune(cls):
+        today = datetime.datetime.now().date()
+        cls._days = {day: cells for day, cells in cls._days.items()
+                     if 0 <= (today - datetime.date.fromisoformat(day)).days < 14}
+
+    @classmethod
+    def _load(cls):
+        if cls._days is not None:
+            return
+        cls._days = {}
+        try:
+            raw = json.loads((DATA_DIR / "heard-counts.json").read_text())
+            if isinstance(raw, dict):
+                for day, paths in raw.items():
+                    try:
+                        datetime.date.fromisoformat(day)
+                    except (TypeError, ValueError):
+                        continue
+                    if not isinstance(paths, dict):
+                        continue
+                    cells = {}
+                    for path, medias in paths.items():
+                        if path not in cls.PATHS or not isinstance(medias, dict):
+                            continue
+                        for media, outcomes in medias.items():
+                            if media not in cls.MEDIA or not isinstance(outcomes, dict):
+                                continue
+                            for outcome, count in outcomes.items():
+                                if outcome in cls.OUTCOMES and type(count) is int and count >= 0:
+                                    cells.setdefault(path, {}).setdefault(media, {})[outcome] = count
+                    if cells:
+                        cls._days[day] = cells
+        except (OSError, ValueError, TypeError):
+            pass
+        cls._prune()
+
+    @classmethod
+    def add(cls, path, media, outcome):
+        if path not in cls.PATHS or media not in cls.MEDIA or outcome not in cls.OUTCOMES:
+            return
+        with cls._lock:
+            cls._load()
+            cls._prune()
+            cells = cls._days.setdefault(datetime.datetime.now().date().isoformat(), {})
+            counts = cells.setdefault(path, {}).setdefault(media, {})
+            counts[outcome] = counts.get(outcome, 0) + 1
+            if time.monotonic() - cls._saved >= 60:
+                cls.save()
+            elif cls._flush is None:
+                cls._flush = threading.Timer(60, cls._timed_save)
+                cls._flush.daemon = True
+                cls._flush.start()
+
+    @classmethod
+    def _timed_save(cls):
+        with cls._lock:
+            cls._flush = None
+            cls.save()
+
+    @classmethod
+    def snapshot(cls):
+        with cls._lock:
+            cls._load()
+            cls._prune()
+            today = datetime.datetime.now().date()
+            days = {day: cells for day, cells in cls._days.items() if (today - datetime.date.fromisoformat(day)).days < 7}
+            totals = {}
+            for paths in days.values():
+                for path, medias in paths.items():
+                    for media, outcomes in medias.items():
+                        for outcome, count in outcomes.items():
+                            cell = totals.setdefault(path, {}).setdefault(media, {})
+                            cell[outcome] = cell.get(outcome, 0) + count
+            return {"days": days, "totals": totals}
+
+    @classmethod
+    def save(cls):
+        with cls._lock:
+            cls._load()
+            cls._prune()
+            path = DATA_DIR / "heard-counts.json"
+            tmp = path.with_suffix(".json.nixi-tmp")
+            try:
+                DATA_DIR.mkdir(parents=True, exist_ok=True)
+                tmp.write_text(json.dumps(cls._days))
+                os.replace(tmp, path)
+                cls._saved = time.monotonic()
+            except OSError:
+                pass
+
+    @classmethod
+    def mark_open(cls):
+        with cls._lock:
+            return cls.last is not None and time.monotonic() - cls.last[2] < 120
+
+    @classmethod
+    def mark_not_me(cls):
+        with cls._lock:
+            if not cls.mark_open():
+                return False
+            path, media, _ = cls.last
+            cls.last = None
+            cls.add(path, media, "not_me")
+            return True
 
 
 # what the speech model "hears" in background noise — never treat these as a follow-up request
@@ -3293,12 +3470,15 @@ class Wake:
             except Exception as e:  # noqa: BLE001
                 if str(e) != last:                   # (no mic plugged in: say so once, then check now and then)
                     print(f"[nixi] wake word: {e}", file=sys.stderr)
+                    _mic_note(f"I can't open the mic: {e}")
                 time.sleep(5 if str(e) != last else 30)
                 last = str(e)
 
     @classmethod
     def session(cls):
         mic, _name, buf = open_mic()
+        mic_target = MIC_TARGET if not CFG.get("mic_cmd") else ""  # shortcut: custom recorders may ignore the device; check them if mic_cmd uses one
+        zero_frames, zero_noted = 0, False
         fl = Floor()
         floor, voiced, seg, in_speech, last_voice, started = None, 0, bytearray(), False, 0.0, 0.0
         pre, n, vad_at, vad_last = bytearray(), 0, 0.0, 0.0
@@ -3311,6 +3491,11 @@ class Wake:
                     return
                 while len(buf) >= FRAME:
                     fr, buf = buf[:FRAME], buf[FRAME:]
+                    if mic_target and not zero_noted:
+                        zero_frames = zero_frames + 1 if not any(fr) else 0
+                        if zero_frames >= 10 * RATE * 2 // FRAME:
+                            _mic_note(f"The mic you chose ({mic_target}) sends no sound.")
+                            zero_noted = True
                     s = memoryview(fr).cast("h")
                     rms = (sum(x * x for x in s) / (len(fr) // 2)) ** 0.5 / 32768.0 * MicAuto.soft
                     # (his own voice, and the first seconds of yours, don't count as background)
@@ -3379,25 +3564,40 @@ class Wake:
         except Exception as e:  # noqa: BLE001
             print(f"[nixi] wake word stt: {e}", file=sys.stderr)
             return
+        phrase = (text or "").strip(" .,!?").replace("\u2019", "'").casefold()
+        if _not_me_re(stages.lang_active()).fullmatch(phrase):
+            if cls.speaking():
+                BUS.pub(t="barge", listen=False, text="")
+                cls.hush()
+                HeardCounts.mark_not_me()
+            else:
+                own = HeardCounts.last_turn == HeardCounts.turn      # (the running turn is the marked one, not a later typed one)
+                if HeardCounts.mark_not_me():
+                    if own and ST.lock.locked():                     # still working on that answer: drop it, as Esc does
+                        stop_proc()
+                    Speaker.say("Sorry.", None, None, False, None)
+            return
         if cls.speaking():
-            if _stop_re(stages.lang_active()).fullmatch((text or "").strip(" .,!?").casefold()):
+            if _stop_re(stages.lang_active()).fullmatch(phrase):
                 BUS.pub(t="barge", listen=False, text="")
                 cls.hush()
                 return
+        # (after the stop checks, so a slow pactl never delays "stop")
+        media = {True: "on", False: "off", None: "unknown"}[media_playing()]
         m = WAKE_RE.match(text or "")
         if cls.speaking():
             if m:
-                BUS.pub(t="barge", listen=True, text=m.group(2).strip(" .,!?"))
+                BUS.pub(t="barge", listen=True, text=m.group(2).strip(" .,!?"), path="barge", media=media)
                 cls.hush()
             return
         if m:
             rest = m.group(2).strip(" .,!?")
-            BUS.pub(t="wake", text=rest)
+            BUS.pub(t="wake", text=rest, path="wake", media=media)
         elif follow and cls.in_window(started):          # (cancelled while we were transcribing)
             said = (text or "").strip(" .,!?")
             if len(said.split()) >= 2 and said.lower() not in NOISE_WORDS:     # (a stray word isn't a request)
                 cls.follow_until = 0.0
-                BUS.pub(t="wake", text=said, follow=True)
+                BUS.pub(t="wake", text=said, follow=True, path="follow", media=media)
 
 
 def doctor():
@@ -3410,7 +3610,7 @@ def doctor():
             if ".monitor" not in ln:
                 print("  " + ln + ("   <- default" if dflt and dflt in ln else ""))
         print()
-    print("recorders tried in order:", ", ".join(c[0] for c in mic_cmds()) or "NONE")
+    print("recorders tried in order:", ", ".join(c[0] for c in mic_cmds(check=False)) or "NONE")
     print("recording 3 seconds — keep talking the whole time…", flush=True)
     try:
         mic, name, buf = open_mic()
@@ -5959,7 +6159,7 @@ def state_info():
         "tts": tts_engine() or (tts_engine(local=True) if CFG["tts"] == "elevenlabs" else None), "tts_choice": CFG["tts"], "tts_fallback": CFG.get("tts_fallback", "auto"), "gen": Speaker.gen, "engines": engine_list(),
         "eleven": {"key": eleven.has_key(), "on": CFG.get("eleven_on") is True, "voice": CFG.get("eleven_voice") or "",
                    "used_today": eleven.today()["used"], "cap": eleven_cap(), "voices": evoices, "error": eerr},
-        "mic": bool(mic_cmds()), "stt": "ready" if _whisper else (_whisper_err or "loading"),
+        "mic": bool(mic_cmds(check=False)), "stt": "ready" if _whisper else (_whisper_err or "loading"),
         "trust": trust_nixi() if BRIDGED else trust(), "model": CFG["model"] or "default", "effort": CFG.get("effort") or "", "lean": bool(CFG.get("lean", True)), "max_cost_usd": CFG.get("max_cost_usd") or 0,
         "compact_tokens": CFG.get("compact_tokens") or 0, "root": bool(CFG.get("root_mode")), "root_ok": True,
 
@@ -6071,6 +6271,10 @@ class Handler(BaseHTTPRequestHandler):
             if not secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
                 return self._json({"error": "forbidden"}, 403)
             return self._json(plugins_api())
+        if p == "/api/heard":
+            if not secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
+                return self._json({"error": "forbidden"}, 403)
+            return self._json({**HeardCounts.snapshot(), "mark_open": HeardCounts.mark_open()})
         if p.startswith("/api/eleven/preview/"):
             if not secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
                 return self._json({"error": "forbidden"}, 403)
@@ -6130,6 +6334,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"theme": THEME})
             if p == "/api/ask":
                 return self.ask()
+            if p == "/api/heard/not-me":
+                return self._json({"ok": HeardCounts.mark_not_me()})
             if p in ("/api/companion-plugins", "/api/companion-plugins/reload", "/api/companion-plugins/consent"):      # (window token only: not in TOOL_PATHS)
                 b = json.loads(self._body() or b"{}")
                 b = b if isinstance(b, dict) else {}
@@ -6660,6 +6866,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def ask(self):
         body = json.loads(self._body() or b"{}")
+        heard = body.get("heard")
+        heard = (heard["path"], heard["media"]) if isinstance(heard, dict) and heard.get("path") in HeardCounts.PATHS and heard.get("media") in HeardCounts.MEDIA else None
         said = (body.get("prompt") or "").strip()
         run_cmd = tok = None                                   # a stage's Run: the command comes from the store, never from the page
         if BRIDGED and stages_on() and not body.get("attach") and not (body.get("stage") and body.get("act") == "run"):
@@ -6713,6 +6921,12 @@ class Handler(BaseHTTPRequestHandler):
         if not ST.lock.acquire(timeout=180 if ST.compacting else 0):    # (tidying its notes: wait, don't refuse)
             return self._json({"error": "still working on the last one"}, 409)
         try:
+            with HeardCounts._lock:
+                HeardCounts.turn += 1
+                if heard:
+                    HeardCounts.last, HeardCounts.last_turn = (*heard, time.monotonic()), HeardCounts.turn
+            if heard:
+                HeardCounts.add(*heard, "sent")
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
@@ -6734,6 +6948,10 @@ class Handler(BaseHTTPRequestHandler):
                     said_so_far = gate["text"].strip().lower()
                     if said_so_far.startswith(IGNORE):                   # not meant for him: drop the whole reply
                         gate["open"] = gate["ignored"] = True
+                        if heard:
+                            HeardCounts.add(*heard, "ignored")
+                            with HeardCounts._lock:      # he never answered it: nothing to say "that wasn't me" to
+                                HeardCounts.last = None
                         return send_ev({"t": "ignored"})
                     if t == "delta" and IGNORE.startswith(said_so_far):    # could still turn into "[ignore]"
                         gate["held"].append(kw)
@@ -6978,6 +7196,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        HeardCounts.save()
         BRIDGE.close()
 
 

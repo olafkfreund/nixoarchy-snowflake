@@ -23,6 +23,7 @@ class FollowHoldTest(_ServerEnv):
         for target, name, kw in (
             (s.MicAuto, "learn", {}),
             (s, "speech_seconds", {"return_value": 1}),
+            (s, "media_playing", {"return_value": False}),
             (s.FLOOR, "floor_overlaps", {"return_value": False}),
             (s.BUS, "pub", {"side_effect": lambda **event: self.events.append(event)}),
         ):
@@ -106,7 +107,7 @@ class FollowHoldTest(_ServerEnv):
 
         with mock.patch.object(self.server, "transcribe_pcm", side_effect=transcribe):
             W.check(b"\0" * 32000, started)
-        self.assertIn({"t": "wake", "text": "what time is it", "follow": True}, self.events)
+        self.assertIn({"t": "wake", "text": "what time is it", "follow": True, "path": "follow", "media": "off"}, self.events)
 
     def test_new_window_drops_old_speech(self):
         W = self.server.Wake
@@ -132,7 +133,7 @@ class FollowHoldTest(_ServerEnv):
 
         with mock.patch.object(self.server, "transcribe_pcm", side_effect=transcribe):
             W.check(b"\0" * 32000, started)
-        self.assertIn({"t": "wake", "text": "what time is it"}, self.events)
+        self.assertIn({"t": "wake", "text": "what time is it", "path": "wake", "media": "off"}, self.events)
 
 
 if __name__ == "__main__":
