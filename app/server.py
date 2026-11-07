@@ -12,6 +12,7 @@ import argparse
 import array
 import collections
 import datetime
+import email.utils
 import hashlib
 import io
 import json
@@ -218,6 +219,7 @@ DEFAULTS = {
     "ambient_system": True, "ambient_calendar": False, "ambient_weather": False,
     # desktop awareness (#133): all off but the per-category sound and the spoken categories
     "proactive": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"], "agent_voice_mute": [],
+    "mail_on": False, "mail_accounts": [], "mail_model": "",       # hear and answer mail (#210): off, no address, no summaries
     "notify_sound": True, "look_meeting": False, "look_music": False,
     "look_beat": False, "notify_speak_subject": False,
     "look_fullscreen": False, "react_load": False, "react_break": False, "react_welcome": False,
@@ -5739,6 +5741,135 @@ def day_next():
     return {"say": day.whats_next(snap), "mood": "happy"}
 
 
+# ---------------------------------------------------------------- mail (#210)
+# A board of unread mail the server makes itself. The agent never sees a message, an id or a draft: ids stay in the
+# store behind tokens, nothing is written, and gog's stderr and an error's text are dropped (only its class name is kept).
+MAIL_LOCK = threading.Lock()
+MAIL_GEN = DRAFT_GEN = 0       # MAIL_GEN: any mail setting changed (list/hear work started before it is dropped); DRAFT_GEN: a newer draft request or Cancel
+MAIL_DRAFT = None              # step 4: the one draft, under MAIL_LOCK
+MAIL_ADDR = re.compile(r"[^\s@,\"'<>()\\;:]+@[^\s@,\"'<>()\\;:]+")
+MAIL_QUERY = "in:inbox is:unread newer_than:3d"
+MAIL_CODE = re.compile(r"\b\d{2,4}(?:[ -]\d{2,4}){1,3}\b|\b\d{4,10}\b|\b(?=[A-Za-z0-9]{6,10}\b)(?:[A-Za-z]*\d){2}[A-Za-z0-9]*\b", re.I)   # Inbox.OTP's three code shapes
+MAIL_LINK = re.compile(r"https?://\S+|www\.\S+", re.I)
+
+
+def _gog(args, stdin=None, timeout=20):
+    """gog as an argv list, no shell, stderr dropped -> its parsed JSON, or raises."""
+    r = subprocess.run(["gog", *args], input=stdin, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=timeout, check=True)
+    return json.loads(r.stdout)
+
+
+def mail_clean(text, limit):
+    """Untrusted mail text for the board, a prompt or a spoken line: no control, direction or format characters, no URLs,
+    no secret-looking lines, at most `limit` bytes (cut on a character boundary)."""
+    text = "".join(c for c in _clean(text) if unicodedata.category(c) != "Cf")
+    text = "\n".join(l for l in MAIL_LINK.sub("[link]", text).splitlines() if not SECRET_LINE.search(l))
+    return text.encode("utf-8")[:limit].decode("utf-8", "ignore")
+
+
+def mail_otp(fields):
+    return bool(Inbox.OTP.search("\n".join(fields)))
+
+
+def mail_scrub(fields, otp=None):
+    """The fields of one message -> the same, with every code-shaped token "[code]" when the message talks about a code
+    (otp True, or None and Inbox.OTP matches the fields together). Best effort: it over-matches on purpose."""
+    if otp is None:
+        otp = mail_otp(fields)
+    return [MAIL_CODE.sub("[code]", f) for f in fields] if otp else list(fields)
+
+
+def mail_gmail_accounts():
+    """Addresses gog is signed in to that can read mail."""
+    got = _gog(["auth", "list", "--json"])
+    return [a["email"] for a in got.get("accounts") or [] if isinstance(a, dict) and isinstance(a.get("email"), str) and "gmail" in (a.get("services") or [])]
+
+
+def mail_accounts():
+    """The addresses mail may use: chosen in Settings and still signed in with gmail, looked up every time."""
+    chosen = CFG.get("mail_accounts") or []
+    return [a for a in mail_gmail_accounts() if a in chosen] if chosen else []
+
+
+def mail_age(iso):
+    try:
+        secs = (datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(str(iso).replace("Z", "+00:00"))).total_seconds()
+    except (TypeError, ValueError):
+        return ""
+    return "now" if secs < 60 else f"{int(secs // 60)}m" if secs < 3600 else f"{int(secs // 3600)}h" if secs < 86400 else f"{int(secs // 86400)}d"
+
+
+def mail_reset():
+    """A mail setting changed: drop the draft, void work still running, close a mail board."""
+    global MAIL_GEN, DRAFT_GEN, MAIL_DRAFT
+    with MAIL_LOCK:
+        MAIL_GEN += 1
+        DRAFT_GEN += 1
+        MAIL_DRAFT = None
+    if STAGES.forget_where(lambda pg: pg.get("kind") == "mail"):
+        BUS.pub(t="stage_close")
+
+
+def mail_on_screen():
+    """A mail board or a reply draft is up."""
+    cur = STAGES.current()
+    with MAIL_LOCK:
+        return bool(cur and cur.get("kind") == "mail") or MAIL_DRAFT is not None
+
+
+def mail_stage(st, before):
+    """List the unread mail off the turn, then show it, unless mail was switched or the stage on screen changed meanwhile."""
+    with MAIL_LOCK:
+        gen = MAIL_GEN
+    if not CFG.get("mail_on") or not BRIDGED or not stages_on():
+        return
+    rows = []
+    try:
+        accounts = mail_accounts()
+    except Exception as e:  # noqa: BLE001
+        print("mail:", type(e).__name__, file=sys.stderr)
+        return
+    for acct in accounts:
+        try:
+            for m in _gog(["--readonly", "--json", "-a", acct, "gmail", "messages", "search", MAIL_QUERY, "--max", "5"]).get("messages") or []:
+                if not isinstance(m, dict) or not isinstance(m.get("id"), str) or not isinstance(m.get("threadId"), str) or not m["id"] or not m["threadId"]:
+                    continue
+                addr = email.utils.parseaddr(str(m.get("from") or ""))[1]
+                sender, subject = mail_scrub([mail_clean(addr if MAIL_ADDR.fullmatch(addr) else "", 120).strip(), mail_clean(m.get("subject"), 200).strip()])
+                rows.append({"account": acct, "from": sender or "unknown sender", "subject": subject or "(no subject)", "age": mail_age(m.get("internalDateIso")),
+                             "id": m["id"], "thread": m["threadId"]})
+        except Exception as e:  # noqa: BLE001
+            print("mail:", type(e).__name__, file=sys.stderr)
+            rows.append({"account": acct, "from": "", "subject": f"Couldn't read {acct}", "age": "", "id": "", "thread": ""})
+    with MAIL_LOCK:
+        if gen == MAIL_GEN and CFG.get("mail_on") and stages_on() and STAGES.current() is before:
+            BUS.pub(t="stage", **stage_event(STAGES.put({"v": 1, "kind": "mail", "rows": rows})))
+
+
+def mail_open():
+    """The menu or a phrase asks for the mail board: -> what he says. No agent turn."""
+    if not CFG.get("mail_on"):
+        return {"say": "Mail is off. You can switch it on in Settings.", "mood": "curious"}
+    if not BRIDGED or not stages_on():
+        return {"say": "Mail needs answer boards on in nixi mode.", "mood": "curious"}
+    threading.Thread(target=mail_stage, args=(None, STAGES.current()), daemon=True).start()
+    return {"say": "Let me look at your mail.", "mood": "curious"}
+
+
+def mail_options():
+    """Settings: the addresses gog can read mail for, and the Ollama models on this machine. A failed lookup is an empty list."""
+    try:
+        accounts = mail_gmail_accounts()
+    except Exception:  # noqa: BLE001
+        accounts = []
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=5) as r:
+            models = [m["name"] for m in json.loads(r.read(1 << 20)).get("models") or [] if isinstance(m, dict) and isinstance(m.get("name"), str)]
+    except Exception:  # noqa: BLE001
+        models = []
+    return {"accounts": accounts, "models": models}
+
+
 def refresh_stage(token):
     got = STAGES.get(token)
     if not got or got[0] != "refresh" or Desk.locked() is True:
@@ -5838,6 +5969,8 @@ def stage_act(token, act):
     if act == "refresh":
         return refresh_stage(token)
     got = STAGES.get(token) if act in ("copy", "open", "play", "session", "terminal") else None
+    if got and got[0].startswith("mail_"):                # mail tokens are only for the mail routes (#210)
+        got = None
     if act in ("session", "terminal") and got and got[0] == act:    # the desk: a herdr session's window, or a fresh terminal
         try:
             argv = attach_argv(got[1]["pane"]) if act == "session" else ["xdg-terminal-exec"]
@@ -6325,6 +6458,7 @@ def state_info():
         **{k: bool(CFG.get(k, k == "ambient_system")) for k in Ambient.FLAG.values()},
         "projects": quick.projects(),
         **{k: bool(CFG.get(k, k == "notify_sound")) for k in NOTIFY_FLAGS}, "notify_speak": CFG.get("notify_speak", ["meeting"]),
+        "mail_on": CFG.get("mail_on") is True, "mail_accounts": CFG.get("mail_accounts") or [], "mail_model": CFG.get("mail_model") or "",
         "agent_voice_mute": CFG.get("agent_voice_mute") or [],
         "quick_actions": CFG.get("quick_actions") or [], "memory_count": len(mem_load()),
         "language": lang.norm(CFG.get("language")), "lang_active": lang.active, "lang_status": lang_status, "date_locale": lang.LANGS[lang.active]["date"], "lines": lang.lines(),
@@ -6421,6 +6555,10 @@ class Handler(BaseHTTPRequestHandler):
             if not secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
                 return self._json({"error": "forbidden"}, 403)
             return self._json(plugins_api())
+        if p == "/api/mail/options":                             # Settings → Mail; the window's token only
+            if not secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
+                return self._json({"error": "forbidden"}, 403)
+            return self._json(mail_options())
         if p == "/api/heard":
             if not secrets.compare_digest(self.headers.get("X-Nixi-Token") or "", TOKEN):
                 return self._json({"error": "forbidden"}, 403)
@@ -6662,6 +6800,15 @@ class Handler(BaseHTTPRequestHandler):
                         upd[key] = bool(b[key])
                 if "answer_stages" in b and not b["answer_stages"]:
                     stages_off()
+                if "mail_on" in b:
+                    upd["mail_on"] = bool(b["mail_on"])
+                ma = b.get("mail_accounts")
+                if isinstance(ma, list) and len(ma) <= 5 and all(isinstance(x, str) and MAIL_ADDR.fullmatch(x) for x in ma):
+                    upd["mail_accounts"] = list(dict.fromkeys(ma))
+                mm = b.get("mail_model")
+                if isinstance(mm, str) and len(mm) <= 80 and re.fullmatch(r"[\w.:-]*", mm):
+                    upd["mail_model"] = mm
+                mail_changed = any(k in upd and upd[k] != CFG.get(k, DEFAULTS[k]) for k in ("mail_on", "mail_accounts", "mail_model"))
                 am = b.get("agent_voice_mute")
                 if isinstance(am, list) and all(x in AGENT_NAMES for x in am):
                     upd["agent_voice_mute"] = list(dict.fromkeys(am))
@@ -6705,6 +6852,8 @@ class Handler(BaseHTTPRequestHandler):
                                 if tts_mode() in ("auto", "piper") and VOICES[upd["voice"]].get("piper"):
                                     fetch_voice(localize(VOICES[upd["voice"]], key=upd["voice"])["piper"])
                             save_config(**upd)
+                        if mail_changed:
+                            mail_reset()
                         if "language" in upd or "whisper_model" in upd:
                             request_language(lang.norm(CFG.get("language")), force="whisper_model" in upd)
                     if "voice_by_character" in upd or ("look" in upd and CFG.get("voice_by_character")):
@@ -6759,6 +6908,8 @@ class Handler(BaseHTTPRequestHandler):
                     r = {"say": say, "mood": "curious"} if say else None
                 elif r and "whats_next" in r:            # the day desk's cached answer (#144): no agent turn
                     r = day_next()
+                elif r and "mail" in r:                  # the mail board, off the turn (#210)
+                    r = mail_open()
                 elif r and "nixi_ask" in r:
                     r = {"say": open_in_nixi(r["nixi_ask"]), "mood": "happy"} if BRIDGED else None
                 elif r and "session_show" in r:
@@ -6772,6 +6923,8 @@ class Handler(BaseHTTPRequestHandler):
                     APPROVALS.reset()
                     r["state"] = state_info()
                 return self._json({"handled": bool(r), **(r or {})})
+            if p == "/api/mail/open":                # the menu; the window's token only (not in TOOL_PATHS)
+                return self._json(mail_open())
             if p == "/api/nixi-ask":
                 if not BRIDGED:
                     return self._json({"error": "only in nixi mode"}, 403)
@@ -6822,6 +6975,8 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/capture":
                 if BRIDGED:
                     return self._json({"error": "off in nixi mode"}, 403)
+                if mail_on_screen():                  # a picture of the screen would carry the mail (#210)
+                    return self._json({"error": "mail is on screen"}, 403)
                 b = json.loads(self._body() or b"{}")
                 kind = b.get("kind", "screen")
                 if not full:                          # Claude's commands may look at the screen, never your clipboard
@@ -7167,9 +7322,9 @@ class Handler(BaseHTTPRequestHandler):
                         out(**kw)
                         threading.Thread(target=plugin_stage_thread, args=(st["id"], said, STAGES.current()), daemon=True).start()
                         return
-                    if st and st["kind"] in ("video", "day"):
+                    if st and st["kind"] in ("video", "day", "mail"):
                         out(**kw)                                                      # (the turn ends now; the search may take 8 s)
-                        threading.Thread(target=video_stage if st["kind"] == "video" else day_stage, args=(st, STAGES.current()), daemon=True).start()
+                        threading.Thread(target={"video": video_stage, "day": day_stage, "mail": mail_stage}[st["kind"]], args=(st, STAGES.current()), daemon=True).start()
                         return
                     if st:
                         out(t="stage", **stage_event(STAGES.put(desk_stage(st) if st["kind"] in stages.SERVER_KINDS else st)))
