@@ -938,7 +938,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <div class="h" id="locErr" style="margin:7px 0 0;color:#e8836f"></div></div>
       <div class="row"><div class="t">Push-to-talk hotkey</div><div class="h" id="pttHelp">Hold it anywhere, even in another app, to talk. Let go to send.</div>
         <div class="bar" id="pttBar"><button class="btn" id="pttSet"></button><button class="btn" id="pttOff">Turn off</button></div></div>
-      <div class="row"><div class="t">Microphone</div><select id="micSel"></select></div>
+      <div class="row"><div class="t">Microphone</div><select id="micSel"></select><div class="h" id="heardLine"></div></div>
       <div class="row"><div class="t">Speech recognition</div><div class="h">Better understands you more often but takes a moment longer.</div><div class="seg" id="sttChips"></div><div class="h verr" id="sttErr"></div></div>
     </div>
     <!-- ================= BRAIN ================= -->
@@ -2283,12 +2283,13 @@ function onEvent(ev){
     if(hiddenNow) native('show');
     restore(15000,true);
     if(info.hover){ comeBack().then(()=>onEvent(ev)); return; }
-    if(ev.follow){ if(busy||ask.classList.contains('on')) return; wake(); send(ev.text,{follow:true}); return; }   // talked right after he answered: no "hey Nixi" needed
+    const heard=ev.path?{path:ev.path,media:ev.media}:null;       // how he was reached, for the server's tally (#216)
+    if(ev.follow){ if(busy||ask.classList.contains('on')) return; wake(); send(ev.text,{follow:true,heard}); return; }   // talked right after he answered: no "hey Nixi" needed
     poke('surprised',500); wake(); sfx('wake');
-    if(ev.text && ev.text.split(/\s+/).length>=2) send(ev.text); else if(!busy) startRec('auto'); else tick("one sec — I'm still on the last thing");
+    if(ev.text && ev.text.split(/\s+/).length>=2) send(ev.text,{heard}); else if(!busy) startRec('auto',heard); else tick("one sec — I'm still on the last thing");
   }
   else if(ev.t==='barge'){ if(!playing) return; agentStop(); sfx('pop'); poke('surprised',600);
-    if(ev.listen){ if(ev.text&&ev.text.split(/\s+/).length>=2) send(ev.text); else startRec('auto'); } else tick('okay, okay — shh'); }
+    if(ev.listen){ const heard=ev.path?{path:ev.path,media:ev.media}:null; if(ev.text&&ev.text.split(/\s+/).length>=2) send(ev.text,{heard}); else startRec('auto',heard); } else tick('okay, okay — shh'); }
   else if(ev.t==='remind'){ if(hiddenNow) native('show'); restore(12000,false); if(info.hover) comeBack(); sfx('remind'); poke('excited',1800); say(ev.text); tick('⏰ '+ev.text); }
   else if(ev.t==='spk'){ const it=spkMap.get(ev.id); if(!it) return; spkMap.delete(ev.id); spkGuard=performance.now()+ev.at+ev.dur*1000;
     playing=true; setSpkEngine(ev.engine||'');
@@ -2335,11 +2336,11 @@ function onEvent(ev){
 }
 
 /* ================= mic (recorded by the server — no browser permissions involved) ================= */
-async function startRec(mode){
+async function startRec(mode,heard){      // heard: only when his name or a barge started it; click, key and push-to-talk pass none
   if(rec||transcribing||(busy&&mode!=='approve')) return null;
   if(mode!=='approve') agentStop();        // (agentStop is shush() and a cleared summary queue)
   wake(); hideAsk(); menu(false);
-  const r=rec={mode,stopping:false,opened:false,cancelled:false};
+  const r=rec={mode,stopping:false,opened:false,cancelled:false,heard:heard||null};
   if(mode!=='approve'){ capShow(); setYou(''); himSet(''); }       // (the cue comes when the mic is actually open)
   let text=null, err=null;
   try{
@@ -2358,7 +2359,7 @@ async function startRec(mode){
   if(r.cancelled) return mode==='approve'?'':null;
   if(mode==='approve') return text||'';
   if(err){ fail('mic: '+err); return null; }
-  if(text) send(text);
+  if(text) send(text,{heard:r.heard});
   else { setYou(''); himSet("didn't catch that"); poke('confused',1600); capQuiet(); }
   return text;
 }
@@ -2970,7 +2971,7 @@ async function send(text,opts={}){
     case 'stage_status': stageStatus(ev); break;
     case 'ignored': ignored=true; break; } };   // a follow-up that wasn't meant for him
   try{
-    const res=await post('/api/ask',{prompt:asked,you:text,attach,follow:!!opts.follow,...(opts.stage?{stage:opts.stage,act:'run'}:{})});
+    const res=await post('/api/ask',{prompt:asked,you:text,attach,follow:!!opts.follow,...(opts.heard?{heard:opts.heard}:{}),...(opts.stage?{stage:opts.stage,act:'run'}:{})});
     if(!res.ok){ const j=await res.json().catch(()=>({})); throw new Error(j.error||res.statusText); }
     await readSSE(res,handle);
   }catch(e){ failed=true; himSet(e.message,true); }
@@ -3124,21 +3125,23 @@ const ICON={
   hover:'<path d="M5 3l14 7-6 2-2 6z"/><circle cx="18" cy="18" r="3"/>',
   set:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   hide:'<path d="M6 6l12 12M18 6 6 18"/>',
+  notme:'<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
   mirror:'<circle cx="12" cy="12" r="9"/><path d="M9 9h6v6H9z"/>',
 };
 // (no top bar / blob button: you dock him by dragging him into a screen edge, and pull him out to get the blob back)
 const NX_MENU=['cd','history','look','plugins'];
-const MENU=[['talk','talk'],['cd','folder'],['history','history'],['look','show my screen'],['hover','hover mode'],['plugins','Claude Code plug-ins'],['mirror','take control back'],['set','settings'],['hide','hide']];
+const MENU=[['talk','talk'],['cd','folder'],['history','history'],['look','show my screen'],['hover','hover mode'],['plugins','Claude Code plug-ins'],['mirror','take control back'],['notme',"that wasn't me"],['set','settings'],['hide','hide']];
 const MENU_XY=[];
 menuEl.innerHTML=MENU.map(([a,l],i)=>{ const ang=(-168+i*(156/(MENU.length-1)))*Math.PI/180, r=122;
   MENU_XY[i]=[Math.cos(ang)*r/1.1, Math.sin(ang)*r/1.1];                 // same spot in the face's SVG units (330px = 300 units)
-  return `<button class="mb${NX_MENU.includes(a)?' nx':''}" data-a="${a}" style="--x:${(Math.cos(ang)*r).toFixed(0)}px;--y:${(Math.sin(ang)*r).toFixed(0)}px;--d:${(.26+i*.025).toFixed(3)}s" title="${l}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[a]}</svg><span${a==='cd'?' id="cwdLbl"':''}>${l}</span></button>`; }).join('');
-let menuOn=false;
+  return `<button class="mb${NX_MENU.includes(a)?' nx':''}${a==='notme'?' off':''}" data-a="${a}" style="--x:${(Math.cos(ang)*r).toFixed(0)}px;--y:${(Math.sin(ang)*r).toFixed(0)}px;--d:${(.26+i*.025).toFixed(3)}s" title="${l}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[a]}</svg><span${a==='cd'?' id="cwdLbl"':''}>${l}</span></button>`; }).join('');
+let menuOn=false, markOpen=false;     // markOpen: a heard phrase from the last 2 minutes can still be marked "that wasn't me"
+async function heardGet(){ try{ await tokenReady; return await (await fetch('/api/heard',{headers:hdr()})).json(); }catch(e){ return {}; } }
 // in the notch his sparks fan out from it, away from the screen edge (an arc around his eyes), instead of over the ball
 const NOTCH_MENU={top:[170,26,15,165], bottom:[170,434,-165,-15], left:[34,230,-75,75], right:[306,230,105,255]};   // eye centre x,y + arc from/to (deg)
 function layoutMenu(){
   const edge=barEdge(), all=$$('#menu .mb');
-  all.forEach(b=>b.classList.toggle('off',b.dataset.a==='mirror'&&!(MIR.owner==='pending'||MIR.owner==='agent')));     // (only while it applies)
+  all.forEach(b=>b.classList.toggle('off',(b.dataset.a==='mirror'&&!(MIR.owner==='pending'||MIR.owner==='agent'))||(b.dataset.a==='notme'&&!markOpen)));     // (only while it applies)
   const bs=all.filter(b=>getComputedStyle(b).display!=='none'), n=bs.length;
   MENU_XY.length=0;
   if(!edge){ menuEl.style.left=''; menuEl.style.top='';
@@ -3153,10 +3156,11 @@ function layoutMenu(){
     b.style.setProperty('--x',(Math.cos(a)*r).toFixed(0)+'px'); b.style.setProperty('--y',(Math.sin(a)*r).toFixed(0)+'px'); });
 }
 let menuShutAt=0;
-function menu(on){ if(on) layoutMenu(); if(!on&&menuOn) menuShutAt=performance.now(); if(on!==menuOn) sfx(on?'menu':'close'); menuOn=on; menuEl.classList.toggle('on',on); document.body.classList.toggle('menu',on); if(on){ closePanels(); hideAsk(); } $('[data-a="hover"]').classList.toggle('on',!!info.hover); sendRegion(true); }
+function menu(on){ if(on){ layoutMenu(); heardGet().then(j=>{ if(!!j.mark_open!==markOpen){ markOpen=!!j.mark_open; if(menuOn) layoutMenu(); } }); } if(!on&&menuOn) menuShutAt=performance.now(); if(on!==menuOn) sfx(on?'menu':'close'); menuOn=on; menuEl.classList.toggle('on',on); document.body.classList.toggle('menu',on); if(on){ closePanels(); hideAsk(); } $('[data-a="hover"]').classList.toggle('on',!!info.hover); sendRegion(true); }
 menuEl.addEventListener('click',e=>{ const b=e.target.closest('.mb'); if(!b) return; menu(false);
   ({talk:()=>startRec('auto'), bar:()=>toggleBar(), cd:()=>showAsk('/cd '), history:()=>openPanel('history'), plugins:()=>openPanel('plugins'),
-    look:()=>{ endListening(); return shoot('screen').then(j=>{ if(j) showAsk(''); }); }, hover:toggleHover, mirror:mirRevoke, hide:dismiss, set:()=>settings(true)})[b.dataset.a](); });
+    look:()=>{ endListening(); return shoot('screen').then(j=>{ if(j) showAsk(''); }); }, hover:toggleHover, mirror:mirRevoke, notme:notMe, hide:dismiss, set:()=>settings(true)})[b.dataset.a](); });
+async function notMe(){ try{ const j=await (await post('/api/heard/not-me')).json(); markOpen=false; if(j.ok) tick("noted — that one wasn't for me"); }catch(e){} }
 function dismiss(){ menu(false); hideAsk(); const held=stgHeld; stgHeld=null; closePanels(); if(held){ if(stgState!=='closed') stageHide(false); himSet(((himEl.textContent||'').trim()+'\n'+stageText(held)).trim()); }   // (he's going away: a held board follows the rule for a board arriving while hidden)
   endListening(); if(!native('hide')) poke('sleepy',1200); }
 // Esc / hiding him: he stops listening — a recording in progress is dropped and the "just keep talking" window closes
@@ -3373,7 +3377,7 @@ function settings(on,tab){ const prevFocus=on&&!setWasOpen?document.activeElemen
   if(on){ menu(false); hideAsk(); panelEl.classList.remove('on'); panelKind=null;
     if(tab) showTab(tab); else try{ showTab(localStorage.getItem('nixi.tab')||'look'); }catch(e){ showTab('look'); } }
   panelSize(prevFocus);
-  if(on){ renderSettings(); loadMics(); locLoad(); plugLoad(); requestAnimationFrame(moveInd);
+  if(on){ renderSettings(); loadMics(); heardLine(); locLoad(); plugLoad(); requestAnimationFrame(moveInd);
     if(info.update_check!==false) post('/api/update/check',{stale:1800}).then(r=>r.json()).then(u=>{ info.update=u; renderUpdate(); }).catch(()=>{}); } }   // fresh "latest" when you look
 function moveInd(){ const b=$('#tabs button.on'), ind=$('#tabInd'); if(!b||!ind) return; ind.style.width=b.offsetWidth+'px'; ind.style.transform=`translateX(${b.offsetLeft-3}px)`; }
 function showTab(t,focus){ if(!TABS.includes(t)) t='look';
@@ -3624,6 +3628,12 @@ function announceUpdate(){                         // one quiet tick per new ver
   if(seen===u.latest) return;
   try{ localStorage.setItem('nixi-upd-seen',u.latest); }catch(e){}
   tick(`v${u.latest} is out — Settings → More to update`);
+}
+async function heardLine(){
+  const t=(await heardGet()).totals||{}, n=(p,o,m)=>Object.entries(t[p]||{}).reduce((a,[k,v])=>a+((m?k===m:1)?+(v[o]||0):0),0),
+        name=n('wake','sent')+n('wake','ignored'), fol=n('follow','sent')+n('follow','ignored'), no=['wake','follow','barge'].reduce((a,p)=>a+n(p,'not_me'),0),
+        on=['wake','follow','barge'].reduce((a,p)=>a+n(p,'not_me','on'),0), el=$('#heardLine');
+  if(el) el.textContent=name||fol||no?`This week: ${name} times by name, ${fol} follow-ups · ${no} not for me (${on} while media played)`:'';
 }
 async function loadMics(){
   try{ const j=await (await post('/api/devices')).json(), cur=info.mic_device||'';
