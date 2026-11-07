@@ -24,8 +24,8 @@ Each line has a command that tells you if it is ready.
 
 - [ ] **NixOS with Home Manager and flakes.** `nix config show experimental-features` lists `flakes`.
 - [ ] **nixi, with an agent signed in.** `command -v nixi` prints a path. Ask the nixi card something: it must answer.
-- [ ] **A microphone.** `pactl list short sources` lists an input that does not end in `.monitor`.
-- [ ] **Speakers or headphones.** `speaker-test -t sine -l 1` makes a sound.
+- [ ] **A microphone.** `wpctl status` lists your microphone under Audio → Sources.
+- [ ] **Speakers or headphones.** `wpctl status` lists your speakers or headphones under Audio → Sinks.
 
 Just want to look at him? `nix run github:olafkfreund/nixoarchy-snowflake` starts him without the bridge, so the agent is not connected.
 
@@ -51,7 +51,7 @@ nixi --tui
 
 ```nix
 {
-  inputs.nixi-companion.url = "github:olafkfreund/nixoarchy-snowflake";
+  inputs.nixoarchy-snowflake.url = "github:olafkfreund/nixoarchy-snowflake";
 }
 ```
 
@@ -67,7 +67,7 @@ nixi --tui
 {
   services.nixi.companion = {
     enable = true;
-    package = inputs.nixi-companion.packages.${pkgs.system}.default;
+    package = inputs.nixoarchy-snowflake.packages.${pkgs.system}.default;
   };
 }
 ```
@@ -128,6 +128,15 @@ bind = SUPER ALT, S, exec, nixi-companion
 bind = SUPER ALT SHIFT, S, exec, nixi-companion listen
 ```
 
+Optional: push-to-talk, which needs a press bind and a release bind. On plain Hyprland:
+
+```ini
+bind = CTRL ALT, SPACE, exec, nixi-companion ptt-down
+bindr = CTRL ALT, SPACE, exec, nixi-companion ptt-up
+```
+
+Other desktops are in the Guide, under [Talking to it](docs/GUIDE.md#talking-to-it).
+
 **You should see** him again after you log out and in, and the key shows or hides him.
 
 **If not**, and nothing appears, run `nixi-companion doctor`: its "window" part says if the window can start. Then read the log with `nixi-companion log`.
@@ -142,7 +151,7 @@ What can you do?
 
 **You should see** your words, then the agent's answer. The little terminal shows each step.
 
-**If not**, and he never answers, nixi is not reachable. Go back to step 0, and check that `services.nixi.companion.package` is set: without it he has no bridge.
+**If not**, and he never answers, the bridge cannot reach the agent, most often because the agent is not signed in. Go back to step 0. `nixi-companion log` shows the bridge's last lines, such as “the nixi bridge did not start”.
 
 ### 6. Let him hear you
 
@@ -169,7 +178,7 @@ Hey Nixi
 
 **You should see** the ring light up and move with your voice. Then ask. Say “stop” to interrupt. The first time, the speech model downloads under `~/.cache`.
 
-**If not**, he does not wake. Check step 6 first. Then use push-to-talk: hold **Ctrl+Alt+Space**, or click him.
+**If not**, he does not wake. Check step 6 first. Then click him, or use the listen key from step 4. Push-to-talk (**Ctrl+Alt+Space**) works once its two binds are in.
 
 ### 8. Give him a voice
 
@@ -181,7 +190,7 @@ Hey Nixi
 
 ### 9. Messages through him (optional)
 
-**Do** — right-click him, choose settings, open the **Look** tab, and turn on **Desktop companion** and **Show notifications through him**. The Nixi card's Settings → Desktop has the same switches, as nixi's README says.
+**Do** — right-click him, choose settings, open the **Look** tab, and turn on **Desktop companion** and **Show notifications through him**.
 
 **You should see** your notifications appear on him instead of in the shell's popups. A click opens them.
 
@@ -245,9 +254,9 @@ Run **`nixi-companion doctor`** first. It checks your window, mic and voice in a
 | `services.nixi.companion` does not exist (step 2) | Import nixi's Home Manager module. |
 | `nixi-companion` is not found (step 3) | The switch failed. Read its last error, and check `package` is set. |
 | No snowflake, or none after login (step 4) | Run `nixi-companion doctor`, then `nixi-companion log`. Add the start-at-login line. |
-| The agent doesn't answer (step 5) | Check that nixi works on its own, and that `services.nixi.companion.package` is set. |
+| The agent doesn't answer (step 5) | Check that nixi works on its own and that its agent is signed in. `nixi-companion log` shows the bridge's errors. |
 | It can't hear me (step 6) | Check the level in `nixi-companion doctor`, then pick the right mic in Settings → Voice. |
-| “Hey Nixi” does nothing (step 7) | Check the wake word switch, then use push-to-talk (**Ctrl+Alt+Space**). |
+| “Hey Nixi” does nothing (step 7) | Check the wake word switch, then click him or use the listen key. Push-to-talk needs its binds from step 4. |
 | No sound, or a robot voice (step 8) | Switch on **Speak replies out loud**. A robot voice means only espeak is available. |
 | Notifications still pop up in the shell (step 9) | Check the first two switches in settings → **Look**. If they are on, the shell needs nixarchy's notification patch (903). |
 | The trust level looks old (step 10) | Run `nixi-companion restart`. |

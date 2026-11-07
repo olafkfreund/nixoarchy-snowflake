@@ -42,9 +42,9 @@ After it answers, keep talking for a few seconds and it still hears you, no "Hey
 config).
 
 **Interrupting.** Say **"stop"** (or "wait", "shh", "be quiet") while it talks. Say **"Hey Nixi, …"** mid-sentence to cut
-in with something new. Settings → Voice → "Interrupt by voice".
+in with something new. Settings → Voice → "Interrupt him by voice".
 
-Settings → Look → "Click through around it" lets clicks on the see-through space go to the window behind (off by default).
+Settings → Look → "Click through around him" lets clicks on the see-through space go to the window behind (off by default).
 
 ## Things it does instantly
 
@@ -87,9 +87,7 @@ He can show your notifications himself, in place of the shell's popups. A click 
 opens the app it came from.
 
 Every switch in the table is in the companion's own **Settings → Look** tab, and **Say out loud** is there too. That tab
-also has **Read mail subjects aloud** and **Pulse to the beat**, which the table below leaves out. nixi's README says
-the same switches are in the **Nixi card's** Settings → Desktop; I did not check the card itself. Nothing happens until
-you turn on the first two.
+also has **Read mail subjects aloud** and **Pulse to the beat**, which the table below leaves out. Nothing happens until you turn on the first two.
 
 | Switch | What it does |
 |---|---|
@@ -280,7 +278,7 @@ Settings → Voice → **ElevenLabs**.
 - It must be a regular file (`1` to `256` bytes), owned by `root` or by your user, and readable by you.
 - Its contents (trimmed) must be `16` to `128` characters of `A-Z`, `a-z`, `0-9`, `_` or `-`.
 
-Never put the key inline in a `.nix` file: anything in `/nix/store` is world-readable. With agenix or sops-nix:
+Never put the key inline in a `.nix` file: anything in `/nix/store` is world-readable. With agenix:
 
 ```nix
 {
@@ -292,8 +290,7 @@ Never put the key inline in a `.nix` file: anything in `/nix/store` is world-rea
 }
 ```
 
-If you use sops-nix (`/run/secrets/api-elevenlabs`), set `"eleven_key_file": "/run/secrets/api-elevenlabs"` in
-`~/.config/nixi-companion/config.json`.
+sops-nix is not supported yet: its secrets resolve under `/run/secrets.d`, which he refuses.
 
 **Turning it on:**
 
@@ -422,7 +419,7 @@ trust level come from nixi's own config (`agent`, `model`, `reasoningEffort`). U
 | `stt_prewarm` | `true` | Load the speech model when he starts, not at your first word (with the wake word on, it loads at start anyway) |
 | `stt_hint` | `"Hey Nixi, Claude, ..."` | Vocabulary hint passed to Whisper (add your project or host names) |
 | `tts` | `"auto"` | Voice engine: `"auto"` (`kokoro` → `piper` → `espeak`), `"kokoro"`, `"piper"`, `"espeak"`, `"elevenlabs"`, `"off"` |
-| `tts_fallback` | `"auto"` | Local fallback engine when ElevenLabs fails or hits the daily cap (`"auto"`, `"kokoro"`, `"piper"`, `"espeak"`, `"off"`) |
+| `tts_fallback` | `"auto"` | Local fallback engine when ElevenLabs fails or hits the daily cap (`"auto"`, `"kokoro"`, `"piper"`, `"espeak"`) |
 | `voice` | `"girl"` | Voice preset (`"girl"`, `"cute"`, `"guy"`, `"deep"`, `"british"`, `"story"`, `"robot"`) |
 | `voice_by_lang` | `{}` | Remembered voice preset per language (`{"en": "girl", ...}`) |
 | `voice_by_character` | `{}` | Voice preset override per character (`{"robot": "robot", ...}`) |

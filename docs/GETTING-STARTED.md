@@ -11,7 +11,7 @@ answer himself.
 
 - **Headphones** fix it. This is the easy choice.
 - **Speakers:** an echo-cancelled source, if you have one, helps. Pick it under **Microphone** in the **Voice** tab.
-- **Without either:** keep **Interrupt him by voice** off, or use push-to-talk. Hold **Ctrl+Alt+Space**, talk, let go.
+- **Without either:** keep **Interrupt him by voice** off, or use push-to-talk. Hold **Ctrl+Alt+Space**, talk, let go. This works once the two binds from README step 4 are in.
 
 Check any change with `nixi-companion doctor`.
 
@@ -50,20 +50,9 @@ With agenix, name the secret and make yourself the owner:
 }
 ```
 
-With sops-nix, the file lands in `/run/secrets`:
+sops-nix is not supported yet: its secrets resolve under `/run/secrets.d`, which he refuses. Use agenix for now.
 
-```nix
-{
-  sops.secrets.api-elevenlabs = {
-    sopsFile = ../secrets/elevenlabs.yaml;
-    owner = "<your-user>";
-  };
-}
-```
-
-To keep root as the owner, use `mode = "0440"` and set `group` to a group you are in. For sops-nix, the file is
-`/run/secrets/api-elevenlabs`, so set `eleven_key_file` to that. Do not put the key in your Nix config as text: it
-would end up in the store, which everyone can read.
+To keep root as the owner, use `mode = "0440"` and set `group` to a group you are in. Do not put the key in your Nix config as text: it would end up in the store, which everyone can read.
 
 **2. Switch it on.** In the **Voice** tab, find **ElevenLabs**. It says if the key was found. Tick **I understand —
 send spoken replies to ElevenLabs**, then **Use ElevenLabs**. Pick a voice from the list.
@@ -77,8 +66,7 @@ Turn it off in the same place. Text already sent may still count on your ElevenL
 
 He can show your notifications himself, in place of the shell's popups. A click on one opens the app that sent it.
 
-Right-click him, choose settings and open the **Look** tab. The same switches are in the Nixi card's Settings → Desktop,
-which is where nixi's README names them. Nothing happens until you turn on the first two:
+Right-click him, choose settings and open the **Look** tab. Nothing happens until you turn on the first two:
 
 1. **Desktop companion** is the master switch.
 2. **Show notifications through him** makes him show them.
@@ -140,7 +128,7 @@ You choose them in Nix, so what he can load is fixed when you build.
 ```nix
 {
   services.nixi.companion.plugins = [
-    inputs.nixi-companion.legacyPackages.${pkgs.system}.examples.party-hat-plus
+    inputs.nixoarchy-snowflake.legacyPackages.${pkgs.system}.examples.party-hat-plus
   ];
 }
 ```
