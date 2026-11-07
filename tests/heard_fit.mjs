@@ -92,7 +92,7 @@ await reset();
 // the settings line
 await ev("window.__heard={totals:{wake:{on:{sent:3,ignored:1,not_me:1},off:{sent:2}},follow:{off:{sent:4}},barge:{on:{not_me:2}}},mark_open:false}; settings(true); return 1");
 check(await poll("$('#heardLine').textContent"), "the mic settings line fills");
-check(await ev("return $('#heardLine').textContent") === "This week: 6 times by name, 4 follow-ups · 3 not for me (3 while media played)", "the line reads as planned", await ev("return $('#heardLine').textContent"));
+check(await ev("return $('#heardLine').textContent") === "This week: 5 times by name, 4 follow-ups · 3 not for me (3 while media played)", "the line reads as planned", await ev("return $('#heardLine').textContent"));
 await ev("settings(false); window.__heard={totals:{},mark_open:false}; settings(true); return 1"); await sleep(400);
 check(await ev("return $('#heardLine').textContent") === "", "the line is empty when all counts are zero");
 

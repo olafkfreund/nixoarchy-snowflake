@@ -2892,13 +2892,14 @@ def _mic_note(text):
         _MIC_NOTE_LAST = text
 
 
-def mic_cmds():
+def mic_cmds(check=True):
+    """The recorders to try. check=False (state, doctor): no pactl call, no note, MIC_TARGET left alone."""
     global MIC_TARGET, _MIC_NOTE_LAST, _MIC_NOTE_CHOICE
     dev = (CFG.get("mic_device") or "").strip()
     chosen = dev
-    if chosen != _MIC_NOTE_CHOICE:
+    if check and chosen != _MIC_NOTE_CHOICE:
         _MIC_NOTE_LAST, _MIC_NOTE_CHOICE = None, chosen
-    if chosen:
+    if check and chosen and ":" not in chosen:      # (an ALSA name like hw:1,0 is never a Pulse source: arecord -D still gets it)
         mics = list_mics()
         if mics:
             if not any(m["id"] == chosen for m in mics):
@@ -2906,7 +2907,8 @@ def mic_cmds():
                 _mic_note(f"The mic you chose ({chosen}) is gone. I'm using the default mic, so I may hear your speakers.")
             else:
                 _MIC_NOTE_LAST = None
-    MIC_TARGET = dev
+    if check:
+        MIC_TARGET = dev
     cmds = []
     if CFG.get("mic_cmd"):
         cmds.append(shlex.split(CFG["mic_cmd"]))
@@ -3144,12 +3146,18 @@ def request_language(code, force=False):
 def list_mics():
     if not shutil.which("pactl"):
         return []
-    out = subprocess.run(["pactl", "-f", "json", "list", "sources"], capture_output=True, text=True).stdout
+    try:
+        out = subprocess.run(["pactl", "-f", "json", "list", "sources"], capture_output=True, text=True, timeout=3).stdout
+    except subprocess.SubprocessError:
+        return []
     try:
         return [{"id": s["name"], "label": s.get("description") or s["name"]} for s in json.loads(out)
                 if ".monitor" not in s.get("name", "")]
     except ValueError:
-        out = subprocess.run(["pactl", "list", "short", "sources"], capture_output=True, text=True).stdout
+        try:
+            out = subprocess.run(["pactl", "list", "short", "sources"], capture_output=True, text=True, timeout=3).stdout
+        except subprocess.SubprocessError:
+            return []
         return [{"id": ln.split("\t")[1], "label": ln.split("\t")[1]} for ln in out.splitlines()
                 if "\t" in ln and ".monitor" not in ln]
 
@@ -3171,7 +3179,7 @@ def _stop_re(lang):
 def _not_me_re(lang):
     words = {"en": r"that wasn't for you|not you|i wasn't talking to you|that wasn't meant for you",
              "nb": r"det var ikke til deg|ikke deg", "pl": r"to nie do ciebie|nie ty"}
-    return re.compile(_STOP_WRAP + r"(?:" + words.get(lang, words["en"]) + r")" + _STOP_TAIL)
+    return re.compile(_STOP_WRAP + r"(?:" + words["en"] + ("|" + words[lang] if lang in words and lang != "en" else "") + r")" + _STOP_TAIL)   # (English always works, as with stop)
 # sent ahead of a follow-up (said without "hey Nixi") so Claude can tell if it was even meant for him
 FOLLOW_NOTE = ("(Voice note from Nixi: the mic picked this up a few seconds after your last reply, without \"hey Nixi\". "
                "If it is clearly not meant for you, e.g. the user thinking out loud, talking to themselves or to someone "
@@ -3543,21 +3551,24 @@ class Wake:
         except Exception as e:  # noqa: BLE001
             print(f"[nixi] wake word stt: {e}", file=sys.stderr)
             return
-        media = {True: "on", False: "off", None: "unknown"}[media_playing()]
-        phrase = (text or "").strip(" .,!?").casefold()
+        phrase = (text or "").strip(" .,!?").replace("\u2019", "'").casefold()
         if _not_me_re(stages.lang_active()).fullmatch(phrase):
             if cls.speaking():
-                BUS.pub(t="barge", listen=False, text="", path="barge", media=media)
+                BUS.pub(t="barge", listen=False, text="")
                 cls.hush()
                 HeardCounts.mark_not_me()
             elif HeardCounts.mark_not_me():
+                if ST.lock.locked():                     # still working on that answer: drop it, as Esc does
+                    stop_proc()
                 Speaker.say("Sorry.", None, None, False, None)
             return
         if cls.speaking():
             if _stop_re(stages.lang_active()).fullmatch(phrase):
-                BUS.pub(t="barge", listen=False, text="", path="barge", media=media)
+                BUS.pub(t="barge", listen=False, text="")
                 cls.hush()
                 return
+        # (after the stop checks, so a slow pactl never delays "stop")
+        media = {True: "on", False: "off", None: "unknown"}[media_playing()]
         m = WAKE_RE.match(text or "")
         if cls.speaking():
             if m:
@@ -3584,7 +3595,7 @@ def doctor():
             if ".monitor" not in ln:
                 print("  " + ln + ("   <- default" if dflt and dflt in ln else ""))
         print()
-    print("recorders tried in order:", ", ".join(c[0] for c in mic_cmds()) or "NONE")
+    print("recorders tried in order:", ", ".join(c[0] for c in mic_cmds(check=False)) or "NONE")
     print("recording 3 seconds — keep talking the whole time…", flush=True)
     try:
         mic, name, buf = open_mic()
@@ -6133,7 +6144,7 @@ def state_info():
         "tts": tts_engine() or (tts_engine(local=True) if CFG["tts"] == "elevenlabs" else None), "tts_choice": CFG["tts"], "tts_fallback": CFG.get("tts_fallback", "auto"), "gen": Speaker.gen, "engines": engine_list(),
         "eleven": {"key": eleven.has_key(), "on": CFG.get("eleven_on") is True, "voice": CFG.get("eleven_voice") or "",
                    "used_today": eleven.today()["used"], "cap": eleven_cap(), "voices": evoices, "error": eerr},
-        "mic": bool(mic_cmds()), "stt": "ready" if _whisper else (_whisper_err or "loading"),
+        "mic": bool(mic_cmds(check=False)), "stt": "ready" if _whisper else (_whisper_err or "loading"),
         "trust": trust_nixi() if BRIDGED else trust(), "model": CFG["model"] or "default", "effort": CFG.get("effort") or "", "lean": bool(CFG.get("lean", True)), "max_cost_usd": CFG.get("max_cost_usd") or 0,
         "compact_tokens": CFG.get("compact_tokens") or 0, "root": bool(CFG.get("root_mode")), "root_ok": True,
 

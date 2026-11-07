@@ -136,7 +136,7 @@ class HeardCountsTest(_ServerEnv):
                 C.last = ("wake", "on", time.monotonic())
                 with mock.patch.object(W, "speaking", return_value=True):
                     W.check(b"\0" * 32000, time.monotonic())
-                pub.assert_called_once_with(t="barge", listen=False, text="", path="barge", media="off")
+                pub.assert_called_once_with(t="barge", listen=False, text="")
                 hush.assert_called_once()
                 say.assert_not_called()
                 self.assertFalse(C.mark_open())
@@ -217,6 +217,24 @@ class HeardCountsTest(_ServerEnv):
         h.do_POST()
         self.assertEqual(self.reply(h), {"ok": False})
         self.assertEqual(C.snapshot()["totals"]["wake"]["on"]["not_me"], 1)
+
+
+    def test_not_me_while_thinking_stops_the_turn_and_english_always_works(self):
+        s, W, C = self.server, self.server.Wake, self.server.HeardCounts
+        with mock.patch.object(s.stages, "lang_active", return_value="nb"), \
+             mock.patch.object(s.FLOOR, "floor_overlaps", return_value=False), \
+             mock.patch.object(s, "speech_seconds", return_value=1), \
+             mock.patch.object(s, "transcribe_pcm", return_value="that wasn\u2019t for you"), \
+             mock.patch.object(s, "media_playing", side_effect=AssertionError("pactl before the not-me check")), \
+             mock.patch.object(s.MicAuto, "learn"), mock.patch.object(s.BUS, "pub"), \
+             mock.patch.object(s.Speaker, "say") as say, mock.patch.object(s, "stop_proc") as stop, \
+             mock.patch.object(W, "speaking", return_value=False), \
+             mock.patch.object(s.ST, "lock") as lock:
+            lock.locked.return_value = True
+            C.last = ("wake", "on", time.monotonic())
+            W.check(b"\0" * 32000, time.monotonic())
+        stop.assert_called_once()
+        say.assert_called_once_with("Sorry.", None, None, False, None)
 
 
 if __name__ == "__main__":

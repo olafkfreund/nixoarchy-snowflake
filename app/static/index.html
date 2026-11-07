@@ -3160,7 +3160,7 @@ function menu(on){ if(on){ layoutMenu(); heardGet().then(j=>{ if(!!j.mark_open!=
 menuEl.addEventListener('click',e=>{ const b=e.target.closest('.mb'); if(!b) return; menu(false);
   ({talk:()=>startRec('auto'), bar:()=>toggleBar(), cd:()=>showAsk('/cd '), history:()=>openPanel('history'), plugins:()=>openPanel('plugins'),
     look:()=>{ endListening(); return shoot('screen').then(j=>{ if(j) showAsk(''); }); }, hover:toggleHover, mirror:mirRevoke, notme:notMe, hide:dismiss, set:()=>settings(true)})[b.dataset.a](); });
-async function notMe(){ try{ const j=await (await post('/api/heard/not-me')).json(); markOpen=false; if(j.ok) tick("noted — that one wasn't for me"); }catch(e){} }
+async function notMe(){ try{ const j=await (await post('/api/heard/not-me')).json(); markOpen=false; tick(j.ok?"noted — that one wasn't for me":"too late to mark that one"); }catch(e){} }
 function dismiss(){ menu(false); hideAsk(); const held=stgHeld; stgHeld=null; closePanels(); if(held){ if(stgState!=='closed') stageHide(false); himSet(((himEl.textContent||'').trim()+'\n'+stageText(held)).trim()); }   // (he's going away: a held board follows the rule for a board arriving while hidden)
   endListening(); if(!native('hide')) poke('sleepy',1200); }
 // Esc / hiding him: he stops listening — a recording in progress is dropped and the "just keep talking" window closes
@@ -3631,7 +3631,7 @@ function announceUpdate(){                         // one quiet tick per new ver
 }
 async function heardLine(){
   const t=(await heardGet()).totals||{}, n=(p,o,m)=>Object.entries(t[p]||{}).reduce((a,[k,v])=>a+((m?k===m:1)?+(v[o]||0):0),0),
-        name=n('wake','sent')+n('wake','ignored'), fol=n('follow','sent')+n('follow','ignored'), no=['wake','follow','barge'].reduce((a,p)=>a+n(p,'not_me'),0),
+        name=n('wake','sent'), fol=n('follow','sent'), no=['wake','follow','barge'].reduce((a,p)=>a+n(p,'not_me'),0),
         on=['wake','follow','barge'].reduce((a,p)=>a+n(p,'not_me','on'),0), el=$('#heardLine');
   if(el) el.textContent=name||fol||no?`This week: ${name} times by name, ${fol} follow-ups · ${no} not for me (${on} while media played)`:'';
 }

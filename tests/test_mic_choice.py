@@ -125,3 +125,23 @@ class MicChoiceTest(_ServerEnv):
              mock.patch.object(s.time, "sleep"):
             s.Wake.loop()
         self.assertEqual(self.notes(), ["I can't open the mic: first", "I can't open the mic: second"])
+
+    def test_state_and_doctor_skip_the_check(self):
+        s = self.server
+        with mock.patch.object(s.subprocess, "run", side_effect=AssertionError("pactl run for state")):
+            cmds = s.mic_cmds(check=False)
+        self.assertIn("--device=chosen", cmds[0])
+        self.assertEqual((s.MIC_TARGET, self.notes()), ("", []))
+
+    def test_alsa_name_is_not_checked_against_pulse(self):
+        s = self.server
+        s.CFG["mic_device"] = "hw:1,0"
+        cmds = s.mic_cmds()
+        self.assertEqual(cmds[2][-2:], ["-D", "hw:1,0"])
+        self.assertEqual(s.MIC_TARGET, "hw:1,0")
+        self.assertEqual(self.notes(), [])
+
+    def test_list_mics_times_out_to_empty(self):
+        s = self.server
+        with mock.patch.object(s.subprocess, "run", side_effect=s.subprocess.TimeoutExpired("pactl", 3)):
+            self.assertEqual(s.list_mics(), [])

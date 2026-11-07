@@ -100,4 +100,4 @@ class WakeWordsTest(_ServerEnv):
                  mock.patch.object(s, "transcribe_pcm", return_value=phrase), \
                  mock.patch.object(s.BUS, "pub") as pub, mock.patch.object(s.Wake, "hush"):
                 s.Wake.check(b"\0" * 64000, time.monotonic())
-                pub.assert_called_once_with(t="barge", listen=False, text="", path="barge", media="off")
+                pub.assert_called_once_with(t="barge", listen=False, text="")
