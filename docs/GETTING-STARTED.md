@@ -132,7 +132,7 @@ You choose them in Nix, so what he can load is fixed when you build.
 ```nix
 {
   services.nixi.companion.plugins = [
-    inputs.nixoarchy-snowflake.legacyPackages.${pkgs.system}.examples.party-hat-plus
+    inputs.nixoarchy-snowflake.legacyPackages.${pkgs.stdenv.hostPlatform.system}.examples.party-hat-plus
   ];
 }
 ```

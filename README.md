@@ -65,16 +65,19 @@ nixi --tui
 
 ```nix
 {
+  services.nixi.enable = true;
   services.nixi.companion = {
     enable = true;
-    package = inputs.nixoarchy-snowflake.packages.${pkgs.system}.default;
+    package = inputs.nixoarchy-snowflake.packages.${pkgs.stdenv.hostPlatform.system}.default;
   };
 }
 ```
 
-**You should see** no error when you evaluate the config. `package` is needed: without it the module has no companion to install.
+Home Manager needs `inputs` for this. If it is part of your NixOS config, pass it with `home-manager.extraSpecialArgs = { inherit inputs; };`.
 
-**If not**, and Nix says `services.nixi.companion` does not exist, nixi's Home Manager module is not imported. Add `imports = [ inputs.nixi.homeModules.default ];` (see nixi's README).
+**You should see** no error when you evaluate the config. `package` is needed: without it the module has no companion to install. The companion needs nixi itself, so `services.nixi.enable` is on too.
+
+**If not**, and Nix says `services.nixi.companion` does not exist, nixi's Home Manager module is not imported. Add `imports = [ inputs.nixi.homeModules.default ];` (see nixi's README). If it says `inputs` is missing, add the `extraSpecialArgs` line above. If it says the companion needs nixi, set `services.nixi.enable = true;`.
 
 ### 3. Switch
 
@@ -110,7 +113,7 @@ The module installs the companion. It does not start him at login and does not b
 nixi-companion
 ```
 
-**You should see** the snowflake in the bottom-right corner. Drag it anywhere: it remembers the spot. Running `nixi-companion` again shows or hides it.
+**You should see** the snowflake in the bottom-right corner. The first start can take about 30 seconds. Drag it anywhere: it remembers the spot. Running `nixi-companion` again shows or hides it.
 
 Now add start at login and a key. On nixarchy, in a file your `bindings.lua` loads:
 
@@ -143,7 +146,7 @@ Other desktops are in the Guide, under [Talking to it](docs/GUIDE.md#talking-to-
 
 ### 5. Type to him
 
-**Do** — click him, or just start typing, then press Enter:
+**Do** — start typing (a box opens under him), then press Enter. Clicking him starts listening instead, which is step 6:
 
 ```text
 What can you do?
@@ -151,7 +154,9 @@ What can you do?
 
 **You should see** your words, then the agent's answer. The little terminal shows each step.
 
-**If not**, and he never answers, the bridge cannot reach the agent, most often because the agent is not signed in. Go back to step 0. `nixi-companion log` shows the bridge's last lines, such as “the nixi bridge did not start”.
+If he answers “Guide can't keep secrets from Codex”, your nixi agent is Codex, which Guide does not allow. Use Claude for Guide, or switch to Mechanic (step 10).
+
+**If not**, and he never answers, the bridge cannot reach the agent, most often because the agent is not signed in. Go back to step 0. Then read `nixi-companion log`; it may name the cause, but not every bridge error lands there.
 
 ### 6. Let him hear you
 
@@ -256,7 +261,7 @@ Run **`nixi-companion doctor`** first. It checks your window, mic and voice in a
 | `services.nixi.companion` does not exist (step 2) | Import nixi's Home Manager module. |
 | `nixi-companion` is not found (step 3) | The switch failed. Read its last error, and check `package` is set. |
 | No snowflake, or none after login (step 4) | Run `nixi-companion doctor`, then `nixi-companion log`. Add the start-at-login line. |
-| The agent doesn't answer (step 5) | Check that nixi works on its own and that its agent is signed in. `nixi-companion log` shows the bridge's errors. |
+| The agent doesn't answer (step 5) | Check that nixi works on its own and that its agent is signed in. Then read `nixi-companion log`. |
 | It can't hear me (step 6) | Check the level in `nixi-companion doctor`, then pick the right mic in Settings → Voice. |
 | “Hey Nixi” does nothing (step 7) | Check the wake word switch, then click him or use the listen key. Push-to-talk needs its binds from step 4. |
 | No sound, or a robot voice (step 8) | Switch on **Speak replies out loud**. A robot voice means only espeak is available. |

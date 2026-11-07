@@ -349,8 +349,8 @@ never downloads plugins from the network.
 ```nix
 {
   services.nixi.companion.plugins = [
-    inputs.nixoarchy-snowflake.legacyPackages.${pkgs.system}.examples.party-hat-plus
-    (inputs.nixoarchy-snowflake.lib.${pkgs.system}.mkCompanionPlugin {
+    inputs.nixoarchy-snowflake.legacyPackages.${pkgs.stdenv.hostPlatform.system}.examples.party-hat-plus
+    (inputs.nixoarchy-snowflake.lib.${pkgs.stdenv.hostPlatform.system}.mkCompanionPlugin {
       src = ./my-plugin;
       pname = "my-plugin";
     })
@@ -385,7 +385,7 @@ All Home Manager options under `services.nixi.companion` (defined in nixi's `nix
 | Option | Default | What it does |
 |---|---|---|
 | `services.nixi.companion.enable` | `false` | Install the `nixi-companion` launcher and point it at nixi's bridge |
-| `services.nixi.companion.package` | `null` | The companion package from the `nixoarchy-snowflake` flake (`inputs.nixoarchy-snowflake.packages.${pkgs.system}.default`). Required when `enable = true` |
+| `services.nixi.companion.package` | `null` | The companion package from the `nixoarchy-snowflake` flake (`inputs.nixoarchy-snowflake.packages.${pkgs.stdenv.hostPlatform.system}.default`). Required when `enable = true` |
 | `services.nixi.companion.peers` | `[ ]` | Other machines running `nixi-status` for the fleet board (written to `~/.config/nixi-companion/peers.json`, only when non-empty) |
 | `services.nixi.companion.peers.*.name` | *(required)* | Short label shown on the board |
 | `services.nixi.companion.peers.*.address` | *(required)* | Tailnet IPv4 address in `100.64.0.0/10`, not a host name (the companion refuses any address outside the tailnet) |
