@@ -2730,7 +2730,8 @@ async function agentTick(){
   const now=performance.now();
   if(agentCur&&agentCur.sent){
     if(sayEpoch!==agentCur.ep){ agentCur=null; return; }      // cut off by something else (a spoken question, a barge-in): not "finished"
-    if(playing){ if(now-agentCur.sent>AGENT_GUARD+agentCur.ss[agentCur.i].length*150){ agentCur=null; shush(); } return; }       // (a dropped event can't wedge him; a long sentence just takes longer: about 7 characters a second at the slowest)
+    if(playing){ if(quietNow()) agentCur.hush=true; if(now-agentCur.sent>AGENT_GUARD+agentCur.ss[agentCur.i].length*150){ agentCur=null; shush(); } return; }       // (a dropped event can't wedge him; a long sentence just takes longer: about 7 characters a second at the slowest)
+    if(agentCur.hush){ agentCur=null; return; }             // (quiet came while a sentence played: the rest is dropped)
     agentCur.sent=0; agentCur.i++; }
   if(!agentCur){
     while(agentQ.length&&now-agentQ[0].at>AGENT_STALE) agentQ.shift();
@@ -2795,7 +2796,7 @@ function onEvent(ev){
     const head=ask?(/^(needs|is waiting|wants)\b/i.test(r)?ev.name+' '+r:ev.name+' needs you'+(r?': '+r:'')):'✓ '+ev.name+' finished'+(r?': '+r:'');   // ("Claude needs your permission…", not "Claude needs you: Claude needs…")
     if(hiddenNow){ if(ask) post('/api/notify',{title:'Nixi',body:head+pj}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
     if(ask||!quietNow()) restore(ask?20000:11000,false);
-    if(info.hover) comeBack(); wake(); agentMark(ev.from,ask?'ask':'done'); rxPlay(ask?'ask':'done');
+    if(info.hover&&(ask||!quietNow())) comeBack(); wake(); agentMark(ev.from,ask?'ask':'done'); rxPlay(ask?'ask':'done');
     if(!ask&&((attnPend&&performance.now()-attnPend.at<60000)||(AM&&AM.kind==='ask'&&performance.now()<AM.until))){ if(!quietNow()){ sfx('done'); poke('t_beam',1400); } return; }   // (a finish never takes over a question)
     if(!ask){ if(!quietNow()){ sfx('done'); poke('t_beam',1400); } tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; sendRegion(); return; }   // (no flash, no talking)
     sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
@@ -2807,7 +2808,7 @@ function onEvent(ev){
     SIT.weather=ev.weather||null; rxSignals(hot0,low0,trk0); }
   else if(ev.t==='ambient'){ if(ev.alert&&!quietNow()) restore(12000,false); const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive&&!quietNow()) poke('confused',1500); if(more) rxPlay('error'); if(ev.alert&&ev.cal) rxPlay('soon');
     if(ev.glint&&info.proactive&&!quietNow()){ poke('t_beam',1800); burstLines('#77b6e1',8); }      // a new NixOS generation: proud
-    if(ev.glint&&BODY===CHARACTERS.snowflake){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
+    if(ev.glint&&BODY===CHARACTERS.snowflake&&!quietNow()){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
     if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')&&!quietNow()) flash('#4d6fb7'); }   // (never spoken)
     else if(more&&document.body.classList.contains('bar')&&!quietNow()) flash('#e5a50a'); }
   else if(ev.t==='approve_done') approvalGone(ev.id);
