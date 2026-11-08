@@ -1,5 +1,7 @@
 import json
+import datetime
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -14,10 +16,12 @@ class NudgeTest(_ServerEnv):
         S = self.server
         saved = dict(S.CFG)
         self.addCleanup(lambda: (S.CFG.clear(), S.CFG.update(saved)))
-        S.CFG.update(proactive=True, react_break=True, react_welcome=True, react_load=True, ambient_calendar=False)
+        S.CFG.update(proactive=True, react_break=True, react_welcome=True, react_load=True, ambient_calendar=False,
+                     workout=[], water_every=0)
         N, A, D = S.Nudge, S.Ambient, S.Desk
         for k, v in dict(pending={}, last_visual=None, last_speech=None, last_kind={}, active_since=None, seen_unlock=0.0,
-                         was_hot=False, was_low=False, n_quip=0).items():
+                         was_hot=False, was_low=False, n_quip=0, water_since=None, workout_done=set(),
+                         workout_pending=set(), shown={}, snoozed={}, skip_cool=set(), next_id=0, last_sched=None).items():
             setattr(N, k, v)
         for k, v in dict(locked=False, unlocked_at=0.0, last_lock_len=0.0, lock_since=0.0, meeting=False, ram_low=False, cpu_hot=False, events=[]).items():
             setattr(A, k, v)
@@ -275,6 +279,189 @@ class NudgeTest(_ServerEnv):
         N.pending.clear()
         self.tick(110)                                       # still on: no new offer
         self.assertEqual(N.pending, {})
+
+    def test_workout_window_once_with_deadline_and_dnd_expiry(self):
+        S, N, A = self.server, self.server.Nudge, self.server.Ambient
+        now = datetime.datetime(2026, 11, 9, 9, 5, tzinfo=datetime.timezone.utc)  # Monday
+        S.CFG["workout"] = [{"days": [0], "at": "09:00"}]
+        self.tick(100, now=now)
+        event = self.sent()[0]
+        self.assertEqual((event["kind"], event["wait"], event["id"]), ("workout", 3300, 0))
+        self.assertFalse(event["speak"])
+        self.tick(500, now=now + datetime.timedelta(minutes=6))
+        self.assertEqual(self.sent(), [])
+        self.assertEqual(len(N.workout_done), 1)
+        N.workout_done.clear()
+        N.shown.clear()
+        N.last_visual = None
+        A.dnd = True
+        self.tick(1000, now=now)
+        self.assertIn("workout", N.pending)
+        self.assertEqual(N.workout_done, set())
+        self.tick(4401, now=now + datetime.timedelta(hours=1, seconds=1))
+        self.assertNotIn("workout", N.pending)
+        self.assertEqual((N.workout_pending, N.workout_done), (set(), set()))
+        self.tick(4500, now=now + datetime.timedelta(hours=1, minutes=2))
+        self.assertEqual(self.sent(), [])
+
+    def test_overlapping_workouts_and_midnight(self):
+        S, N = self.server, self.server.Nudge
+        monday = datetime.datetime(2026, 11, 9, 9, 5, tzinfo=datetime.timezone.utc)
+        S.CFG["workout"] = [{"days": [0], "at": "09:00"}, {"days": [0], "at": "09:30"},
+                            {"days": [0], "at": "10:40"}]
+        self.tick(100, now=monday)
+        self.assertEqual([e["kind"] for e in self.sent()], ["workout"])
+        self.assertEqual(len(N.workout_done), 2)  # 09:30 intersects the published 09:00 window
+        self.tick(2000, now=monday + datetime.timedelta(minutes=35))
+        self.assertEqual(self.sent(), [])
+        N.active_since = 6100  # keep the independent hourly break out of this schedule assertion
+        self.tick(6100, now=monday + datetime.timedelta(minutes=100))
+        self.assertEqual([e["kind"] for e in self.sent()], ["workout"])
+        S.CFG["workout"] = [{"days": [0], "at": "23:30"}]
+        N.last_visual = None
+        self.tick(7000, now=datetime.datetime(2026, 11, 10, 0, 10, tzinfo=datetime.timezone.utc))
+        self.assertEqual([e["kind"] for e in self.sent()], ["workout"])
+        self.assertEqual(N.shown["workout"][2], 8200)
+        S.CFG["workout"] = [{"days": [1], "at": "23:30"}]
+        self.tick(7100, now=datetime.datetime(2026, 11, 10, 0, 10, tzinfo=datetime.timezone.utc))
+        self.assertEqual(self.sent(), [])
+
+    def test_schedule_edit_drops_pending_and_future_day_does_not_fire(self):
+        S, N, A = self.server, self.server.Nudge, self.server.Ambient
+        now = datetime.datetime(2026, 11, 9, 9, 5, tzinfo=datetime.timezone.utc)
+        S.CFG["workout"] = [{"days": [0], "at": "09:00"}]
+        A.dnd = True
+        self.tick(100, now=now)
+        self.assertIn("workout", N.pending)
+        S.CFG["workout"] = [{"days": [1], "at": "09:00"}]
+        self.tick(101, now=now)
+        self.assertNotIn("workout", N.pending)
+        self.assertEqual(N.workout_pending, set())
+
+    def test_water_counter_locks_and_switch_off(self):
+        S, N, A = self.server, self.server.Nudge, self.server.Ambient
+        S.CFG["water_every"] = 45
+        self.tick(0)
+        self.tick(2700)
+        self.assertEqual([e["kind"] for e in self.sent()], ["water"])
+        self.tick(2701)
+        self.assertEqual(self.sent(), [])
+        A.unlocked_at, A.last_lock_len = 3000, 120
+        self.tick(3000)
+        self.assertEqual(N.water_since, 2700)
+        N.active_since = 5400
+        self.tick(5400)
+        self.assertEqual([e["kind"] for e in self.sent()], ["water"])
+        A.unlocked_at, A.last_lock_len = 6000, 300
+        self.tick(6000)
+        self.assertEqual(N.water_since, 6000)
+        A.dnd = True
+        self.tick(8700)
+        self.assertIn("water", N.pending)
+        S.CFG["water_every"] = 0
+        self.tick(8701)
+        self.assertNotIn("water", N.pending)
+        self.assertIsNone(N.water_since)
+
+    def test_ids_snooze_dismiss_and_old_clicks(self):
+        S, N = self.server, self.server.Nudge
+        N.offer("cpu", "hot", False, 100)
+        self.tick(100)
+        self.assertNotIn("id", self.sent()[0])
+        N.last_visual = None
+        N.offer("break", "stretch", True, 200)
+        self.tick(200)
+        id = self.sent()[0]["id"]
+        N.offer("break", "duplicate", True, 201)
+        before = N.active_since
+        self.assertTrue(N.act(id, "snooze", 10, t=202))
+        self.assertNotIn("break", N.pending)
+        self.assertEqual(N.active_since, before)
+        self.assertFalse(N.act(id, "snooze", 10, t=203))
+        self.tick(801)
+        self.assertEqual(self.sent(), [])
+        N.last_visual = None
+        self.tick(802)
+        new = self.sent()
+        self.assertEqual(len(new), 1)
+        self.assertEqual((new[0]["kind"], new[0]["text"]), ("break", "stretch"))
+        self.tick(803)
+        self.assertEqual(self.sent(), [])
+        N.offer("break", "duplicate", True, 804)
+        self.assertTrue(N.act(new[0]["id"], "dismiss", t=805))
+        self.assertEqual(N.active_since, 805)
+        self.assertNotIn("break", N.pending)
+        self.assertFalse(N.act(id, "dismiss", t=806))
+
+    def test_workout_snooze_deadline_and_react_break_off(self):
+        S, N = self.server, self.server.Nudge
+        now = datetime.datetime(2026, 11, 9, 9, 55, tzinfo=datetime.timezone.utc)
+        S.CFG["workout"] = [{"days": [0], "at": "09:00"}]
+        self.tick(100, now=now)
+        id = self.sent()[0]["id"]
+        self.assertTrue(N.act(id, "snooze", 10, t=101))
+        self.assertNotIn("workout", N.snoozed)
+        N.offer("break", "stretch", True, 200)
+        N.last_visual = None
+        self.tick(200, now=now)
+        id = self.sent()[0]["id"]
+        self.assertTrue(N.act(id, "snooze", 10, t=201))
+        S.CFG["react_break"] = False
+        self.tick(202, now=now)
+        self.assertEqual(N.snoozed, {})
+        S.CFG["react_break"] = True
+        self.tick(802, now=now)
+        self.assertEqual(self.sent(), [])
+
+    def test_act_is_single_use_across_threads_and_waits_for_tick(self):
+        N = self.server.Nudge
+        N.shown["break"] = (7, "stretch", None)
+        results = []
+        threads = [threading.Thread(target=lambda: results.append(N.act(7, "dismiss", t=100))) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=1)
+        self.assertEqual(sorted(results), [False, True])
+        N.shown["break"] = (8, "stretch", None)
+        in_tick, release, acting = threading.Event(), threading.Event(), threading.Event()
+
+        def held_watch(*_args):
+            in_tick.set()
+            release.wait(1)
+
+        with mock.patch.object(N, "watch", side_effect=held_watch):
+            tick_thread = threading.Thread(target=lambda: self.tick(100))
+            tick_thread.start()
+            self.assertTrue(in_tick.wait(1))
+            thread = threading.Thread(target=lambda: (acting.set(), results.append(N.act(8, "dismiss", t=101))))
+            thread.start()
+            self.assertTrue(acting.wait(1))
+            self.assertEqual(len(results), 2)
+            release.set()
+            tick_thread.join(timeout=1)
+        thread.join(timeout=1)
+        self.assertEqual(results[-1], True)
+
+    def test_nudge_route_token_and_validation(self):
+        S, N = self.server, self.server.Nudge
+        N.shown["break"] = (8, "stretch", None)
+
+        def post(body, token):
+            h = S.Handler.__new__(S.Handler)
+            h.path = "/api/nudge"
+            h.headers = {"Host": "localhost", "X-Nixi-Token": token}
+            h._host_ok = lambda: True
+            h._body = lambda: json.dumps(body).encode()
+            h._json = lambda obj, code=200: (code, obj)
+            return h.do_POST()
+
+        self.assertEqual(post({"id": 8, "act": "dismiss"}, "")[0], 403)
+        for bad in ({"id": True, "act": "dismiss"}, {"id": 8, "act": "snooze", "minutes": True},
+                    {"id": 8, "act": "snooze", "minutes": 45}):
+            self.assertEqual(post(bad, S.TOKEN)[0], 400)
+        self.assertEqual(post({"id": 8, "act": "dismiss"}, S.TOKEN), (200, {"ok": True}))
+        self.assertEqual(post({"id": 8, "act": "dismiss"}, S.TOKEN), (200, {"ok": False}))
 
 
 if __name__ == "__main__":

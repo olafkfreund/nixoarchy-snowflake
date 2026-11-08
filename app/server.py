@@ -2108,6 +2108,8 @@ class Ambient:
 # Short friendly lines, in app/quips.json (editable without code); these are what is used when that file is broken or missing.
 QUIP_FALLBACK = {
     "break": ("An hour already! Stand up and stretch?", "Time for a stretch. Your back will thank you.", "That's a good long stretch of work. Water and a walk?"),
+    "workout": ("Workout time!", "Ready to move for a bit?",),
+    "water": ("Time for some water.", "A drink of water sounds good.",),
     "welcome": ("Welcome back!",), "ram": ("Memory's getting tight. Maybe close something heavy?",), "cpu": ("The machine is working hard.",),
     "rain": ("Rain outside. Cosy in here!",), "snow": ("Snow! My favourite thing in the whole world.",),
     "night": ("Getting late. Don't forget to rest.",), "party": ("Something to celebrate today!",),
@@ -2363,11 +2365,20 @@ def quip(event, **slots):
 class Nudge:
     """Unasked nudges (#133b): break, welcome back, memory, load. They wait for a breakpoint (an unlock, a workspace switch, or
     20 s without window events), and a budget keeps them rare: one visual per 5 minutes, one spoken per 10, a cooldown per kind."""
-    COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "welcome": 0, "rain": 72000, "snow": 72000, "night": 72000, "party": 72000, "coding": 7200}
+    COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "workout": 0, "water": 0, "welcome": 0, "rain": 72000, "snow": 72000, "night": 72000, "party": 72000, "coding": 7200}
+    lock = threading.Lock()
     pending = {}                                              # kind -> (text, spoken, deadline); oldest first
     last_visual = last_speech = None
     last_kind = {}
     active_since = None                                       # the break counter's zero
+    water_since = None
+    workout_done = set()                                      # (window start date, (days, time))
+    workout_pending = set()
+    shown = {}                                                # kind -> (id, text, deadline)
+    snoozed = {}                                              # kind -> (due, text, deadline)
+    skip_cool = set()
+    next_id = 0
+    last_sched = None
     seen_unlock = 0.0
     was_hot = was_low = False
     quipped = {}                                              # last value each look quip fired for
@@ -2409,6 +2420,28 @@ class Nudge:
         return text
 
     @classmethod
+    def drop_reminder(cls, kind):
+        cls.pending.pop(kind, None)
+        cls.snoozed.pop(kind, None)
+        cls.shown.pop(kind, None)
+        cls.skip_cool.discard(kind)
+
+    @staticmethod
+    def windows(now, schedule):
+        """Relevant local wall-clock windows, including tomorrow for overlap at midnight."""
+        day = now.date()
+        for offset in (-1, 0, 1):
+            start_date = day + datetime.timedelta(days=offset)
+            for entry in schedule:
+                if start_date.weekday() not in entry["days"]:
+                    continue
+                hour, minute = map(int, entry["at"].split(":"))
+                start = datetime.datetime.combine(start_date, datetime.time(hour, minute), tzinfo=now.tzinfo)
+                end = start + datetime.timedelta(hours=1)
+                key = (tuple(entry["days"]), entry["at"])
+                yield (start_date, key), start, end
+
+    @classmethod
     def watch(cls, t, wall, hist, now=None):
         """Turn the signals into offers."""
         A = Ambient
@@ -2417,11 +2450,42 @@ class Nudge:
             cls.seen_unlock = A.unlocked_at
             if A.last_lock_len >= 300:                              # a real break: the counter starts again
                 cls.active_since = A.unlocked_at
+                cls.water_since = A.unlocked_at
             if CFG.get("react_welcome") and A.last_lock_len >= 1800:
                 cls.offer("welcome", cls.welcome(wall, hist, now), True, t)
+        if not CFG.get("react_break"):
+            for kind in ("break", "water", "workout"):
+                cls.drop_reminder(kind)
+            cls.workout_pending.clear()
+            cls.water_since = None
         if CFG.get("react_break") and not A.locked and t - cls.active_since >= 3600:
             cls.offer("break", quip("break"), True, t)
             cls.active_since = t
+        schedule = CFG.get("workout") or []
+        if schedule != cls.last_sched:
+            cls.drop_reminder("workout")
+            cls.workout_pending.clear()
+            cls.last_sched = [dict(days=list(e["days"]), at=e["at"]) for e in schedule]
+        if CFG.get("react_break"):
+            water_every = CFG.get("water_every") or 0
+            if not water_every:
+                cls.drop_reminder("water")
+                cls.water_since = None
+            else:
+                cls.water_since = t if cls.water_since is None else cls.water_since
+                if not A.locked and t - cls.water_since >= water_every * 60:
+                    cls.offer("water", quip("water"), False, t)
+                    cls.water_since = t
+            now = now if now is not None else datetime.datetime.now().astimezone()
+            cls.workout_done = {pair for pair in cls.workout_done if pair[0] >= now.date() - datetime.timedelta(days=2)}
+            open_windows = [(pair, end) for pair, start, end in cls.windows(now, schedule)
+                            if start <= now < end and pair not in cls.workout_done and pair not in cls.workout_pending]
+            if open_windows:
+                deadline = t + max((end - now).total_seconds() for _, end in open_windows)
+                if "workout" in cls.pending:
+                    deadline = max(deadline, cls.pending["workout"][2])
+                cls.offer("workout", quip("workout"), False, t, until=deadline)
+                cls.workout_pending.update(pair for pair, _ in open_windows)
         if CFG.get("react_load"):
             if A.ram_low and not cls.was_low:
                 cls.offer("ram", quip("ram"), True, t)
@@ -2437,18 +2501,59 @@ class Nudge:
             if since and since != cls.coding_offered and t - since >= 7200:       # once per coding session of 2 hours or more
                 cls.coding_offered = since
                 cls.offer("coding", quip("coding", n=int((t - since) // 3600)), False, t)
+        for kind, (due, text, until) in list(cls.snoozed.items()):
+            if due <= t:
+                del cls.snoozed[kind]
+                if until is None or t <= until:
+                    cls.offer(kind, text, kind == "break", t, until=until)
+                    cls.skip_cool.add(kind)
+
+    @classmethod
+    def act(cls, id, act, minutes=None, t=None):
+        with cls.lock:
+            if not CFG.get("proactive") or not CFG.get("react_break"):
+                return False
+            kind = next((k for k, shown in cls.shown.items() if shown[0] == id), None)
+            if kind is None:
+                return False
+            _, text, until = cls.shown.pop(kind)
+            cls.pending.pop(kind, None)
+            t = time.monotonic() if t is None else t
+            if act == "snooze":
+                due = t + minutes * 60
+                if until is None or due < until:
+                    cls.snoozed[kind] = (due, text, until)
+            else:
+                cls.snoozed.pop(kind, None)
+                cls.skip_cool.discard(kind)
+                if kind == "break":
+                    cls.active_since = t
+                elif kind == "water":
+                    cls.water_since = t
+            return True
 
     @classmethod
     def tick(cls, mono=None, wall=None, hist=None, now=None):
+        with cls.lock:
+            return cls._tick(mono, wall, hist, now)
+
+    @classmethod
+    def _tick(cls, mono=None, wall=None, hist=None, now=None):
         t = time.monotonic() if mono is None else mono
         if not CFG.get("proactive"):
             cls.pending.clear()
-            cls.active_since = None
+            cls.snoozed.clear()
+            cls.shown.clear()
+            cls.skip_cool.clear()
+            cls.workout_pending.clear()
+            cls.active_since = cls.water_since = None
             return
         cls.watch(t, time.time() if wall is None else wall,
                   hist or Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "omarchy" / "notifications" / "history.json", now)
         for k in [k for k, v in cls.pending.items() if v[2] is not None and t > v[2]]:
             del cls.pending[k]                                      # gone stale while it waited
+            if k == "workout":
+                cls.workout_pending.clear()
         if not cls.pending or Ambient.locked or Ambient.dnd or Ambient.fullscreen or Ambient.meeting:
             return
         at_break = (Ambient.unlocked_at and t - Ambient.unlocked_at <= 10) or (Desk.last_switch and t - Desk.last_switch <= 10) \
@@ -2457,7 +2562,7 @@ class Nudge:
             return
         kind = next(iter(cls.pending))
         text, spoken, deadline = cls.pending.pop(kind)
-        if kind in cls.last_kind and t - cls.last_kind[kind] < cls.COOL[kind]:
+        if kind not in cls.skip_cool and kind in cls.last_kind and t - cls.last_kind[kind] < cls.COOL[kind]:
             if kind in ("ram", "cpu"):                                 # dropped; re-arm the edge so it is offered again
                 setattr(cls, "was_low" if kind == "ram" else "was_hot", False)   # once the cooldown has passed, if it still holds
             elif kind in cls.quipped:
@@ -2467,7 +2572,20 @@ class Nudge:
         speak = bool(spoken) and not Ambient.meeting and (cls.last_speech is None or t - cls.last_speech >= 600)
         if speak:
             cls.last_speech = t
-        BUS.pub(t="nudge", kind=kind, text=text, speak=speak, wait=None if deadline is None else max(0, deadline - t))
+        event = dict(t="nudge", kind=kind, text=text, speak=speak, wait=None if deadline is None else max(0, deadline - t))
+        if kind in ("break", "water", "workout"):
+            event["id"] = cls.next_id
+            cls.shown[kind] = (cls.next_id, text, deadline)
+            cls.next_id += 1
+        cls.skip_cool.discard(kind)
+        if kind == "workout":
+            now = now if now is not None else datetime.datetime.now().astimezone()
+            windows = list(cls.windows(now, CFG.get("workout") or []))
+            published = [(start, end) for pair, start, end in windows if pair in cls.workout_pending]
+            cls.workout_done.update(pair for pair, start, end in windows
+                                    if any(start < other_end and other_start < end for other_start, other_end in published))
+            cls.workout_pending.clear()
+        BUS.pub(**event)
 
 
 def _focused_addr():
@@ -7418,6 +7536,13 @@ class Handler(BaseHTTPRequestHandler):
                     if Listen.current:
                         Listen.current.stop(cancel=True)
                 return self._json({"ok": True, "asleep": Wake.asleep})
+            if p == "/api/nudge":
+                b = json.loads(self._body() or b"{}")
+                if not isinstance(b, dict) or type(b.get("id")) is not int or b.get("act") not in ("snooze", "dismiss") \
+                        or (b.get("act") == "snooze" and (type(b.get("minutes")) is not int or b["minutes"] not in (10, 30))) \
+                        or (b.get("act") == "dismiss" and "minutes" in b):
+                    return self._json({"error": "bad request"}, 400)
+                return self._json({"ok": Nudge.act(b["id"], b["act"], b.get("minutes"))})
             if p == "/api/notify/act":             # a click / Esc on a row the shell handed over
                 b = json.loads(self._body() or b"{}")
                 key = str(b.get("key") or "")
