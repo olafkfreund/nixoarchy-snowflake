@@ -693,6 +693,7 @@ body.hover #nixiB,body.pnl #nixiB,body.appr #nixiB{display:none!important}
   background:var(--tbg,var(--panel));border:2.5px solid var(--ink,var(--edge2));box-shadow:5px 6px 0 var(--inksh,#000c);font:15px/21px var(--mono);color:var(--text);
   opacity:0;scale:.5;transition:opacity .3s,scale .4s cubic-bezier(.3,1.5,.5,1)}
 #code.on{opacity:1;scale:1}
+#code.on.mini{scale:.6}
 #code .tb{display:flex;align-items:center;gap:6px;height:30px;padding:0 16px;font-size:13px;border-bottom:2px dashed var(--line);color:var(--tacc,var(--hot));font-weight:600}
 #code .tb b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 #code .tb span{color:var(--dim)} #code .tb span.ok{color:var(--tgreen,var(--hot))} #code .tb span.bad{color:var(--tred,#ff6b6b)}
@@ -919,6 +920,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <label class="tg"><input type="checkbox" id="agentClaudeSw" data-agent="claude"><span class="sw"></span><span class="l">Claude</span></label>
         <label class="tg"><input type="checkbox" id="agentCodexSw" data-agent="codex"><span class="sw"></span><span class="l">Codex</span></label>
         <label class="tg"><input type="checkbox" id="agentAgySw" data-agent="agy"><span class="sw"></span><span class="l">agy</span></label>
+        <label class="tg"><input type="checkbox" id="agentApproveSw"><span class="sw"></span><span class="l">Approve other agents' commands here (click only)<small>Claude Code and Codex ask in Nixi's card; only a click on yes runs it. agy can't be approved here.</small></span></label>
         <div id="agentList"></div>
       </div>
       <div class="row tgs">
@@ -1002,7 +1004,8 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 <div class="pn" id="panel"><div class="hd"><b id="pTitle"></b><span id="pTools"></span><button class="x" data-close title="Close (Esc)">✕</button></div><div class="bd" id="pBody"></div></div>
 
 <div id="appr"><div class="q">✋ <span id="apQ">Can I run this?</span></div><pre id="apCmd"></pre>
-  <div class="bar"><span class="hint" id="apHint">say “yes” or “no”</span><button class="btn sm" data-ans="always" title="don't ask again for this exact command in this chat">always</button><button class="btn sm" data-ans="no">no</button><button class="btn sm yes" data-ans="yes">yes</button></div></div>
+  <div class="bar"><span class="hint" id="apHint">say “yes” or “no”</span><button class="btn sm" data-ans="always" title="don't ask again for this exact command in this chat">always</button><button class="btn sm" data-ans="no">no</button><button class="btn sm yes" data-ans="yes">yes</button></div>
+  <div class="bar" id="apTerm" hidden style="margin-top:6px"><button class="btn sm" data-term>Answer in the terminal</button></div></div>
 
 <form id="pwbox" autocomplete="off"><div class="q">🔑 <span id="pwQ">He needs root for this</span></div>
   <div class="pwrow"><input id="pwIn" type="password" spellcheck="false" placeholder="your sudo password" aria-label="sudo password">
@@ -1041,6 +1044,11 @@ function staleToken(){                       // the server restarted with a new 
   try{ sessionStorage.setItem('nixi-reload',Date.now()); sessionStorage.removeItem('nixi-t'); }catch(e){}
   if(!native('reauth')) tick('Nixi restarted — close this window and run “nixi-companion” again',true);
 }
+// The click key: claimed once per page load (a reload in the same server run gets a 403 and approvals stay off until
+// Nixi restarts; the server's note says so). Held in this closure only: never in info, localStorage or the URL.
+const CLICKKEY=(()=>{ let k='';
+  tokenReady.then(async()=>{ if(!TOKEN) return; try{ const r=await fetch('/api/click-key',{method:'POST',headers:hdr({'Content-Type':'application/json'}),body:'{}'}); if(r.ok) k=String((await r.json()).key||''); }catch(e){} });   // (not post(): its 403 means "taken", not a stale token)
+  return {hdr:()=>k?{'X-Nixi-Click':k}:{}}; })();
 const native=msg=>{ try{ window.webkit.messageHandlers.nixiui.postMessage(msg); return true; }catch(e){ return false; } };
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -2302,7 +2310,10 @@ function onEvent(ev){
   else if(ev.t==='note'){ tick(ev.text); }
   else if(ev.t==='approve'){ restore(20000,true); queueApproval(ev); }
   else if(ev.t==='agent_say') agentIn(ev);
+  else if(ev.t==='agent_result') agentResult(ev);
   else if(ev.t==='attention'){                            // an agent (claude/codex/agy…) is waiting for you: `nixi-companion attention`
+    if(ev.kind==='working'){ if(!hiddenNow) CP.agent(ev.name||ev.from,ev.from); return; }   // decoration only: no flash, no voice, no attnPend
+    if(ev.kind==='done') CP.agentEnd(ev.from);
     const ask=ev.kind!=='done', r=(ev.text||'').replace(new RegExp('^'+ev.name+'\\s+','i'),''), pj=ev.project?' · '+ev.project:'';
     const head=ask?(/^(needs|is waiting|wants)\b/i.test(r)?ev.name+' '+r:ev.name+' needs you'+(r?': '+r:'')):'✓ '+ev.name+' finished'+(r?': '+r:'');   // ("Claude needs your permission…", not "Claude needs you: Claude needs…")
     if(hiddenNow){ if(ask) post('/api/notify',{title:'Nixi',body:head+pj}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
@@ -2872,6 +2883,7 @@ function cardPlace(){   // centred on him, below his arms (reach, as CP.geo), in
   const b=document.querySelector('#body > .ball').getBoundingClientRect(), n=document.querySelector('#body .nix'), reach=n?n.getBoundingClientRect().width/2:b.width/2;
   cardTop=Math.round(clamp(b.top+b.height/2+reach+10-layoutY,4-layoutY,Math.max(4-layoutY,innerHeight-layoutY-apEl.offsetHeight-4)));
   apEl.style.top=cardTop+'px'; apEl.style.left=clamp(170-cardW/2,4-layoutX,innerWidth-layoutX-cardW-4)+'px'; }
+const agentName=n=>({claude:'Claude',codex:'Codex',agy:'agy'}[n]||String(n||'').replace(/^./,c=>c.toUpperCase()));
 function nextApproval(){
   pendingAppr=apprQ.shift()||null;
   document.body.classList.toggle('appr',!!pendingAppr); apEl.classList.toggle('on',!!pendingAppr);
@@ -2880,7 +2892,7 @@ function nextApproval(){
   if(hiddenNow) native('show');
   const what=a.tool==='Bash'?'Can I run this?':a.tool==='WebFetch'?'Can I open this page?':a.tool==='WebSearch'?'Can I search the web?':
     /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(a.tool)?'Can I change this file?':`Can I use ${a.tool}?`;
-  $('#apHint').textContent=a.confirm==='click'?'click yes or no — voice can\'t confirm sends':'say “yes” or “no”'; $('#apQ').textContent=a.q||what; $('#apCmd').textContent=a.detail; fitCard();
+  $('#apHint').textContent=a.confirm==='click'?'click yes or no — voice can\'t confirm sends':'say “yes” or “no”'; $('#apQ').textContent=a.q||(a.agent?`${agentName(a.agent)}${a.project?' · '+a.project:''} wants to run`:what); $('#apTerm').hidden=!a.agent; $('#apCmd').textContent=a.detail; fitCard();
   { const al=apEl.querySelector('[data-ans="always"]'); if(al) al.hidden=a.always===false; }   // not for chained commands
   const spoken=a.say||what;   // the server says what it does in plain words (the card shows the real command)
   askAloud(a,spoken);
@@ -2902,16 +2914,27 @@ async function askAloud(a,spoken){
     if(said) tick(info.bridge?'say “yes” or “no” — “always” is click-only':'say “yes” or “no” (or click)');
   }
 }
-function answer(ans){ const a=pendingAppr; if(!a) return;
+async function answer(ans,trusted){ const a=pendingAppr; if(!a||a.sent) return;
   if(ans==='always'&&a.always===false) ans='yes';      // commands that run other commands: only ever this once
   if(rec&&rec.mode==='approve') stopRec(true);
-  post('/api/approve/answer',{id:a.id,ans});
+  const click=a.confirm==='click', keyed=click&&ans!=='no'&&trusted===true;   // the key goes only with a real click on yes
+  a.sent=true;
+  const r=await post('/api/approve/answer',{id:a.id,ans},keyed?{headers:hdr(Object.assign({'Content-Type':'application/json'},CLICKKEY.hdr()))}:undefined).catch(()=>null);
+  let ok=true; if(click){ try{ ok=!!(await r.json()).ok; }catch(e){ ok=false; } }
+  if(pendingAppr===a){ pendingAppr=null; nextApproval(); }
+  if(!ok){ tick('That one had already gone',true); return; }
   tick(ans==='no'?'okay — not running that':ans==='always'?`okay — won't ask again for that this chat`:'okay!',ans==='no');
-  poke(ans==='no'?'sad':'joy',ans==='no'?1100:800);
-  pendingAppr=null; nextApproval(); }
+  poke(ans==='no'?'sad':'joy',ans==='no'?1100:800); }
 function approvalGone(id){ if(pendingAppr&&pendingAppr.id===id){ if(rec&&rec.mode==='approve') stopRec(true); pendingAppr=null; nextApproval(); }
   else { const i=apprQ.findIndex(x=>x.id===id); if(i>=0) apprQ.splice(i,1); } }
-apEl.addEventListener('click',e=>{ const b=e.target.closest('[data-ans]'); if(b) answer(b.dataset.ans); });
+apEl.addEventListener('click',e=>{ const b=e.target.closest('[data-ans]'); if(b) answer(b.dataset.ans,e.isTrusted);
+  if(e.target.closest('[data-term]')&&pendingAppr&&pendingAppr.agent){ const a=pendingAppr; a.sent=true; post('/api/approve/release',{id:a.id}).catch(()=>{}); pendingAppr=null; nextApproval(); tick('okay — answer it in the terminal'); } });
+function agentResult(ev){ const n=agentName(ev.agent), st=ev.state;
+  if(st==='ran'){ tick(ev.ok===false?`${n} ran it ✗`+(Number.isInteger(ev.exit)?` (exit ${ev.exit})`:''):`${n} ran it`+(ev.ok?' ✓':''),ev.ok===false); if(ev.ok) poke('joy',1100); }
+  else if(st==='denied'){ tick('denied in Nixi'); poke('sad',1100); }
+  else if(st==='ran-after-deny') tick('⚠ a matching command ran after you denied',true);
+  else if(st==='unclear') tick(`${n}: two matching requests, result unclear`);
+  else if(st==='unknown') tick('approved, result unknown'); }
 
 /* ================= talk to claude code ================= */
 const MEM_ADD=/^(?:hey\s+nixi[,\s]+)?(?:please\s+)?(?:remember|don'?t forget|note down|make a note)\s*(?:that|this|:)?\s+(.{3,})$/i;
@@ -3525,7 +3548,7 @@ function renderSettings(){
   const am=info.agent_voice_mute||[];
   const sw={rootSw:info.root,speakSw:!muted&&info.tts_choice!=='off',wakeSw:info.wake_word,agentClaudeSw:!am.includes('claude'),agentCodexSw:!am.includes('codex'),agentAgySw:!am.includes('agy'),autoSw:info.autostart,listenShowSw:info.listen_on_show,hoverSw:info.hover,
     followSw:!!info.follow_focus,asideSw:info.step_aside!==false,stagesSw:info.answer_stages!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,proactiveSw:!!info.proactive,takeoverSw:!!info.notifications_takeover,detailsSw:!!info.notify_details,nsoundSw:info.notify_sound!==false,lookMeetSw:!!info.look_meeting,lookMusicSw:!!info.look_music,lookBeatSw:!!info.look_beat,speakSubjSw:!!info.notify_speak_subject,lookFsSw:!!info.look_fullscreen,reactLoadSw:!!info.react_load,reactBreakSw:!!info.react_break,reactWelcomeSw:!!info.react_welcome,lookCodingSw:!!info.look_coding,lookNightSw:!!info.look_night,lookWeatherSw:!!info.look_weather,lookPartySw:!!info.look_party,reactQuipsSw:!!info.react_quips,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
-    updSw:info.update_check!==false,peersSw:!!info.peers_on,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
+    updSw:info.update_check!==false,peersSw:!!info.peers_on,agentApproveSw:!!info.agent_approvals,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
   renderAgents(); renderUpdate(); renderPtt();
   for(const k in sw){ const e=document.getElementById(k); if(e) e.checked=!!sw[k]; }
@@ -3818,6 +3841,7 @@ setEl.addEventListener('change',e=>{
   if(id==='popupSw') setSetting({popup_done:on});
   if(id==='updSw') setSetting({update_check:on}).then(renderUpdate);
   if(id==='peersSw') setSetting({peers_on:on});
+  if(id==='agentApproveSw') setSetting({agent_approvals:on});
   if(id==='fullSw') setSetting({full_text:on}).then(showInfo);
   if(id==='compactSw') setSetting({auto_compact:on});
   if(id==='costIn') setSetting({max_cost_usd:+e.target.value||0}).then(()=>tick(+e.target.value?'a request stops at $'+e.target.value:'no usage limit'));
@@ -4114,7 +4138,7 @@ const CP=(()=>{
     H=el.offsetHeight; const want=[2*Math.max(0,Math.ceil(geo().reach*.92+18+W+16-170)),Math.max(0,H+16-460)];
     if(want[0]!==sheetWant[0]||want[1]!==sheetWant[1]){ sheetWant=want; sizeWindow(); } }
   new MutationObserver(()=>{ if(on&&!barEdge()) fitSheet(); }).observe(out,{childList:true,subtree:true,characterData:true});
-  function hide(){ sheetWant=[0,0]; sizeWindow(); on=false; el.classList.remove('on'); document.body.classList.remove('term'); clearTimeout(offT); offT=setTimeout(()=>{ if(!on&&wide){ wide=false; native('code:off'); } },400); }
+  function hide(){ agStop(); sheetWant=[0,0]; sizeWindow(); on=false; el.classList.remove('on'); document.body.classList.remove('term'); clearTimeout(offT); offT=setTimeout(()=>{ if(!on&&wide){ wide=false; native('code:off'); } },400); }
 
   // ---- writing to it
   const KW=/\b(def|return|if|elif|else|for|while|in|not|and|or|import|from|try|except|with|as|const|let|var|function|async|await|new|null|None|True|False|true|false|fn|pub|use|match|export|raise|throw)\b/g;
@@ -4130,7 +4154,7 @@ const CP=(()=>{
     for(let i=1;i<=text.length;i++){ d.innerHTML=pre+hl(text.slice(0,i))+'<i class="cur"></i>'; await wait(1000/cps); if(hurry()) break; }
     d.innerHTML=pre+hl(text);
   }
-  function open(title,root){ titleEl.textContent=title; stEl.textContent='…'; stEl.className=''; el.classList.toggle('root',!!root); el.classList.toggle('rootmode',!!info.root); out.innerHTML=''; show(); }
+  function open(title,root){ agStop(); el.classList.remove('mini'); titleEl.textContent=title; stEl.textContent='…'; stEl.className=''; el.classList.toggle('root',!!root); el.classList.toggle('rootmode',!!info.root); out.innerHTML=''; show(); }
   function done(ok){ stEl.textContent=ok?'✓':'✕'; stEl.className=ok?'ok':'bad'; }
   async function result(id){ for(let i=0;i<1200&&!RES[id]&&busy;i++){ if(q.length&&i>20) break; await wait(50); } return RES[id]; }
   const rows=(t,n)=>String(t||'').replace(/\r/g,'').split('\n').filter(x=>x.trim()).slice(0,n);
@@ -4177,7 +4201,23 @@ const CP=(()=>{
   async function run(){ running=true;
     while(q.length){ const ev=q.shift(); try{ await (VIEWS[ev.name]||VIEWS.other)(ev); }catch(e){ console.log('[nixi] terminal',e); } }
     running=false; if(!busy||answering) hide(); }
+  // ---- another agent is working (Claude Code, Codex, agy): a fixed decorative loop, no real text; smaller after a minute,
+  // gone on that agent's "finished" or after 15 minutes without a `working`. Never while his own turn uses the sheet.
+  let ag=null; const SKEL=['<i class="pr">$</i> ▒▒▒▒▒ ▒▒▒▒▒▒▒▒ ▒▒▒','▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒','▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒▒▒▒▒▒','<i class="pr">$</i> ▒▒▒▒ ▒▒▒▒▒▒▒▒','▒▒▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒▒▒','▒▒▒▒ ▒▒▒▒▒▒▒']; 
+  const ownTurn=()=>busy||running||q.length>0||answering;
+  function agStop(){ if(ag){ clearInterval(ag.timer); ag=null; } el.classList.remove('mini'); }
+  function agent(name,from){ if(ownTurn()) return;
+    if(ag){ ag.last=Date.now(); ag.from=from; titleEl.textContent=name; return; }
+    titleEl.textContent=name; stEl.textContent='…'; stEl.className=''; el.classList.remove('root','rootmode'); out.innerHTML=''; show();
+    if(!on) return;
+    ag={from,t0:Date.now(),last:Date.now(),i:0,timer:0};
+    ag.timer=setInterval(()=>{ if(!ag) return; if(ownTurn()){ agStop(); return; }
+      if(Date.now()-ag.last>15*60000){ hide(); return; }
+      if(Date.now()-ag.t0>60000) el.classList.add('mini');
+      line(SKEL[ag.i++%SKEL.length],'out'); },900); }
+  function agentEnd(from){ if(ag&&ag.from===from&&!ownTurn()) hide(); }
   return {
+    agent, agentEnd,
     tool(ev){ if(info.code_panel===false||info.bridge) return; answering=false; q.push(ev); if(!running) run(); },
     result(ev){ RES[ev.id]={text:ev.text||'',is_error:!!ev.is_error}; },
     answer(){ answering=true; if(!running) hide(); },
