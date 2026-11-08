@@ -110,6 +110,22 @@ class MachineSensesTest(_ServerEnv):
         self.machine(700)
         self.assertEqual(len(self.offers), 2)
 
+    def test_back_online_drops_a_held_offline_and_gate_off_drops_host(self):
+        self.route("route", "")
+        self.machine(100)
+        self.N.pending["offline"] = ("No network connection.", False, 700)     # queued, held
+        self.route("route", "eth0 00000000 00000000 0001\n")
+        self.machine(140)
+        self.assertNotIn("offline", self.N.pending)
+        self.N.pending["host"] = ("oak is back.", False, 700)
+        with mock.patch.object(self.server.plugins, "peers_allowed", return_value=False):
+            self.machine(141)
+        self.assertNotIn("host", self.N.pending)
+        self.N.pending["host"] = ("oak is back.", False, 700)
+        self.server.CFG["react_load"] = False
+        self.machine(142)
+        self.assertNotIn("host", self.N.pending)
+
     def test_offline_hold_and_return(self):
         self.route("route", "")
         self.machine(100)

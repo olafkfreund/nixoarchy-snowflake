@@ -392,6 +392,21 @@ class WeatherNudgeTest(_ServerEnv):
         self.assertEqual(self.tick(1500), [])  # re-armed, but still cooling down
         self.assertEqual(self.tick(73001), [("storm", False)])
 
+    def test_closing_the_gate_drops_a_held_storm_and_proactive_off_rearms(self):
+        S = self.server
+        S.Ambient.storm = S.Ambient.dnd = True
+        self.tick(1000)
+        self.assertIn("storm", S.Nudge.pending)              # held by DND
+        S.CFG["ambient_weather"] = False
+        self.tick(1100)
+        S.Ambient.dnd = False
+        S.CFG["ambient_weather"] = True
+        self.assertNotIn("storm", S.Nudge.pending)
+        S.Nudge.quipped["storm"] = True
+        S.CFG["proactive"] = False
+        self.tick(1200)
+        self.assertFalse(S.Nudge.quipped["storm"])
+
 
 if __name__ == "__main__":
     unittest.main()

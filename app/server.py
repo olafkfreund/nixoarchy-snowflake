@@ -1665,13 +1665,14 @@ class Ambient:
             cls.peer_due = 0.0
             with cls.peer_lock:
                 cls.peer_last = {}
-            for kind in ("error", "disk", "offline"):
+            for kind in ("error", "disk", "offline", "host"):
                 Nudge.pending.pop(kind, None)
             return
         if not plugins.peers_allowed():
             cls.peer_due = 0.0
             with cls.peer_lock:
                 cls.peer_last = {}
+            Nudge.pending.pop("host", None)
         elif t >= cls.peer_due:
             cls.peer_due = t + 300
             peers.snapshot()
@@ -1710,6 +1711,7 @@ class Ambient:
         route = cls.route_up(proc)
         if route is True:
             cls.off_since, cls.offline = None, False
+            Nudge.pending.pop("offline", None)                   # back before it showed: no line
         elif route is False:
             cls.off_since = t if cls.off_since is None else cls.off_since
             if not cls.offline and t - cls.off_since >= 30:
@@ -2377,6 +2379,8 @@ class Nudge:
         weather_on = A.gated()
         for kind, on in (("storm", A.storm), ("hot", A.hot)):
             on = bool(weather_on and on)
+            if not weather_on:
+                cls.pending.pop(kind, None)
             if on and not cls.quipped.get(kind):
                 cls.offer(kind, quip(kind), False, t)
             cls.quipped[kind] = on
@@ -2387,6 +2391,7 @@ class Nudge:
         if not CFG.get("proactive"):
             cls.pending.clear()
             cls.active_since = None
+            cls.quipped.update(storm=False, hot=False)          # (watch doesn't run: re-arm them here)
             return
         cls.watch(t, time.time() if wall is None else wall,
                   hist or Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "omarchy" / "notifications" / "history.json", now)
