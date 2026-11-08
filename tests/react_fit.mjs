@@ -154,6 +154,44 @@ const sc = await ev(`rxReset(); const b0=document.querySelector('#body>path.ball
   await new Promise(r=>setTimeout(r,80)); o.push(document.querySelector('#body>path.ball').getAttribute('d')===b0, empty()); return o;`);
 eq(sc, [true, true, true, true, true, true, true, true, false, true, true], "setCharacter round trip and the notch");
 
+// Step 5: the Devil keeps his own reds while the other characters use the selected body colour.
+const red = await ev(`rxReset(); const out=[];
+  for(const colour of ['#1b2a4a','#50c878']){
+    applyLook({...LOOK,body:colour,character:'devil',follow_theme:false});
+    const stops=id=>[...document.querySelectorAll('#'+id+' stop')].map(s=>s.getAttribute('stop-color'));
+    const back=document.querySelector('#body>.nix');
+    out.push({ball:document.querySelector('#body>path.ball').getAttribute('fill'),rim:getComputedStyle($('#rim')).stroke,
+      body:stops('devBody'),wing:stops('devWing'),backBody:back.querySelector('path[fill="url(#devBody)"]')?.getAttribute('fill'),
+      wings:[...back.querySelectorAll('[fill="url(#devWing)"]')].length,tail:!!back.querySelector('.tTail'),fork:!!back.querySelector('.dFork')});
+    renderSettings(); drawPreview();
+    for(const sel of ['#lookPrev','#characterGrid [data-character="devil"] svg','#set .hd .logo']){
+      const svg=document.querySelector(sel), b=svg.querySelector('path[data-part="body"]'), g=svg.querySelector('radialGradient[id$="devBody"]');
+      out.push({preview:!!b&&!!g&&b.getAttribute('fill')==='url(#'+g.id+')',stops:g?[...g.querySelectorAll('stop')].map(s=>s.getAttribute('stop-color')):[]}); }
+    out.push(...['snowflake','terminal','robot'].map(id=>{setCharacter(id);return {fill:document.querySelector('#body>path.ball').getAttribute('fill'),
+      stops:['--body0','--body1','--body2'].map(v=>document.documentElement.style.getPropertyValue(v)),expected:bodyStops(colour)};}));
+  } rxReset(); return out;`);
+for(let i=0;i<red.length;i+=7){
+  const d=red[i];
+  check(d.ball==='url(#devBody)' && d.rim==='rgb(92, 10, 28)' && JSON.stringify(d.body)===JSON.stringify(['#e0334f','#c81e3a','#7a0f24']) &&
+    JSON.stringify(d.wing)===JSON.stringify(d.body) && d.backBody==='url(#devBody)' && d.wings>=2 && d.tail && d.fork,
+    `Devil ball and back art stay red for body colour ${i/7}`, d);
+  for(let j=1;j<=3;j++) check(red[i+j].preview && JSON.stringify(red[i+j].stops)===JSON.stringify(d.body),
+    `Devil preview ${j} stays red for body colour ${i/7}`,red[i+j]);
+  check(red.slice(i+4,i+7).every(x=>x.fill==='url(#ballG)'&&JSON.stringify(x.stops)===JSON.stringify(x.expected)),
+    `the other three characters use the selected body colour ${i/7}`,red.slice(i+4,i+7));
+}
+
+const forks = await ev(`rxReset(); setCharacter('devil'); const stage=$('#stage'), fork=()=>document.querySelector('#body>.nix .dFork'); const out=[];
+  for(const id of ['load','memory','error','done','workout']){
+    stage.classList.add('c-devil','r-'+id); await new Promise(r=>setTimeout(r,220)); out.push([id,getComputedStyle(fork()).opacity]);
+    stage.classList.remove('r-'+id);
+  }
+  stage.classList.remove('c-devil'); sit({cpu_hot:true}); setCharacter('devil'); rxEnd();
+  await new Promise(r=>setTimeout(r,220)); out.push(['sustained load',getComputedStyle(fork()).opacity]);
+  sit({cpu_hot:false,ram_low:true}); rxEnd(); await new Promise(r=>setTimeout(r,220)); out.push(['sustained memory',getComputedStyle(fork()).opacity]);
+  rxReset(); return out;`);
+check(forks.every(([,opacity])=>+opacity===0),"Devil fork hides for all five left props, including sustained load and memory",forks);
+
 // 11. music: the boombox stands in for the headphones, bops on start and on a track change, and the chip and card follow it
 await click(5, 5);                                   // (a real pointer on the page first)
 await ev(`rxReset(); window.__q=[]; window.__qr={}; window.fetch0=window.fetch; const f1=window.fetch;

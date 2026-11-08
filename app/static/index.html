@@ -26,6 +26,9 @@ body.still .tCursor,body.still .tAntenna,body.still .tTail{animation-play-state:
 .tCursor{animation:cursor-blink 1.05s steps(1) infinite}
 .tAntenna{transform-origin:0px -102px;animation:antenna-pulse 1.8s ease-in-out infinite}
 .tTail{transform-origin:44px 48px;animation:tail-swish 2.5s ease-in-out infinite}
+.dFork{transition:opacity .18s ease-in-out}
+#stage.c-devil:is(.r-load,.r-memory,.r-error,.r-done,.r-workout) .dFork,
+#stage.c-devil:has(#rxFront .mc,#rxFront .sk,#rxFront .wr,#rxFront .bx,#rxFront .db) .dFork{opacity:0}
 html.native body{background:transparent}
 button{font:inherit;color:inherit}
 
@@ -599,10 +602,7 @@ body.calm.mir-agent #mirBar{display:flex} #mirBar span{overflow:hidden;text-over
 #set .sgrip.corner{right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;border-radius:0 0 14px 0}
 #set .sgrip.corner:focus-visible{outline:2px solid var(--hot);outline-offset:-2px}
 #set .hd{padding:12px 12px 8px 14px}
-#set .hd .logo{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%,var(--body0,#1b1b1b),var(--body2,#030303) 70%);
-  box-shadow:0 0 0 1.5px var(--edge2),0 0 10px var(--accA);position:relative}
-#set .hd .logo::before,#set .hd .logo::after{content:"";position:absolute;top:5px;width:4px;height:7px;border-radius:50%;background:var(--whiteL,#f3dccf)}
-#set .hd .logo::before{left:4.5px} #set .hd .logo::after{right:4.5px;background:var(--whiteR,#f3dccf)}
+#set .hd .logo{width:24px;height:24px;overflow:visible;flex:none}
 #set .hd b{font-size:14px;letter-spacing:.01em}
 #tabs{position:relative;display:flex;gap:0;margin:0 12px 8px;padding:3px;border:0;border-radius:13px;background:var(--panel2);box-shadow:inset 0 0 0 1px #1f1f1f}
 #tabs button{position:relative;z-index:1;flex:1;display:flex;align-items:center;justify-content:center;gap:5px;background:none;border:0;border-radius:10px;
@@ -777,8 +777,8 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <linearGradient id="termGlare" x1="-74" y1="-64" x2="26" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".09"/><stop offset=".5" stop-color="#fff" stop-opacity=".02"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
       <linearGradient id="botShell" x1="0" y1="-78" x2="0" y2="82" gradientUnits="userSpaceOnUse"><stop offset="0" class="b0"/><stop offset=".55" class="b1"/><stop offset="1" class="b2"/></linearGradient>
       <linearGradient id="botTrim" x1="0" y1="-80" x2="0" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0" class="b1"/><stop offset="1" class="b2"/></linearGradient>
-      <radialGradient id="devBody" cx="-24" cy="-30" r="118" gradientUnits="userSpaceOnUse"><stop offset="0" class="b0"/><stop offset=".55" class="b1"/><stop offset="1" class="b2"/></radialGradient>
-      <linearGradient id="devWing" x1="0" y1="-16" x2="0" y2="86" gradientUnits="userSpaceOnUse"><stop offset="0" class="b1"/><stop offset="1" class="b2"/></linearGradient>
+      <radialGradient id="devBody" cx="-24" cy="-30" r="118" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e0334f"/><stop offset=".55" stop-color="#c81e3a"/><stop offset="1" stop-color="#7a0f24"/></radialGradient>
+      <linearGradient id="devWing" x1="0" y1="-16" x2="0" y2="86" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e0334f"/><stop offset=".55" stop-color="#c81e3a"/><stop offset="1" stop-color="#7a0f24"/></linearGradient>
       <clipPath id="clipL"><path id="cpL"/></clipPath>
       <clipPath id="clipR"><path id="cpR"/></clipPath>
       <linearGradient id='fx-gold' x2='0' y2='1'><stop offset='0' stop-color='#ffe27a'/><stop offset='1' stop-color='#f5a524'/></linearGradient><linearGradient id='fx-red' x2='0' y2='1'><stop offset='0' stop-color='#ff9a94'/><stop offset='1' stop-color='#e5484d'/></linearGradient><linearGradient id='fx-green' x2='0' y2='1'><stop offset='0' stop-color='#7fe8a0'/><stop offset='1' stop-color='#22b573'/></linearGradient><linearGradient id='fx-blue' x2='0' y2='1'><stop offset='0' stop-color='#a6e0ff'/><stop offset='1' stop-color='#4a9fe8'/></linearGradient><linearGradient id='fx-pink' x2='0' y2='1'><stop offset='0' stop-color='#ffbdd7'/><stop offset='1' stop-color='#ff6fa5'/></linearGradient><linearGradient id='fx-paper' x2='0' y2='1'><stop offset='0' stop-color='#fffdf6'/><stop offset='1' stop-color='#f1e6d0'/></linearGradient><linearGradient id='fx-steel' x2='0' y2='1'><stop offset='0' stop-color='#f2f5f9'/><stop offset='1' stop-color='#9aa7ba'/></linearGradient><linearGradient id='fx-shade' x2='0' y2='1'><stop offset='0' stop-color='#4a5068'/><stop offset='1' stop-color='#12141c'/></linearGradient><radialGradient id='fx-sun'><stop offset='0' stop-color='#fff2a8'/><stop offset='1' stop-color='#ffc23d'/></radialGradient><linearGradient id='fx-hat' x2='0' y2='1'><stop offset='0' stop-color='#3b3b44'/><stop offset='1' stop-color='#111115'/></linearGradient><linearGradient id='fx-shirt' x2='0' y2='1'><stop offset='0' stop-color='#55b56d'/><stop offset='1' stop-color='#2b7a45'/></linearGradient><linearGradient id='fx-grey' x2='0' y2='1'><stop offset='0' stop-color='#cfd1d5'/><stop offset='1' stop-color='#8d9096'/></linearGradient><linearGradient id="fx-cap" x1="0" y1="-112" x2="0" y2="-48" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#3a3f4b"/><stop offset="1" stop-color="#14161d"/></linearGradient>
@@ -862,7 +862,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 
 <!-- settings -->
 <div class="pn" id="set">
-  <div class="hd"><span class="logo"></span><b>Settings</b><button class="x" data-close title="Close (Esc)">✕</button></div>
+  <div class="hd"><svg class="logo" viewBox="-125 -150 250 250" aria-hidden="true"></svg><b>Settings</b><button class="x" data-close title="Close (Esc)">✕</button></div>
   <div class="tabs" id="tabs" role="tablist">
     <button id="tab-look" role="tab" aria-selected="true" aria-controls="panel-look" tabindex="0" data-tab="look" class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="9.3" cy="11" rx="1.6" ry="3"/><ellipse cx="14.7" cy="11" rx="1.6" ry="3"/></svg>Look</button>
     <button id="tab-voice" role="tab" aria-selected="false" aria-controls="panel-voice" tabindex="-1" data-tab="voice"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>Voice</button>
@@ -1294,12 +1294,18 @@ function miniNixi(svg,L,clickable){
   svg.innerHTML=''; const id='mg'+(miniN++), [b0,b1,b2]=bodyStops(L.body), character=CHARACTERS[L.character]||CHARACTERS.snowflake;
   const defs=sv('defs',{},svg), gr=sv('radialGradient',{id,cx:-24,cy:-30,r:112,gradientUnits:'userSpaceOnUse'},defs);
   [[0,b0],[.55,b1],[1,b2]].forEach(([o,c])=>sv('stop',{offset:o,'stop-color':c},gr));
-  const back=sv('g',{'data-part':clickable?'skin':''},svg), ball=sv('path',{d:character.ball,'stroke-linejoin':'round',fill:`url(#${id})`,stroke:lum(L.body)<.12?'#2a2a2a':shade(L.body,-.12),'stroke-width':1.6,'data-part':'body'},svg);
-  sv('g',{'data-part':'body'},svg).innerHTML=character.back;
+  const devil=character===CHARACTERS.devil, red=['#e0334f','#c81e3a','#7a0f24'];
+  if(devil) for(const [name,kind,attrs] of [['devBody','radialGradient',{cx:-24,cy:-30,r:118}],['devWing','linearGradient',{x1:0,y1:-16,x2:0,y2:86}]]){
+    const g=sv(kind,{id:id+name,gradientUnits:'userSpaceOnUse',...attrs},defs);
+    [[0,red[0]],[.55,red[1]],[1,red[2]]].forEach(([o,c])=>sv('stop',{offset:o,'stop-color':c},g)); }
+  const rim=devil?'#5c0a1c':lum(L.body)<.12?'#2a2a2a':shade(L.body,-.12);
+  const back=sv('g',{'data-part':clickable?'skin':''},svg), ball=sv('path',{d:character.ball,'stroke-linejoin':'round',fill:`url(#${devil?id+'devBody':id})`,stroke:rim,'stroke-width':1.6,'data-part':'body'},svg);
+  const art=html=>devil?html.replaceAll('url(#devBody)',`url(#${id}devBody)`).replaceAll('url(#devWing)',`url(#${id}devWing)`).replaceAll('var(--rim)',rim):html;
+  sv('g',{'data-part':'body'},svg).innerHTML=art(character.back);
   for(const s of [-1,1]){ const k=s<0?'L':'R';
     sv('ellipse',{cx:s*EYE.cx,cy:EYE.cy,rx:EYE.rx,ry:EYE.ry,transform:`rotate(${-s*EYE.tilt*180/Math.PI} ${s*EYE.cx} ${EYE.cy})`,fill:L['white'+k],'data-part':'white'+k},svg);
     sv('ellipse',{cx:s*10.5,cy:-4,rx:clickable?4.2:3.2,ry:12.5,transform:`rotate(${-s*8} ${s*10.5} -4)`,fill:L['pup'+k],'data-part':'pup'+k},svg); }
-  sv('g',{'data-part':'body'},svg).innerHTML=character.front;
+  sv('g',{'data-part':'body'},svg).innerHTML=art(character.front);
   const front=sv('g',{'data-part':clickable?'skin':''},svg);
   drawSkin(back,front,L,`url(#${id})`,character);
   svg.insertBefore(back,ball);
@@ -1332,7 +1338,9 @@ const CHARACTERS={snowflake:{label:'Snowflake',ball:snowPath(),back:nixLambdas()
     front:'',gloss:false,faceBox:[-72,-61,144,116],anchors:{head:[0,-20],face:[0,0],neck:[0,12],base:[0,2],left:[0,0],right:[0,0]},
     cupX:104,band:'M-103 -30C-124 -146 124 -146 103 -30',pivot:82,shadow:64,fits:new Set(['none','halo','bow','scarf','tie','headphones','shades','glasses','chat','feed','plug']),touch:'tAntenna'},
   devil:{label:'Devil',ball:'M0 -78C56 -78 86 -42 86 8C86 56 54 84 0 84C-54 84 -86 56 -86 8C-86 -42 -56 -78 0 -78Z',
-    back:'<g class="tTail"><path d="M44 48C70 56 72 18 80 8" fill="none" stroke="var(--body2)" stroke-width="6" stroke-linecap="round"/><path d="M80 8L75 -3L87 3L82 15Z" fill="url(#devWing)" stroke="var(--rim)" stroke-width="1.8" stroke-linejoin="round"/></g><path d="M-76 4C-94 -12 -96 8 -89 26C-83 19 -79 24 -74 32Z" fill="url(#devWing)" stroke="var(--rim)" stroke-width="2" stroke-linejoin="round"/><path d="M76 4C94 -12 96 8 89 26C83 19 79 24 74 32Z" fill="url(#devWing)" stroke="var(--rim)" stroke-width="2" stroke-linejoin="round"/><ellipse cx="-32" cy="82" rx="15" ry="9" fill="url(#devWing)" stroke="var(--rim)" stroke-width="1.8"/><ellipse cx="32" cy="82" rx="15" ry="9" fill="url(#devWing)" stroke="var(--rim)" stroke-width="1.8"/><path d="M0 -78C56 -78 86 -42 86 8C86 56 54 84 0 84C-54 84 -86 56 -86 8C-86 -42 -56 -78 0 -78Z" fill="url(#devBody)"/><ellipse cx="0" cy="62" rx="34" ry="14" fill="#fda4af" opacity=".16"/><path class="accent" d="M-54 -56C-68 -88 -46 -108 -28 -94C-35 -82 -35 -68 -30 -62Z" fill="#fbbf24" stroke="#451a03" stroke-width="2" stroke-linejoin="round"/><path class="accent" d="M54 -56C68 -88 46 -108 28 -94C35 -82 35 -68 30 -62Z" fill="#fbbf24" stroke="#451a03" stroke-width="2" stroke-linejoin="round"/><ellipse class="avoid" cx="-64" cy="40" rx="7" ry="4" fill="#fecdd3" opacity=".45"/><ellipse class="avoid" cx="64" cy="40" rx="7" ry="4" fill="#fecdd3" opacity=".45"/>',
+    back:'<g class="tTail"><path d="M44 48C76 62 81 29 82 8" fill="none" stroke="#7a0f24" stroke-width="6" stroke-linecap="round"/><path d="M82 8L77 -5L84 3L83 16Z" fill="url(#devWing)" stroke="#5c0a1c" stroke-width="1.8" stroke-linejoin="round"/></g>'+
+      '<g class="dFork"><path d="M-87 84V-35" fill="none" stroke="#5c0a1c" stroke-width="5" stroke-linecap="round"/><path d="M-93 -50V-69M-87 -48V-74M-81 -50V-69M-93 -50Q-87 -36 -81 -50" fill="none" stroke="#c81e3a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></g>'+
+      '<path d="M-76 4C-94 -12 -96 8 -89 26C-83 19 -79 24 -74 32Z" fill="url(#devWing)" stroke="var(--rim)" stroke-width="2" stroke-linejoin="round"/><path d="M76 4C94 -12 96 8 89 26C83 19 79 24 74 32Z" fill="url(#devWing)" stroke="var(--rim)" stroke-width="2" stroke-linejoin="round"/><ellipse cx="-32" cy="82" rx="15" ry="9" fill="url(#devWing)" stroke="var(--rim)" stroke-width="1.8"/><ellipse cx="32" cy="82" rx="15" ry="9" fill="url(#devWing)" stroke="var(--rim)" stroke-width="1.8"/><path d="M0 -78C56 -78 86 -42 86 8C86 56 54 84 0 84C-54 84 -86 56 -86 8C-86 -42 -56 -78 0 -78Z" fill="url(#devBody)"/><ellipse cx="0" cy="62" rx="34" ry="14" fill="#fda4af" opacity=".16"/><path class="accent" d="M-54 -56C-68 -88 -46 -108 -28 -94C-35 -82 -35 -68 -30 -62Z" fill="#fbbf24" stroke="#451a03" stroke-width="2" stroke-linejoin="round"/><path class="accent" d="M54 -56C68 -88 46 -108 28 -94C35 -82 35 -68 30 -62Z" fill="#fbbf24" stroke="#451a03" stroke-width="2" stroke-linejoin="round"/><ellipse class="avoid" cx="-64" cy="40" rx="7" ry="4" fill="#fecdd3" opacity=".45"/><ellipse class="avoid" cx="64" cy="40" rx="7" ry="4" fill="#fecdd3" opacity=".45"/>',
     front:'<path class="avoid" d="M-46 -64Q-26 -60 -10 -62" fill="none" stroke="#3b0714" stroke-width="3.2" stroke-linecap="round"/><path class="avoid" d="M46 -64Q26 -60 10 -62" fill="none" stroke="#3b0714" stroke-width="3.2" stroke-linecap="round"/><path class="avoid" d="M-18 55Q0 63 20 53" fill="none" stroke="#3b0714" stroke-width="3.2" stroke-linecap="round"/><polygon class="accent avoid" points="8,57 15,54 12,64" fill="#fef3c7" stroke="#3b0714" stroke-width="1.6" stroke-linejoin="round"/>',
     gloss:false,faceBox:[-74,-66,148,128],anchors:{head:[0,-20],face:[0,0],neck:[0,10],base:[0,4],left:[0,0],right:[0,0]},
     cupX:106,band:'M-105 -30C-128 -140 128 -140 105 -30',pivot:84,shadow:64,fits:new Set(['none','halo','crown','sprout','bow','nightcap','beanie','party','scarf','tie','headphones','shades','glasses','chat','feed','plug']),touch:'tTail'}};
@@ -1778,7 +1786,8 @@ document.addEventListener('visibilitychange',()=>rxCheck());
 new MutationObserver(()=>rxCheck()).observe(document.body,{attributes:true,attributeFilter:['class']});
 function setCharacter(id){
   const next=CHARACTERS[id]||CHARACTERS.snowflake, changed=BODY!==next;
-  document.querySelectorAll('#body>path.ball').forEach(e=>e.setAttribute('d',next.ball));
+  document.querySelectorAll('#body>path.ball').forEach(e=>{ e.setAttribute('d',next.ball); e.setAttribute('fill',next===CHARACTERS.devil?'url(#devBody)':'url(#ballG)'); });
+  const stage=$('#stage'); if(next===CHARACTERS.devil) stage.style.setProperty('--rim','#5c0a1c'); else stage.style.removeProperty('--rim');
   document.querySelectorAll('#body>.nix').forEach(g=>{ g.innerHTML=next.back; if(next!==CHARACTERS.snowflake) g.classList.remove('glint'); });
   document.querySelectorAll('#body>.bfront').forEach(g=>g.innerHTML=next.front);
   document.querySelectorAll('#body>ellipse').forEach(e=>e.setAttribute('display',next.gloss?'':'none'));
@@ -4005,7 +4014,7 @@ function renderParts(){ const L=curLook();
     :[['body','Body'],['pupL','Left pupil'],['pupR','Right pupil'],['whiteL','Left eye white'],['whiteR','Right eye white']];
   if(wornSkin(L)!=='none') list.push(['skin','Skin']);
   $('#partChips').innerHTML=list.map(([p,l])=>`<button data-part="${p}" class="${pkPart===p?'on':''}"><i style="--c:${partColour(L,p)}"></i>${l}</button>`).join(''); }
-function drawPreview(){ const L=curLook(), svg=$('#lookPrev'); miniNixi(svg,L,true);
+function drawPreview(){ const L=curLook(), svg=$('#lookPrev'); miniNixi(svg,L,true); miniNixi($('#set .hd .logo'),L,false);
   const sel=L.link&&pkPart==='pupL'?['pupL','pupR']:L.link&&pkPart==='whiteL'?['whiteL','whiteR']:[pkPart];
   svg.querySelectorAll('[data-part]').forEach(e=>{ if(sel.includes(e.dataset.part)&&e.tagName!=='g') e.classList.add('sel'); }); }
 function drawPicker(){
@@ -4128,6 +4137,7 @@ function renderSettings(){
     :'<div class="h" style="margin:0">none yet</div>';
   // look
   const L=curLook();
+  miniNixi($('#set .hd .logo'),L,false);
   $('#characterGrid').innerHTML=Object.entries(CHARACTERS).map(([id,c])=>`<button type="button" data-character="${id}" class="${(L.character||'snowflake')===id?'on':''}" aria-pressed="${(L.character||'snowflake')===id}"><svg viewBox="-125 -150 250 250" aria-hidden="true"></svg>${c.label}</button>`).join('');
   $$('#characterGrid button').forEach(b=>miniNixi(b.querySelector('svg'),{...L,character:b.dataset.character,skin:'none'},false));
   const worn=wornSkin(L), bodyL=CHARACTERS[L.character]||CHARACTERS.snowflake;
