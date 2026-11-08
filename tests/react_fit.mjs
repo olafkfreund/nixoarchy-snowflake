@@ -122,10 +122,10 @@ const trig = await ev(`const o={}; const T=async(k,f)=>{ rxReset(); f(); await n
   await T('error',()=>onEvent({t:'ambient',sys:['a.service'],cal:null,weather:null}));
   await T('soon',()=>onEvent({t:'ambient',alert:true,cal:{time:'10:00',title:'x'},sys:[],weather:null}));
   await T('ask',()=>onEvent({t:'attention',kind:'ask',name:'Claude',text:'needs you',from:'x'}));
-  await T('done',()=>onEvent({t:'attention',kind:'done',name:'Claude',text:'',from:'x'}));
+  await T('done',()=>{ attnPend=null; onEvent({t:'attention',kind:'done',name:'Claude',text:'',from:'x'}); });
   await T('notice',()=>onEvent({t:'notify',key:'n1',category:'other',app:'x',source:'',summary:'s',body:'',icon:'',rt:performance.now()}));
   await T('workout',()=>onEvent({t:'nudge',kind:'break',text:'stretch'}));
-  const f0=window.fetch.bind(window); window.fetch=(u,x)=>/api\\/quick/.test(String(u))?Promise.resolve(new Response(JSON.stringify({handled:true,say:'Opening Firefox.'}))):f0(u,x);
+  const f0=window.fetch.bind(window); window.fetch=(u,x)=>/api\\/quick/.test(String(u))?Promise.resolve(new Response(JSON.stringify({handled:true,say:'Opening Firefox.',opened:true}))):f0(u,x);
   rxReset(); await send('open firefox'); await new Promise(r=>setTimeout(r,60)); o.open=RX&&RX.id; window.fetch=f0;
   await T('notice_job',()=>onEvent({t:'notify',key:'n2',category:'other',app:'nixi-job',summary:'s',body:'',icon:'',rt:performance.now()}));
   rxReset(); return o;`);
@@ -157,7 +157,7 @@ eq(sc, [true, true, true, true, true, true, true, true, false, true, true], "set
 // Step 5: the Devil keeps his own reds while the other characters use the selected body colour.
 const red = await ev(`rxReset(); const out=[];
   for(const colour of ['#1b2a4a','#50c878']){
-    applyLook({...LOOK,body:colour,character:'devil',follow_theme:false});
+    const L={...LOOK,body:colour,character:'devil',follow_theme:false}; info.look=L; applyLook(L);   // (the previews draw curLook(), which reads info.look)
     const stops=id=>[...document.querySelectorAll('#'+id+' stop')].map(s=>s.getAttribute('stop-color'));
     const back=document.querySelector('#body>.nix');
     out.push({ball:document.querySelector('#body>path.ball').getAttribute('fill'),rim:getComputedStyle($('#rim')).stroke,
@@ -232,7 +232,7 @@ await ev(`delete window.__qr.louder; return 1;`);
 // Pause: the card and chip stay with Play when the music stops, until Play
 await click(...await centre(`$('#musCard .mp')`));
 eq(await ev(`return [window.__q.at(-1), $('#musCard .mp').textContent];`), ["pause", "Play"], "card: Pause posts pause and turns into Play");
-const kept = await ev(`sit({music:false}); sitOn.music=false; sitSeen.music=false; RXS.delete('music'); rxCheck(); await new Promise(r=>setTimeout(r,100)); return [!$('#musCard').hidden, !$('#musChip').hidden, $('#musCard .mp').textContent];`);
+const kept = await ev(`sitOn.music=false; sitSeen.music=false; RXS.delete('music'); sit({music:false}); rxCheck(); await new Promise(r=>setTimeout(r,100)); return [!$('#musCard').hidden, !$('#musChip').hidden, $('#musCard .mp').textContent];`);
 eq(kept, [true, true, "Play"], "card: after its own Pause the card and chip stay with Play");
 await click(...await centre(`$('#musCard .mp')`));
 eq(await ev(`return [window.__q.at(-1), $('#musCard .mp').textContent];`), ["play", "Pause"], "card: Play posts play");
@@ -255,6 +255,63 @@ for (const [name, js] of Object.entries({ fullscreen: "sit({fullscreen:true})", 
   await reopen(); await ev(`${js}; await new Promise(r=>setTimeout(r,100)); return 1;`);
   eq(await ev(`return [$('#musCard').hidden, $('#musChip').hidden];`), [true, true], `card: ${name} closes the card and hides the chip`);
 }
+// 12. review fixes, each pinned
+// (a) setCharacter leaves #rim unfilled (it carries class "ball" but is only the outline)
+eq(await ev(`return CH.map(c=>{ setCharacter(c); return document.querySelector('#rim').getAttribute('fill'); });`), ["none", "none", "none", "none"], "setCharacter leaves #rim's fill at none for every character");
+await ev(`setCharacter('snowflake'); return 1;`);
+// (b) Escape closes only the music card, not a pending approval
+const apprEsc = async () => { await ev(`rxReset(); window.__q.length=0; window.__ap=[]; const f2=window.fetch; window.fetch=async(u,o)=>{ if(/\\/api\\/approve/.test(String(u))){ window.__ap.push(String(u)); return new Response('{"ok":true}'); } return f2(u,o); };
+    sit({music:true}); sitOn.music=true; sitSeen.music=true; RXS.add('music'); rxCheck(); return 1;`);
+  await sleep(300); await click(...await centre("$('#musChip')"));
+  // (a real approval would put the page in calm, which closes the card by itself; here it is pending with the card still open)
+  await ev(`pendingAppr={id:'ap1',tool:'Bash',detail:'ls',q:'Can I run this?',confirm:'voice'}; return 1;`);
+  await esc(); await sleep(200);
+  return ev(`const o={card:$('#musCard').hidden, pending:!!pendingAppr&&pendingAppr.id==='ap1', posts:[...window.__ap]}; pendingAppr=null; return o;`); };
+eq(await apprEsc(), { card: true, pending: true, posts: [] }, "Escape with the music card open closes only the card; the approval stays pending");
+// (c) after the card's own Pause, a meeting still hides the chip and card
+await ev(`rxReset(); sit({music:true}); sitOn.music=true; sitSeen.music=true; RXS.add('music'); rxCheck(); return 1;`);
+await click(...await centre("$('#musChip')"));
+await click(...await centre("$('#musCard .mp')"));
+await ev(`sitOn.music=false; sitSeen.music=false; RXS.delete('music'); sit({music:false}); rxCheck(); return 1;`);
+eq(await ev(`return [!$('#musCard').hidden, !$('#musChip').hidden];`), [true, true], "after Pause the chip and card stay (before the meeting)");
+await ev(`sit({meeting:true}); await new Promise(r=>setTimeout(r,100)); return 1;`);
+eq(await ev(`return [$('#musCard').hidden, $('#musChip').hidden];`), [true, true], "after Pause, a meeting hides the chip and the card");
+// (d) the headphones come back when the boombox cannot show (Proactive off)
+const hp = await ev(`rxReset(); sit({music:true}); sitOn.music=true; sitSeen.music=true; RXS.add('music'); rxCheck(); await new Promise(r=>setTimeout(r,1200)); const on=+SIT_P.hb.getAttribute('opacity');
+  info.proactive=false; showInfo(); await new Promise(r=>setTimeout(r,800)); return [on, +SIT_P.hb.getAttribute('opacity'), empty(), $('#musChip').hidden];`);
+check(hp[0] === 0 && hp[1] > 0 && hp[2] && hp[3], "reactions on, music on, Proactive off: the headphones are back and the boombox is gone", hp);
+// (e) with nothing to wear the look layer settles (sitSettled stops the per-frame writes)
+const settled = await ev(`rxReset(); sitSettled=false; await new Promise(r=>setTimeout(r,2500)); return sitSettled;`);
+eq(settled, true, "with nothing to wear the look layer settles");
+// (f) "open" plays only when the server says it opened something, not for any reply that starts with "Opening"
+await ev(`window.__qr['when are you open']={handled:true,say:'Opening hours are 9-5'}; rxReset(); await send('when are you open'); await new Promise(r=>setTimeout(r,80)); return 1;`);
+eq(await ev(`return [RX&&RX.id, empty()];`), [null, true], "a handled reply that only says \"Opening hours…\" plays no open reaction");
+// (g) a finish never plays over a pending question, even well after the question's own reaction ended
+await ev(`rxReset(); onEvent({t:'attention',kind:'ask',name:'Claude',text:'needs you',from:'x'}); return 1;`);
+await sleep(3400);
+eq(await ev(`const a=RX&&RX.id; onEvent({t:'attention',kind:'done',name:'Claude',text:'',from:'x'}); await new Promise(r=>setTimeout(r,80)); const o=[a, RX&&RX.id, $('#stage').classList.contains('r-done')]; attnPend=null; return o;`), [null, null, false], "a done while an ask is pending plays no done reaction");
+// (h) reduced motion: the speakers do not pulse to the beat
+const pulse = async () => ev(`rxReset(); sit({music:true}); sitOn.music=true; sitSeen.music=true; RXS.add('music'); rxCheck(); await new Promise(r=>setTimeout(r,2500));
+  info.look_beat=true; beat=1; beatAt=performance.now(); await new Promise(r=>setTimeout(r,60)); const t=document.querySelector('#rxFront .sp').style.transform; rxReset(); return t;`);
+const moving = await pulse();
+check(parseFloat(moving.slice(6))>1.01, "speakers pulse to the beat with motion allowed", moving);
+await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }); await sleep(200);
+const still = await pulse();
+check(!(parseFloat(still.slice(6))>1.01), "reduced motion: the speakers do not pulse", still);
+await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "no-preference" }] });
+// (i) closing the card by hand after its own Pause takes the chip with it; music resuming elsewhere resets the button
+const paused = async () => { await ev(`rxReset(); sit({music:true}); sitOn.music=true; sitSeen.music=true; RXS.add('music'); rxCheck(); return 1;`);
+  await click(...await centre("$('#musChip')")); await click(...await centre("$('#musCard .mp')"));
+  await ev(`sitOn.music=false; sitSeen.music=false; RXS.delete('music'); sit({music:false}); rxCheck(); return 1;`); };
+await paused();
+eq(await ev(`return [!$('#musChip').hidden, !$('#musCard').hidden];`), [true, true], "Pause then music stops: chip and card stay");
+await click(...await centre("$('#musCard .mx')"));
+eq(await ev(`return [$('#musChip').hidden, $('#musCard').hidden];`), [true, true], "after Pause, × takes the chip with it");
+await paused(); await click(810, 610);
+eq(await ev(`return [$('#musChip').hidden, $('#musCard').hidden];`), [true, true], "after Pause, a click elsewhere takes the chip with it");
+await paused();
+const back = await ev(`sit({music:true}); sitOn.music=true; sitSeen.music=true; RXS.add('music'); rxCheck(); const b=$('#musCard .mp'); return [b.textContent, b.dataset.p, musKeep];`);
+eq(back, ["Pause", "pause", false], "after Pause, music playing again from outside resets the button to Pause");
 await ev(`rxReset(); window.fetch=window.fetch0; return 1;`);
 
 if (fails.length) { console.log(`${fails.length} check(s) failed`); process.exit(1); }

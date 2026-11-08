@@ -1763,9 +1763,10 @@ function rxSignals(hot,low,trk){   // the situation handler: load and memory sta
   rxCheck(); }
 // the music chip and card: textContent only, the answers are shown and never spoken, nothing goes to the agent
 let musIdle=0;
-function musSync(){ const chipEl=$('#musChip'); if(!chipEl) return; const show=(RXS.has('music')&&rxState('music'))||(musKeep&&rxBase());
-  const was=!chipEl.hidden; chipEl.hidden=!show; if(!show){ musClose(); musKeep=false; } else $('#musCard .mp').textContent=musKeep?'Play':'Pause'; if(was!==show) sendRegion(true); }
-function musClose(){ const c=$('#musCard'); if(!c||c.hidden) return; c.hidden=true; clearTimeout(musIdle); sendRegion(true); }
+const musBox=()=>RXS.has('music')&&rxState('music');   // the boombox is showing
+function musSync(){ const chipEl=$('#musChip'); if(!chipEl) return; const show=musBox()||(musKeep&&rxState('music'));
+  const was=!chipEl.hidden; chipEl.hidden=!show; if(!show){ musClose(); musKeep=false; } else{ const b=$('#musCard .mp'); b.textContent=musKeep?'Play':'Pause'; b.dataset.p=musKeep?'play':'pause'; } if(was!==show) sendRegion(true); }
+function musClose(){ const c=$('#musCard'); if(!c||c.hidden) return; c.hidden=true; clearTimeout(musIdle); if(musKeep){ musKeep=false; musSync(); } sendRegion(true); }   // (closed by hand after its Pause: the chip goes with it)
 function musSay(t){ $('#musCard .mt').textContent=t; }
 function musTouch(){ clearTimeout(musIdle); musIdle=setTimeout(musClose,15000); }
 async function musAsk(phrase){ musTouch(); let q=null;
@@ -1780,13 +1781,13 @@ function musOpen(){ const c=$('#musCard'); if(!c.hidden) return musClose();
 { const card=$('#musCard'); $('#musChip').addEventListener('click',e=>{ e.stopPropagation(); musOpen(); });
   card.querySelector('.mx').addEventListener('click',e=>{ e.stopPropagation(); musClose(); });
   card.querySelectorAll('.mbs button').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); musAsk(b.dataset.p); }));
-  addEventListener('keydown',e=>{ if(e.key==='Escape'&&!card.hidden) musClose(); });
+  addEventListener('keydown',e=>{ if(e.key==='Escape'&&!card.hidden){ e.preventDefault(); e.stopImmediatePropagation(); musClose(); } });   // (only the card closes: not him, a request or an approval)
   addEventListener('pointerdown',e=>{ if(!card.hidden&&!e.target.closest('#musCard,#musChip')) musClose(); }, true); }
 document.addEventListener('visibilitychange',()=>rxCheck());
 new MutationObserver(()=>rxCheck()).observe(document.body,{attributes:true,attributeFilter:['class']});
 function setCharacter(id){
   const next=CHARACTERS[id]||CHARACTERS.snowflake, changed=BODY!==next;
-  document.querySelectorAll('#body>path.ball').forEach(e=>{ e.setAttribute('d',next.ball); e.setAttribute('fill',next===CHARACTERS.devil?'url(#devBody)':'url(#ballG)'); });
+  document.querySelectorAll('#body>path.ball').forEach(e=>{ e.setAttribute('d',next.ball); if(e.id!=='rim') e.setAttribute('fill',next===CHARACTERS.devil?'url(#devBody)':'url(#ballG)'); });   // (#rim is a ball too, and stays unfilled)
   const stage=$('#stage'); if(next===CHARACTERS.devil) stage.style.setProperty('--rim','#5c0a1c'); else stage.style.removeProperty('--rim');
   document.querySelectorAll('#body>.nix').forEach(g=>{ g.innerHTML=next.back; if(next!==CHARACTERS.snowflake) g.classList.remove('glint'); });
   document.querySelectorAll('#body>.bfront').forEach(g=>g.innerHTML=next.front);
@@ -2388,7 +2389,7 @@ function frame(ts){
     const put=(el,x,ax,ay,rot)=>{ el.setAttribute('opacity',clamp(x,0,1).toFixed(2)); el.setAttribute('transform',`translate(${ax} ${ay})${rot?` rotate(${rot.toFixed(2)})`:''} scale(${(.7+.3*x).toFixed(3)}) translate(${-ax} ${-ay})`); };
     const lift=(el,x)=>{ put(el,x,0,-4); el.setAttribute('transform',`translate(0 ${(-32*L).toFixed(1)}) scale(${(1-.08*L).toFixed(3)}) `+el.getAttribute('transform')); };   // (lifted onto the forehead while he talks, so his eyes stay visible)
     const off=!(sitOn.meeting||sitOn.music||sitOn.fullscreen||sitOn.coding||tp||tn||tb||ts6)&&Math.max(a,b,c,g,pa,ni,bnn,scc,pch,pf)<.002;
-    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,info.reactions?0:b,0,-4,G.sitW.x*.25); put(SIT_P.hf,info.reactions?0:b,0,-4,G.sitW.x*.25);   // (the boombox stands in for them with reactions on) sitSettled=off;
+    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,musBox()?0:b,0,-4,G.sitW.x*.25); put(SIT_P.hf,musBox()?0:b,0,-4,G.sitW.x*.25); sitSettled=off;   // (the boombox stands in for the headphones while it shows)
       lift(SIT_P.sh,c); put(SIT_P.gl,g,0,-4); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3);
       put(SIT_P.bn,bnn,0,-84,ww*.5-8*wn); put(SIT_P.sc,scc,0,50); SIT_P.scT.setAttribute('transform',`rotate(${(-(ww*.6)+8*wn).toFixed(2)} 40 50)`);
       const el=propOn?ts-propOn.t0:0, prop=(Q,x,ax,ay,f)=>{ if(x>.002){ put(Q.g,x,ax,ay); Q.on=true; f(Q); } else if(Q.on){ Q.g.setAttribute('opacity','0'); Q.on=false; } };   // (a prop writes only while it shows)
@@ -2400,7 +2401,7 @@ function frame(ts){
         const k=info.look_beat&&beatAt>ts-500?beat:.25*(.5+.5*Math.sin(t*2.2)), X=Math.max(BODY.cupX,EYE_HALFW*G.sz.x+EYE.cx+22);
         for(const [s,cu] of [[-1,SIT_P.cL],[1,SIT_P.cR]]) cu.setAttribute('transform',`translate(${(s*X-s*lx*.6).toFixed(2)} -8) rotate(${(s*8+(s<0?-12*L:0)).toFixed(2)}) scale(${(1+.07*k).toFixed(3)})`);
         SIT_P.bd.setAttribute('transform',`translate(0 ${(-1.5*k).toFixed(2)})`);
-        if(RXS.has('music')&&info.reactions){ const kb=info.look_beat&&beatAt>ts-500?beat:0;   // the boombox's speakers pulse to the beat (still, between bops)
+        if(RXS.has('music')&&info.reactions){ const kb=info.look_beat&&!REDUCED.matches&&beatAt>ts-500?beat:0;   // the boombox's speakers pulse to the beat (still, between bops)
           document.querySelectorAll('#rxFront .sp').forEach(e=>{ e.style.transformBox='fill-box'; e.style.transformOrigin='center'; e.style.transform=RX&&RX.id==='music'?'':`scale(${(1+.14*kb).toFixed(3)})`; }); }
         if(k>.6&&ts-nodAt>=200){ nodAt=ts; G.jelly.kick(.015*k); } } } }   // (nothing to write while all are off)
   { wxOn=wxAside(ts); const on=wxOn&&!wxHat(), dx=REDUCED.matches?(on?WX_ASIDE:0):G.wxAside.to(on?WX_ASIDE:0,dt);   // (#187: a notification mark must never sit under the cloud)
@@ -2794,14 +2795,14 @@ function onEvent(ev){
     const head=ask?(/^(needs|is waiting|wants)\b/i.test(r)?ev.name+' '+r:ev.name+' needs you'+(r?': '+r:'')):'✓ '+ev.name+' finished'+(r?': '+r:'');   // ("Claude needs your permission…", not "Claude needs you: Claude needs…")
     if(hiddenNow){ if(ask) post('/api/notify',{title:'Nixi',body:head+pj}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
     if(ask||!(SIT.fullscreen||SIT.meeting)) restore(ask?20000:11000,false);
-    if(info.hover) comeBack(); wake(); agentMark(ev.from,ask?'ask':'done'); rxPlay(ask?'ask':'done');
+    if(info.hover) comeBack(); wake(); agentMark(ev.from,ask?'ask':'done'); if(ask) rxPlay('ask');
     if(!ask&&((attnPend&&performance.now()-attnPend.at<60000)||(AM&&AM.kind==='ask'&&performance.now()<AM.until))){ sfx('done'); poke('t_beam',1400); return; }   // (a finish never takes over a question)
-    if(!ask){ sfx('done'); poke('t_beam',1400); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; sendRegion(); return; }   // (no flash, no talking)
+    if(!ask){ rxPlay('done'); sfx('done'); poke('t_beam',1400); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; sendRegion(); return; }   // (no flash, no talking)
     sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
     if(!muted) sayAside(head+(ev.project?', in '+ev.project:'')); }
   else if(ev.t==='notify') notifyIn(ev);
   else if(ev.t==='nudge') { if(!(SIT.fullscreen||SIT.meeting)) restore(11000,false); ev.rt=performance.now(); nudgeQ.set(ev.kind,ev); nudgeDrain(performance.now()); }
-  else if(ev.t==='situation'){ const hot0=SIT.cpu_hot, low0=SIT.ram_low, trk0=SIT.track; SIT.track=ev.track||0; SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party; SIT.heavy=!!ev.heavy; SIT.windy=!!ev.windy; SIT.lean=ev.lean||0; SIT.cold=ev.cold||0; SIT.day=ev.day!==false;
+  else if(ev.t==='situation'){ const hot0=SIT.cpu_hot, low0=SIT.ram_low, trk0=SIT.track; SIT.track=ev.track||0; SIT.meeting=!!ev.meeting; if(ev.music&&!SIT.music) musKeep=false; SIT.music=!!ev.music; /* (music started again: the card's own Pause is over) */ SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party; SIT.heavy=!!ev.heavy; SIT.windy=!!ev.windy; SIT.lean=ev.lean||0; SIT.cold=ev.cold||0; SIT.day=ev.day!==false;
     if(ev.weather==='snow'&&SIT.weather!=='snow'&&info.look_weather) poke('excited',1800);      // he loves snow: once, when it starts
     SIT.weather=ev.weather||null; rxSignals(hot0,low0,trk0); }
   else if(ev.t==='ambient'){ if(ev.alert) restore(12000,false); const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive) poke('confused',1500); if(more) rxPlay('error'); if(ev.alert&&ev.cal) rxPlay('soon');
@@ -3514,7 +3515,7 @@ async function send(text,opts={}){
   let asked=text;                            // what goes to the agent (a session summary asks with the session's text)
   if(!atts.length && text && !opts.claude){
     try{ const q=await (await post('/api/quick',{text})).json(); if(q.ask) asked=q.ask;
-      if(q.handled){ if(/^Opening /.test(q.say||'')) rxPlay('open'); capShow(); setYou(text); say(q.say); poke(q.mood||'happy',1300); if(q.sfx) sfx(q.sfx); if(q.monitor) native('monitor:'+q.monitor); if(q.state){ info=q.state; showInfo(); } return; } }catch(e){} }
+      if(q.handled){ if(q.opened) rxPlay('open'); capShow(); setYou(text); say(q.say); poke(q.mood||'happy',1300); if(q.sfx) sfx(q.sfx); if(q.monitor) native('monitor:'+q.monitor); if(q.state){ info=q.state; showInfo(); } return; } }catch(e){} }
   if(busy){ tick("one sec — I'm still on the last thing"); return; }
   if(!opts.stage && !atts.length && SCREEN_RE.test(text)) await shoot(WHOLE_RE.test(text)?'screen':'window');
   if(!opts.stage && liveOn() && !atts.some(a=>['window','screen','region'].includes(a.kind))){ const j=await shoot('window',true); if(j) j.live=true; }
