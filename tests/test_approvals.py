@@ -4,6 +4,7 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -52,16 +53,23 @@ class ApprovalsTest(unittest.TestCase):
             self.addCleanup(patch.stop)
         self.events = []
         self.answer = "yes"
+        self.keyed = True
+        self.answer_results = []
         self.ap = s.Approvals()
 
         def pub(**kw):
             self.events.append(kw)
             if kw.get("t") == "approve" and self.answer is not None:
-                self.ap.answer(kw["id"], self.answer)
+                accepted = self.ap.answer(kw["id"], self.answer, self.keyed)
+                item = self.ap.pending[kw["id"]]
+                self.answer_results.append((accepted, item["ans"], item["ev"].is_set()))
         p = mock.patch.object(s.BUS, "pub", side_effect=pub)
         p.start()
         self.addCleanup(p.stop)
         self.mode("ask")
+
+    def tearDown(self):
+        self.assertTrue(all(x["decision"] in {"allow", "deny", "timeout"} for x in self.log()))
 
     def mode(self, m):
         p = mock.patch.object(self.s, "trust", return_value=m)
@@ -122,13 +130,46 @@ class ApprovalsTest(unittest.TestCase):
     def test_ask_click_only(self):
         self.answer = "always"
         self.ap.always.add("Bash:" + SEND)                      # a stored entry must not match
-        self.assertEqual(self.ap.ask("Bash", {"command": SEND}), {"ok": True})
+        self.assertFalse(self.ap.ask("Bash", {"command": SEND}, timeout=.01)["ok"])
         a = self.asks()[0]
         self.assertEqual(a["confirm"], "click")
         self.assertFalse(a["always"])
-        self.assertEqual(self.ap.always, {"Bash:" + SEND})      # nothing added; "always" counted once
-        self.ap.ask("Bash", {"command": SEND})
+        self.assertEqual(self.answer_results[-1], (False, None, False))
+        self.assertEqual(self.log()[-1]["decision"], "timeout")
+        self.assertEqual(self.ap.always, {"Bash:" + SEND})
+        self.ap.ask("Bash", {"command": SEND}, timeout=.01)
         self.assertEqual(len(self.asks()), 2)
+
+    def test_gog_send_requires_key_for_yes(self):
+        for ans, keyed, allowed, decision in (("yes", False, False, "timeout"),
+                                              ("yes", True, True, "allow"),
+                                              ("no", False, False, "deny"),
+                                              ("always", False, False, "timeout"),
+                                              ("always", True, False, "timeout")):
+            with self.subTest(ans=ans, keyed=keyed):
+                self.answer, self.keyed = ans, keyed
+                result = self.ap.ask("Bash", {"command": SEND}, timeout=.01)
+                self.assertEqual(result["ok"], allowed)
+                self.assertEqual(self.log()[-1]["decision"], decision)
+                self.assertEqual(self.answer_results[-1],
+                                 (decision in {"allow", "deny"}, ans if decision in {"allow", "deny"} else None,
+                                  decision in {"allow", "deny"}))
+                self.assertEqual(self.asks()[-1]["confirm"], "click")
+
+    def test_bridge_click_requires_key_for_yes(self):
+        options = [{"id": "once", "kind": "allow_once"}, {"id": "forever", "kind": "allow_always"},
+                   {"id": "reject", "kind": "reject_once"}]
+        for ans, keyed, expected, accepted in (("yes", False, "reject", False),
+                                               ("yes", True, "once", True),
+                                               ("no", False, "reject", True),
+                                               ("always", False, "reject", False),
+                                               ("always", True, "reject", False)):
+            with self.subTest(ans=ans, keyed=keyed):
+                self.answer, self.keyed = ans, keyed
+                self.assertEqual(self.ap.ask_bridge("send", options, timeout=.01, confirm="click"), expected)
+                self.assertFalse(self.asks()[-1]["always"])
+                self.assertEqual(self.answer_results[-1],
+                                 (accepted, ans if accepted else None, accepted))
 
     def test_plain_command_unchanged(self):
         self.answer = "always"
@@ -139,6 +180,48 @@ class ApprovalsTest(unittest.TestCase):
         self.ap.ask("Bash", {"command": "ls"})
         self.assertEqual(len(self.asks()), 1)
         self.assertEqual(self.log(), [])
+        self.answer, self.keyed = "yes", False
+        self.assertEqual(self.ap.ask("Bash", {"command": "pwd"}), {"ok": True})
+        self.assertEqual(self.answer_results[-1], (True, "yes", True))
+
+    def test_answer_endpoint_passes_click_key_and_normalizes_unknown(self):
+        s = self.s
+        def post(aid, ans, click=""):
+            h = object.__new__(s.Handler)
+            h.path = "/api/approve/answer"
+            h.headers = {"X-Nixi-Token": s.TOKEN, "X-Nixi-Click": click}
+            h._host_ok = lambda: True
+            h._body = lambda: json.dumps({"id": aid, "ans": ans}).encode()
+            h._json = mock.Mock()
+            h.do_POST()
+            return h._json.call_args.args[0]["ok"]
+
+        def answer_card(**card):
+            if card.get("t") != "approve":
+                return
+            aid = card["id"]
+            self.assertFalse(post(aid, "yes"))
+            self.assertIsNone(self.ap.pending[aid]["ans"])
+            self.assertTrue(post(aid, "yes", s.CLICK_KEY))
+
+        with s.CLICK_LOCK:
+            old_click = dict(s.CLICK)
+            s.CLICK.update(claimed=True, spoiled=False)
+        def restore_click():
+            with s.CLICK_LOCK:
+                s.CLICK.update(old_click)
+        self.addCleanup(restore_click)
+        with mock.patch.object(s, "APPROVALS", self.ap), mock.patch.object(s.BUS, "pub", side_effect=answer_card):
+            self.assertEqual(self.ap.ask("Bash", {"command": SEND}, timeout=.01), {"ok": True})
+
+        self.answer = None
+        with mock.patch.object(s, "APPROVALS", self.ap):
+            aid = "unknown-answer"
+            item = {"ans": None, "ev": threading.Event()}
+            self.ap.pending[aid] = item
+            self.assertTrue(post(aid, "unexpected"))
+            self.assertEqual(item["ans"], "no")
+            self.ap.pending.pop(aid)
 
     def test_trust_and_root(self):
         for m in ("trust", "root"):

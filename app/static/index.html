@@ -184,6 +184,15 @@ body.bar #mailPop,body.hover #mailPop,body.calm #mailPop{display:none}
 #you:empty,body.fulltext #you:empty{display:none}
 #him:not(:has(.w,span)){display:none}
 @media (prefers-reduced-motion:reduce){#plate{transition:none}}
+.ncard{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;text-align:left;max-width:100%}   /* a notification card (#214): sender text only ever as text nodes */
+.ncard .nch{grid-column:1/-1;display:flex;align-items:center;gap:6px;color:var(--cap-dim,var(--dim));font-size:12px}
+.ncard .nch .nicon{margin:0}.ncard .nch .nmore{margin-left:auto}
+.ncard .ncs{grid-column:1/-1;font-weight:600}
+.ncard .ncr{white-space:pre-wrap;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;line-clamp:4;overflow-wrap:anywhere}
+.ncard .ncr .nh{opacity:.65}
+.ncard .nci{width:96px;height:96px;object-fit:contain;border-radius:8px;grid-row:3/5}
+.ncard .ncb{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap}
+.ncard .ncb button{font:inherit;font-size:12px;padding:3px 10px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer}
 .nicon{width:22px;height:22px;border-radius:50%;box-shadow:0 0 0 1px #ffffff55;vertical-align:middle;margin-right:6px;animation:nipop .2s var(--ease)}
 @keyframes nipop{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
 #mailPop .lt b img{width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:5px}
@@ -353,6 +362,13 @@ body.appr #stg{opacity:.35;pointer-events:none}
 #stg .sb{border:1.5px solid var(--acc);background:transparent;color:var(--sfg);border-radius:8px;padding:4px 11px;font:600 13px/1.3 "Inter",system-ui,sans-serif;cursor:pointer}
 #stg .sb:hover:not(:disabled){background:var(--acc);color:#fff}
 #stg .sb:disabled{opacity:.4;cursor:not-allowed}
+#stg .vm{font-size:12px;color:var(--sdim);overflow-wrap:anywhere}#stg .mst{font-size:13px;margin-top:3px;overflow-wrap:anywhere;white-space:pre-wrap}
+#stg .mcard{margin:8px 0 4px;padding:8px 10px;border-radius:8px;background:#fffdf6;border:1px solid var(--sline)}
+#stg .mcard textarea{display:block;width:100%;box-sizing:border-box;min-height:70px;resize:vertical;font:13px/1.4 "Inter",system-ui,sans-serif;color:var(--sfg);background:#fff;border:1px solid var(--sline);border-radius:6px;padding:5px 7px}
+#stg .mall{display:block;font-size:12px;margin:5px 0;color:var(--sdim)}#stg .mact{display:flex;gap:8px;margin-top:6px}
+#stg .mln{font-size:12px;overflow-wrap:anywhere}#stg .mwarn{font-size:12px;font-weight:600;color:#b3261e;margin:3px 0;overflow-wrap:anywhere}
+#stg .mbody{margin:5px 0;padding:5px 7px;max-height:120px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.4 var(--mono);background:#fff;border:1px solid var(--sline);border-radius:6px}
+#stg .mmsg{font-size:12px;margin-top:5px;overflow-wrap:anywhere}
 #stgTab{position:absolute;top:96px;left:350px;max-width:150px;z-index:7;padding:6px 12px;border-radius:10px;border:2px solid var(--acc);background:#1d2a27;color:#eef3ee;font:600 18px/1.2 Chalk,cursive;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;opacity:0;pointer-events:none;transform:translateX(-10px);transition:transform .18s var(--ease),opacity .18s}
 #stgTab.l{left:-160px;transform:translateX(10px)}
@@ -504,7 +520,7 @@ select:focus,.pn input[type=text]:focus,.pn textarea:focus{border-color:var(--ed
 .btn{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;transition:all .2s}
 .btn:hover{border-color:var(--edge2);color:#fff} .btn.pri{background:var(--acc);border-color:var(--hot);color:#fff}
 .btn.sm{padding:3px 9px;font-size:11.5px} .btn.danger:hover{border-color:#a33;color:#ff9b9b}
-.bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center} .bar[hidden]{display:none}
 .keys{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;color:var(--dim);font-size:11.5px}
 .keys kbd{font:10.5px var(--mono);color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 5px;justify-self:start}
 .empty{color:var(--dim);text-align:center;padding:22px 6px;font-size:12px;line-height:1.5}
@@ -693,6 +709,7 @@ body.hover #nixiB,body.pnl #nixiB,body.appr #nixiB{display:none!important}
   background:var(--tbg,var(--panel));border:2.5px solid var(--ink,var(--edge2));box-shadow:5px 6px 0 var(--inksh,#000c);font:15px/21px var(--mono);color:var(--text);
   opacity:0;scale:.5;transition:opacity .3s,scale .4s cubic-bezier(.3,1.5,.5,1)}
 #code.on{opacity:1;scale:1}
+#code.on.mini{scale:.6}
 #code .tb{display:flex;align-items:center;gap:6px;height:30px;padding:0 16px;font-size:13px;border-bottom:2px dashed var(--line);color:var(--tacc,var(--hot));font-weight:600}
 #code .tb b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 #code .tb span{color:var(--dim)} #code .tb span.ok{color:var(--tgreen,var(--hot))} #code .tb span.bad{color:var(--tred,#ff6b6b)}
@@ -887,6 +904,9 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="lookPartySw"><span class="sw"></span><span class="l">Party hat on special days<small>New Year, Christmas, and birthdays in your calendar (needs the calendar on).</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="reactQuipsSw"><span class="sw"></span><span class="l">Little jokes<small>Now and then a short line about the weather, the hour or a long session. Never spoken.</small></span></label></div>
       <div class="row"><div class="t">Say out loud</div><div class="h">Notifications he speaks. In a meeting he stays silent.</div><div class="seg" id="nsChips"></div></div>
+      <div class="row" id="mailRow"><label class="tg"><input type="checkbox" id="mailSw"><span class="sw"></span><span class="l">Mail<small>Open a board of unread mail, hear a summary of one message and reply with a click. Off until you switch it on. Needs answer boards in nixi mode. Summaries come from a model on this computer.</small></span></label>
+        <div id="mailOpts" hidden><div class="t sub">Addresses</div><div class="h">Only the ones you tick are read.</div><div id="mailAccts"></div>
+          <div class="t sub">Summary model</div><div class="h">Local models only. None lists and replies without summaries.</div><select id="mailModel"></select></div></div>
       <div class="row"><label class="tg"><input type="checkbox" id="asideSw"><span class="sw"></span><span class="l">Step aside for Nixi's card<small>When nixi's card opens he slides out of its way, and comes back when it closes (Hyprland).</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="followSw"><span class="sw"></span><span class="l">Follow my focused screen<small>When you focus another monitor he moves there too (Hyprland). Also: "move to the other screen", or bind <code>nixi-companion monitor next</code>.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="clickSw"><span class="sw"></span><span class="l">Click through around him<small>Clicks on the empty space around him go to the window behind. Turn off if he flickers.</small></span></label></div>
@@ -919,6 +939,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <label class="tg"><input type="checkbox" id="agentClaudeSw" data-agent="claude"><span class="sw"></span><span class="l">Claude</span></label>
         <label class="tg"><input type="checkbox" id="agentCodexSw" data-agent="codex"><span class="sw"></span><span class="l">Codex</span></label>
         <label class="tg"><input type="checkbox" id="agentAgySw" data-agent="agy"><span class="sw"></span><span class="l">agy</span></label>
+        <label class="tg"><input type="checkbox" id="agentApproveSw"><span class="sw"></span><span class="l">Approve other agents' commands here (click only)<small>Claude Code and Codex ask in Nixi's card; only a click on yes runs it. agy can't be approved here.</small></span></label>
         <div id="agentList"></div>
       </div>
       <div class="row tgs">
@@ -1002,7 +1023,8 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 <div class="pn" id="panel"><div class="hd"><b id="pTitle"></b><span id="pTools"></span><button class="x" data-close title="Close (Esc)">✕</button></div><div class="bd" id="pBody"></div></div>
 
 <div id="appr"><div class="q">✋ <span id="apQ">Can I run this?</span></div><pre id="apCmd"></pre>
-  <div class="bar"><span class="hint" id="apHint">say “yes” or “no”</span><button class="btn sm" data-ans="always" title="don't ask again for this exact command in this chat">always</button><button class="btn sm" data-ans="no">no</button><button class="btn sm yes" data-ans="yes">yes</button></div></div>
+  <div class="bar"><span class="hint" id="apHint">say “yes” or “no”</span><button class="btn sm" data-ans="always" title="don't ask again for this exact command in this chat">always</button><button class="btn sm" data-ans="no">no</button><button class="btn sm yes" data-ans="yes">yes</button></div>
+  <div class="bar" id="apTerm" hidden style="margin-top:6px"><button class="btn sm" data-term>Answer in the terminal</button></div></div>
 
 <form id="pwbox" autocomplete="off"><div class="q">🔑 <span id="pwQ">He needs root for this</span></div>
   <div class="pwrow"><input id="pwIn" type="password" spellcheck="false" placeholder="your sudo password" aria-label="sudo password">
@@ -1041,6 +1063,11 @@ function staleToken(){                       // the server restarted with a new 
   try{ sessionStorage.setItem('nixi-reload',Date.now()); sessionStorage.removeItem('nixi-t'); }catch(e){}
   if(!native('reauth')) tick('Nixi restarted — close this window and run “nixi-companion” again',true);
 }
+// The click key: claimed once per page load (a reload in the same server run gets a 403 and approvals stay off until
+// Nixi restarts; the server's note says so). Held in this closure only: never in info, localStorage or the URL.
+const CLICKKEY=(()=>{ let k='';
+  tokenReady.then(async()=>{ if(!TOKEN) return; try{ const r=await fetch('/api/click-key',{method:'POST',headers:hdr({'Content-Type':'application/json'}),body:'{}'}); if(r.ok) k=String((await r.json()).key||''); }catch(e){} });   // (not post(): its 403 means "taken", not a stale token)
+  return {hdr:()=>k?{'X-Nixi-Click':k}:{}}; })();
 const native=msg=>{ try{ window.webkit.messageHandlers.nixiui.postMessage(msg); return true; }catch(e){ return false; } };
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -1984,7 +2011,7 @@ function ac(){ if(!actx) actx=new (window.AudioContext||window.webkitAudioContex
 // enqueue(text, {cap:true}) also puts the words on screen, one by one, as he says them
 // When the server can play audio itself (info.voice_native), his voice doesn't go through this page at all — see
 // Speaker in server.py. We just say what to speak; the server tells us when each sentence actually starts.
-const spkMap=new Map(); let spkSeq=0, spkLv=[], spkGuard=0, sayChain=Promise.resolve(), sayEpoch=0;   // sayEpoch: bumped when you cut him off
+const spkMap=new Map(); let mailHearN=0, spkSeq=0, spkLv=[], spkGuard=0, sayChain=Promise.resolve(), sayEpoch=0;   // sayEpoch: bumped when you cut him off
 function enqueue(text,o={}){
   text=(text||'').trim();
   const reply=o.reply||curReply;
@@ -2149,7 +2176,7 @@ function spkLevel(ts){ for(const L of spkLv){ if(ts>=L.t0&&ts<L.t0+L.level.lengt
 function quietCheck(){ if(!srcs.length&&!q.length&&pumpGen!==gen&&playing){ playing=false; setSpkEngine(''); speaking(false); floorPage(false); } }
 // shush: stop talking. Anything he hadn't said yet still lands on screen (mute mid-answer, or you cut in)
 function shush(){ gen++; sayEpoch++; const rest=q.splice(0), pend=curIt; curIt=null; karaFlush();
-  if(info.voice_native&&(spkMap.size||playing)){ post('/api/say/stop',{epoch:sayEpoch}).catch(()=>{}); for(const it of spkMap.values()) if(it.cap) karaNow(it.cap,it.fresh,true); spkMap.clear(); spkLv=[]; }
+  if(info.voice_native&&(spkMap.size||playing||mailHearN)){ post('/api/say/stop',{epoch:sayEpoch}).catch(()=>{}); for(const it of spkMap.values()) if(it.cap) karaNow(it.cap,it.fresh,true); spkMap.clear(); spkLv=[]; }
   if(pend&&pend.cap) karaNow(pend.cap,pend.fresh,true); for(const it of rest) if(it.cap) karaNow(it.cap,it.fresh,true);
   for(const x of srcs) try{ x.stop(); }catch(e){} srcs=[]; nextAt=0; pumpGen=-1; if(playing) speaking(false); playing=false; setSpkEngine(''); floorPage(false); }
 const untilQuiet=async()=>{ for(let i=0;i<400 && (playing||q.length);i++) await sleep(100); };
@@ -2291,7 +2318,8 @@ function onEvent(ev){
   else if(ev.t==='barge'){ if(!playing) return; agentStop(); sfx('pop'); poke('surprised',600);
     if(ev.listen){ const heard=ev.path?{path:ev.path,media:ev.media}:null; if(ev.text&&ev.text.split(/\s+/).length>=2) send(ev.text,{heard}); else startRec('auto',heard); } else tick('okay, okay — shh'); }
   else if(ev.t==='remind'){ if(hiddenNow) native('show'); restore(12000,false); if(info.hover) comeBack(); sfx('remind'); poke('excited',1800); say(ev.text); tick('⏰ '+ev.text); }
-  else if(ev.t==='spk'){ const it=spkMap.get(ev.id); if(!it) return; spkMap.delete(ev.id); spkGuard=performance.now()+ev.at+ev.dur*1000;
+  // ids from 1e9 are the server's mail summaries (#210): track them so mute and a click stop them
+  else if(ev.t==='spk'){ const it=spkMap.get(ev.id)||(ev.id>=1e9?{cap:''}:null); if(!it) return; spkMap.delete(ev.id); spkGuard=performance.now()+ev.at+ev.dur*1000;
     playing=true; setSpkEngine(ev.engine||'');
     const t0=performance.now()+ev.at;
     if(ev.level) spkLv.push({t0,level:ev.level,step:ev.step||40}); if(spkLv.length>12) spkLv.shift();
@@ -2302,7 +2330,10 @@ function onEvent(ev){
   else if(ev.t==='note'){ tick(ev.text); }
   else if(ev.t==='approve'){ restore(20000,true); queueApproval(ev); }
   else if(ev.t==='agent_say') agentIn(ev);
+  else if(ev.t==='agent_result') agentResult(ev);
   else if(ev.t==='attention'){                            // an agent (claude/codex/agy…) is waiting for you: `nixi-companion attention`
+    if(ev.kind==='working'){ if(!hiddenNow) CP.agent(ev.name||ev.from,ev.from); return; }   // decoration only: no flash, no voice, no attnPend
+    if(ev.kind==='done') CP.agentEnd(ev.from);
     const ask=ev.kind!=='done', r=(ev.text||'').replace(new RegExp('^'+ev.name+'\\s+','i'),''), pj=ev.project?' · '+ev.project:'';
     const head=ask?(/^(needs|is waiting|wants)\b/i.test(r)?ev.name+' '+r:ev.name+' needs you'+(r?': '+r:'')):'✓ '+ev.name+' finished'+(r?': '+r:'');   // ("Claude needs your permission…", not "Claude needs you: Claude needs…")
     if(hiddenNow){ if(ask) post('/api/notify',{title:'Nixi',body:head+pj}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
@@ -2323,7 +2354,7 @@ function onEvent(ev){
     if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')) flash('#4d6fb7'); }   // (never spoken)
     else if(more&&document.body.classList.contains('bar')) flash('#e5a50a'); }
   else if(ev.t==='approve_done') approvalGone(ev.id);
-  else if(ev.t==='stage'){ if(stageShow(ev)===false) himSet(((himEl.textContent||'').trim()+'\n'+stageText(ev)).trim()); }
+  else if(ev.t==='stage'){ if(stageShow(ev)===false&&stageText(ev)) himSet(((himEl.textContent||'').trim()+'\n'+stageText(ev)).trim()); }
   else if(ev.t==='stage_update'){ if(stgHeld&&stgHeld.kind===ev.kind&&(ev.kind==='headlines'?ev.copy===stgHeld.copy:ev.refresh===stgHeld.refresh)) stgHeld={...stgHeld,...ev,t:'stage'};   // (a held board keeps its late updates: the server doesn't send them twice)
     if(ev.kind==='headlines') pressUpdate(ev); else gaugeUpdate(ev); }
   else if(ev.t==='stage_status') stageStatus(ev);
@@ -2435,22 +2466,44 @@ function noteIcon(row,ev){ const u=iconUrl(ev); if(row.img&&row.img.isConnected&
   if(!u||!row.span||!row.span.isConnected) return; const im=document.createElement('img'); im.className='nicon'; im.alt=''; im.src=u; im.onerror=()=>im.remove(); row.span.prepend(im); row.img=im; }   // (inside the line, so it sits before the words)
 function propIcon(P,ev){ const u=iconUrl(ev); if(!P||!P.img) return; P.img.onerror=()=>P.img.setAttribute('display','none'); if(u) P.img.setAttribute('href',u); P.img.setAttribute('display',u?'':'none'); }
 function notifyShow(row,txt,ev){ karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; plateReset(); setYou('');
-  const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); row.span=sp; noteIcon(row,ev); shownTxt=''; capShow(); cap.classList.add('ntf'); sendRegion(true); dropSync(); }
+  const sp=ev.card?cardEl(ev,row):document.createElement('span'); if(!ev.card) sp.textContent=txt; himEl.appendChild(sp); row.span=sp; if(!ev.card) noteIcon(row,ev); shownTxt=''; capShow(); cap.classList.add('ntf'); sendRegion(true); dropSync(); }
+function cardEl(ev,row){ const c=ev.card, el=(t,cls,x)=>{ const e=document.createElement(t); if(cls) e.className=cls; if(x!==undefined) e.textContent=x; return e; };
+  if(!c||!Array.isArray(c.runs)||!Array.isArray(c.buttons)) throw new Error('card');
+  const d=el('span','ncard'), h=el('div','nch'), u=iconUrl(ev);   // (a span: the plate shows only for a #him>span)
+  if(u){ const im=el('img','nicon'); im.alt=''; im.src=u; im.onerror=()=>im.remove(); h.appendChild(im); }
+  h.appendChild(el('span','',notifyWho(ev)||(NOTE[ev.category]||NOTE.other)[1]));
+  if(notifyQ.length) h.appendChild(el('span','nmore','+'+notifyQ.length));
+  d.appendChild(h); if(ev.summary) d.appendChild(el('div','ncs',ev.summary));
+  const rs=el('div','ncr');
+  for(const r of c.runs.slice(0,64)){ if(r.t==='\n'){ rs.appendChild(document.createElement('br')); continue; }
+    const s=el('span','',String(r.t)); if(r.b) s.style.fontWeight='700'; if(r.i) s.style.fontStyle='italic'; if(r.u||r.host) s.style.textDecoration='underline'; rs.appendChild(s);
+    if(r.host&&String(r.t).trim().toLowerCase()!==r.host) rs.appendChild(el('span','nh',' ('+r.host+')')); }   // (a link shows where it goes; it isn't clickable)
+  d.appendChild(rs);
+  if(/^[0-9a-f]{16}$/.test(c.image||'')){ const im=el('img','nci'); im.alt=''; im.onload=()=>sendRegion(true); im.src='/api/nimage/'+c.image; im.onerror=()=>{ im.remove(); sendRegion(true); }; d.appendChild(im); }
+  if(c.buttons.length&&typeof c.rev==='string'){ const bs=el('div','ncb');
+    c.buttons.slice(0,3).forEach((label,i)=>{ const b=el('button','',String(label)); b.type='button'; b.tabIndex=-1;   // (click only: nothing else can press one)
+      b.addEventListener('click',e=>{ e.stopPropagation(); if(notifyRow!==row) return; notifyClear();
+        post('/api/notify/act',{key:ev.key,how:'action',i,rev:c.rev}).then(r=>r.json()).then(j=>{ if(!j||j.ok!==true) tick('That notification has gone.'); }).catch(()=>tick('That notification has gone.')); });
+      bs.appendChild(b); }); d.appendChild(bs); }
+  return d; }
 function notifySeen(key){ post('/api/notify/seen',{key}).catch(()=>{}); }
 function notifyIdle(){ return !(SIT.fullscreen||busy||playing||rec||transcribing||pendingAppr||follow||hiddenNow||info.hover); }
 function notifyIn(ev){
   if(!/^[A-Za-z0-9:_-]{1,64}$/.test(ev.key||'')) return;
   const now=performance.now(); ev.rt=now;                  // (only a row that is SHOWN counts as seen: the server gives the rest back to the shell)
-  if(notifyRow&&notifyRow.key===ev.key&&notifyRow.span.isConnected){ notifyRow.span.textContent=notifyText(ev,1); noteIcon(notifyRow,ev); notifySeen(ev.key); return; }   // an update: no new arrival
+  if(!ev.card&&notifyRow&&notifyRow.key===ev.key&&notifyRow.span.isConnected){ notifyRow.span.textContent=notifyText(ev,1); noteIcon(notifyRow,ev); notifySeen(ev.key); return; }   // an update: no new arrival
   notifyBurst=notifyBurst.cat===ev.category&&now-notifyBurst.t<3000?{cat:ev.category,n:notifyBurst.n+1,t:notifyBurst.t}:{cat:ev.category,n:1,t:now};
   if(ev.category==='chat'&&propOn&&propOn.cat==='chat'&&now<propOn.until){ propOn.n=(propOn.n||1)+1; propOn.until=now+2800; G.sitChat.kick(.45); if(SIT_P) propIcon(SIT_P.chat,ev); }   // (one bubble, ×N)
-  if(notifyBurst.n>2&&notifyRow&&notifyRow.span.isConnected){ notifyRow.key=ev.key; notifyRow.span.textContent=notifyText(ev,notifyBurst.n); noteIcon(notifyRow,ev); notifySeen(ev.key); return; }   // 3+ at once: one row with a count
+  if(!ev.card&&notifyBurst.n>2&&notifyRow&&!notifyRow.card&&notifyRow.span.isConnected){ notifyRow.key=ev.key; notifyRow.span.textContent=notifyText(ev,notifyBurst.n); noteIcon(notifyRow,ev); notifySeen(ev.key); return; }   // 3+ at once: one row with a count
   if(notifyQ.length<8) notifyQ.push(ev);
   notifyDrain(now); }
 function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
   const now=performance.now(); while(notifyQ.length&&now-notifyQ[0].rt>4000) notifyQ.shift();   // too old: the server is giving it back at 5 s
-  const ev=notifyQ.shift(); if(!ev) return; notifySeen(ev.key); restore(11000,false);   // (before the mail pop-out is measured)
-  const c=ev.app==='nixi-job'?NOTE.job:NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null}; notifyRow=row; notifyAt=ts+5000;
+  const ev=notifyQ.shift(); if(!ev) return;
+  if(ev.card&&document.body.matches('.bar,.pnl,.appr')) return;   // a card isn't drawn in the notch or under a panel (#cap is hidden): not marked seen, so the shell shows it at 5 s
+  if(!ev.card) notifySeen(ev.key);
+  restore(11000,false);   // (before the mail pop-out is measured)
+  const c=ev.app==='nixi-job'?NOTE.job:NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null,card:!!ev.card}; notifyRow=row; notifyAt=ts+(ev.card?7000:5000);
   wake(); G.jelly.kick(-.45); popPupils(); poke(c[3],c[4]); burstLines(c[2],ev.category==='meeting'?8:ev.category==='download'?10:ev.category==='other'&&ev.app!=='nixi-job'?1:3);
   if(ev.category==='chat') G.tilt.kick(-8);
   { const pt={chat:2800,video:2400}[ev.category];                      // the prop for this kind; a new one replaces the old
@@ -2462,11 +2515,12 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
   if(ev.category==='mail'){ poke('reading',2600); mailPop(ev); }
   if(ev.category==='meeting') setTimeout(()=>{ if(notifyRow===row) poke('t_serious',2000); },750);
   if(ev.category==='video') setTimeout(()=>{ if(!FID&&mood(performance.now())==='idle') { FID={name:'hum',t0:performance.now(),dur:2000}; FIDGETS.hum.start&&FIDGETS.hum.start(FID); } },1500);
-  notifyShow(row,notifyText(ev,1),ev);
+  if(ev.card){ try{ notifyShow(row,notifyText(ev,1),ev); notifySeen(ev.key); }catch(_){ notifyClear(); return; } }   // (seen only once drawn; a failed draw goes back to the shell)
+  else notifyShow(row,notifyText(ev,1),ev);
   if(!SIT.meeting){ if(info.notify_sound!==false&&!muted) sfx(c[5]); if(!muted&&(info.notify_speak||[]).includes(ev.category)&&!(ev.category==='mail'&&SIT.locked)){
     const who=notifyWho(ev); enqueue(ev.category==='mail'?(info.notify_details&&info.notify_speak_subject&&ev.summary?ev.summary:'New mail'+(who?' from '+who:'')):c[1],{follow:false});
     if(ev.category==='mail'){ talk.away=[5,1]; talk.awayUntil=now+1500; } } }   // (not say(): that would wipe the row)
-  setTimeout(()=>{ if(notifyRow===row) notifyClear(); },5000); }
+  setTimeout(()=>{ if(notifyRow===row) notifyClear(); },ev.card?7000:5000); }
 // mail (#138): the envelope pops out beside him (the side with more room), opens, and goes back in after ~5 s
 let mailT=[], popWant=[0,0];
 function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.classList.contains('bar')||info.hover) return;
@@ -2496,10 +2550,12 @@ function stageBtn(label,fn,dis){ const b=hx('button','sb',label); b.type='button
 function stageBuild(ev){
   const bd=$('#stgBd'), acts=$('#stgActs'), fn=$('#stgFn'); bd.textContent=''; acts.textContent=''; fn.textContent='';
   const board=ev.kind==='commands', map=ev.kind==='place', film=ev.kind==='video', sky=ev.kind==='weather', cal=ev.kind==='calendar', stat=ev.kind==='status', dy=ev.kind==='day', gau=ev.kind==='gauges', press=ev.kind==='headlines', tr=ev.trust, guide=tr==='guide';
-  $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':film?'Now showing':sky?'Sky':cal?'Coming up':stat?'Sessions':dy?'Your day':press?'News':''));
-  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat||dy?'desk':gau?'term':press?'press':'notebook')+(stgEl.classList.contains('l')?' l':'');
+  mailCardDrop(true);
+  $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':film?'Now showing':sky?'Sky':cal?'Coming up':stat?'Sessions':dy?'Your day':ev.kind==='mail'?'Mail':press?'News':''));
+  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat||dy||ev.kind==='mail'?'desk':gau?'term':press?'press':'notebook')+(stgEl.classList.contains('l')?' l':'');
   if(sky) stageSky(ev,bd,fn);
   else if(dy) stageDay(ev,bd,acts,fn);
+  else if(ev.kind==='mail') stageMail(ev,bd,acts,fn);
   else if(gau) stageGauges(ev,bd,acts,fn);
   else if(press) stagePress(ev,bd,acts,fn);
   else if(cal) stageCal(ev,bd,acts,fn);
@@ -2520,6 +2576,52 @@ function stageBuild(ev){
     acts.appendChild(stageBtn('Open in Nixi',()=>{ post('/api/nixi-ask',{}).then(r=>r.json()).then(j=>{ if(j.ok){ fn.textContent='Opened ✓'; setTimeout(()=>stageClose(),1500); } else fn.textContent=j.say||j.error||"Couldn't open it"; }).catch(()=>{}); }));
   }
   $('#stgBack').hidden=!ev.has_prev;
+}
+/* ---- mail (#210): the rows come from the server with two tokens each, never an id. Every mail field is drawn with textContent.
+   Reply -> Review (the server builds the draft) -> Send, which only a real pointer click can press. */
+let mailSeq=0, mailCard=null;      // mailCard: {el, ta, draft} while the reply card is open; mailSeq: the newest Review/edit, an older answer is ignored
+function mailCardDrop(cancel){ const c=mailCard; mailCard=null; mailSeq++; if(!c) return;
+  if(cancel&&(c.draft||c.flight)) post('/api/mail/cancel',{draft:c.flight?'pending':c.draft}).catch(()=>{});   // (a Review still on its way has no id yet: any cancel makes the server drop it)
+  c.el.remove(); }
+function stageMail(ev,bd,acts,fn){
+  const rows=ev.rows||[];
+  if(!rows.length) bd.appendChild(hx('div','pt1','No unread mail from the last three days'));
+  rows.forEach(r=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab'), sm=hx('div','mst');
+    tx.appendChild(hx('div','lb',r.subject)); tx.appendChild(hx('div','vm',[r.from,r.account,r.age].filter(Boolean).join(' \u00b7 '))); tx.appendChild(sm);
+    if(r.hear&&r.reply){
+      ab.appendChild(stageBtn('Hear',b=>{ b.disabled=true; mailHearN++; post('/api/mail/hear',{token:r.hear}).then(x=>x.json()).then(j=>{ sm.textContent=j.ok===false||j.error?"Couldn't read that one":(j.summary||j.subject||''); }).catch(()=>{ sm.textContent="Couldn't read that one"; }).finally(()=>{ b.disabled=false; mailHearN--; }); }));
+      ab.appendChild(stageBtn('Reply',()=>mailCardOpen(bd,r))); }
+    row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
+  fn.textContent='Nothing is sent until you click Send';
+}
+function mailCardOpen(bd,r){ mailCardDrop(true);
+  const el=hx('div','mcard'), ta=hx('textarea'), lab=hx('label','mall'), all=hx('input'), rev=hx('div','mrev'), msg=hx('div','mmsg'), card={el,ta,draft:null};
+  ta.rows=4; ta.placeholder='Your reply, in your own words'; all.type='checkbox'; lab.appendChild(all); lab.appendChild(document.createTextNode(' Reply to all'));
+  mailCard=card;
+  const edited=()=>{ mailSeq++; rev.textContent=''; msg.textContent=''; };      // an edit hides Send until Review is pressed again, and voids an answer still on its way
+  ta.addEventListener('input',()=>{ stgUse=performance.now(); edited(); }); all.addEventListener('change',edited);
+  const review=stageBtn('Review',()=>{ const text=ta.value; if(!text.trim()){ msg.textContent='Write your reply first'; return; }
+    const my=++mailSeq; card.flight=my; rev.textContent=''; msg.textContent='Preparing\u2026';
+    post('/api/mail/draft',{token:r.reply,text,all:all.checked}).then(x=>x.json()).then(d=>{ if(card.flight===my) card.flight=0;
+      if(my!==mailSeq||mailCard!==card){ if(d&&d.draft) post('/api/mail/cancel',{draft:d.draft}).catch(()=>{}); return; }       // (an answer nobody wants: drop its draft)
+      if(!d||!d.draft){ msg.textContent=(d&&d.error)||"Couldn't prepare that reply"; return; }
+      card.draft=d.draft; msg.textContent=''; mailReview(card,rev,msg,d); }).catch(()=>{ if(card.flight===my) card.flight=0; if(my===mailSeq&&mailCard===card) msg.textContent="Couldn't prepare that reply"; }); });
+  const act=hx('div','mact'); act.appendChild(review); act.appendChild(stageBtn('Close',()=>mailCardDrop(true)));
+  el.appendChild(ta); el.appendChild(lab); el.appendChild(act); el.appendChild(rev); el.appendChild(msg); bd.appendChild(el); ta.focus();
+}
+function mailReview(card,rev,msg,d){ rev.textContent='';
+  const line=(k,v)=>{ const p=hx('div','mln'); p.appendChild(hx('b',null,k+': ')); p.appendChild(document.createTextNode(v)); rev.appendChild(p); };
+  line('Account',d.account); line('To',(d.to||[]).join(', ')); if((d.cc||[]).length) line('Cc',d.cc.join(', ')); line('Subject',d.subject);
+  if(d.reply_to_differs) rev.appendChild(hx('div','mwarn','Replies go to '+(d.to||[])[0]+', not the sender '+d.from));
+  rev.appendChild(hx('pre','mbody',d.body));
+  const act=hx('div','mact'), send=hx('button','sb','Send'); send.type='button';
+  const mailSent=r=>{ act.remove(); if(r&&(r.sent||r.unknown)) card.draft=null;
+    msg.textContent=r&&r.sent?(r.other_thread?'Sent, but Gmail put it in a different thread':'Sent'):r&&r.unknown?"I don't know if it was sent, check Sent in Gmail":(r&&r.error)||'That reply is gone, review it again'; };
+  send.addEventListener('click',e=>{ e.stopPropagation();
+    if(!e.isTrusted||!['mouse','pen','touch'].includes(e.pointerType)) return;
+    send.disabled=true; stgUse=performance.now();
+    post('/api/mail/send',{draft:d.draft,text:d.body}).then(r=>r.json()).then(mailSent).catch(()=>mailSent({unknown:true})); });
+  act.appendChild(send); act.appendChild(stageBtn('Cancel',()=>mailCardDrop(true))); rev.appendChild(act);
 }
 function stageMap(ev,bd,acts,fn){
   const N='http://www.w3.org/2000/svg', sv=(t,a,p)=>{ const e=document.createElementNS(N,t); for(const k in a) e.setAttribute(k,a[k]); if(p) p.appendChild(e); return e; };
@@ -2701,7 +2803,7 @@ function stagePress(ev,bd,acts,fn){
     bd.appendChild(row); });
   pressAges(); pressWatch(ev.clips,bd,fn,false); fn.textContent=ev.source||''; if(ev.copy) acts.appendChild(stageBtn('Copy',b=>stageAct('copy',ev.copy,b))); }
 const clipLine=c=>{ const m=[c.channel,c.duration].filter(Boolean).join(', '); return c.title+(m?' \u2014 '+m:''); };
-function stageText(ev){ if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>{ const st=h.state||'up'; if(st==='down'||st==='stale') return [h.name+': '+gaugeOneText(h)]; return [...(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))), ...(h.badges||[]).map(b=>(many?h.name+' ':'')+b.k+': '+b.v), ...(h.lists||[]).map(l=>(many?h.name+' ':'')+l.title+': '+(l.items||[]).join(', '))]; })).join('\n'); } if(ev.kind==='headlines') return [ev.title||'News',...(ev.items||[]).map(it=>it.title+' \u2014 '+it.source+', '+pressAge(it.at)),...(ev.clips&&ev.clips.length?['Watch:',...ev.clips.map(clipLine)]:[]),...(ev.source?[ev.source]:[])].join('\n'); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
+function stageText(ev){ if(ev.kind==='mail') return ''; if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>{ const st=h.state||'up'; if(st==='down'||st==='stale') return [h.name+': '+gaugeOneText(h)]; return [...(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))), ...(h.badges||[]).map(b=>(many?h.name+' ':'')+b.k+': '+b.v), ...(h.lists||[]).map(l=>(many?h.name+' ':'')+l.title+': '+(l.items||[]).join(', '))]; })).join('\n'); } if(ev.kind==='headlines') return [ev.title||'News',...(ev.items||[]).map(it=>it.title+' \u2014 '+it.source+', '+pressAge(it.at)),...(ev.clips&&ev.clips.length?['Watch:',...ev.clips.map(clipLine)]:[]),...(ev.source?[ev.source]:[])].join('\n'); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
   if(document.body.classList.contains('pnl')){ stgHeld=ev; return; }
@@ -2721,7 +2823,7 @@ function stageShow(ev){
 function stageHide(toTab){
   stgTm.forEach(clearTimeout); stgTm=[]; clearInterval(stgTimer); stgTimer=null; gaugeStop(); if(!toTab){ gaugeHist={}; gaugeExp=null; }
   stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on'); popEl.classList.remove('on'); wtcEl.classList.remove('on'); stgEl.setAttribute('aria-hidden','true'); stgEl.inert=true; stgTab.inert=!toTab;
-  if(!toTab) stgPosted=false;
+  if(!toTab){ stgPosted=false; mailCardDrop(true); }
   if(toTab){ stagePost(false); stgState='tab'; stgTab.textContent=$('#stgT').textContent; stagePlace(); stgSize(300); void stgTab.offsetWidth; stgTab.classList.add('on'); }
   else { stgState='closed'; stgTab.classList.remove('on'); stgOffT=setTimeout(()=>{ if(stgState==='closed') stgSize(0); sendRegion(true); },200); }
   sendRegion(true); setTimeout(()=>sendRegion(true),260);
@@ -2872,6 +2974,7 @@ function cardPlace(){   // centred on him, below his arms (reach, as CP.geo), in
   const b=document.querySelector('#body > .ball').getBoundingClientRect(), n=document.querySelector('#body .nix'), reach=n?n.getBoundingClientRect().width/2:b.width/2;
   cardTop=Math.round(clamp(b.top+b.height/2+reach+10-layoutY,4-layoutY,Math.max(4-layoutY,innerHeight-layoutY-apEl.offsetHeight-4)));
   apEl.style.top=cardTop+'px'; apEl.style.left=clamp(170-cardW/2,4-layoutX,innerWidth-layoutX-cardW-4)+'px'; }
+const agentName=n=>({claude:'Claude',codex:'Codex',agy:'agy'}[n]||String(n||'').replace(/^./,c=>c.toUpperCase()));
 function nextApproval(){
   pendingAppr=apprQ.shift()||null;
   document.body.classList.toggle('appr',!!pendingAppr); apEl.classList.toggle('on',!!pendingAppr);
@@ -2880,7 +2983,7 @@ function nextApproval(){
   if(hiddenNow) native('show');
   const what=a.tool==='Bash'?'Can I run this?':a.tool==='WebFetch'?'Can I open this page?':a.tool==='WebSearch'?'Can I search the web?':
     /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(a.tool)?'Can I change this file?':`Can I use ${a.tool}?`;
-  $('#apHint').textContent=a.confirm==='click'?'click yes or no — voice can\'t confirm sends':'say “yes” or “no”'; $('#apQ').textContent=a.q||what; $('#apCmd').textContent=a.detail; fitCard();
+  $('#apHint').textContent=a.confirm==='click'?'click yes or no — voice can\'t confirm sends':'say “yes” or “no”'; $('#apQ').textContent=a.q||(a.agent?`${agentName(a.agent)}${a.project?' · '+a.project:''} wants to run`:what); $('#apTerm').hidden=!a.agent; $('#apCmd').textContent=a.detail; fitCard();
   { const al=apEl.querySelector('[data-ans="always"]'); if(al) al.hidden=a.always===false; }   // not for chained commands
   const spoken=a.say||what;   // the server says what it does in plain words (the card shows the real command)
   askAloud(a,spoken);
@@ -2902,16 +3005,28 @@ async function askAloud(a,spoken){
     if(said) tick(info.bridge?'say “yes” or “no” — “always” is click-only':'say “yes” or “no” (or click)');
   }
 }
-function answer(ans){ const a=pendingAppr; if(!a) return;
+async function answer(ans,trusted){ const a=pendingAppr; if(!a||a.sent) return;
   if(ans==='always'&&a.always===false) ans='yes';      // commands that run other commands: only ever this once
   if(rec&&rec.mode==='approve') stopRec(true);
-  post('/api/approve/answer',{id:a.id,ans});
+  const click=a.confirm==='click', keyed=click&&ans!=='no'&&trusted===true;   // the key goes only with a real click on yes
+  a.sent=true;
+  const r=await post('/api/approve/answer',{id:a.id,ans},keyed?{headers:hdr(Object.assign({'Content-Type':'application/json'},CLICKKEY.hdr()))}:undefined).catch(()=>null);
+  let ok=true; if(click){ try{ ok=!!(await r.json()).ok; }catch(e){ ok=false; } }
+  if(!ok&&!a.agent&&pendingAppr===a){ a.sent=false; tick('That needs a click on yes here — or say no',true); return; }   // Nixi's own card is still waiting on the server
+  if(pendingAppr===a){ pendingAppr=null; nextApproval(); }
+  if(!ok){ tick('That one had already gone',true); return; }
   tick(ans==='no'?'okay — not running that':ans==='always'?`okay — won't ask again for that this chat`:'okay!',ans==='no');
-  poke(ans==='no'?'sad':'joy',ans==='no'?1100:800);
-  pendingAppr=null; nextApproval(); }
+  poke(ans==='no'?'sad':'joy',ans==='no'?1100:800); }
 function approvalGone(id){ if(pendingAppr&&pendingAppr.id===id){ if(rec&&rec.mode==='approve') stopRec(true); pendingAppr=null; nextApproval(); }
   else { const i=apprQ.findIndex(x=>x.id===id); if(i>=0) apprQ.splice(i,1); } }
-apEl.addEventListener('click',e=>{ const b=e.target.closest('[data-ans]'); if(b) answer(b.dataset.ans); });
+apEl.addEventListener('click',e=>{ const b=e.target.closest('[data-ans]'); if(b) answer(b.dataset.ans,e.isTrusted);
+  if(e.target.closest('[data-term]')&&pendingAppr&&pendingAppr.agent){ const a=pendingAppr; a.sent=true; post('/api/approve/release',{id:a.id}).catch(()=>{}); pendingAppr=null; nextApproval(); tick('okay — answer it in the terminal'); } });
+function agentResult(ev){ const n=agentName(ev.agent), st=ev.state;
+  if(st==='ran'){ tick(ev.ok===false?`${n} ran it ✗`+(Number.isInteger(ev.exit)?` (exit ${ev.exit})`:''):`${n} ran it`+(ev.ok?' ✓':''),ev.ok===false); if(ev.ok) poke('joy',1100); }
+  else if(st==='denied'){ tick('denied in Nixi'); poke('sad',1100); }
+  else if(st==='ran-after-deny') tick('⚠ a matching command ran after you denied',true);
+  else if(st==='unclear') tick(`${n}: two matching requests, result unclear`);
+  else if(st==='unknown') tick('approved, result unknown'); }
 
 /* ================= talk to claude code ================= */
 const MEM_ADD=/^(?:hey\s+nixi[,\s]+)?(?:please\s+)?(?:remember|don'?t forget|note down|make a note)\s*(?:that|this|:)?\s+(.{3,})$/i;
@@ -2976,7 +3091,8 @@ async function send(text,opts={}){
     await readSSE(res,handle);
   }catch(e){ failed=true; himSet(e.message,true); }
   busy=false; idleHoldUntil=performance.now()+15000; $('#wk').textContent=''; toolMood=null; wake(); capQuiet(); document.body.classList.remove('busy'); workChip(); CP.done();
-  while(apprQ.length) apprQ.pop(); if(pendingAppr){ pendingAppr=null; nextApproval(); }
+  for(let i=apprQ.length-1;i>=0;i--) if(!apprQ[i].agent) apprQ.splice(i,1);   // an agent's card outlives Nixi's turn (#211, Codex)
+  if(pendingAppr&&!pendingAppr.agent){ pendingAppr=null; nextApproval(); }
   if(ignored){ setYou(''); himSet(''); cap.classList.add('off'); capOn=false; return; }   // you weren't talking to him: say and show nothing
   const answerText=untag(buf||all).trim();
   lastAnswer=answerText; moreEl.classList.toggle('on',answerText.length>220||/```/.test(answerText)); nixiEl.classList.toggle('on',!!answerText);
@@ -3127,10 +3243,11 @@ const ICON={
   hide:'<path d="M6 6l12 12M18 6 6 18"/>',
   notme:'<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
   mirror:'<circle cx="12" cy="12" r="9"/><path d="M9 9h6v6H9z"/>',
+  mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
 };
 // (no top bar / blob button: you dock him by dragging him into a screen edge, and pull him out to get the blob back)
 const NX_MENU=['cd','history','look','plugins'];
-const MENU=[['talk','talk'],['cd','folder'],['history','history'],['look','show my screen'],['hover','hover mode'],['plugins','Claude Code plug-ins'],['mirror','take control back'],['notme',"that wasn't me"],['set','settings'],['hide','hide']];
+const MENU=[['talk','talk'],['cd','folder'],['history','history'],['mail','mail'],['look','show my screen'],['hover','hover mode'],['plugins','Claude Code plug-ins'],['mirror','take control back'],['notme',"that wasn't me"],['set','settings'],['hide','hide']];
 const MENU_XY=[];
 menuEl.innerHTML=MENU.map(([a,l],i)=>{ const ang=(-168+i*(156/(MENU.length-1)))*Math.PI/180, r=122;
   MENU_XY[i]=[Math.cos(ang)*r/1.1, Math.sin(ang)*r/1.1];                 // same spot in the face's SVG units (330px = 300 units)
@@ -3141,7 +3258,7 @@ async function heardGet(){ try{ await tokenReady; return await (await fetch('/ap
 const NOTCH_MENU={top:[170,26,15,165], bottom:[170,434,-165,-15], left:[34,230,-75,75], right:[306,230,105,255]};   // eye centre x,y + arc from/to (deg)
 function layoutMenu(){
   const edge=barEdge(), all=$$('#menu .mb');
-  all.forEach(b=>b.classList.toggle('off',(b.dataset.a==='mirror'&&!(MIR.owner==='pending'||MIR.owner==='agent'))||(b.dataset.a==='notme'&&!markOpen)));     // (only while it applies)
+  all.forEach(b=>b.classList.toggle('off',(b.dataset.a==='mirror'&&!(MIR.owner==='pending'||MIR.owner==='agent'))||(b.dataset.a==='notme'&&!markOpen)||(b.dataset.a==='mail'&&!(info.mail_on&&info.bridge))));     // (only while it applies)
   const bs=all.filter(b=>getComputedStyle(b).display!=='none'), n=bs.length;
   MENU_XY.length=0;
   if(!edge){ menuEl.style.left=''; menuEl.style.top='';
@@ -3159,9 +3276,10 @@ let menuShutAt=0;
 function menu(on){ if(on){ layoutMenu(); heardGet().then(j=>{ if(!!j.mark_open!==markOpen){ markOpen=!!j.mark_open; if(menuOn) layoutMenu(); } }); } if(!on&&menuOn) menuShutAt=performance.now(); if(on!==menuOn) sfx(on?'menu':'close'); menuOn=on; menuEl.classList.toggle('on',on); document.body.classList.toggle('menu',on); if(on){ closePanels(); hideAsk(); } $('[data-a="hover"]').classList.toggle('on',!!info.hover); sendRegion(true); }
 menuEl.addEventListener('click',e=>{ const b=e.target.closest('.mb'); if(!b) return; menu(false);
   ({talk:()=>startRec('auto'), bar:()=>toggleBar(), cd:()=>showAsk('/cd '), history:()=>openPanel('history'), plugins:()=>openPanel('plugins'),
+    mail:()=>post('/api/mail/open').then(r=>r.json()).then(j=>{ if(j&&j.say) say(j.say); }).catch(()=>{}),
     look:()=>{ endListening(); return shoot('screen').then(j=>{ if(j) showAsk(''); }); }, hover:toggleHover, mirror:mirRevoke, notme:notMe, hide:dismiss, set:()=>settings(true)})[b.dataset.a](); });
 async function notMe(){ try{ const j=await (await post('/api/heard/not-me')).json(); markOpen=false; tick(j.ok?"noted — that one wasn't for me":"too late to mark that one"); }catch(e){} }
-function dismiss(){ menu(false); hideAsk(); const held=stgHeld; stgHeld=null; closePanels(); if(held){ if(stgState!=='closed') stageHide(false); himSet(((himEl.textContent||'').trim()+'\n'+stageText(held)).trim()); }   // (he's going away: a held board follows the rule for a board arriving while hidden)
+function dismiss(){ menu(false); hideAsk(); const held=stgHeld; stgHeld=null; closePanels(); if(held){ if(stgState!=='closed') stageHide(false); if(stageText(held)) himSet(((himEl.textContent||'').trim()+'\n'+stageText(held)).trim()); }   // (he's going away: a held board follows the rule for a board arriving while hidden)
   endListening(); if(!native('hide')) poke('sleepy',1200); }
 // Esc / hiding him: he stops listening — a recording in progress is dropped and the "just keep talking" window closes
 function endListening(){ if(rec&&rec.mode!=='approve') stopRec(true); post('/api/follow',{act:'cancel'}).catch(()=>{}); follow=false; hearRaw=0; }
@@ -3462,6 +3580,19 @@ $('#pkRnd').addEventListener('click',()=>{ const kind=pkPart.startsWith('white')
 $('#pkAll').addEventListener('click',()=>{ const L=curLook(), R=randomLook(L); Object.assign(L,R); L.random=false; info.look=L; applyLook(L);
   post('/api/settings',{look:L}).then(r=>r.json()).then(j=>{ info=j; }); selectPart(pkPart); poke('excited',900); });
 
+let mailOpt={accounts:[],models:[]}, mailOptT=0;
+function renderMail(){ const sw=$('#mailSw'); if(!sw) return; sw.checked=!!info.mail_on; $('#mailOpts').hidden=!info.mail_on;
+  if(!info.mail_on) return;
+  if(!mailOptT||performance.now()-mailOptT>15000){ mailOptT=performance.now();
+    tokenReady.then(()=>fetch('/api/mail/options',{headers:hdr()})).then(r=>r.json()).then(j=>{ mailOpt={accounts:j.accounts||[],models:j.models||[]}; mailDraw(); }).catch(()=>{}); }
+  mailDraw(); }
+function mailDraw(){ const box=$('#mailAccts'), sel=$('#mailModel'); if(!box||!info.mail_on) return;
+  if(box.contains(document.activeElement)||document.activeElement===sel) return;           // (don't redraw under a click)
+  const have=info.mail_accounts||[], names=[...new Set([...mailOpt.accounts,...have])];
+  box.textContent=''; if(!names.length) box.appendChild(hx('div','h','No address found. Sign in with gog first.'));
+  names.forEach(a=>{ const l=hx('label','tg'), i=hx('input'), sp=hx('span','sw'), t=hx('span','l',a); i.type='checkbox'; i.checked=have.includes(a); i.dataset.mailAcct=a; l.appendChild(i); l.appendChild(sp); l.appendChild(t); box.appendChild(l); });
+  const cur=info.mail_model||'', ms=[...new Set([...mailOpt.models,...(cur?[cur]:[])])]; sel.textContent='';
+  [['','None'],...ms.map(m=>[m,m])].forEach(([v,l])=>{ const o=hx('option',null,l); o.value=v; sel.appendChild(o); }); sel.value=cur; }
 function renderSettings(){
   { const rr=$('#rootSw').closest('.row'); if(rr) rr.style.display=info.root_ok===false?'none':''; }
   { const pr=$('#peersRow'); if(pr) pr.hidden=!info.peers_configured; }
@@ -3525,9 +3656,10 @@ function renderSettings(){
   const am=info.agent_voice_mute||[];
   const sw={rootSw:info.root,speakSw:!muted&&info.tts_choice!=='off',wakeSw:info.wake_word,agentClaudeSw:!am.includes('claude'),agentCodexSw:!am.includes('codex'),agentAgySw:!am.includes('agy'),autoSw:info.autostart,listenShowSw:info.listen_on_show,hoverSw:info.hover,
     followSw:!!info.follow_focus,asideSw:info.step_aside!==false,stagesSw:info.answer_stages!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,proactiveSw:!!info.proactive,takeoverSw:!!info.notifications_takeover,detailsSw:!!info.notify_details,nsoundSw:info.notify_sound!==false,lookMeetSw:!!info.look_meeting,lookMusicSw:!!info.look_music,lookBeatSw:!!info.look_beat,speakSubjSw:!!info.notify_speak_subject,lookFsSw:!!info.look_fullscreen,reactLoadSw:!!info.react_load,reactBreakSw:!!info.react_break,reactWelcomeSw:!!info.react_welcome,lookCodingSw:!!info.look_coding,lookNightSw:!!info.look_night,lookWeatherSw:!!info.look_weather,lookPartySw:!!info.look_party,reactQuipsSw:!!info.react_quips,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
-    updSw:info.update_check!==false,peersSw:!!info.peers_on,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
+    updSw:info.update_check!==false,peersSw:!!info.peers_on,agentApproveSw:!!info.agent_approvals,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
   renderAgents(); renderUpdate(); renderPtt();
+  renderMail();
   for(const k in sw){ const e=document.getElementById(k); if(e) e.checked=!!sw[k]; }
   for(const [k,on] of [['lookBeatSw',info.look_music],['speakSubjSw',info.notify_details]]){ const e=$('#'+k); e.disabled=!on; e.closest('.row').style.opacity=on?'':'.5'; }   // (each needs its parent switch)
   const ps=restPu();
@@ -3815,9 +3947,13 @@ setEl.addEventListener('change',e=>{
   { const k={proactiveSw:'proactive',takeoverSw:'notifications_takeover',detailsSw:'notify_details',nsoundSw:'notify_sound',lookMeetSw:'look_meeting',lookMusicSw:'look_music',lookBeatSw:'look_beat',speakSubjSw:'notify_speak_subject',lookFsSw:'look_fullscreen',reactLoadSw:'react_load',reactBreakSw:'react_break',reactWelcomeSw:'react_welcome',lookCodingSw:'look_coding',lookNightSw:'look_night',lookWeatherSw:'look_weather',lookPartySw:'look_party',reactQuipsSw:'react_quips'}[id]; if(k) setSetting({[k]:on}); }
   if(id==='clickSw') setSetting({click_through:on}).then(()=>sendRegion(true));
   if(id==='notifySw') setSetting({notify_done:on});
+  if(id==='mailSw') setSetting({mail_on:on}).then(()=>{ mailOptT=0; renderMail(); });
+  if(id==='mailModel') setSetting({mail_model:e.target.value});
+  if(e.target.dataset&&e.target.dataset.mailAcct) setSetting({mail_accounts:$$('#mailAccts input:checked').map(c=>c.dataset.mailAcct)});
   if(id==='popupSw') setSetting({popup_done:on});
   if(id==='updSw') setSetting({update_check:on}).then(renderUpdate);
   if(id==='peersSw') setSetting({peers_on:on});
+  if(id==='agentApproveSw') setSetting({agent_approvals:on});
   if(id==='fullSw') setSetting({full_text:on}).then(showInfo);
   if(id==='compactSw') setSetting({auto_compact:on});
   if(id==='costIn') setSetting({max_cost_usd:+e.target.value||0}).then(()=>tick(+e.target.value?'a request stops at $'+e.target.value:'no usage limit'));
@@ -4034,6 +4170,7 @@ addEventListener('mousedown',e=>{ if(!e.target.closest('#body,#barPill,#menu,#as
 
 addEventListener('keydown',e=>{ wake(); lastUser=performance.now();
   const askOn=ask.classList.contains('on'), k=e.key.toLowerCase(), typing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&document.activeElement!==input;
+  if(mailCard&&mailCard.el.isConnected&&(e.key==='Enter'||k==='y')&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){ e.preventDefault(); return; }   // (the mail reply card is up: Enter and y never reach the ask box or an approval)
   if(pendingAppr && !askOn && !typing){ if((e.key==='Enter'||k==='y')&&pendingAppr.confirm==='click'){ e.preventDefault(); return; } if(e.key==='Enter'||k==='y'){ e.preventDefault(); return answer('yes'); } if(e.key==='Escape'||k==='n'){ e.preventDefault(); return answer('no'); } }
   if(e.key==='Escape'){ e.preventDefault();
     if(menuOn) return menu(false);
@@ -4114,7 +4251,7 @@ const CP=(()=>{
     H=el.offsetHeight; const want=[2*Math.max(0,Math.ceil(geo().reach*.92+18+W+16-170)),Math.max(0,H+16-460)];
     if(want[0]!==sheetWant[0]||want[1]!==sheetWant[1]){ sheetWant=want; sizeWindow(); } }
   new MutationObserver(()=>{ if(on&&!barEdge()) fitSheet(); }).observe(out,{childList:true,subtree:true,characterData:true});
-  function hide(){ sheetWant=[0,0]; sizeWindow(); on=false; el.classList.remove('on'); document.body.classList.remove('term'); clearTimeout(offT); offT=setTimeout(()=>{ if(!on&&wide){ wide=false; native('code:off'); } },400); }
+  function hide(){ agStop(); sheetWant=[0,0]; sizeWindow(); on=false; el.classList.remove('on'); document.body.classList.remove('term'); clearTimeout(offT); offT=setTimeout(()=>{ if(!on&&wide){ wide=false; native('code:off'); } },400); }
 
   // ---- writing to it
   const KW=/\b(def|return|if|elif|else|for|while|in|not|and|or|import|from|try|except|with|as|const|let|var|function|async|await|new|null|None|True|False|true|false|fn|pub|use|match|export|raise|throw)\b/g;
@@ -4130,7 +4267,7 @@ const CP=(()=>{
     for(let i=1;i<=text.length;i++){ d.innerHTML=pre+hl(text.slice(0,i))+'<i class="cur"></i>'; await wait(1000/cps); if(hurry()) break; }
     d.innerHTML=pre+hl(text);
   }
-  function open(title,root){ titleEl.textContent=title; stEl.textContent='…'; stEl.className=''; el.classList.toggle('root',!!root); el.classList.toggle('rootmode',!!info.root); out.innerHTML=''; show(); }
+  function open(title,root){ agStop(); el.classList.remove('mini'); titleEl.textContent=title; stEl.textContent='…'; stEl.className=''; el.classList.toggle('root',!!root); el.classList.toggle('rootmode',!!info.root); out.innerHTML=''; show(); }
   function done(ok){ stEl.textContent=ok?'✓':'✕'; stEl.className=ok?'ok':'bad'; }
   async function result(id){ for(let i=0;i<1200&&!RES[id]&&busy;i++){ if(q.length&&i>20) break; await wait(50); } return RES[id]; }
   const rows=(t,n)=>String(t||'').replace(/\r/g,'').split('\n').filter(x=>x.trim()).slice(0,n);
@@ -4177,7 +4314,23 @@ const CP=(()=>{
   async function run(){ running=true;
     while(q.length){ const ev=q.shift(); try{ await (VIEWS[ev.name]||VIEWS.other)(ev); }catch(e){ console.log('[nixi] terminal',e); } }
     running=false; if(!busy||answering) hide(); }
+  // ---- another agent is working (Claude Code, Codex, agy): a fixed decorative loop, no real text; smaller after a minute,
+  // gone on that agent's "finished" or after 15 minutes without a `working`. Never while his own turn uses the sheet.
+  let ag=null; const SKEL=['<i class="pr">$</i> ▒▒▒▒▒ ▒▒▒▒▒▒▒▒ ▒▒▒','▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒','▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒▒▒▒▒▒','<i class="pr">$</i> ▒▒▒▒ ▒▒▒▒▒▒▒▒','▒▒▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒▒▒','▒▒▒▒ ▒▒▒▒▒▒▒']; 
+  const ownTurn=()=>busy||running||q.length>0||answering;
+  function agStop(){ if(ag){ clearInterval(ag.timer); ag=null; } el.classList.remove('mini'); }
+  function agent(name,from){ if(ownTurn()||info.code_panel===false) return;
+    if(ag){ ag.last=Date.now(); ag.from=from; titleEl.textContent=name; return; }
+    titleEl.textContent=name; stEl.textContent='…'; stEl.className=''; el.classList.remove('root','rootmode'); out.innerHTML=''; show();
+    if(!on) return;
+    ag={from,t0:Date.now(),last:Date.now(),i:0,timer:0};
+    ag.timer=setInterval(()=>{ if(!ag) return; if(ownTurn()){ agStop(); return; }
+      if(Date.now()-ag.last>15*60000){ hide(); return; }
+      if(Date.now()-ag.t0>60000) el.classList.add('mini');
+      line(SKEL[ag.i++%SKEL.length],'out'); },900); }
+  function agentEnd(from){ if(ag&&ag.from===from&&!ownTurn()) hide(); }
   return {
+    agent, agentEnd,
     tool(ev){ if(info.code_panel===false||info.bridge) return; answering=false; q.push(ev); if(!running) run(); },
     result(ev){ RES[ev.id]={text:ev.text||'',is_error:!!ev.is_error}; },
     answer(){ answering=true; if(!running) hide(); },

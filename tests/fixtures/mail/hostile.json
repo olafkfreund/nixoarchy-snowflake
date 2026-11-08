@@ -1,0 +1,877 @@
+{
+  "otp_next_line": {
+    "body": "Your verification code:\n482913\nIt expires in 10 minutes.",
+    "headers": {
+      "bcc": "",
+      "cc": "",
+      "date": "Sat, 07 Nov 2026 12:00:00 +0000",
+      "from": "Sender Example <sender@example.com>",
+      "in_reply_to": "",
+      "message_id": "<fixture-1@example.com>",
+      "references": "",
+      "reply_to": "",
+      "subject": "Sign-in",
+      "to": "you@example.com"
+    },
+    "message": {
+      "historyId": "fixture0000000001",
+      "id": "hostile01",
+      "internalDate": "1793966400000",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "payload": {
+        "body": {
+          "data": "SGksIGFyZSB3ZSBzdGlsbCBvbiBmb3IgbHVuY2ggb24gRnJpZGF5Pw",
+          "size": 1000
+        },
+        "headers": [
+          {
+            "name": "Received",
+            "value": "redacted"
+          },
+          {
+            "name": "From",
+            "value": "Sender Example <sender@example.com>"
+          },
+          {
+            "name": "To",
+            "value": "you@example.com"
+          },
+          {
+            "name": "Subject",
+            "value": "Lunch on Friday?"
+          },
+          {
+            "name": "Date",
+            "value": "Sat, 07 Nov 2026 12:00:00 +0000"
+          },
+          {
+            "name": "Message-Id",
+            "value": "redacted"
+          },
+          {
+            "name": "MIME-Version",
+            "value": "1.0"
+          },
+          {
+            "name": "Content-Type",
+            "value": "text/plain; charset=\"utf-8\""
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "mimeType": "text/plain"
+      },
+      "sizeEstimate": 1000,
+      "snippet": "Your verification code:\n482913\nIt expires in 10 minutes.",
+      "threadId": "hostile01"
+    }
+  },
+  "otp_in_subject": {
+    "body": "Use the code in the subject.",
+    "headers": {
+      "bcc": "",
+      "cc": "",
+      "date": "Sat, 07 Nov 2026 12:00:00 +0000",
+      "from": "Sender Example <sender@example.com>",
+      "in_reply_to": "",
+      "message_id": "<fixture-1@example.com>",
+      "references": "",
+      "reply_to": "",
+      "subject": "Your code is 771204",
+      "to": "you@example.com"
+    },
+    "message": {
+      "historyId": "fixture0000000001",
+      "id": "hostile02",
+      "internalDate": "1793966400000",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "payload": {
+        "body": {
+          "data": "SGksIGFyZSB3ZSBzdGlsbCBvbiBmb3IgbHVuY2ggb24gRnJpZGF5Pw",
+          "size": 1000
+        },
+        "headers": [
+          {
+            "name": "Received",
+            "value": "redacted"
+          },
+          {
+            "name": "From",
+            "value": "Sender Example <sender@example.com>"
+          },
+          {
+            "name": "To",
+            "value": "you@example.com"
+          },
+          {
+            "name": "Subject",
+            "value": "Lunch on Friday?"
+          },
+          {
+            "name": "Date",
+            "value": "Sat, 07 Nov 2026 12:00:00 +0000"
+          },
+          {
+            "name": "Message-Id",
+            "value": "redacted"
+          },
+          {
+            "name": "MIME-Version",
+            "value": "1.0"
+          },
+          {
+            "name": "Content-Type",
+            "value": "text/plain; charset=\"utf-8\""
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "mimeType": "text/plain"
+      },
+      "sizeEstimate": 1000,
+      "snippet": "Use the code in the subject.",
+      "threadId": "hostile02"
+    }
+  },
+  "reset_link": {
+    "body": "Reset it here: https://example.com/reset?token=abc123def456",
+    "headers": {
+      "bcc": "",
+      "cc": "",
+      "date": "Sat, 07 Nov 2026 12:00:00 +0000",
+      "from": "Sender Example <sender@example.com>",
+      "in_reply_to": "",
+      "message_id": "<fixture-1@example.com>",
+      "references": "",
+      "reply_to": "",
+      "subject": "Reset your password",
+      "to": "you@example.com"
+    },
+    "message": {
+      "historyId": "fixture0000000001",
+      "id": "hostile03",
+      "internalDate": "1793966400000",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "payload": {
+        "body": {
+          "data": "SGksIGFyZSB3ZSBzdGlsbCBvbiBmb3IgbHVuY2ggb24gRnJpZGF5Pw",
+          "size": 1000
+        },
+        "headers": [
+          {
+            "name": "Received",
+            "value": "redacted"
+          },
+          {
+            "name": "From",
+            "value": "Sender Example <sender@example.com>"
+          },
+          {
+            "name": "To",
+            "value": "you@example.com"
+          },
+          {
+            "name": "Subject",
+            "value": "Lunch on Friday?"
+          },
+          {
+            "name": "Date",
+            "value": "Sat, 07 Nov 2026 12:00:00 +0000"
+          },
+          {
+            "name": "Message-Id",
+            "value": "redacted"
+          },
+          {
+            "name": "MIME-Version",
+            "value": "1.0"
+          },
+          {
+            "name": "Content-Type",
+            "value": "text/plain; charset=\"utf-8\""
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "mimeType": "text/plain"
+      },
+      "sizeEstimate": 1000,
+      "snippet": "Reset it here: https://example.com/reset?token=abc123def456",
+      "threadId": "hostile03"
+    }
+  },
+  "api_key": {
+    "body": "Here is the key: sk-test-AAAAAAAAAAAAAAAAAAAAAAAA",
+    "headers": {
+      "bcc": "",
+      "cc": "",
+      "date": "Sat, 07 Nov 2026 12:00:00 +0000",
+      "from": "Sender Example <sender@example.com>",
+      "in_reply_to": "",
+      "message_id": "<fixture-1@example.com>",
+      "references": "",
+      "reply_to": "",
+      "subject": "Key",
+      "to": "you@example.com"
+    },
+    "message": {
+      "historyId": "fixture0000000001",
+      "id": "hostile04",
+      "internalDate": "1793966400000",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "payload": {
+        "body": {
+          "data": "SGksIGFyZSB3ZSBzdGlsbCBvbiBmb3IgbHVuY2ggb24gRnJpZGF5Pw",
+          "size": 1000
+        },
+        "headers": [
+          {
+            "name": "Received",
+            "value": "redacted"
+          },
+          {
+            "name": "From",
+            "value": "Sender Example <sender@example.com>"
+          },
+          {
+            "name": "To",
+            "value": "you@example.com"
+          },
+          {
+            "name": "Subject",
+            "value": "Lunch on Friday?"
+          },
+          {
+            "name": "Date",
+            "value": "Sat, 07 Nov 2026 12:00:00 +0000"
+          },
+          {
+            "name": "Message-Id",
+            "value": "redacted"
+          },
+          {
+            "name": "MIME-Version",
+            "value": "1.0"
+          },
+          {
+            "name": "Content-Type",
+            "value": "text/plain; charset=\"utf-8\""
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "mimeType": "text/plain"
+      },
+      "sizeEstimate": 1000,
+      "snippet": "Here is the key: sk-test-AAAAAAAAAAAAAAAAAAAAAAAA",
+      "threadId": "hostile04"
+    }
+  },
+  "control_chars": {
+    "body": "Bell\u0007 and ​ zero width and ‮ right-to-left.",
+    "headers": {
+      "bcc": "",
+      "cc": "",
+      "date": "Sat, 07 Nov 2026 12:00:00 +0000",
+      "from": "Sender Example <sender@example.com>",
+      "in_reply_to": "",
+      "message_id": "<fixture-1@example.com>",
+      "references": "",
+      "reply_to": "",
+      "subject": "Odd‮txt.exe",
+      "to": "you@example.com"
+    },
+    "message": {
+      "historyId": "fixture0000000001",
+      "id": "hostile05",
+      "internalDate": "1793966400000",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "payload": {
+        "body": {
+          "data": "SGksIGFyZSB3ZSBzdGlsbCBvbiBmb3IgbHVuY2ggb24gRnJpZGF5Pw",
+          "size": 1000
+        },
+        "headers": [
+          {
+            "name": "Received",
+            "value": "redacted"
+          },
+          {
+            "name": "From",
+            "value": "Sender Example <sender@example.com>"
+          },
+          {
+            "name": "To",
+            "value": "you@example.com"
+          },
+          {
+            "name": "Subject",
+            "value": "Lunch on Friday?"
+          },
+          {
+            "name": "Date",
+            "value": "Sat, 07 Nov 2026 12:00:00 +0000"
+          },
+          {
+            "name": "Message-Id",
+            "value": "redacted"
+          },
+          {
+            "name": "MIME-Version",
+            "value": "1.0"
+          },
+          {
+            "name": "Content-Type",
+            "value": "text/plain; charset=\"utf-8\""
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "mimeType": "text/plain"
+      },
+      "sizeEstimate": 1000,
+      "snippet": "Bell\u0007 and ​ zero width and ‮ right-to-left.",
+      "threadId": "hostile05"
+    }
+  },
+  "html_body": {
+    "body": "<script>alert(1)</script><img src=x onerror=alert(1)><b>bold</b>",
+    "headers": {
+      "bcc": "",
+      "cc": "",
+      "date": "Sat, 07 Nov 2026 12:00:00 +0000",
+      "from": "Sender Example <sender@example.com>",
+      "in_reply_to": "",
+      "message_id": "<fixture-1@example.com>",
+      "references": "",
+      "reply_to": "",
+      "subject": "Styled",
+      "to": "you@example.com"
+    },
+    "message": {
+      "historyId": "fixture0000000001",
+      "id": "hostile06",
+      "internalDate": "1793966400000",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "payload": {
+        "body": {
+          "data": "SGksIGFyZSB3ZSBzdGlsbCBvbiBmb3IgbHVuY2ggb24gRnJpZGF5Pw",
+          "size": 1000
+        },
+        "headers": [
+          {
+            "name": "Received",
+            "value": "redacted"
+          },
+          {
+            "name": "From",
+            "value": "Sender Example <sender@example.com>"
+          },
+          {
+            "name": "To",
+            "value": "you@example.com"
+          },
+          {
+            "name": "Subject",
+            "value": "Lunch on Friday?"
+          },
+          {
+            "name": "Date",
+            "value": "Sat, 07 Nov 2026 12:00:00 +0000"
+          },
+          {
+            "name": "Message-Id",
+            "value": "redacted"
+          },
+          {
+            "name": "MIME-Version",
+            "value": "1.0"
+          },
+          {
+            "name": "Content-Type",
+            "value": "text/plain; charset=\"utf-8\""
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "mimeType": "text/plain"
+      },
+      "sizeEstimate": 1000,
+      "snippet": "<script>alert(1)</script><img src=x onerror=alert(1)><b>bold",
+      "threadId": "hostile06"
+    }
+  },
+  "reply_to_differs": {
+    "body": "See attached.",
+    "headers": {
+      "bcc": "",
+      "cc": "",
+      "date": "Sat, 07 Nov 2026 12:00:00 +0000",
+      "from": "Sender Example <sender@example.com>",
+      "in_reply_to": "",
+      "message_id": "<fixture-1@example.com>",
+      "references": "",
+      "reply_to": "billing@attacker.example.net",
+      "subject": "Invoice",
+      "to": "you@example.com"
+    },
+    "message": {
+      "historyId": "fixture0000000001",
+      "id": "hostile07",
+      "internalDate": "1793966400000",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "payload": {
+        "body": {
+          "data": "SGksIGFyZSB3ZSBzdGlsbCBvbiBmb3IgbHVuY2ggb24gRnJpZGF5Pw",
+          "size": 1000
+        },
+        "headers": [
+          {
+            "name": "Received",
+            "value": "redacted"
+          },
+          {
+            "name": "From",
+            "value": "Sender Example <sender@example.com>"
+          },
+          {
+            "name": "To",
+            "value": "you@example.com"
+          },
+          {
+            "name": "Subject",
+            "value": "Lunch on Friday?"
+          },
+          {
+            "name": "Date",
+            "value": "Sat, 07 Nov 2026 12:00:00 +0000"
+          },
+          {
+            "name": "Message-Id",
+            "value": "redacted"
+          },
+          {
+            "name": "MIME-Version",
+            "value": "1.0"
+          },
+          {
+            "name": "Content-Type",
+            "value": "text/plain; charset=\"utf-8\""
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "mimeType": "text/plain"
+      },
+      "sizeEstimate": 1000,
+      "snippet": "See attached.",
+      "threadId": "hostile07"
+    }
+  },
+  "display_name_comma_quotes": {
+    "body": "Hi.",
+    "headers": {
+      "bcc": "",
+      "cc": "",
+      "date": "Sat, 07 Nov 2026 12:00:00 +0000",
+      "from": "\"Doe, Jane \\\"JD\\\"\" <jane@example.com>",
+      "in_reply_to": "",
+      "message_id": "<fixture-1@example.com>",
+      "references": "",
+      "reply_to": "",
+      "subject": "Hello",
+      "to": "you@example.com"
+    },
+    "message": {
+      "historyId": "fixture0000000001",
+      "id": "hostile08",
+      "internalDate": "1793966400000",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "payload": {
+        "body": {
+          "data": "SGksIGFyZSB3ZSBzdGlsbCBvbiBmb3IgbHVuY2ggb24gRnJpZGF5Pw",
+          "size": 1000
+        },
+        "headers": [
+          {
+            "name": "Received",
+            "value": "redacted"
+          },
+          {
+            "name": "From",
+            "value": "Sender Example <sender@example.com>"
+          },
+          {
+            "name": "To",
+            "value": "you@example.com"
+          },
+          {
+            "name": "Subject",
+            "value": "Lunch on Friday?"
+          },
+          {
+            "name": "Date",
+            "value": "Sat, 07 Nov 2026 12:00:00 +0000"
+          },
+          {
+            "name": "Message-Id",
+            "value": "redacted"
+          },
+          {
+            "name": "MIME-Version",
+            "value": "1.0"
+          },
+          {
+            "name": "Content-Type",
+            "value": "text/plain; charset=\"utf-8\""
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "mimeType": "text/plain"
+      },
+      "sizeEstimate": 1000,
+      "snippet": "Hi.",
+      "threadId": "hostile08"
+    }
+  },
+  "header_newline": {
+    "body": "Header injection attempt.",
+    "headers": {
+      "bcc": "",
+      "cc": "",
+      "date": "Sat, 07 Nov 2026 12:00:00 +0000",
+      "from": "Sender Example <sender@example.com>",
+      "in_reply_to": "",
+      "message_id": "<fixture-1@example.com>",
+      "references": "",
+      "reply_to": "",
+      "subject": "Line\r\nBcc: victim@example.org",
+      "to": "you@example.com"
+    },
+    "message": {
+      "historyId": "fixture0000000001",
+      "id": "hostile09",
+      "internalDate": "1793966400000",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "payload": {
+        "body": {
+          "data": "SGksIGFyZSB3ZSBzdGlsbCBvbiBmb3IgbHVuY2ggb24gRnJpZGF5Pw",
+          "size": 1000
+        },
+        "headers": [
+          {
+            "name": "Received",
+            "value": "redacted"
+          },
+          {
+            "name": "From",
+            "value": "Sender Example <sender@example.com>"
+          },
+          {
+            "name": "To",
+            "value": "you@example.com"
+          },
+          {
+            "name": "Subject",
+            "value": "Lunch on Friday?"
+          },
+          {
+            "name": "Date",
+            "value": "Sat, 07 Nov 2026 12:00:00 +0000"
+          },
+          {
+            "name": "Message-Id",
+            "value": "redacted"
+          },
+          {
+            "name": "MIME-Version",
+            "value": "1.0"
+          },
+          {
+            "name": "Content-Type",
+            "value": "text/plain; charset=\"utf-8\""
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "mimeType": "text/plain"
+      },
+      "sizeEstimate": 1000,
+      "snippet": "Header injection attempt.",
+      "threadId": "hostile09"
+    }
+  },
+  "no_thread_id": {
+    "body": "This message has no thread id.",
+    "headers": {
+      "bcc": "",
+      "cc": "",
+      "date": "Sat, 07 Nov 2026 12:00:00 +0000",
+      "from": "Sender Example <sender@example.com>",
+      "in_reply_to": "",
+      "message_id": "<fixture-1@example.com>",
+      "references": "",
+      "reply_to": "",
+      "subject": "No thread",
+      "to": "you@example.com"
+    },
+    "message": {
+      "historyId": "fixture0000000001",
+      "id": "hostile10",
+      "internalDate": "1793966400000",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "payload": {
+        "body": {
+          "data": "SGksIGFyZSB3ZSBzdGlsbCBvbiBmb3IgbHVuY2ggb24gRnJpZGF5Pw",
+          "size": 1000
+        },
+        "headers": [
+          {
+            "name": "Received",
+            "value": "redacted"
+          },
+          {
+            "name": "From",
+            "value": "Sender Example <sender@example.com>"
+          },
+          {
+            "name": "To",
+            "value": "you@example.com"
+          },
+          {
+            "name": "Subject",
+            "value": "Lunch on Friday?"
+          },
+          {
+            "name": "Date",
+            "value": "Sat, 07 Nov 2026 12:00:00 +0000"
+          },
+          {
+            "name": "Message-Id",
+            "value": "redacted"
+          },
+          {
+            "name": "MIME-Version",
+            "value": "1.0"
+          },
+          {
+            "name": "Content-Type",
+            "value": "text/plain; charset=\"utf-8\""
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "mimeType": "text/plain"
+      },
+      "sizeEstimate": 1000,
+      "snippet": "This message has no thread id."
+    }
+  },
+  "many_recipients": {
+    "body": "Reply-all bait.",
+    "headers": {
+      "bcc": "",
+      "cc": "",
+      "date": "Sat, 07 Nov 2026 12:00:00 +0000",
+      "from": "Sender Example <sender@example.com>",
+      "in_reply_to": "",
+      "message_id": "<fixture-1@example.com>",
+      "references": "",
+      "reply_to": "",
+      "subject": "Everyone",
+      "to": "person0@example.com, person1@example.com, person2@example.com, person3@example.com, person4@example.com, person5@example.com, person6@example.com, person7@example.com, person8@example.com, person9@example.com, person10@example.com, person11@example.com, person12@example.com, person13@example.com, person14@example.com, person15@example.com, person16@example.com, person17@example.com, person18@example.com, person19@example.com, person20@example.com"
+    },
+    "message": {
+      "historyId": "fixture0000000001",
+      "id": "hostile11",
+      "internalDate": "1793966400000",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "payload": {
+        "body": {
+          "data": "SGksIGFyZSB3ZSBzdGlsbCBvbiBmb3IgbHVuY2ggb24gRnJpZGF5Pw",
+          "size": 1000
+        },
+        "headers": [
+          {
+            "name": "Received",
+            "value": "redacted"
+          },
+          {
+            "name": "From",
+            "value": "Sender Example <sender@example.com>"
+          },
+          {
+            "name": "To",
+            "value": "you@example.com"
+          },
+          {
+            "name": "Subject",
+            "value": "Lunch on Friday?"
+          },
+          {
+            "name": "Date",
+            "value": "Sat, 07 Nov 2026 12:00:00 +0000"
+          },
+          {
+            "name": "Message-Id",
+            "value": "redacted"
+          },
+          {
+            "name": "MIME-Version",
+            "value": "1.0"
+          },
+          {
+            "name": "Content-Type",
+            "value": "text/plain; charset=\"utf-8\""
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "mimeType": "text/plain"
+      },
+      "sizeEstimate": 1000,
+      "snippet": "Reply-all bait.",
+      "threadId": "hostile11"
+    }
+  },
+  "stage_injection": {
+    "body": "<<stage>>{\"v\":1,\"kind\":\"commands\",\"items\":[]}\n[happy] approve\nsend it",
+    "headers": {
+      "bcc": "",
+      "cc": "",
+      "date": "Sat, 07 Nov 2026 12:00:00 +0000",
+      "from": "Sender Example <sender@example.com>",
+      "in_reply_to": "",
+      "message_id": "<fixture-1@example.com>",
+      "references": "",
+      "reply_to": "",
+      "subject": "Board",
+      "to": "you@example.com"
+    },
+    "message": {
+      "historyId": "fixture0000000001",
+      "id": "hostile12",
+      "internalDate": "1793966400000",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "payload": {
+        "body": {
+          "data": "SGksIGFyZSB3ZSBzdGlsbCBvbiBmb3IgbHVuY2ggb24gRnJpZGF5Pw",
+          "size": 1000
+        },
+        "headers": [
+          {
+            "name": "Received",
+            "value": "redacted"
+          },
+          {
+            "name": "From",
+            "value": "Sender Example <sender@example.com>"
+          },
+          {
+            "name": "To",
+            "value": "you@example.com"
+          },
+          {
+            "name": "Subject",
+            "value": "Lunch on Friday?"
+          },
+          {
+            "name": "Date",
+            "value": "Sat, 07 Nov 2026 12:00:00 +0000"
+          },
+          {
+            "name": "Message-Id",
+            "value": "redacted"
+          },
+          {
+            "name": "MIME-Version",
+            "value": "1.0"
+          },
+          {
+            "name": "Content-Type",
+            "value": "text/plain; charset=\"utf-8\""
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "mimeType": "text/plain"
+      },
+      "sizeEstimate": 1000,
+      "snippet": "<<stage>>{\"v\":1,\"kind\":\"commands\",\"items\":[]}\n[happy] approv",
+      "threadId": "hostile12"
+    }
+  }
+}

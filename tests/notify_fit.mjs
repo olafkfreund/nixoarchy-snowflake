@@ -30,7 +30,7 @@ const centre = sel => ev(`const r=(${sel}).getBoundingClientRect(); return [r.le
 await ev(`
   window.__posts=[]; window.__sfx=[]; window.__say=[]; window.__rec=[];
   const f0=window.fetch.bind(window);
-  window.fetch=(u,o)=>{ if(/\\/api\\/notify\\/(act|seen)/.test(String(u))){ window.__posts.push({u:String(u),b:JSON.parse((o&&o.body)||'{}')}); return Promise.resolve(new Response('{"ok":true}')); } return f0(u,o); };
+  window.fetch=(u,o)=>{ if(/\\/api\\/notify\\/(act|seen)/.test(String(u))){ window.__posts.push({u:String(u),b:JSON.parse((o&&o.body)||'{}')}); return Promise.resolve(new Response(JSON.stringify({ok:window.__actOk!==false}))); } return f0(u,o); };
   sfx=n=>window.__sfx.push(n); enqueue=(t,o)=>window.__say.push(t); startRec=m=>window.__rec.push(m);
   window.reset=()=>{ notifyQ.length=0; if(notifyRow) notifyClear(); notifyRow=null; notifyAt=0; notifyBurst={cat:'',n:0,t:0}; propOn=null; busy=false; playing=false; rec=null; follow=false; pendingAppr=null;
     SIT.meeting=false; SIT.fullscreen=false; SIT.locked=false; muted=false; info.hover=false; info.sfx=true; info.notify_sound=true; info.notify_speak=[]; info.notify_details=false;
@@ -200,6 +200,76 @@ const [wx, wy] = await bubble();
 await ev(`himEl.textContent=''; return 1;`);
 await click(wx, wy);
 eq(await ev(`return [acts(), window.__rec];`), [[], ["auto"]], "with the row wiped, a bubble click goes to him");
+
+// 10. cards (#214): row.card = {runs, buttons, image?, rev?}
+const CARD = `(key,o={})=>N(key,'chat',{app:'slack',summary:'Ann',card:{runs:[{t:'<img src=x onerror=window.__pwn=1>',b:true,i:false,u:false,host:''},{t:'\\n'},{t:'a link',b:false,i:true,u:false,host:'ex.com'},{t:'ex.com',b:false,i:false,u:false,host:'ex.com'}],buttons:['Yes','No'],rev:'r1',image:'0123456789abcdef',...o},...(o.top||{})})`;
+await ev(`window.C=${CARD}; window.__seenLog=[]; const ns=notifySeen; notifySeen=k=>{ window.__seenLog.push([k,!!(notifyRow&&notifyRow.span&&notifyRow.span.isConnected)]); ns(k); };   // (was a card on screen when it was marked seen?)
+  window.seenOf=k=>window.__seenLog.filter(x=>x[0]===k).map(x=>x[1]); return 1;`);
+const cardUp = async (look = "return 1;") => ev(`reset(); __seenLog.length=0; const now=performance.now(); notifyQ.push({...C('cd1'),rt:now},{...N('x2','other'),rt:now}); notifyDrain(now);
+  const out=(()=>{${look}})(); await new Promise(r=>setTimeout(r,400)); return out;`);
+const cd = await cardUp(`const d=document.querySelector('#him .ncard'); if(!d) return null; const t=sel=>[...d.querySelectorAll(sel)];   // (read at once: the 404 for the fake id removes the image a moment later)
+  return {imgs:t('img').map(i=>i.getAttribute('src')), btns:t('button').map(b=>b.textContent), more:(t('.nmore')[0]||{}).textContent, who:t('.nch span')[0].textContent, summary:(t('.ncs')[0]||{}).textContent,
+    runs:t('.ncr span:not(.nh)').map(s=>[s.textContent,s.style.fontWeight,s.style.fontStyle,s.style.textDecoration]), br:t('.ncr br').length, hosts:t('.nh').map(s=>s.textContent),
+    pwn:window.__pwn===undefined, seen:seenOf('cd1'), ntf:cap.classList.contains('ntf')};`);
+check(cd !== null, "a row with a card is drawn as a card");
+if (cd) {
+  eq(cd.imgs, ["/api/nimage/0123456789abcdef"], "the card has one preview, from /api/nimage/<id>");
+  eq([cd.btns, cd.more, cd.who, cd.summary], [["Yes", "No"], "+1", "Slack", "Ann"], "card: buttons, +N, app name, summary");
+  eq(cd.runs, [["<img src=x onerror=window.__pwn=1>", "700", "", ""], ["a link", "", "italic", "underline"], ["ex.com", "", "", "underline"]], "card: runs are text with their styles; a link is underlined");
+  eq([cd.br, cd.hosts, cd.pwn], [1, [" (ex.com)"], true], "card: a line break, the host only when the label differs, no sender markup becomes an element");
+  eq(cd.seen, [true], "card: marked seen once, only after it was drawn");
+}
+await sleep(5800);
+check(await ev(`return !!document.querySelector('#him .ncard');`), "a card is still up at 6.2 s");
+await sleep(1400);
+check(await ev(`return !document.querySelector('#him .ncard')&&notifyRow===null;`), "a card is gone by 7.6 s");
+
+// a real click on a button posts its index and rev, and doesn't open
+await cardUp();
+const [bbx, bby] = await centre("document.querySelectorAll('#him .ncard button')[1]");
+check(await ev(`return document.querySelectorAll('#him .ncard button')[1].contains(document.elementFromPoint(${bbx},${bby}));`), "the second button is a real hit target");
+await click(bbx, bby);
+eq(await ev(`return [acts(), notifyRow];`), [[{ key: "cd1", how: "action", i: 1, rev: "r1" }], null], "a click on a button posts its index and rev, not open");
+// ok:false: the page says so
+await ev(`window.__ticks=[]; window.tick0=tick; tick=t=>window.__ticks.push(t); window.__actOk=false; return 1;`);
+await cardUp();
+const [b0x, b0y] = await centre("document.querySelectorAll('#him .ncard button')[0]");
+await click(b0x, b0y);
+await sleep(200);
+eq(await ev(`const t=window.__ticks; tick=window.tick0; window.__actOk=true; return t;`), ["That notification has gone."], "ok:false shows that the notification has gone");
+// a click on the card body opens; Esc dismisses
+await cardUp();
+const [sx, sy] = await centre("document.querySelector('#him .ncard .ncr')");
+await click(sx, sy);
+eq(await ev(`return acts();`), [{ key: "cd1", how: "open" }], "a click on the card opens it");
+await cardUp();
+await esc();
+eq(await ev(`return [acts(), notifyRow];`), [[{ key: "cd1", how: "dismiss" }], null], "Esc dismisses a card");
+
+// in the notch (body.bar) a card is neither drawn nor marked seen
+await ev(`reset(); document.body.classList.add('bar'); notifyIn(C('bar1')); await new Promise(r=>setTimeout(r,500)); return 1;`);
+eq(await ev(`const r=[!!document.querySelector('.ncard'), seenOf('bar1'), notifyRow, notifyQ.length]; document.body.classList.remove('bar'); return r;`), [false, [], null, 0], "bar mode: a card isn't drawn or marked seen");
+// under an open panel (#cap is hidden) neither
+await ev(`reset(); document.body.classList.add('pnl'); notifyIn(C('pnl1')); await new Promise(r=>setTimeout(r,500)); return 1;`);
+eq(await ev(`const r=[!!document.querySelector('.ncard'), seenOf('pnl1'), notifyRow, notifyQ.length]; document.body.classList.remove('pnl'); return r;`), [false, [], null, 0], "panel open: a card isn't drawn or marked seen");
+
+// a same-key update with a card goes through the queue and is drawn as a card, seen after
+const upd = await ev(`reset(); notifyIn(N('u1','chat',{app:'slack',summary:'old'})); await new Promise(r=>setTimeout(r,300));
+  notifyIn(C('u1')); const queued=notifyQ.map(e=>e.key), still=!document.querySelector('.ncard');
+  notifyAt=0; notifyDrain(performance.now()); await new Promise(r=>setTimeout(r,300));
+  return {queued, still, card:!!document.querySelector('#him .ncard'), seen:seenOf('u1')};`);
+eq([upd.queued, upd.still, upd.card, upd.seen], [["u1"], true, true, [false, true]], "same-key card update: queued, drawn as a card, marked seen only after");
+// the third message of a burst with a card is not merged into "3 new"
+const bur = await ev(`reset(); const c={app:'slack',source:'slack'};
+  notifyIn(N('g1','chat',{...c,summary:'A'})); notifyIn(N('g2','chat',{...c,summary:'B'})); notifyIn(C('g3'));
+  const q=notifyQ.map(e=>e.key), row=notifyRow.key, txt=notifyRow.span.textContent;
+  notifyAt=0; notifyDrain(performance.now()); notifyAt=0; notifyDrain(performance.now()); await new Promise(r=>setTimeout(r,300));
+  return {q,row,txt,card:!!document.querySelector('#him .ncard'),seen:seenOf('g3')};`);
+eq([bur.q, bur.row, bur.card, bur.seen], [["g2", "g3"], "g1", true, [true]], "a burst's third message with a card is queued, drawn as a card, marked seen after");
+check(!bur.txt.includes("3 new"), "a burst's card is not merged into a count", bur.txt);
+// a row with no card: seen before it is shown, as today
+await ev(`reset(); notifyIn(N('p1','other',{summary:'x'})); await new Promise(r=>setTimeout(r,300)); return 1;`);
+eq(await ev(`return [seenOf('p1'), !document.querySelector('.ncard')];`), [[false], true], "a row with no card is marked seen as before and is not a card");
 
 if (fails.length) { console.log(`${fails.length} check(s) failed`); process.exit(1); }
 console.log("notify fit ok");

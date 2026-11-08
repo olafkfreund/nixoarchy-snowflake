@@ -1,0 +1,33 @@
+{
+  "count": 2,
+  "has_more": false,
+  "messages": [
+    {
+      "id": "fixture0000000002",
+      "threadId": "fixture0000000002",
+      "date": "Sat, 07 Nov 2026 12:00:00 +0000",
+      "internalDateIso": "2026-11-07T12:00:00Z",
+      "from": "Sender Example <sender@example.com>",
+      "subject": "Your weekly digest",
+      "labels": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ]
+    },
+    {
+      "id": "fixture0000000001",
+      "threadId": "fixture0000000001",
+      "date": "Sat, 07 Nov 2026 12:00:00 +0000",
+      "internalDateIso": "2026-11-07T12:00:00Z",
+      "from": "Sender Example <sender@example.com>",
+      "subject": "Lunch on Friday?",
+      "labels": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ]
+    }
+  ],
+  "nextPageToken": ""
+}

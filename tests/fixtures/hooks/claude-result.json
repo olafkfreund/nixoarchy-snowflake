@@ -1,0 +1,1 @@
+{"_note":"Synthetic until probe P9 records a real payload.","hook_event_name":"PostToolUse","session_id":"claude-session","tool_use_id":"claude-tool-1","cwd":"/tmp/project","tool_name":"Bash","tool_input":{"command":"printf hello"},"tool_response":"private output that must not be sent"}
