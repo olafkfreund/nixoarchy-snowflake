@@ -520,7 +520,7 @@ select:focus,.pn input[type=text]:focus,.pn textarea:focus{border-color:var(--ed
 .btn{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;transition:all .2s}
 .btn:hover{border-color:var(--edge2);color:#fff} .btn.pri{background:var(--acc);border-color:var(--hot);color:#fff}
 .btn.sm{padding:3px 9px;font-size:11.5px} .btn.danger:hover{border-color:#a33;color:#ff9b9b}
-.bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center} .bar[hidden]{display:none}
 .keys{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;color:var(--dim);font-size:11.5px}
 .keys kbd{font:10.5px var(--mono);color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 5px;justify-self:start}
 .empty{color:var(--dim);text-align:center;padding:22px 6px;font-size:12px;line-height:1.5}
@@ -3091,7 +3091,8 @@ async function send(text,opts={}){
     await readSSE(res,handle);
   }catch(e){ failed=true; himSet(e.message,true); }
   busy=false; idleHoldUntil=performance.now()+15000; $('#wk').textContent=''; toolMood=null; wake(); capQuiet(); document.body.classList.remove('busy'); workChip(); CP.done();
-  while(apprQ.length) apprQ.pop(); if(pendingAppr){ pendingAppr=null; nextApproval(); }
+  for(let i=apprQ.length-1;i>=0;i--) if(!apprQ[i].agent) apprQ.splice(i,1);   // an agent's card outlives Nixi's turn (#211, Codex)
+  if(pendingAppr&&!pendingAppr.agent){ pendingAppr=null; nextApproval(); }
   if(ignored){ setYou(''); himSet(''); cap.classList.add('off'); capOn=false; return; }   // you weren't talking to him: say and show nothing
   const answerText=untag(buf||all).trim();
   lastAnswer=answerText; moreEl.classList.toggle('on',answerText.length>220||/```/.test(answerText)); nixiEl.classList.toggle('on',!!answerText);
