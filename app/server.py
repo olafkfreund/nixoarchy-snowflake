@@ -1580,6 +1580,8 @@ class Ambient:
     thread = None
     meeting = music = False                                    # what the look layer wears, and what quiets him (#133)
     music_due = 0.0
+    track = 0                                                  # goes up when the followed player's track changes (#208); the title is never kept
+    followed = None                                            # (player name, hash of its trackid+title) of the player being followed
     cpu_hot = ram_low = fullscreen = locked = False
     coding = night = party = False
     weather = sky = None
@@ -1791,7 +1793,7 @@ class Ambient:
 
     @classmethod
     def situation(cls):
-        return {k: getattr(cls, k) for k in ("meeting", "music", "cpu_hot", "ram_low", "fullscreen", "locked", "coding", "weather", "day", "cold", "windy", "lean", "heavy", "night", "party")}
+        return {k: getattr(cls, k) for k in ("meeting", "music", "track", "cpu_hot", "ram_low", "fullscreen", "locked", "coding", "weather", "day", "cold", "windy", "lean", "heavy", "night", "party")}
 
     @classmethod
     def sense(cls, now=None, proc="/proc", mono=None):
@@ -1870,9 +1872,18 @@ class Ambient:
         music = cls.music
         if not CFG.get("look_music") or Wake.asleep:
             music = False
+            cls.followed = None
         elif t >= cls.music_due:
             cls.music_due = t + 5
-            music = any(x.strip() == "Playing" for x in (cls.run(["playerctl", "-a", "status"]) or "").splitlines())
+            if CFG.get("reactions"):                          # (#208) follow the first Playing player and count its track changes
+                rows = [ln.split("\t", 2) for ln in (cls.run(["playerctl", "-a", "metadata", "--format", "{{playerName}}\t{{status}}\t{{mpris:trackid}}{{title}}"]) or "").splitlines()]
+                cur = next((r for r in rows if len(r) == 3 and r[1].strip() == "Playing"), None)
+                music = cur is not None
+                if cur and cls.followed and cls.followed[0] == cur[0] and cls.followed[1] != hash(cur[2]):
+                    cls.track += 1
+                cls.followed = (cur[0], hash(cur[2])) if cur else None
+            else:
+                music = any(x.strip() == "Playing" for x in (cls.run(["playerctl", "-a", "status"]) or "").splitlines())
         cls.meeting, cls.music = meeting, music
         if cls.situation() != before:
             BUS.pub(t="situation", **cls.situation())
@@ -5107,6 +5118,7 @@ def clamp01(x):
     return max(0.0, min(1.0, x))
 
 
+MEDIA_PHRASES = {"pause", "play", "next song", "quieter", "louder", "what's playing"}
 NOTIFY_FLAGS = ("proactive", "reactions", "notifications_takeover", "notify_details", "notify_sound", "look_meeting", "look_music",
                 "look_fullscreen", "react_load", "react_break", "react_welcome",
                 "look_coding", "look_night", "look_weather", "look_party", "react_quips", "look_beat", "notify_speak_subject")
@@ -7394,7 +7406,8 @@ class Handler(BaseHTTPRequestHandler):
                 fp = stages.fast_path(said, None) if BRIDGED and stages_on() else None      # "go back" is a stage's before it is the music's
                 if fp and ((fp[0] == "close" and STAGES.current()) or (fp[0] in ("back", "show") and (STAGES.current() or STAGES.has_prev()))):
                     return self._json({"handled": False})
-                mem = recall.answer(said)                # answered from his quick memory: no Claude call, no usage
+                # (#208) the six media phrases are the player's before they are his memory's: a stored answer must not stand in for the control
+                mem = None if said.strip().lower() in MEDIA_PHRASES else recall.answer(said)   # answered from his quick memory: no Claude call, no usage
                 if mem:
                     return self._json({"handled": True, "say": mem, "mood": "happy", "state": state_info()})
                 r = quick.handle(said)

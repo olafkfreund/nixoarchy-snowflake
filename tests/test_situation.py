@@ -240,5 +240,45 @@ class SituationTest(_ServerEnv):
             self.assertFalse(S.Ambient.fullscreen)
 
 
+    def test_track_counts_changes_of_the_followed_player_only(self):
+        S = self.server
+        A = S.Ambient
+        S.CFG.update(look_music=True, reactions=True)
+        self.addCleanup(lambda: (setattr(A, "followed", None), setattr(A, "track", 0), setattr(A, "music", False)))
+        A.followed, A.track, A.music = None, 0, False
+        def sense(*rows):
+            A.music_due = 0.0
+            out = "".join(f"{n}\t{st}\t{t}\n" for n, st, t in rows)
+            with mock.patch.object(A, "run", return_value=out) as r:
+                A.sense()
+            self.assertEqual(r.call_args[0][0][:3], ["playerctl", "-a", "metadata"])
+        sense(("mpv", "Playing", "/t/1Song A"))
+        self.assertTrue(A.music)
+        self.assertEqual(A.track, 0)                                      # starting is not a change
+        sense(("mpv", "Playing", "/t/1Song A"))
+        self.assertEqual(A.track, 0)
+        sense(("mpv", "Playing", "/t/1Song A"), ("firefox", "Playing", "/x/9Video"))
+        self.assertEqual(A.track, 0)                                      # a second player starting changes nothing
+        sense(("mpv", "Playing", "/t/2Song B"), ("firefox", "Playing", "/x/9Video"))
+        self.assertEqual(A.track, 1)
+        sense(("mpv", "Paused", "/t/2Song B"))
+        self.assertFalse(A.music)
+        self.assertNotIn("Song", repr(vars(A)))                           # no title is kept
+        self.assertNotIn("Song", json.dumps(A.situation()))
+
+    def test_track_stays_put_with_reactions_off(self):
+        S = self.server
+        A = S.Ambient
+        S.CFG.update(look_music=True, reactions=False)
+        self.addCleanup(lambda: (setattr(A, "followed", None), setattr(A, "track", 0), setattr(A, "music", False)))
+        A.followed, A.track = None, 0
+        for out in ("Playing\n", "Playing\n"):
+            A.music_due = 0.0
+            with mock.patch.object(A, "run", return_value=out) as r:
+                A.sense()
+            self.assertEqual(r.call_args[0][0], ["playerctl", "-a", "status"])
+        self.assertTrue(A.music)
+        self.assertEqual(A.track, 0)
+
 if __name__ == "__main__":
     unittest.main()
