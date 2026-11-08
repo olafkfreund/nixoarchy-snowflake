@@ -410,6 +410,9 @@ class InboxTest(_ServerEnv):
             S.Inbox.acts["nabc12"] = ("r3", ["more"], time.monotonic())
             self.post(how="open")
             self.assertFalse(S.Inbox.acts)
+            S.Inbox.acts["nabc12"] = ("r4", ["more"], time.monotonic() - 31)   # (expired, not yet swept by tick)
+            self.assertEqual(self.post(how="action", i=0, rev="r4"), ({"ok": False},))
+            self.assertEqual([c for c in call.call_args_list if c.args[0] == "invokeKey"], [mock.call("invokeKey", "nabc12", "no")])
 
     def test_delegate_rich_falls_back_to_delegate(self):
         S = self.server
@@ -419,6 +422,11 @@ class InboxTest(_ServerEnv):
             S.Inbox.tick()
         self.assertEqual([m for m, _ in calls if m != "ping"], ["delegateRich", "delegate", "delegate"])
         self.assertTrue(S.Inbox.wanted)
+        later = time.monotonic() + 61                           # a minute on, the shell may have been upgraded: ask again
+        with mock.patch.object(S.BUS, "subs", [object()]), mock.patch.object(S.Wake, "asleep", False), mock.patch.object(S.Desk, "fullscreen", False), \
+                mock.patch.object(S.time, "monotonic", return_value=later):
+            S.Inbox.tick()
+        self.assertEqual([m for m, _ in calls if m != "ping"][3:], ["delegateRich", "delegate"])
 
     def test_a_300kb_reply_is_accepted(self):
         S = self.server

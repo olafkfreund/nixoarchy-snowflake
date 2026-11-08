@@ -249,6 +249,9 @@ eq(await ev(`return [acts(), notifyRow];`), [[{ key: "cd1", how: "dismiss" }], n
 // in the notch (body.bar) a card is neither drawn nor marked seen
 await ev(`reset(); document.body.classList.add('bar'); notifyIn(C('bar1')); await new Promise(r=>setTimeout(r,500)); return 1;`);
 eq(await ev(`const r=[!!document.querySelector('.ncard'), seenOf('bar1'), notifyRow, notifyQ.length]; document.body.classList.remove('bar'); return r;`), [false, [], null, 0], "bar mode: a card isn't drawn or marked seen");
+// under an open panel (#cap is hidden) neither
+await ev(`reset(); document.body.classList.add('pnl'); notifyIn(C('pnl1')); await new Promise(r=>setTimeout(r,500)); return 1;`);
+eq(await ev(`const r=[!!document.querySelector('.ncard'), seenOf('pnl1'), notifyRow, notifyQ.length]; document.body.classList.remove('pnl'); return r;`), [false, [], null, 0], "panel open: a card isn't drawn or marked seen");
 
 // a same-key update with a card goes through the queue and is drawn as a card, seen after
 const upd = await ev(`reset(); notifyIn(N('u1','chat',{app:'slack',summary:'old'})); await new Promise(r=>setTimeout(r,300));

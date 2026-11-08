@@ -2361,6 +2361,8 @@ class NImage:
             if len(data) > cls.MAX or not cls._png(data):
                 return None
             with cls.lock:
+                if not CFG.get("notify_details"):        # (turned off while the file was read: save_config clears under this lock)
+                    return None
                 now = time.monotonic()
                 cls._expire(now)
                 if len(cls.served) >= 8:
@@ -2408,7 +2410,8 @@ class Inbox:
     unseen = {}                                               # key -> when it was sent to the page; 5 s unseen and the shell shows it
     origin = {}                                               # key -> (app, source, time), never row text
     acts = {}                                                 # key -> (rev, action ids, time), never row text; 64, 30 s
-    legacy = False                                            # the shell has no delegateRich: use delegate
+    alock = threading.Lock()                                  # acts: the tick thread writes, handler threads compare-and-pop
+    legacy = 0.0                                              # until then the shell had no delegateRich: use delegate, then ask again
     TAG = re.compile(r"<(/?)([A-Za-z][A-Za-z0-9]*)([^<>]*)>")
     ENT = re.compile(r"&(lt|gt|amp|quot);")
     ENTS = {"lt": "<", "gt": ">", "amp": "&", "quot": '"'}
@@ -2528,7 +2531,8 @@ class Inbox:
                 summary = body = ""
             row = {"key": x["key"], "app": str(x.get("app") or "")[:60], "source": str(x.get("source") or "")[:80],
                    "category": x["category"], "summary": summary, "body": body}
-            cls.acts.pop(row["key"], None)                       # (an update replaces its buttons)
+            with cls.alock:
+                cls.acts.pop(row["key"], None)                   # (an update replaces its buttons)
             buttons = [a for a in x["actions"] if isinstance(a, dict) and isinstance(a.get("id"), str) and isinstance(a.get("text"), str)][:3] if isinstance(x.get("actions"), list) else []
             image = x["image"] if isinstance(x.get("image"), str) else ""
             if buttons or image:                                 # a card: markup, then the gate over all of it, then the image, then the buttons
@@ -2545,9 +2549,10 @@ class Inbox:
                         card["image"] = nid
                     if buttons:
                         card["rev"] = secrets.token_hex(8)
-                        cls.acts[row["key"]] = (card["rev"], [a["id"] for a in buttons], time.monotonic())
-                        if len(cls.acts) > 64:
-                            cls.acts.pop(min(cls.acts, key=lambda k: cls.acts[k][2]))
+                        with cls.alock:
+                            cls.acts[row["key"]] = (card["rev"], [a["id"] for a in buttons], time.monotonic())
+                            if len(cls.acts) > 64:
+                                cls.acts.pop(min(cls.acts.items(), key=lambda kv: kv[1][2])[0])
                     if buttons or "image" in card:
                         row["card"] = card
             icon = Icons.lookup(row["app"], row["source"])
@@ -2562,18 +2567,21 @@ class Inbox:
         for key, (_, _, t) in list(cls.origin.items()):
             if now - t > 600:
                 cls.origin.pop(key, None)
-        for key, (_, _, t) in list(cls.acts.items()):
-            if now - t > 30:
-                cls.acts.pop(key, None)
+        with cls.alock:
+            for key, (_, _, t) in list(cls.acts.items()):
+                if now - t > 30:
+                    cls.acts.pop(key, None)
         for key, t in list(cls.unseen.items()):               # (handler threads pop from it)
             if now - t > 5:                                   # the page never drew it: the shell shows it as a popup
                 cls.unseen.pop(key, None)
                 cls.call("showKey", key)
         if cls.want():
-            out = None if cls.legacy else cls.call("delegateRich", "5000")
+            rich = now >= cls.legacy
+            out = cls.call("delegateRich", "5000") if rich else None
             if out is None:                                   # an old shell answers nothing to delegateRich
                 out = cls.call("delegate", "5000")
-                cls.legacy = out is not None
+                if rich:                                      # (asked again in a minute: the shell may have been upgraded)
+                    cls.legacy = now + 60 if out is not None else 0.0
             cls.wanted = out is not None
             for row in cls.rows(out):
                 cls.unseen[row["key"]] = now
@@ -6742,13 +6750,19 @@ class Handler(BaseHTTPRequestHandler):
                 if not Inbox.KEY.fullmatch(key) or b.get("how") not in ("open", "dismiss", "action"):
                     return self._json({"error": "bad request"}, 400)
                 if b["how"] == "action":                   # a button: the page sends its index and rev, never an id
-                    i, act = b.get("i"), Inbox.acts.get(key)
+                    i = b.get("i")
                     if type(i) is not int or not 0 <= i <= 2:
                         return self._json({"error": "bad request"}, 400)
-                    if not act or act[0] != b.get("rev") or i >= len(act[1]) or Inbox.acts.pop(key, None) is None:
+                    with Inbox.alock:                      # compare and pop at once: an update can't be consumed by a stale click
+                        act = Inbox.acts.get(key)
+                        live = bool(act) and act[0] == b.get("rev") and i < len(act[1]) and time.monotonic() - act[2] <= 30
+                        if live:
+                            Inbox.acts.pop(key)
+                    if not live:
                         return self._json({"ok": False})
                     return self._json({"ok": Inbox.call("invokeKey", key, act[1][i]) == "ok"})
-                Inbox.acts.pop(key, None)
+                with Inbox.alock:
+                    Inbox.acts.pop(key, None)
                 origin = Inbox.origin.pop(key, None)
                 if b["how"] == "dismiss":
                     return self._json({"ok": Inbox.call("dismissKey", key) == "ok"})

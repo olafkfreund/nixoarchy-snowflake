@@ -27,6 +27,7 @@ class NImageTest(_ServerEnv):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(dir=self.tmp))
         self.server.NImage.clear()
+        self.server.CFG["notify_details"] = True
 
     def file(self, name, data):
         path = self.root / name
@@ -104,6 +105,10 @@ class NImageTest(_ServerEnv):
             status, _, _ = self.request("/api/settings", json.dumps({"notify_details": False}).encode())
         self.assertEqual(status, 200)
         self.assertEqual(self.request("/api/nimage/" + key)[0], 404)
+
+    def test_nothing_is_kept_once_details_are_off(self):
+        self.server.CFG["notify_details"] = False                # (turned off while the file was being read)
+        self.assertIsNone(self.server.NImage.add(self.file("image.png", png())))
 
     def test_oldest_is_evicted_after_eight(self):
         path = self.file("image.png", png())

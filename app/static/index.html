@@ -2478,7 +2478,7 @@ function notifyIn(ev){
 function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
   const now=performance.now(); while(notifyQ.length&&now-notifyQ[0].rt>4000) notifyQ.shift();   // too old: the server is giving it back at 5 s
   const ev=notifyQ.shift(); if(!ev) return;
-  if(ev.card&&document.body.classList.contains('bar')) return;   // a card isn't drawn in the notch: it is not marked seen, so the shell shows it at 5 s
+  if(ev.card&&document.body.matches('.bar,.pnl,.appr')) return;   // a card isn't drawn in the notch or under a panel (#cap is hidden): not marked seen, so the shell shows it at 5 s
   if(!ev.card) notifySeen(ev.key);
   restore(11000,false);   // (before the mail pop-out is measured)
   const c=ev.app==='nixi-job'?NOTE.job:NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null,card:!!ev.card}; notifyRow=row; notifyAt=ts+(ev.card?7000:5000);
