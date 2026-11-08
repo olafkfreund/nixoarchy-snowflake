@@ -2362,6 +2362,21 @@ def quip(event, **slots):
         return line
 
 
+def workout_ok(entry):
+    """One workout schedule entry: {"days": distinct ints 0-6, "at": "HH:MM"}, nothing else."""
+    return (isinstance(entry, dict) and set(entry) == {"days", "at"}
+            and isinstance(entry["days"], list) and bool(entry["days"])
+            and all(type(day) is int and 0 <= day <= 6 for day in entry["days"])
+            and len(set(entry["days"])) == len(entry["days"])
+            and isinstance(entry["at"], str) and bool(re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", entry["at"])))
+
+
+def workout_cfg():
+    """The saved schedule, without entries a hand edit broke (they would stop every nudge)."""
+    w = CFG.get("workout")
+    return [e for e in w if workout_ok(e)][:7] if isinstance(w, list) else []
+
+
 class Nudge:
     """Unasked nudges (#133b): break, welcome back, memory, load. They wait for a breakpoint (an unlock, a workspace switch, or
     20 s without window events), and a budget keeps them rare: one visual per 5 minutes, one spoken per 10, a cooldown per kind."""
@@ -2377,7 +2392,7 @@ class Nudge:
     shown = {}                                                # kind -> (id, text, deadline)
     snoozed = {}                                              # kind -> (due, text, deadline)
     skip_cool = set()
-    next_id = 0
+    next_id = int(time.time())                                # (not 0: a chip left from before a restart can't match a new reminder)
     last_sched = None
     seen_unlock = 0.0
     was_hot = was_low = False
@@ -2459,22 +2474,24 @@ class Nudge:
             cls.workout_pending.clear()
             cls.water_since = None
         if CFG.get("react_break") and not A.locked and t - cls.active_since >= 3600:
-            cls.offer("break", quip("break"), True, t)
+            if "break" not in cls.snoozed:                          # (a snoozed one comes back on its own)
+                cls.offer("break", quip("break"), True, t)
             cls.active_since = t
-        schedule = CFG.get("workout") or []
+        schedule = workout_cfg()
         if schedule != cls.last_sched:
             cls.drop_reminder("workout")
             cls.workout_pending.clear()
             cls.last_sched = [dict(days=list(e["days"]), at=e["at"]) for e in schedule]
         if CFG.get("react_break"):
-            water_every = CFG.get("water_every") or 0
+            water_every = CFG.get("water_every") if CFG.get("water_every") in (45, 60, 90) else 0
             if not water_every:
                 cls.drop_reminder("water")
                 cls.water_since = None
             else:
                 cls.water_since = t if cls.water_since is None else cls.water_since
                 if not A.locked and t - cls.water_since >= water_every * 60:
-                    cls.offer("water", quip("water"), False, t)
+                    if "water" not in cls.snoozed:
+                        cls.offer("water", quip("water"), False, t)
                     cls.water_since = t
             now = now if now is not None else datetime.datetime.now().astimezone()
             cls.workout_done = {pair for pair in cls.workout_done if pair[0] >= now.date() - datetime.timedelta(days=2)}
@@ -2580,7 +2597,7 @@ class Nudge:
         cls.skip_cool.discard(kind)
         if kind == "workout":
             now = now if now is not None else datetime.datetime.now().astimezone()
-            windows = list(cls.windows(now, CFG.get("workout") or []))
+            windows = list(cls.windows(now, workout_cfg()))
             published = [(start, end) for pair, start, end in windows if pair in cls.workout_pending]
             cls.workout_done.update(pair for pair, start, end in windows
                                     if any(start < other_end and other_start < end for other_start, other_end in published))
@@ -7676,15 +7693,7 @@ class Handler(BaseHTTPRequestHandler):
                 if isinstance(ns, list) and len(ns) <= 6 and all(x in NOTIFY_CATS for x in ns):
                     upd["notify_speak"] = list(dict.fromkeys(ns))
                 workout = b.get("workout")
-                if isinstance(workout, list) and len(workout) <= 7 and all(
-                    isinstance(entry, dict) and set(entry) == {"days", "at"}
-                    and isinstance(entry["days"], list) and bool(entry["days"])
-                    and all(type(day) is int and 0 <= day <= 6 for day in entry["days"])
-                    and len(set(entry["days"])) == len(entry["days"])
-                    and isinstance(entry["at"], str)
-                    and re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", entry["at"])
-                    for entry in workout
-                ):
+                if isinstance(workout, list) and len(workout) <= 7 and all(map(workout_ok, workout)):
                     upd["workout"] = [{"days": sorted(entry["days"]), "at": entry["at"]} for entry in workout]
                 water_every = b.get("water_every")
                 if type(water_every) is int and water_every in (0, 45, 60, 90):

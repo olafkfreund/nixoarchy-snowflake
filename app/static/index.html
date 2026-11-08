@@ -2900,7 +2900,8 @@ const remEl=$('#remChip'); let remId=null, remUntil=0;
 function remClose(){ if(remEl.hidden) return; remEl.hidden=true; remId=null; sendRegion(true); }
 function remAllowed(){ return !quietNow()&&!pendingAppr&&!document.body.matches('.bar,.hover,.calm,.peek'); }
 function remSync(ts=performance.now()){ if(!remEl.hidden&&(ts>=remUntil||!remAllowed())) remClose(); }
-function remShow(ev){ remClose(); if(!['break','water','workout'].includes(ev.kind)||!Number.isInteger(ev.id)||!remAllowed()) return;
+function remShow(ev){ if(!['break','water','workout'].includes(ev.kind)||!Number.isInteger(ev.id)) return;   // (another kind leaves the chip up)
+  remClose(); if(!remAllowed()) return;
   remId=ev.id; remUntil=performance.now()+30000; remEl.hidden=false; sendRegion(true);
   setTimeout(()=>remSync(),30010); }
 remEl.addEventListener('click',e=>{ const b=e.target.closest('[data-rem]'); if(!b||remId===null) return;

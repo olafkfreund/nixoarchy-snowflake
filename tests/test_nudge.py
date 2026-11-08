@@ -364,6 +364,31 @@ class NudgeTest(_ServerEnv):
         self.assertNotIn("water", N.pending)
         self.assertIsNone(N.water_since)
 
+    def test_water_counter_waits_for_a_snooze(self):
+        S, N = self.server, self.server.Nudge
+        S.CFG["water_every"] = 45
+        self.tick(0)
+        N.active_since = 1e9                                # (no break in the way)
+        self.tick(2700)
+        wid = [e for e in self.sent() if e["kind"] == "water"][0]["id"]
+        self.assertTrue(N.act(wid, "snooze", 30, t=2700))
+        self.tick(4500)                                     # the snooze is due at 4500 and the counter isn't
+        self.assertEqual([e["kind"] for e in self.sent()], ["water"])
+        wid = N.shown["water"][0]
+        self.assertTrue(N.act(wid, "snooze", 30, t=4500))
+        self.tick(5400)                                     # 45 minutes since the last count, but snoozed to 6300: nothing
+        self.assertEqual(self.sent(), [])
+        self.tick(6300)
+        self.assertEqual([e["kind"] for e in self.sent()], ["water"])
+
+    def test_a_broken_hand_edited_schedule_does_not_stop_nudges(self):
+        S, A = self.server, self.server.Ambient
+        S.CFG.update(workout=[{"days": [0]}, {"days": [0], "at": "24:00"}, "x"], water_every="45")
+        A.ram_low = True
+        self.server.Desk.last_switch = 100                   # a breakpoint
+        self.tick(100, now=datetime.datetime(2026, 11, 9, 9, 5).astimezone())
+        self.assertEqual([e["kind"] for e in self.sent()], ["ram"])
+
     def test_ids_snooze_dismiss_and_old_clicks(self):
         S, N = self.server, self.server.Nudge
         N.offer("cpu", "hot", False, 100)
