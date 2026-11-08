@@ -68,6 +68,7 @@ CLICK = {"claimed": False, "spoiled": False}
 CLICK_LOCK = threading.Lock()
 AGENT_APPROVE_WAIT = 60
 AGENT_APPROVE_FROM = frozenset()  # set from probe P6/P9 (#211 step 1)
+RESULT_BY_TOOL_USE_ID = frozenset()  # set from probe P9 (#211 step 1): agents giving tool_use_id at both ends; as in bin/nixi-companion
 
 
 def click_ok(header):
@@ -1069,7 +1070,7 @@ class AgentApprovals:
 
     @staticmethod
     def result_key(req):
-        if req.get("tool_use_id"):
+        if req.get("from") in RESULT_BY_TOOL_USE_ID and req.get("tool_use_id"):
             return str(req["tool_use_id"])
         inp = req.get("tool_input") or {}
         digest = hashlib.sha256(json.dumps(inp, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
@@ -1082,14 +1083,14 @@ class AgentApprovals:
             if decision == "allow" and (CFG.get("agent_approvals") is not True or
                                         not click_ok(item.get("click_header")) or time.monotonic() >= item["deadline"]):
                 return False
+            item["decision"] = decision             # before state: the ask loop reads state without the lock
             item["state"] = state
-            item["decision"] = decision
             self.pending.pop(item["id"], None)
             if state == "answered":
                 item["done_at"] = time.monotonic()
                 self.finished[item["id"]] = item
             item["ev"].set()
-        if decision == "allow":                     # "approved, result unknown" after 15 min with no result
+        if state == "answered":                     # dropped after 15 min; an approved one with no result shows "unknown"
             t = threading.Timer(AGENT_RESULT_KEEP, self.sweep)
             t.daemon = True
             t.start()

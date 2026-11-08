@@ -129,6 +129,8 @@ class AgentHooksTest(unittest.TestCase):
             server_key = self.server_module.AgentApprovals.result_key({"from": agent, **result})
             self.assertEqual(body["key"], list(server_key) if isinstance(server_key, tuple) else server_key)
             self.assertNotIn("private output", json.dumps(body))
+            approve_body.pop("tool_use_id", None)                # one end without tool_use_id: the key still matches
+            self.assertEqual(body["key"], list(self.server_module.AgentApprovals.result_key(approve_body)))
 
     def test_failure_event_is_not_ok_and_has_no_unprobed_exit(self):
         result = json.loads((FIX / "claude-result.json").read_text())

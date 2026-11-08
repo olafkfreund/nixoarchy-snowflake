@@ -273,6 +273,9 @@ class AgentApprovalsTest(unittest.TestCase):
         self.assertEqual(self.post("/api/agent-result", {"from": "codex", "key": "none", "ok": True}).args[0], {"ok": False})
 
     def test_result_exit_only_when_int_and_string_key(self):
+        self.assertIsInstance(self.answered("no", tool_use_id="toolu_0")["key"], tuple)   # default: tool_use_id unused
+        p = mock.patch.object(self.s, "RESULT_BY_TOOL_USE_ID", frozenset({"codex"}))
+        p.start(); self.addCleanup(p.stop)
         item = self.answered("yes", tool_use_id="toolu_1")
         self.assertEqual(item["key"], "toolu_1")
         self.assertEqual(self.post("/api/agent-result", {"from": "codex", "key": "toolu_1", "ok": False, "exit": "1"}).args[0], {"ok": True})

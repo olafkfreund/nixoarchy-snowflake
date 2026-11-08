@@ -2921,6 +2921,7 @@ async function answer(ans,trusted){ const a=pendingAppr; if(!a||a.sent) return;
   a.sent=true;
   const r=await post('/api/approve/answer',{id:a.id,ans},keyed?{headers:hdr(Object.assign({'Content-Type':'application/json'},CLICKKEY.hdr()))}:undefined).catch(()=>null);
   let ok=true; if(click){ try{ ok=!!(await r.json()).ok; }catch(e){ ok=false; } }
+  if(!ok&&!a.agent&&pendingAppr===a){ a.sent=false; tick('That needs a click on yes here — or say no',true); return; }   // Nixi's own card is still waiting on the server
   if(pendingAppr===a){ pendingAppr=null; nextApproval(); }
   if(!ok){ tick('That one had already gone',true); return; }
   tick(ans==='no'?'okay — not running that':ans==='always'?`okay — won't ask again for that this chat`:'okay!',ans==='no');
@@ -4206,7 +4207,7 @@ const CP=(()=>{
   let ag=null; const SKEL=['<i class="pr">$</i> ▒▒▒▒▒ ▒▒▒▒▒▒▒▒ ▒▒▒','▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒','▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒▒▒▒▒▒','<i class="pr">$</i> ▒▒▒▒ ▒▒▒▒▒▒▒▒','▒▒▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒▒▒','▒▒▒▒ ▒▒▒▒▒▒▒']; 
   const ownTurn=()=>busy||running||q.length>0||answering;
   function agStop(){ if(ag){ clearInterval(ag.timer); ag=null; } el.classList.remove('mini'); }
-  function agent(name,from){ if(ownTurn()) return;
+  function agent(name,from){ if(ownTurn()||info.code_panel===false) return;
     if(ag){ ag.last=Date.now(); ag.from=from; titleEl.textContent=name; return; }
     titleEl.textContent=name; stEl.textContent='…'; stEl.className=''; el.classList.remove('root','rootmode'); out.innerHTML=''; show();
     if(!on) return;
