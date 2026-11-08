@@ -1,0 +1,73 @@
+{
+  "body": "Hi, are we still on for lunch on Friday?",
+  "headers": {
+    "bcc": "",
+    "cc": "",
+    "date": "Sat, 07 Nov 2026 12:00:00 +0000",
+    "from": "Sender Example <sender@example.com>",
+    "in_reply_to": "",
+    "message_id": "<fixture-1@example.com>",
+    "references": "",
+    "reply_to": "",
+    "subject": "Lunch on Friday?",
+    "to": "you@example.com"
+  },
+  "message": {
+    "historyId": "fixture0000000001",
+    "id": "fixture0000000001",
+    "internalDate": "1793966400000",
+    "labelIds": [
+      "UNREAD",
+      "SENT",
+      "INBOX"
+    ],
+    "payload": {
+      "body": {
+        "data": "SGksIGFyZSB3ZSBzdGlsbCBvbiBmb3IgbHVuY2ggb24gRnJpZGF5Pw",
+        "size": 1000
+      },
+      "headers": [
+        {
+          "name": "Received",
+          "value": "redacted"
+        },
+        {
+          "name": "From",
+          "value": "Sender Example <sender@example.com>"
+        },
+        {
+          "name": "To",
+          "value": "you@example.com"
+        },
+        {
+          "name": "Subject",
+          "value": "Lunch on Friday?"
+        },
+        {
+          "name": "Date",
+          "value": "Sat, 07 Nov 2026 12:00:00 +0000"
+        },
+        {
+          "name": "Message-Id",
+          "value": "redacted"
+        },
+        {
+          "name": "MIME-Version",
+          "value": "1.0"
+        },
+        {
+          "name": "Content-Type",
+          "value": "text/plain; charset=\"utf-8\""
+        },
+        {
+          "name": "Content-Transfer-Encoding",
+          "value": "quoted-printable"
+        }
+      ],
+      "mimeType": "text/plain"
+    },
+    "sizeEstimate": 1000,
+    "snippet": "Hi, are we still on for lunch on Friday?",
+    "threadId": "fixture0000000001"
+  }
+}

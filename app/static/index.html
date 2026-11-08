@@ -362,6 +362,13 @@ body.appr #stg{opacity:.35;pointer-events:none}
 #stg .sb{border:1.5px solid var(--acc);background:transparent;color:var(--sfg);border-radius:8px;padding:4px 11px;font:600 13px/1.3 "Inter",system-ui,sans-serif;cursor:pointer}
 #stg .sb:hover:not(:disabled){background:var(--acc);color:#fff}
 #stg .sb:disabled{opacity:.4;cursor:not-allowed}
+#stg .vm{font-size:12px;color:var(--sdim);overflow-wrap:anywhere}#stg .mst{font-size:13px;margin-top:3px;overflow-wrap:anywhere;white-space:pre-wrap}
+#stg .mcard{margin:8px 0 4px;padding:8px 10px;border-radius:8px;background:#fffdf6;border:1px solid var(--sline)}
+#stg .mcard textarea{display:block;width:100%;box-sizing:border-box;min-height:70px;resize:vertical;font:13px/1.4 "Inter",system-ui,sans-serif;color:var(--sfg);background:#fff;border:1px solid var(--sline);border-radius:6px;padding:5px 7px}
+#stg .mall{display:block;font-size:12px;margin:5px 0;color:var(--sdim)}#stg .mact{display:flex;gap:8px;margin-top:6px}
+#stg .mln{font-size:12px;overflow-wrap:anywhere}#stg .mwarn{font-size:12px;font-weight:600;color:#b3261e;margin:3px 0;overflow-wrap:anywhere}
+#stg .mbody{margin:5px 0;padding:5px 7px;max-height:120px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.4 var(--mono);background:#fff;border:1px solid var(--sline);border-radius:6px}
+#stg .mmsg{font-size:12px;margin-top:5px;overflow-wrap:anywhere}
 #stgTab{position:absolute;top:96px;left:350px;max-width:150px;z-index:7;padding:6px 12px;border-radius:10px;border:2px solid var(--acc);background:#1d2a27;color:#eef3ee;font:600 18px/1.2 Chalk,cursive;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;opacity:0;pointer-events:none;transform:translateX(-10px);transition:transform .18s var(--ease),opacity .18s}
 #stgTab.l{left:-160px;transform:translateX(10px)}
@@ -896,6 +903,9 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="lookPartySw"><span class="sw"></span><span class="l">Party hat on special days<small>New Year, Christmas, and birthdays in your calendar (needs the calendar on).</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="reactQuipsSw"><span class="sw"></span><span class="l">Little jokes<small>Now and then a short line about the weather, the hour or a long session. Never spoken.</small></span></label></div>
       <div class="row"><div class="t">Say out loud</div><div class="h">Notifications he speaks. In a meeting he stays silent.</div><div class="seg" id="nsChips"></div></div>
+      <div class="row" id="mailRow"><label class="tg"><input type="checkbox" id="mailSw"><span class="sw"></span><span class="l">Mail<small>Open a board of unread mail, hear a summary of one message and reply with a click. Off until you switch it on. Needs answer boards in nixi mode. Summaries come from a model on this computer.</small></span></label>
+        <div id="mailOpts" hidden><div class="t sub">Addresses</div><div class="h">Only the ones you tick are read.</div><div id="mailAccts"></div>
+          <div class="t sub">Summary model</div><div class="h">Local models only. None lists and replies without summaries.</div><select id="mailModel"></select></div></div>
       <div class="row"><label class="tg"><input type="checkbox" id="asideSw"><span class="sw"></span><span class="l">Step aside for Nixi's card<small>When nixi's card opens he slides out of its way, and comes back when it closes (Hyprland).</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="followSw"><span class="sw"></span><span class="l">Follow my focused screen<small>When you focus another monitor he moves there too (Hyprland). Also: "move to the other screen", or bind <code>nixi-companion monitor next</code>.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="clickSw"><span class="sw"></span><span class="l">Click through around him<small>Clicks on the empty space around him go to the window behind. Turn off if he flickers.</small></span></label></div>
@@ -1993,7 +2003,7 @@ function ac(){ if(!actx) actx=new (window.AudioContext||window.webkitAudioContex
 // enqueue(text, {cap:true}) also puts the words on screen, one by one, as he says them
 // When the server can play audio itself (info.voice_native), his voice doesn't go through this page at all — see
 // Speaker in server.py. We just say what to speak; the server tells us when each sentence actually starts.
-const spkMap=new Map(); let spkSeq=0, spkLv=[], spkGuard=0, sayChain=Promise.resolve(), sayEpoch=0;   // sayEpoch: bumped when you cut him off
+const spkMap=new Map(); let mailHearN=0, spkSeq=0, spkLv=[], spkGuard=0, sayChain=Promise.resolve(), sayEpoch=0;   // sayEpoch: bumped when you cut him off
 function enqueue(text,o={}){
   text=(text||'').trim();
   const reply=o.reply||curReply;
@@ -2158,7 +2168,7 @@ function spkLevel(ts){ for(const L of spkLv){ if(ts>=L.t0&&ts<L.t0+L.level.lengt
 function quietCheck(){ if(!srcs.length&&!q.length&&pumpGen!==gen&&playing){ playing=false; setSpkEngine(''); speaking(false); floorPage(false); } }
 // shush: stop talking. Anything he hadn't said yet still lands on screen (mute mid-answer, or you cut in)
 function shush(){ gen++; sayEpoch++; const rest=q.splice(0), pend=curIt; curIt=null; karaFlush();
-  if(info.voice_native&&(spkMap.size||playing)){ post('/api/say/stop',{epoch:sayEpoch}).catch(()=>{}); for(const it of spkMap.values()) if(it.cap) karaNow(it.cap,it.fresh,true); spkMap.clear(); spkLv=[]; }
+  if(info.voice_native&&(spkMap.size||playing||mailHearN)){ post('/api/say/stop',{epoch:sayEpoch}).catch(()=>{}); for(const it of spkMap.values()) if(it.cap) karaNow(it.cap,it.fresh,true); spkMap.clear(); spkLv=[]; }
   if(pend&&pend.cap) karaNow(pend.cap,pend.fresh,true); for(const it of rest) if(it.cap) karaNow(it.cap,it.fresh,true);
   for(const x of srcs) try{ x.stop(); }catch(e){} srcs=[]; nextAt=0; pumpGen=-1; if(playing) speaking(false); playing=false; setSpkEngine(''); floorPage(false); }
 const untilQuiet=async()=>{ for(let i=0;i<400 && (playing||q.length);i++) await sleep(100); };
@@ -2300,7 +2310,8 @@ function onEvent(ev){
   else if(ev.t==='barge'){ if(!playing) return; agentStop(); sfx('pop'); poke('surprised',600);
     if(ev.listen){ const heard=ev.path?{path:ev.path,media:ev.media}:null; if(ev.text&&ev.text.split(/\s+/).length>=2) send(ev.text,{heard}); else startRec('auto',heard); } else tick('okay, okay — shh'); }
   else if(ev.t==='remind'){ if(hiddenNow) native('show'); restore(12000,false); if(info.hover) comeBack(); sfx('remind'); poke('excited',1800); say(ev.text); tick('⏰ '+ev.text); }
-  else if(ev.t==='spk'){ const it=spkMap.get(ev.id); if(!it) return; spkMap.delete(ev.id); spkGuard=performance.now()+ev.at+ev.dur*1000;
+  // ids from 1e9 are the server's mail summaries (#210): track them so mute and a click stop them
+  else if(ev.t==='spk'){ const it=spkMap.get(ev.id)||(ev.id>=1e9?{cap:''}:null); if(!it) return; spkMap.delete(ev.id); spkGuard=performance.now()+ev.at+ev.dur*1000;
     playing=true; setSpkEngine(ev.engine||'');
     const t0=performance.now()+ev.at;
     if(ev.level) spkLv.push({t0,level:ev.level,step:ev.step||40}); if(spkLv.length>12) spkLv.shift();
@@ -2332,7 +2343,7 @@ function onEvent(ev){
     if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')) flash('#4d6fb7'); }   // (never spoken)
     else if(more&&document.body.classList.contains('bar')) flash('#e5a50a'); }
   else if(ev.t==='approve_done') approvalGone(ev.id);
-  else if(ev.t==='stage'){ if(stageShow(ev)===false) himSet(((himEl.textContent||'').trim()+'\n'+stageText(ev)).trim()); }
+  else if(ev.t==='stage'){ if(stageShow(ev)===false&&stageText(ev)) himSet(((himEl.textContent||'').trim()+'\n'+stageText(ev)).trim()); }
   else if(ev.t==='stage_update'){ if(stgHeld&&stgHeld.kind===ev.kind&&(ev.kind==='headlines'?ev.copy===stgHeld.copy:ev.refresh===stgHeld.refresh)) stgHeld={...stgHeld,...ev,t:'stage'};   // (a held board keeps its late updates: the server doesn't send them twice)
     if(ev.kind==='headlines') pressUpdate(ev); else gaugeUpdate(ev); }
   else if(ev.t==='stage_status') stageStatus(ev);
@@ -2528,10 +2539,12 @@ function stageBtn(label,fn,dis){ const b=hx('button','sb',label); b.type='button
 function stageBuild(ev){
   const bd=$('#stgBd'), acts=$('#stgActs'), fn=$('#stgFn'); bd.textContent=''; acts.textContent=''; fn.textContent='';
   const board=ev.kind==='commands', map=ev.kind==='place', film=ev.kind==='video', sky=ev.kind==='weather', cal=ev.kind==='calendar', stat=ev.kind==='status', dy=ev.kind==='day', gau=ev.kind==='gauges', press=ev.kind==='headlines', tr=ev.trust, guide=tr==='guide';
-  $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':film?'Now showing':sky?'Sky':cal?'Coming up':stat?'Sessions':dy?'Your day':press?'News':''));
-  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat||dy?'desk':gau?'term':press?'press':'notebook')+(stgEl.classList.contains('l')?' l':'');
+  mailCardDrop(true);
+  $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':film?'Now showing':sky?'Sky':cal?'Coming up':stat?'Sessions':dy?'Your day':ev.kind==='mail'?'Mail':press?'News':''));
+  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat||dy||ev.kind==='mail'?'desk':gau?'term':press?'press':'notebook')+(stgEl.classList.contains('l')?' l':'');
   if(sky) stageSky(ev,bd,fn);
   else if(dy) stageDay(ev,bd,acts,fn);
+  else if(ev.kind==='mail') stageMail(ev,bd,acts,fn);
   else if(gau) stageGauges(ev,bd,acts,fn);
   else if(press) stagePress(ev,bd,acts,fn);
   else if(cal) stageCal(ev,bd,acts,fn);
@@ -2552,6 +2565,52 @@ function stageBuild(ev){
     acts.appendChild(stageBtn('Open in Nixi',()=>{ post('/api/nixi-ask',{}).then(r=>r.json()).then(j=>{ if(j.ok){ fn.textContent='Opened ✓'; setTimeout(()=>stageClose(),1500); } else fn.textContent=j.say||j.error||"Couldn't open it"; }).catch(()=>{}); }));
   }
   $('#stgBack').hidden=!ev.has_prev;
+}
+/* ---- mail (#210): the rows come from the server with two tokens each, never an id. Every mail field is drawn with textContent.
+   Reply -> Review (the server builds the draft) -> Send, which only a real pointer click can press. */
+let mailSeq=0, mailCard=null;      // mailCard: {el, ta, draft} while the reply card is open; mailSeq: the newest Review/edit, an older answer is ignored
+function mailCardDrop(cancel){ const c=mailCard; mailCard=null; mailSeq++; if(!c) return;
+  if(cancel&&(c.draft||c.flight)) post('/api/mail/cancel',{draft:c.flight?'pending':c.draft}).catch(()=>{});   // (a Review still on its way has no id yet: any cancel makes the server drop it)
+  c.el.remove(); }
+function stageMail(ev,bd,acts,fn){
+  const rows=ev.rows||[];
+  if(!rows.length) bd.appendChild(hx('div','pt1','No unread mail from the last three days'));
+  rows.forEach(r=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab'), sm=hx('div','mst');
+    tx.appendChild(hx('div','lb',r.subject)); tx.appendChild(hx('div','vm',[r.from,r.account,r.age].filter(Boolean).join(' \u00b7 '))); tx.appendChild(sm);
+    if(r.hear&&r.reply){
+      ab.appendChild(stageBtn('Hear',b=>{ b.disabled=true; mailHearN++; post('/api/mail/hear',{token:r.hear}).then(x=>x.json()).then(j=>{ sm.textContent=j.ok===false||j.error?"Couldn't read that one":(j.summary||j.subject||''); }).catch(()=>{ sm.textContent="Couldn't read that one"; }).finally(()=>{ b.disabled=false; mailHearN--; }); }));
+      ab.appendChild(stageBtn('Reply',()=>mailCardOpen(bd,r))); }
+    row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
+  fn.textContent='Nothing is sent until you click Send';
+}
+function mailCardOpen(bd,r){ mailCardDrop(true);
+  const el=hx('div','mcard'), ta=hx('textarea'), lab=hx('label','mall'), all=hx('input'), rev=hx('div','mrev'), msg=hx('div','mmsg'), card={el,ta,draft:null};
+  ta.rows=4; ta.placeholder='Your reply, in your own words'; all.type='checkbox'; lab.appendChild(all); lab.appendChild(document.createTextNode(' Reply to all'));
+  mailCard=card;
+  const edited=()=>{ mailSeq++; rev.textContent=''; msg.textContent=''; };      // an edit hides Send until Review is pressed again, and voids an answer still on its way
+  ta.addEventListener('input',()=>{ stgUse=performance.now(); edited(); }); all.addEventListener('change',edited);
+  const review=stageBtn('Review',()=>{ const text=ta.value; if(!text.trim()){ msg.textContent='Write your reply first'; return; }
+    const my=++mailSeq; card.flight=my; rev.textContent=''; msg.textContent='Preparing\u2026';
+    post('/api/mail/draft',{token:r.reply,text,all:all.checked}).then(x=>x.json()).then(d=>{ if(card.flight===my) card.flight=0;
+      if(my!==mailSeq||mailCard!==card){ if(d&&d.draft) post('/api/mail/cancel',{draft:d.draft}).catch(()=>{}); return; }       // (an answer nobody wants: drop its draft)
+      if(!d||!d.draft){ msg.textContent=(d&&d.error)||"Couldn't prepare that reply"; return; }
+      card.draft=d.draft; msg.textContent=''; mailReview(card,rev,msg,d); }).catch(()=>{ if(card.flight===my) card.flight=0; if(my===mailSeq&&mailCard===card) msg.textContent="Couldn't prepare that reply"; }); });
+  const act=hx('div','mact'); act.appendChild(review); act.appendChild(stageBtn('Close',()=>mailCardDrop(true)));
+  el.appendChild(ta); el.appendChild(lab); el.appendChild(act); el.appendChild(rev); el.appendChild(msg); bd.appendChild(el); ta.focus();
+}
+function mailReview(card,rev,msg,d){ rev.textContent='';
+  const line=(k,v)=>{ const p=hx('div','mln'); p.appendChild(hx('b',null,k+': ')); p.appendChild(document.createTextNode(v)); rev.appendChild(p); };
+  line('Account',d.account); line('To',(d.to||[]).join(', ')); if((d.cc||[]).length) line('Cc',d.cc.join(', ')); line('Subject',d.subject);
+  if(d.reply_to_differs) rev.appendChild(hx('div','mwarn','Replies go to '+(d.to||[])[0]+', not the sender '+d.from));
+  rev.appendChild(hx('pre','mbody',d.body));
+  const act=hx('div','mact'), send=hx('button','sb','Send'); send.type='button';
+  const mailSent=r=>{ act.remove(); if(r&&(r.sent||r.unknown)) card.draft=null;
+    msg.textContent=r&&r.sent?(r.other_thread?'Sent, but Gmail put it in a different thread':'Sent'):r&&r.unknown?"I don't know if it was sent, check Sent in Gmail":(r&&r.error)||'That reply is gone, review it again'; };
+  send.addEventListener('click',e=>{ e.stopPropagation();
+    if(!e.isTrusted||!['mouse','pen','touch'].includes(e.pointerType)) return;
+    send.disabled=true; stgUse=performance.now();
+    post('/api/mail/send',{draft:d.draft,text:d.body}).then(r=>r.json()).then(mailSent).catch(()=>mailSent({unknown:true})); });
+  act.appendChild(send); act.appendChild(stageBtn('Cancel',()=>mailCardDrop(true))); rev.appendChild(act);
 }
 function stageMap(ev,bd,acts,fn){
   const N='http://www.w3.org/2000/svg', sv=(t,a,p)=>{ const e=document.createElementNS(N,t); for(const k in a) e.setAttribute(k,a[k]); if(p) p.appendChild(e); return e; };
@@ -2733,7 +2792,7 @@ function stagePress(ev,bd,acts,fn){
     bd.appendChild(row); });
   pressAges(); pressWatch(ev.clips,bd,fn,false); fn.textContent=ev.source||''; if(ev.copy) acts.appendChild(stageBtn('Copy',b=>stageAct('copy',ev.copy,b))); }
 const clipLine=c=>{ const m=[c.channel,c.duration].filter(Boolean).join(', '); return c.title+(m?' \u2014 '+m:''); };
-function stageText(ev){ if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>{ const st=h.state||'up'; if(st==='down'||st==='stale') return [h.name+': '+gaugeOneText(h)]; return [...(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))), ...(h.badges||[]).map(b=>(many?h.name+' ':'')+b.k+': '+b.v), ...(h.lists||[]).map(l=>(many?h.name+' ':'')+l.title+': '+(l.items||[]).join(', '))]; })).join('\n'); } if(ev.kind==='headlines') return [ev.title||'News',...(ev.items||[]).map(it=>it.title+' \u2014 '+it.source+', '+pressAge(it.at)),...(ev.clips&&ev.clips.length?['Watch:',...ev.clips.map(clipLine)]:[]),...(ev.source?[ev.source]:[])].join('\n'); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
+function stageText(ev){ if(ev.kind==='mail') return ''; if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>{ const st=h.state||'up'; if(st==='down'||st==='stale') return [h.name+': '+gaugeOneText(h)]; return [...(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))), ...(h.badges||[]).map(b=>(many?h.name+' ':'')+b.k+': '+b.v), ...(h.lists||[]).map(l=>(many?h.name+' ':'')+l.title+': '+(l.items||[]).join(', '))]; })).join('\n'); } if(ev.kind==='headlines') return [ev.title||'News',...(ev.items||[]).map(it=>it.title+' \u2014 '+it.source+', '+pressAge(it.at)),...(ev.clips&&ev.clips.length?['Watch:',...ev.clips.map(clipLine)]:[]),...(ev.source?[ev.source]:[])].join('\n'); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
   if(document.body.classList.contains('pnl')){ stgHeld=ev; return; }
@@ -2753,7 +2812,7 @@ function stageShow(ev){
 function stageHide(toTab){
   stgTm.forEach(clearTimeout); stgTm=[]; clearInterval(stgTimer); stgTimer=null; gaugeStop(); if(!toTab){ gaugeHist={}; gaugeExp=null; }
   stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on'); popEl.classList.remove('on'); wtcEl.classList.remove('on'); stgEl.setAttribute('aria-hidden','true'); stgEl.inert=true; stgTab.inert=!toTab;
-  if(!toTab) stgPosted=false;
+  if(!toTab){ stgPosted=false; mailCardDrop(true); }
   if(toTab){ stagePost(false); stgState='tab'; stgTab.textContent=$('#stgT').textContent; stagePlace(); stgSize(300); void stgTab.offsetWidth; stgTab.classList.add('on'); }
   else { stgState='closed'; stgTab.classList.remove('on'); stgOffT=setTimeout(()=>{ if(stgState==='closed') stgSize(0); sendRegion(true); },200); }
   sendRegion(true); setTimeout(()=>sendRegion(true),260);
@@ -3159,10 +3218,11 @@ const ICON={
   hide:'<path d="M6 6l12 12M18 6 6 18"/>',
   notme:'<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
   mirror:'<circle cx="12" cy="12" r="9"/><path d="M9 9h6v6H9z"/>',
+  mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
 };
 // (no top bar / blob button: you dock him by dragging him into a screen edge, and pull him out to get the blob back)
 const NX_MENU=['cd','history','look','plugins'];
-const MENU=[['talk','talk'],['cd','folder'],['history','history'],['look','show my screen'],['hover','hover mode'],['plugins','Claude Code plug-ins'],['mirror','take control back'],['notme',"that wasn't me"],['set','settings'],['hide','hide']];
+const MENU=[['talk','talk'],['cd','folder'],['history','history'],['mail','mail'],['look','show my screen'],['hover','hover mode'],['plugins','Claude Code plug-ins'],['mirror','take control back'],['notme',"that wasn't me"],['set','settings'],['hide','hide']];
 const MENU_XY=[];
 menuEl.innerHTML=MENU.map(([a,l],i)=>{ const ang=(-168+i*(156/(MENU.length-1)))*Math.PI/180, r=122;
   MENU_XY[i]=[Math.cos(ang)*r/1.1, Math.sin(ang)*r/1.1];                 // same spot in the face's SVG units (330px = 300 units)
@@ -3173,7 +3233,7 @@ async function heardGet(){ try{ await tokenReady; return await (await fetch('/ap
 const NOTCH_MENU={top:[170,26,15,165], bottom:[170,434,-165,-15], left:[34,230,-75,75], right:[306,230,105,255]};   // eye centre x,y + arc from/to (deg)
 function layoutMenu(){
   const edge=barEdge(), all=$$('#menu .mb');
-  all.forEach(b=>b.classList.toggle('off',(b.dataset.a==='mirror'&&!(MIR.owner==='pending'||MIR.owner==='agent'))||(b.dataset.a==='notme'&&!markOpen)));     // (only while it applies)
+  all.forEach(b=>b.classList.toggle('off',(b.dataset.a==='mirror'&&!(MIR.owner==='pending'||MIR.owner==='agent'))||(b.dataset.a==='notme'&&!markOpen)||(b.dataset.a==='mail'&&!(info.mail_on&&info.bridge))));     // (only while it applies)
   const bs=all.filter(b=>getComputedStyle(b).display!=='none'), n=bs.length;
   MENU_XY.length=0;
   if(!edge){ menuEl.style.left=''; menuEl.style.top='';
@@ -3191,9 +3251,10 @@ let menuShutAt=0;
 function menu(on){ if(on){ layoutMenu(); heardGet().then(j=>{ if(!!j.mark_open!==markOpen){ markOpen=!!j.mark_open; if(menuOn) layoutMenu(); } }); } if(!on&&menuOn) menuShutAt=performance.now(); if(on!==menuOn) sfx(on?'menu':'close'); menuOn=on; menuEl.classList.toggle('on',on); document.body.classList.toggle('menu',on); if(on){ closePanels(); hideAsk(); } $('[data-a="hover"]').classList.toggle('on',!!info.hover); sendRegion(true); }
 menuEl.addEventListener('click',e=>{ const b=e.target.closest('.mb'); if(!b) return; menu(false);
   ({talk:()=>startRec('auto'), bar:()=>toggleBar(), cd:()=>showAsk('/cd '), history:()=>openPanel('history'), plugins:()=>openPanel('plugins'),
+    mail:()=>post('/api/mail/open').then(r=>r.json()).then(j=>{ if(j&&j.say) say(j.say); }).catch(()=>{}),
     look:()=>{ endListening(); return shoot('screen').then(j=>{ if(j) showAsk(''); }); }, hover:toggleHover, mirror:mirRevoke, notme:notMe, hide:dismiss, set:()=>settings(true)})[b.dataset.a](); });
 async function notMe(){ try{ const j=await (await post('/api/heard/not-me')).json(); markOpen=false; tick(j.ok?"noted — that one wasn't for me":"too late to mark that one"); }catch(e){} }
-function dismiss(){ menu(false); hideAsk(); const held=stgHeld; stgHeld=null; closePanels(); if(held){ if(stgState!=='closed') stageHide(false); himSet(((himEl.textContent||'').trim()+'\n'+stageText(held)).trim()); }   // (he's going away: a held board follows the rule for a board arriving while hidden)
+function dismiss(){ menu(false); hideAsk(); const held=stgHeld; stgHeld=null; closePanels(); if(held){ if(stgState!=='closed') stageHide(false); if(stageText(held)) himSet(((himEl.textContent||'').trim()+'\n'+stageText(held)).trim()); }   // (he's going away: a held board follows the rule for a board arriving while hidden)
   endListening(); if(!native('hide')) poke('sleepy',1200); }
 // Esc / hiding him: he stops listening — a recording in progress is dropped and the "just keep talking" window closes
 function endListening(){ if(rec&&rec.mode!=='approve') stopRec(true); post('/api/follow',{act:'cancel'}).catch(()=>{}); follow=false; hearRaw=0; }
@@ -3494,6 +3555,19 @@ $('#pkRnd').addEventListener('click',()=>{ const kind=pkPart.startsWith('white')
 $('#pkAll').addEventListener('click',()=>{ const L=curLook(), R=randomLook(L); Object.assign(L,R); L.random=false; info.look=L; applyLook(L);
   post('/api/settings',{look:L}).then(r=>r.json()).then(j=>{ info=j; }); selectPart(pkPart); poke('excited',900); });
 
+let mailOpt={accounts:[],models:[]}, mailOptT=0;
+function renderMail(){ const sw=$('#mailSw'); if(!sw) return; sw.checked=!!info.mail_on; $('#mailOpts').hidden=!info.mail_on;
+  if(!info.mail_on) return;
+  if(!mailOptT||performance.now()-mailOptT>15000){ mailOptT=performance.now();
+    tokenReady.then(()=>fetch('/api/mail/options',{headers:hdr()})).then(r=>r.json()).then(j=>{ mailOpt={accounts:j.accounts||[],models:j.models||[]}; mailDraw(); }).catch(()=>{}); }
+  mailDraw(); }
+function mailDraw(){ const box=$('#mailAccts'), sel=$('#mailModel'); if(!box||!info.mail_on) return;
+  if(box.contains(document.activeElement)||document.activeElement===sel) return;           // (don't redraw under a click)
+  const have=info.mail_accounts||[], names=[...new Set([...mailOpt.accounts,...have])];
+  box.textContent=''; if(!names.length) box.appendChild(hx('div','h','No address found. Sign in with gog first.'));
+  names.forEach(a=>{ const l=hx('label','tg'), i=hx('input'), sp=hx('span','sw'), t=hx('span','l',a); i.type='checkbox'; i.checked=have.includes(a); i.dataset.mailAcct=a; l.appendChild(i); l.appendChild(sp); l.appendChild(t); box.appendChild(l); });
+  const cur=info.mail_model||'', ms=[...new Set([...mailOpt.models,...(cur?[cur]:[])])]; sel.textContent='';
+  [['','None'],...ms.map(m=>[m,m])].forEach(([v,l])=>{ const o=hx('option',null,l); o.value=v; sel.appendChild(o); }); sel.value=cur; }
 function renderSettings(){
   { const rr=$('#rootSw').closest('.row'); if(rr) rr.style.display=info.root_ok===false?'none':''; }
   { const pr=$('#peersRow'); if(pr) pr.hidden=!info.peers_configured; }
@@ -3560,6 +3634,7 @@ function renderSettings(){
     updSw:info.update_check!==false,peersSw:!!info.peers_on,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
   renderAgents(); renderUpdate(); renderPtt();
+  renderMail();
   for(const k in sw){ const e=document.getElementById(k); if(e) e.checked=!!sw[k]; }
   for(const [k,on] of [['lookBeatSw',info.look_music],['speakSubjSw',info.notify_details]]){ const e=$('#'+k); e.disabled=!on; e.closest('.row').style.opacity=on?'':'.5'; }   // (each needs its parent switch)
   const ps=restPu();
@@ -3847,6 +3922,9 @@ setEl.addEventListener('change',e=>{
   { const k={proactiveSw:'proactive',takeoverSw:'notifications_takeover',detailsSw:'notify_details',nsoundSw:'notify_sound',lookMeetSw:'look_meeting',lookMusicSw:'look_music',lookBeatSw:'look_beat',speakSubjSw:'notify_speak_subject',lookFsSw:'look_fullscreen',reactLoadSw:'react_load',reactBreakSw:'react_break',reactWelcomeSw:'react_welcome',lookCodingSw:'look_coding',lookNightSw:'look_night',lookWeatherSw:'look_weather',lookPartySw:'look_party',reactQuipsSw:'react_quips'}[id]; if(k) setSetting({[k]:on}); }
   if(id==='clickSw') setSetting({click_through:on}).then(()=>sendRegion(true));
   if(id==='notifySw') setSetting({notify_done:on});
+  if(id==='mailSw') setSetting({mail_on:on}).then(()=>{ mailOptT=0; renderMail(); });
+  if(id==='mailModel') setSetting({mail_model:e.target.value});
+  if(e.target.dataset&&e.target.dataset.mailAcct) setSetting({mail_accounts:$$('#mailAccts input:checked').map(c=>c.dataset.mailAcct)});
   if(id==='popupSw') setSetting({popup_done:on});
   if(id==='updSw') setSetting({update_check:on}).then(renderUpdate);
   if(id==='peersSw') setSetting({peers_on:on});
@@ -4066,6 +4144,7 @@ addEventListener('mousedown',e=>{ if(!e.target.closest('#body,#barPill,#menu,#as
 
 addEventListener('keydown',e=>{ wake(); lastUser=performance.now();
   const askOn=ask.classList.contains('on'), k=e.key.toLowerCase(), typing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&document.activeElement!==input;
+  if(mailCard&&mailCard.el.isConnected&&(e.key==='Enter'||k==='y')&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){ e.preventDefault(); return; }   // (the mail reply card is up: Enter and y never reach the ask box or an approval)
   if(pendingAppr && !askOn && !typing){ if((e.key==='Enter'||k==='y')&&pendingAppr.confirm==='click'){ e.preventDefault(); return; } if(e.key==='Enter'||k==='y'){ e.preventDefault(); return answer('yes'); } if(e.key==='Escape'||k==='n'){ e.preventDefault(); return answer('no'); } }
   if(e.key==='Escape'){ e.preventDefault();
     if(menuOn) return menu(false);
