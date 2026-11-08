@@ -1350,9 +1350,14 @@ def agent_say_ready(frm):
         return {"speak": False, "reason": "meeting"}
     if Ambient.dnd:
         return {"speak": False, "reason": "dnd"}
-    if Ambient.locked:
+    if CFG.get("proactive"):
+        locked, full = Ambient.locked, Ambient.fullscreen
+    else:                                                     # Ambient reads the desk only with proactive on: ask Hyprland once
+        w = Desk.ask("j/activewindow")
+        locked, full = Desk.locked(), isinstance(w, dict) and Desk.is_full(w)
+    if locked:
         return {"speak": False, "reason": "locked"}
-    if Ambient.fullscreen:
+    if full:
         return {"speak": False, "reason": "fullscreen"}
     return {"speak": True}
 

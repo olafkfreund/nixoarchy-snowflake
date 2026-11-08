@@ -189,6 +189,15 @@ class NudgeTest(_ServerEnv):
                 setattr(A, cue, False)
             self.assertEqual(S.agent_say_ready("claude"), {"speak": True})
 
+    def test_agent_say_asks_the_desk_with_proactive_off(self):
+        S = self.server
+        S.CFG["proactive"] = False                           # Ambient.locked/fullscreen stay False: the desk is asked
+        with mock.patch.object(S.Wake, "asleep", False), mock.patch.dict(S.CFG, {"agent_voice_mute": []}):
+            for locked, w, want in ((True, {}, "locked"), (False, {"fullscreen": 2}, "fullscreen"), (None, None, None)):
+                with mock.patch.object(S.Desk, "locked", return_value=locked), mock.patch.object(S.Desk, "ask", return_value=w):
+                    r = S.agent_say_ready("claude")
+                self.assertEqual(r, {"speak": True} if want is None else {"speak": False, "reason": want})
+
     def test_approval_route_is_unaffected_by_dnd(self):
         S = self.server
         S.Ambient.dnd = True
