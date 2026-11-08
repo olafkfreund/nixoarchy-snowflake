@@ -251,6 +251,13 @@ const side = await ev(`const c=$('#musCard'); const o=[]; for(const sd of ['r','
 check(side[0] !== "350px" && side[1] !== "-220px", "card: it opens on the side away from a board", side);
 await reopen(); await sleep(15600);
 eq(await ev(`return $('#musCard').hidden;`), true, "card: 15 s idle closes it");
+// a long answer stays three lines, so the card fits the 160px left below top:300 in the 340x460 window (Codex, #71)
+const LONG = "That's " + "A very long song title ".repeat(13) + "by Band.";
+await ev(`window.__qr["what's playing"]={handled:true,say:${JSON.stringify(LONG)}}; return 1;`);
+await reopen(); await sleep(300);
+const tall = await ev(`const c=$('#musCard'), t=c.querySelector('.mt'); const r=c.getBoundingClientRect(), b=[...c.querySelectorAll('.mbs button')].map(x=>x.getBoundingClientRect().bottom-r.top); return {h:r.height, b:Math.max(...b), title:t.title};`);
+check(tall.h <= 160 && tall.b <= 160 && tall.title === LONG, "card: a long answer is clamped and the buttons stay within 160px; the full answer is its title", tall);
+await ev(`delete window.__qr["what's playing"]; musClose(); return 1;`);
 for (const [name, js] of Object.entries({ fullscreen: "sit({fullscreen:true})", "notch": "document.body.classList.add('bar')", "meeting": "sit({meeting:true})", "hover": "document.body.classList.add('hover')" })) {
   await reopen(); await ev(`${js}; await new Promise(r=>setTimeout(r,100)); return 1;`);
   eq(await ev(`return [$('#musCard').hidden, $('#musChip').hidden];`), [true, true], `card: ${name} closes the card and hides the chip`);

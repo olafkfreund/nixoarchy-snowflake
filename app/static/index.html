@@ -421,7 +421,7 @@ input[type=range]{accent-color:var(--acc)}
 #chip.on{opacity:1;transform:translate(-50%,0)}
 #musChip{position:absolute;left:296px;top:196px;z-index:9;width:30px;height:26px;padding:0;border-radius:999px;font:14px var(--mono);color:var(--tint);cursor:pointer;background:color-mix(in srgb,var(--panel) 87%,transparent);border:1px solid var(--edge)}
 #musCard{position:absolute;top:150px;width:210px;z-index:9;padding:8px 10px;border-radius:12px;font:12px var(--mono);color:var(--text);background:var(--panel);border:1px solid var(--edge)}
-#musCard .mh{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px} #musCard .mt{flex:1;min-height:16px;overflow-wrap:anywhere}
+#musCard .mh{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px} #musCard .mt{flex:1;min-height:16px;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden}   /* (three lines at most: the buttons stay inside the 460px window) */
 #musCard button{font:inherit;color:inherit;background:var(--panel2);border:1px solid var(--edge);border-radius:8px;padding:3px 8px;cursor:pointer}
 #musCard .mbs{display:flex;flex-wrap:wrap;gap:6px} #musCard[hidden],#musChip[hidden]{display:none}
 @keyframes glint{0%,100%{filter:none}40%{filter:brightness(2.4) saturate(1.4) drop-shadow(0 0 6px #77b6e1)}}
@@ -1767,7 +1767,7 @@ const musBox=()=>RXS.has('music')&&rxState('music');   // the boombox is showing
 function musSync(){ const chipEl=$('#musChip'); if(!chipEl) return; const show=musBox()||(musKeep&&rxState('music'));
   const was=!chipEl.hidden; chipEl.hidden=!show; if(!show){ musClose(); musKeep=false; } else{ const b=$('#musCard .mp'); b.textContent=musKeep?'Play':'Pause'; b.dataset.p=musKeep?'play':'pause'; } if(was!==show) sendRegion(true); }
 function musClose(){ const c=$('#musCard'); if(!c||c.hidden) return; c.hidden=true; clearTimeout(musIdle); if(musKeep){ musKeep=false; musSync(); } sendRegion(true); }   // (closed by hand after its Pause: the chip goes with it)
-function musSay(t){ $('#musCard .mt').textContent=t; }
+function musSay(t){ const e=$('#musCard .mt'); e.textContent=t; e.title=t; }
 function musTouch(){ clearTimeout(musIdle); musIdle=setTimeout(musClose,15000); }
 async function musAsk(phrase){ musTouch(); let q=null;
   try{ q=await (await post('/api/quick',{text:phrase})).json(); }catch(e){}
