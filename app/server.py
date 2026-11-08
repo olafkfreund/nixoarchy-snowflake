@@ -28,6 +28,8 @@ import secrets
 import shutil
 import signal
 import socket
+import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -36,6 +38,7 @@ import time
 import unicodedata
 import urllib.request
 import wave
+import zlib
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -2301,6 +2304,98 @@ def _launch(id):
         BUS.pub(t="toast", text="I can't start apps here: gtk-launch isn't installed.")
 
 
+class NImage:
+    """Short-lived copies of checked local PNGs for notification cards."""
+    MAX = 1024 * 1024
+    TTL = 60
+    lock = threading.Lock()
+    served = {}                                  # id -> (bytes, time added), insertion order is oldest first
+
+    @staticmethod
+    def _png(data):
+        if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+            return False
+        pos, first, has_pixels = 8, True, False
+        while pos + 12 <= len(data):
+            size = int.from_bytes(data[pos:pos + 4], "big")
+            end = pos + 12 + size
+            if end > len(data):
+                return False
+            kind = data[pos + 4:pos + 8]
+            chunk = data[pos + 8:pos + 8 + size]
+            crc = int.from_bytes(data[pos + 8 + size:end], "big")
+            if zlib.crc32(kind + chunk) != crc or kind == b"acTL":
+                return False
+            if first:
+                if kind != b"IHDR" or size != 13:
+                    return False
+                width, height, depth, color, compression, filtering, interlace = struct.unpack(">IIBBBBB", chunk)
+                if not (1 <= width <= 2048 and 1 <= height <= 2048 and
+                        (depth, color) in {(1, 0), (2, 0), (4, 0), (8, 0), (16, 0),
+                                           (8, 2), (16, 2), (1, 3), (2, 3), (4, 3), (8, 3),
+                                           (8, 4), (16, 4), (8, 6), (16, 6)} and
+                        compression == filtering == 0 and interlace in (0, 1)):
+                    return False
+                first = False
+            elif kind == b"IHDR":
+                return False
+            if kind == b"IDAT":
+                has_pixels = True
+            if kind == b"IEND":
+                return has_pixels and size == 0 and end == len(data)
+            pos = end
+        return False
+
+    @classmethod
+    def add(cls, path):
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            try:
+                info = os.fstat(fd)
+                if not stat.S_ISREG(info.st_mode) or info.st_size > cls.MAX:
+                    return None
+                data = bytearray()
+                while len(data) <= cls.MAX:
+                    part = os.read(fd, cls.MAX + 1 - len(data))
+                    if not part:
+                        break
+                    data.extend(part)
+            finally:
+                os.close(fd)
+            if len(data) > cls.MAX or not cls._png(data):
+                return None
+            with cls.lock:
+                if not CFG.get("notify_details"):        # (turned off while the file was read: save_config clears under this lock)
+                    return None
+                now = time.monotonic()
+                cls._expire(now)
+                if len(cls.served) >= 8:
+                    cls.served.pop(next(iter(cls.served)))
+                key = secrets.token_hex(8)
+                cls.served[key] = (bytes(data), now)
+                return key
+        except (OSError, TypeError, ValueError):
+            return None
+
+    @classmethod
+    def _expire(cls, now):
+        for key, (_, added) in list(cls.served.items()):
+            if now - added >= cls.TTL:
+                del cls.served[key]
+
+    @classmethod
+    def get(cls, key):
+        with cls.lock:
+            cls._expire(time.monotonic())
+            hit = cls.served.get(key)
+            return hit[0] if hit else None
+
+    @classmethod
+    def clear(cls):
+        with cls.lock:
+            cls.served.clear()
+
+
 class Inbox:
     """Notifications the shell hands to the companion (#133), only while this thread holds a lease on the shell's IPC
     socket (renewed every second). Row text is never logged, written to disk or sent to the agent."""
@@ -2312,12 +2407,19 @@ class Inbox:
     # a code word and something shaped like a code (digits, spaced digit groups, a 6-10 char mix with 2+ digits) in one text
     OTP = re.compile(r"(?=.*\b(?:codes?|otp|verif\w*|log[- ]?in|passcode|pin|one[- ]?time|security|sign[- ]?in|mfa|2fa|auth\w*)\b)"
                      r"(?=.*(?:\b\d{4,10}\b|\b\d{2,4}(?:[ -]\d{2,4}){1,3}\b|\b(?=[A-Za-z0-9]{6,10}\b)(?:[A-Za-z]*\d){2}[A-Za-z0-9]*\b))", re.I | re.S)
-    CAP = 64 * 1024
+    CAP = 1024 * 1024
     path = None
     thread = None
     wanted = False                                            # a lease is out
     unseen = {}                                               # key -> when it was sent to the page; 5 s unseen and the shell shows it
     origin = {}                                               # key -> (app, source, time), never row text
+    acts = {}                                                 # key -> (rev, action ids, time), never row text; 64, 30 s
+    alock = threading.Lock()                                  # acts: the tick thread writes, handler threads compare-and-pop
+    legacy = 0.0                                              # until then the shell had no delegateRich: use delegate, then ask again
+    TAG = re.compile(r"<(/?)([A-Za-z][A-Za-z0-9]*)([^<>]*)>")
+    ENT = re.compile(r"&(lt|gt|amp|quot);")
+    ENTS = {"lt": "<", "gt": ">", "amp": "&", "quot": '"'}
+    HREF = re.compile(r'\s+href="([^"]*)"\s*')
 
     @classmethod
     def _derived(cls):
@@ -2379,6 +2481,42 @@ class Inbox:
             cls.call("delegate", "0")
 
     @classmethod
+    def runs(cls, rich):
+        """The shell's bodyRich as [{t, b, i, u, host}]: tags found first, then four entities decoded in the text only."""
+        out, flags, host, room = [], {"b": 0, "i": 0, "u": 0}, "", 600
+        pieces = cls.TAG.split(str(rich or "")[:600])           # text, then (slash, name, attrs, text) groups
+        pieces[-1] = pieces[-1].split("<", 1)[0]                # a tag cut off at the end
+        for n in range(0, len(pieces), 4):
+            text = cls.ENT.sub(lambda m: cls.ENTS[m[1]], pieces[n])[:room]
+            if text and len(out) < 64:
+                out.append({"t": text, **{k: v > 0 for k, v in flags.items()}, "host": host})
+                room -= len(text)
+            if n + 3 >= len(pieces):
+                break
+            slash, name, attrs = pieces[n + 1], pieces[n + 2].lower(), pieces[n + 3]
+            name = "b" if name == "strong" else name
+            bare = not attrs.strip(" /")
+            if name in flags and bare:
+                flags[name] = max(0, flags[name] + (-1 if slash else 1))
+            elif name == "br" and bare and not slash and len(out) < 64:
+                out.append({"t": "\n", **{k: v > 0 for k, v in flags.items()}, "host": ""})
+            elif name == "a" and slash:
+                host = ""
+            elif name == "a" and (m := cls.HREF.fullmatch(attrs)):
+                host = cls._host(cls.ENT.sub(lambda e: cls.ENTS[e[1]], m[1]))
+        return out
+
+    @staticmethod
+    def _host(href):
+        try:
+            u = urlparse(href.strip())
+            if u.scheme.lower() in ("http", "https"):
+                return (u.hostname or "")[:80]
+            return u.path.rpartition("@")[2].split("?")[0][:80] if u.scheme.lower() == "mailto" else ""
+        except ValueError:
+            return ""
+
+    @classmethod
     def rows(cls, out):
         """Checked rows from a delegate reply; text only with notify_details, and never a secret."""
         try:
@@ -2397,6 +2535,30 @@ class Inbox:
                 summary = body = ""
             row = {"key": x["key"], "app": str(x.get("app") or "")[:60], "source": str(x.get("source") or "")[:80],
                    "category": x["category"], "summary": summary, "body": body}
+            with cls.alock:
+                cls.acts.pop(row["key"], None)                   # (an update replaces its buttons)
+            buttons = [a for a in x["actions"] if isinstance(a, dict) and isinstance(a.get("id"), str) and isinstance(a.get("text"), str)][:3] if isinstance(x.get("actions"), list) else []
+            image = x["image"] if isinstance(x.get("image"), str) else ""
+            if buttons or image:                                 # a card: markup, then the gate over all of it, then the image, then the buttons
+                runs, labels = cls.runs(x.get("rich")), [a["text"][:40] for a in buttons]
+                whole = "\n".join([str(x.get("summary") or ""), "".join(r["t"] for r in runs), *labels])
+                if not CFG.get("notify_details") or SECRET_LINE.search(whole) or cls.OTP.search(whole):
+                    if buttons:                                  # the shell keeps the row, with its buttons
+                        cls.call("showKey", row["key"])
+                        continue
+                    row["summary"] = row["body"] = ""
+                else:
+                    card = {"runs": runs, "buttons": labels}
+                    if image and (nid := NImage.add(image)):
+                        card["image"] = nid
+                    if buttons:
+                        card["rev"] = secrets.token_hex(8)
+                        with cls.alock:
+                            cls.acts[row["key"]] = (card["rev"], [a["id"] for a in buttons], time.monotonic())
+                            if len(cls.acts) > 64:
+                                cls.acts.pop(min(cls.acts.items(), key=lambda kv: kv[1][2])[0])
+                    if buttons or "image" in card:
+                        row["card"] = card
             icon = Icons.lookup(row["app"], row["source"])
             if icon:
                 row["icon"] = Icons.register(icon)
@@ -2409,12 +2571,21 @@ class Inbox:
         for key, (_, _, t) in list(cls.origin.items()):
             if now - t > 600:
                 cls.origin.pop(key, None)
+        with cls.alock:
+            for key, (_, _, t) in list(cls.acts.items()):
+                if now - t > 30:
+                    cls.acts.pop(key, None)
         for key, t in list(cls.unseen.items()):               # (handler threads pop from it)
             if now - t > 5:                                   # the page never drew it: the shell shows it as a popup
                 cls.unseen.pop(key, None)
                 cls.call("showKey", key)
         if cls.want():
-            out = cls.call("delegate", "5000")
+            rich = now >= cls.legacy
+            out = cls.call("delegateRich", "5000") if rich else None
+            if out is None:                                   # an old shell answers nothing to delegateRich
+                out = cls.call("delegate", "5000")
+                if rich:                                      # (asked again in a minute: the shell may have been upgraded)
+                    cls.legacy = now + 60 if out is not None else 0.0
             cls.wanted = out is not None
             for row in cls.rows(out):
                 cls.unseen[row["key"]] = now
@@ -4951,6 +5122,8 @@ def save_config(**kw):
             cur = {}
         cur.update(kw)
         CFG.update(kw)
+        if kw.get("notify_details") is False:
+            NImage.clear()
         CONF_PATH.parent.mkdir(parents=True, exist_ok=True)
         CONF_PATH.write_text(json.dumps(cur, indent=2) + "\n")
 
@@ -6839,6 +7012,18 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "max-age=86400")
             self.end_headers()
             return self.wfile.write(data)
+        if p.startswith("/api/nimage/"):
+            key = p[len("/api/nimage/"):]
+            data = NImage.get(key) if re.fullmatch(r"[0-9a-f]{16}", key) else None
+            if data is None:
+                return self._json({"error": "not found"}, 404)
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return self.wfile.write(data)
         if p.startswith("/api/stage/thumb/"):      # a poster for the current stage: only a token the store handed out, only i.ytimg.com
             got = STAGES.get(p[17:]) if stages_on() else None
             hit = got and got[0] == "thumb" and (THUMBS.get(p[17:]) or stages.fetch_thumb(got[1]["id"]))
@@ -7003,8 +7188,22 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/notify/act":             # a click / Esc on a row the shell handed over
                 b = json.loads(self._body() or b"{}")
                 key = str(b.get("key") or "")
-                if not Inbox.KEY.fullmatch(key) or b.get("how") not in ("open", "dismiss"):
+                if not Inbox.KEY.fullmatch(key) or b.get("how") not in ("open", "dismiss", "action"):
                     return self._json({"error": "bad request"}, 400)
+                if b["how"] == "action":                   # a button: the page sends its index and rev, never an id
+                    i = b.get("i")
+                    if type(i) is not int or not 0 <= i <= 2:
+                        return self._json({"error": "bad request"}, 400)
+                    with Inbox.alock:                      # compare and pop at once: an update can't be consumed by a stale click
+                        act = Inbox.acts.get(key)
+                        live = bool(act) and act[0] == b.get("rev") and i < len(act[1]) and time.monotonic() - act[2] <= 30
+                        if live:
+                            Inbox.acts.pop(key)
+                    if not live:
+                        return self._json({"ok": False})
+                    return self._json({"ok": Inbox.call("invokeKey", key, act[1][i]) == "ok"})
+                with Inbox.alock:
+                    Inbox.acts.pop(key, None)
                 origin = Inbox.origin.pop(key, None)
                 if b["how"] == "dismiss":
                     return self._json({"ok": Inbox.call("dismissKey", key) == "ok"})
