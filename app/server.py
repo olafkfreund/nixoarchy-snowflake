@@ -242,6 +242,7 @@ DEFAULTS = {
     "notify_sound": True, "look_meeting": False, "look_music": False,
     "look_beat": False, "notify_speak_subject": False,
     "look_fullscreen": False, "react_load": False, "react_break": False, "react_welcome": False,
+    "workout": [], "water_every": 0,
     "look_coding": False, "look_night": False, "look_weather": False, "look_party": False, "react_quips": False,
     # projects you can switch to by voice: {"delivery app": "/home/you/code/diq"}
     "projects": {},
@@ -7145,6 +7146,7 @@ def state_info():
         **{k: bool(CFG.get(k, k == "notify_sound")) for k in NOTIFY_FLAGS}, "notify_speak": CFG.get("notify_speak", ["meeting"]),
         "mail_on": CFG.get("mail_on") is True, "mail_accounts": CFG.get("mail_accounts") or [], "mail_model": CFG.get("mail_model") or "",
         "agent_voice_mute": CFG.get("agent_voice_mute") or [],
+        "workout": CFG.get("workout") or [], "water_every": CFG.get("water_every") or 0,
         "quick_actions": CFG.get("quick_actions") or [], "memory_count": len(mem_load()),
         "language": lang.norm(CFG.get("language")), "lang_active": lang.active, "lang_status": lang_status, "date_locale": lang.LANGS[lang.active]["date"], "lines": lang.lines(),
         "mic_device": CFG.get("mic_device") or "", "whisper_model": CFG.get("whisper_model") or "auto",
@@ -7548,6 +7550,20 @@ class Handler(BaseHTTPRequestHandler):
                 ns = b.get("notify_speak")
                 if isinstance(ns, list) and len(ns) <= 6 and all(x in NOTIFY_CATS for x in ns):
                     upd["notify_speak"] = list(dict.fromkeys(ns))
+                workout = b.get("workout")
+                if isinstance(workout, list) and len(workout) <= 7 and all(
+                    isinstance(entry, dict) and set(entry) == {"days", "at"}
+                    and isinstance(entry["days"], list) and bool(entry["days"])
+                    and all(type(day) is int and 0 <= day <= 6 for day in entry["days"])
+                    and len(set(entry["days"])) == len(entry["days"])
+                    and isinstance(entry["at"], str)
+                    and re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", entry["at"])
+                    for entry in workout
+                ):
+                    upd["workout"] = [{"days": sorted(entry["days"]), "at": entry["at"]} for entry in workout]
+                water_every = b.get("water_every")
+                if type(water_every) is int and water_every in (0, 45, 60, 90):
+                    upd["water_every"] = water_every
                 if "ptt_hotkey" in b:
                     k = str(b["ptt_hotkey"] or "").strip()
                     if k == "" or re.fullmatch(r"((Ctrl|Alt|Shift|Win)\+){0,4}[A-Za-z0-9`]+", k):
