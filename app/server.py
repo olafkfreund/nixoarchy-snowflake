@@ -6040,6 +6040,7 @@ def mail_hear_current(token, gen):
 def mail_hear_work(token, account, message_id, model, gen):
     global MAIL_SID
     result = {"from": "", "subject": "", "summary": "I couldn't summarise that one"}
+    spoken_gen = Speaker.gen                     # a mute (Speaker.stop) while this fetches cancels the speech
     try:
         got = _gog(["--readonly", "--json", "-a", account, "gmail", "get", message_id])
         if not mail_hear_current(token, gen) or not isinstance(got, dict):
@@ -6068,15 +6069,17 @@ def mail_hear_work(token, account, message_id, model, gen):
                     result["summary"] = f"Summary of an email to {account} from {address}: {answer}"
             except Exception as e:  # noqa: BLE001
                 print("mail:", type(e).__name__, file=sys.stderr)
-        speak = mail_may_speak()                 # (may ask Hyprland: not under the lock)
+        speak = Speaker.available() and mail_may_speak()   # page voice: the summary shows as text only (Codex, #66)
         with MAIL_LOCK:                          # the last check and the registration are one step: nothing can switch mail between them
             if not _mail_hear_ok(token, gen):
                 return {"ok": False}
             if speak:
                 with Speaker.cv:
-                    MAIL_SID += 1
-                    sid = MAIL_SID
-                    Speaker.mail_sids[sid] = (gen, token)   # bound to the board that asked, not any mail board
+                    speak = Speaker.gen == spoken_gen
+                    if speak:
+                        MAIL_SID += 1
+                        sid = MAIL_SID
+                        Speaker.mail_sids[sid] = (gen, token)   # bound to the board that asked, not any mail board
         if speak:
             try:
                 Speaker.say(result["summary"], sid, local=True)

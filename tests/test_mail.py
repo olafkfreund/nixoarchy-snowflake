@@ -791,6 +791,24 @@ class MailBoardTest(_ServerEnv):
             self.post("/api/mail/hear", {"token": row["hear"]})
         self.assertEqual(s.Speaker.mail_sids[say.call_args.args[1]], (s.MAIL_GEN, row["hear"]))
 
+    def test_hear_does_not_speak_with_page_voice_or_after_a_mute(self):
+        s = self.server                                             # Codex review on #66
+        row = self.board()["rows"][0]
+        quiet = (mock.patch.object(s.Desk, "locked", return_value=False), mock.patch.object(s.Ambient, "meeting", False))
+        with quiet[0], quiet[1], mock.patch.object(s.Speaker, "available", return_value=False), mock.patch.object(s.Speaker, "say") as say:
+            code, body = self.post("/api/mail/hear", {"token": row["hear"]})
+        say.assert_not_called()                                     # voice_out "page": the summary is text only
+        self.assertEqual(code, 200); self.assertIn("summary", body)
+        real_gog = self.gog.__call__
+        def gog_then_mute(*a, **k):                                 # the user mutes while gog is fetching
+            out = real_gog(*a, **k)
+            with s.Speaker.cv: s.Speaker.gen += 1                    # what Speaker.stop() does to the queue, without its mic side effects
+            return out
+        with quiet[0], quiet[1], mock.patch.object(s.Speaker, "available", return_value=True), mock.patch.object(s.Speaker, "say") as say, \
+             mock.patch.object(s.subprocess, "run", side_effect=gog_then_mute):
+            self.post("/api/mail/hear", {"token": self.board()["rows"][0]["hear"]})
+        say.assert_not_called()
+
     def test_queued_mail_speech_drops_when_the_board_is_closed_and_reopened(self):
         s = self.server                                             # Codex review on #66: bind audio to the board that asked
         old = self.board()["rows"][0]["hear"]

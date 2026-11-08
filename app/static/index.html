@@ -2003,7 +2003,7 @@ function ac(){ if(!actx) actx=new (window.AudioContext||window.webkitAudioContex
 // enqueue(text, {cap:true}) also puts the words on screen, one by one, as he says them
 // When the server can play audio itself (info.voice_native), his voice doesn't go through this page at all — see
 // Speaker in server.py. We just say what to speak; the server tells us when each sentence actually starts.
-const spkMap=new Map(); let spkSeq=0, spkLv=[], spkGuard=0, sayChain=Promise.resolve(), sayEpoch=0;   // sayEpoch: bumped when you cut him off
+const spkMap=new Map(); let mailHearN=0, spkSeq=0, spkLv=[], spkGuard=0, sayChain=Promise.resolve(), sayEpoch=0;   // sayEpoch: bumped when you cut him off
 function enqueue(text,o={}){
   text=(text||'').trim();
   const reply=o.reply||curReply;
@@ -2168,7 +2168,7 @@ function spkLevel(ts){ for(const L of spkLv){ if(ts>=L.t0&&ts<L.t0+L.level.lengt
 function quietCheck(){ if(!srcs.length&&!q.length&&pumpGen!==gen&&playing){ playing=false; setSpkEngine(''); speaking(false); floorPage(false); } }
 // shush: stop talking. Anything he hadn't said yet still lands on screen (mute mid-answer, or you cut in)
 function shush(){ gen++; sayEpoch++; const rest=q.splice(0), pend=curIt; curIt=null; karaFlush();
-  if(info.voice_native&&(spkMap.size||playing)){ post('/api/say/stop',{epoch:sayEpoch}).catch(()=>{}); for(const it of spkMap.values()) if(it.cap) karaNow(it.cap,it.fresh,true); spkMap.clear(); spkLv=[]; }
+  if(info.voice_native&&(spkMap.size||playing||mailHearN)){ post('/api/say/stop',{epoch:sayEpoch}).catch(()=>{}); for(const it of spkMap.values()) if(it.cap) karaNow(it.cap,it.fresh,true); spkMap.clear(); spkLv=[]; }
   if(pend&&pend.cap) karaNow(pend.cap,pend.fresh,true); for(const it of rest) if(it.cap) karaNow(it.cap,it.fresh,true);
   for(const x of srcs) try{ x.stop(); }catch(e){} srcs=[]; nextAt=0; pumpGen=-1; if(playing) speaking(false); playing=false; setSpkEngine(''); floorPage(false); }
 const untilQuiet=async()=>{ for(let i=0;i<400 && (playing||q.length);i++) await sleep(100); };
@@ -2578,7 +2578,7 @@ function stageMail(ev,bd,acts,fn){
   rows.forEach(r=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab'), sm=hx('div','mst');
     tx.appendChild(hx('div','lb',r.subject)); tx.appendChild(hx('div','vm',[r.from,r.account,r.age].filter(Boolean).join(' \u00b7 '))); tx.appendChild(sm);
     if(r.hear&&r.reply){
-      ab.appendChild(stageBtn('Hear',b=>{ b.disabled=true; post('/api/mail/hear',{token:r.hear}).then(x=>x.json()).then(j=>{ sm.textContent=j.ok===false||j.error?"Couldn't read that one":(j.summary||j.subject||''); }).catch(()=>{ sm.textContent="Couldn't read that one"; }).finally(()=>{ b.disabled=false; }); }));
+      ab.appendChild(stageBtn('Hear',b=>{ b.disabled=true; mailHearN++; post('/api/mail/hear',{token:r.hear}).then(x=>x.json()).then(j=>{ sm.textContent=j.ok===false||j.error?"Couldn't read that one":(j.summary||j.subject||''); }).catch(()=>{ sm.textContent="Couldn't read that one"; }).finally(()=>{ b.disabled=false; mailHearN--; }); }));
       ab.appendChild(stageBtn('Reply',()=>mailCardOpen(bd,r))); }
     row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
   fn.textContent='Nothing is sent until you click Send';

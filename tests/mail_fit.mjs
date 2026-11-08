@@ -167,6 +167,9 @@ eq(o12[2].filter(x => x[1] === "late").length, 1, "and the draft that then arriv
 // 13. a server mail summary (id from 1e9) is tracked, so turning the voice off or a click stops it (Codex, #66)
 const m13 = await ev(`window.__posts.length=0; info.voice_native=true; spkGuard=0; onEvent({t:'spk',id:1000000001,at:0,dur:5}); await new Promise(r=>setTimeout(r,120)); const p=playing&&spkGuard>performance.now(); shush(); await new Promise(r=>setTimeout(r,150)); return [p, window.__posts.some(x=>x.u==='/api/say/stop')];`);
 eq(m13, [true, true], "a mail summary sets playing, and shush posts /api/say/stop");
+// 14. a Hear still fetching is stopped by a mute too (Codex, #66)
+const m14 = await ev(`window.__posts.length=0; info.voice_native=true; playing=false; spkMap.clear(); mailHearN=1; shush(); await new Promise(r=>setTimeout(r,150)); mailHearN=0; return window.__posts.some(x=>x.u==='/api/say/stop');`);
+eq(m14, true, "shush posts /api/say/stop while a Hear is pending");
 if (fails.length) { console.log(`${fails.length} check(s) failed`); process.exit(1); }
 console.log("mail fit ok");
 process.exit(0);
