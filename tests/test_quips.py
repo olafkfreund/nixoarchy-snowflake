@@ -65,7 +65,7 @@ class QuipsTest(_ServerEnv):
         for event, lines in d.items():
             self.assertTrue(3 <= len(lines) <= 5, event)
             for line in lines:
-                line.format(n=1, pct=1)                      # only known slots
+                line.format(n=1, pct=1, unit="example.service", path="/")  # only known slots
 
 
 class QuipNudgeTest(_ServerEnv):

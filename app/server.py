@@ -1599,6 +1599,95 @@ class Ambient:
     SNOW = {0xE327, 0xE30A, 0xE31A}
     hot_since = None                                           # load has been over the core count since then
     lock_since = unlocked_at = last_lock_len = 0.0             # monotonic; lock_since is 0 while unlocked
+    machine_due = 0.0
+    failed = {"user": None, "system": None}
+    disk_full = set()
+    off_since = None
+    offline = False
+    peer_last = {}                                              # step 2 will track finished peer rounds here
+    later = []
+    later_lock = threading.Lock()
+
+    @classmethod
+    def hand(cls, kind, text, ok):
+        with cls.later_lock:
+            cls.later.append((kind, text, ok))
+
+    @staticmethod
+    def route_up(proc="/proc"):
+        """Default route present, absent, or unknown when a route table cannot be read."""
+        found = False
+        readable = 0
+        for name in ("route", "ipv6_route"):
+            try:
+                rows = Path(proc, "net", name).read_text().splitlines()
+            except OSError:
+                continue
+            readable += 1
+            for row in rows:
+                cols = row.split()
+                try:
+                    if name == "route":
+                        found |= len(cols) >= 4 and cols[1] == "00000000" and bool(int(cols[3], 16) & 1)
+                    else:
+                        found |= (len(cols) >= 10 and cols[0] == "0" * 32 and cols[1] == "00"
+                                  and bool(int(cols[8], 16) & 1) and not int(cols[8], 16) & 0x200 and cols[9] != "lo")
+                except ValueError:
+                    continue
+        return True if found else False if readable == 2 else None
+
+    @classmethod
+    def machine(cls, t, proc="/proc"):
+        if not (CFG.get("proactive") and CFG.get("react_load")):
+            cls.machine_due = 0.0
+            cls.failed = {"user": None, "system": None}
+            cls.disk_full = set()
+            cls.off_since = None
+            cls.offline = False
+            cls.peer_last = {}
+            for kind in ("error", "disk", "offline"):
+                Nudge.pending.pop(kind, None)
+            return
+        if t >= cls.machine_due:
+            cls.machine_due = t + 120
+            out = [None, None]
+            threads = [threading.Thread(target=plugins._failed, args=(["systemctl", *scope, "--failed", "--plain", "--no-legend"], out, i))
+                       for i, scope in enumerate((["--user"], []))]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+            for i, scope in enumerate(("user", "system")):
+                if out[i] is None:
+                    continue
+                current = set(out[i])
+                previous = cls.failed[scope]
+                if previous is not None:
+                    new = current - previous
+                    if new:
+                        Nudge.offer("error", quip("error", unit=min(new)), False, t)
+                cls.failed[scope] = current
+            for path in ("/", "/nix/store"):
+                try:
+                    v = os.statvfs(path)
+                    if not v.f_blocks:
+                        continue
+                    used = (v.f_blocks - v.f_bfree) / v.f_blocks
+                except OSError:
+                    continue
+                if used >= .90 and path not in cls.disk_full:
+                    cls.disk_full.add(path)
+                    Nudge.offer("disk", quip("disk", path=path, n=round(100 * used)), False, t)
+                elif used < .85:
+                    cls.disk_full.discard(path)
+        route = cls.route_up(proc)
+        if route is True:
+            cls.off_since, cls.offline = None, False
+        elif route is False:
+            cls.off_since = t if cls.off_since is None else cls.off_since
+            if not cls.offline and t - cls.off_since >= 30:
+                cls.offline = True
+                Nudge.offer("offline", quip("offline"), False, t)
 
     @staticmethod
     def run(argv, timeout=3):
@@ -1834,6 +1923,7 @@ class Ambient:
         elif not locked and cls.lock_since:
             cls.last_lock_len, cls.unlocked_at, cls.lock_since = t - cls.lock_since, t, 0.0
         cls.locked = locked
+        cls.machine(t, proc)
         cls.fullscreen = on and Desk.fullscreen
         cls.coding = bool(on and CFG.get("look_coding") and Desk.coding_since and t - Desk.coding_since >= 60)
         gate = on and CFG.get("look_weather") and CFG.get("ambient_weather")
@@ -1900,6 +1990,11 @@ class Ambient:
                     print(f"[nixi] ambient: {e}", file=sys.stderr)
             try:
                 cls.sense()
+                with cls.later_lock:
+                    later, cls.later = cls.later, []
+                for kind, caption, ok in later:
+                    if ok():
+                        Nudge.offer(kind, caption, False)
                 Nudge.tick()
             except Exception as e:  # noqa: BLE001
                 print(f"[nixi] ambient: {e}", file=sys.stderr)
@@ -1918,7 +2013,9 @@ QUIP_FALLBACK = {
     "welcome": ("Welcome back!",), "ram": ("Memory's getting tight. Maybe close something heavy?",), "cpu": ("The machine is working hard.",),
     "rain": ("Rain outside. Cosy in here!",), "snow": ("Snow! My favourite thing in the whole world.",),
     "night": ("Getting late. Don't forget to rest.",), "party": ("Something to celebrate today!",),
-    "coding": ("{n} hours of code. Water?",), "done": ("All done!",)}
+    "coding": ("{n} hours of code. Water?",), "done": ("All done!",),
+    "error": ("{unit} failed.",), "disk": ("Disk {path} is {n}% full.",),
+    "offline": ("No network connection.",)}
 
 
 class Plug:
@@ -2170,7 +2267,8 @@ def quip(event, **slots):
 class Nudge:
     """Unasked nudges (#133b): break, welcome back, memory, load. They wait for a breakpoint (an unlock, a workspace switch, or
     20 s without window events), and a budget keeps them rare: one visual per 5 minutes, one spoken per 10, a cooldown per kind."""
-    COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "welcome": 0, "rain": 72000, "snow": 72000, "night": 72000, "party": 72000, "coding": 7200}
+    COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "welcome": 0, "rain": 72000, "snow": 72000, "night": 72000, "party": 72000, "coding": 7200,
+            "error": 1800, "disk": 21600, "offline": 1800}
     pending = {}                                              # kind -> (text, spoken, deadline); oldest first
     last_visual = last_speech = None
     last_kind = {}

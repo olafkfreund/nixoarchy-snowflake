@@ -15,6 +15,9 @@ class NudgeTest(_ServerEnv):
         saved = dict(S.CFG)
         self.addCleanup(lambda: (S.CFG.clear(), S.CFG.update(saved)))
         S.CFG.update(proactive=True, react_break=True, react_welcome=True, react_load=True, ambient_calendar=False)
+        failed = mock.patch.object(S.plugins, "_failed", side_effect=lambda cmd, out, i: out.__setitem__(i, []))
+        failed.start()
+        self.addCleanup(failed.stop)
         N, A, D = S.Nudge, S.Ambient, S.Desk
         for k, v in dict(pending={}, last_visual=None, last_speech=None, last_kind={}, active_since=None, seen_unlock=0.0,
                          was_hot=False, was_low=False, n_quip=0).items():
