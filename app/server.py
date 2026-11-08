@@ -2297,6 +2297,14 @@ def _launch(id):
         BUS.pub(t="toast", text="I can't start apps here: gtk-launch isn't installed.")
 
 
+class NImage:
+    """Card pictures (#214). Step 3 replaces this stub with the real store."""
+
+    @staticmethod
+    def add(path):
+        return None
+
+
 class Inbox:
     """Notifications the shell hands to the companion (#133), only while this thread holds a lease on the shell's IPC
     socket (renewed every second). Row text is never logged, written to disk or sent to the agent."""
@@ -2308,12 +2316,18 @@ class Inbox:
     # a code word and something shaped like a code (digits, spaced digit groups, a 6-10 char mix with 2+ digits) in one text
     OTP = re.compile(r"(?=.*\b(?:codes?|otp|verif\w*|log[- ]?in|passcode|pin|one[- ]?time|security|sign[- ]?in|mfa|2fa|auth\w*)\b)"
                      r"(?=.*(?:\b\d{4,10}\b|\b\d{2,4}(?:[ -]\d{2,4}){1,3}\b|\b(?=[A-Za-z0-9]{6,10}\b)(?:[A-Za-z]*\d){2}[A-Za-z0-9]*\b))", re.I | re.S)
-    CAP = 64 * 1024
+    CAP = 1024 * 1024
     path = None
     thread = None
     wanted = False                                            # a lease is out
     unseen = {}                                               # key -> when it was sent to the page; 5 s unseen and the shell shows it
     origin = {}                                               # key -> (app, source, time), never row text
+    acts = {}                                                 # key -> (rev, action ids, time), never row text; 64, 30 s
+    legacy = False                                            # the shell has no delegateRich: use delegate
+    TAG = re.compile(r"<(/?)([A-Za-z][A-Za-z0-9]*)([^<>]*)>")
+    ENT = re.compile(r"&(lt|gt|amp|quot);")
+    ENTS = {"lt": "<", "gt": ">", "amp": "&", "quot": '"'}
+    HREF = re.compile(r'\s+href="([^"]*)"\s*')
 
     @classmethod
     def _derived(cls):
@@ -2375,6 +2389,42 @@ class Inbox:
             cls.call("delegate", "0")
 
     @classmethod
+    def runs(cls, rich):
+        """The shell's bodyRich as [{t, b, i, u, host}]: tags found first, then four entities decoded in the text only."""
+        out, flags, host, room = [], {"b": 0, "i": 0, "u": 0}, "", 600
+        pieces = cls.TAG.split(str(rich or "")[:600])           # text, then (slash, name, attrs, text) groups
+        pieces[-1] = pieces[-1].split("<", 1)[0]                # a tag cut off at the end
+        for n in range(0, len(pieces), 4):
+            text = cls.ENT.sub(lambda m: cls.ENTS[m[1]], pieces[n])[:room]
+            if text and len(out) < 64:
+                out.append({"t": text, **{k: v > 0 for k, v in flags.items()}, "host": host})
+                room -= len(text)
+            if n + 3 >= len(pieces):
+                break
+            slash, name, attrs = pieces[n + 1], pieces[n + 2].lower(), pieces[n + 3]
+            name = "b" if name == "strong" else name
+            bare = not attrs.strip(" /")
+            if name in flags and bare:
+                flags[name] = max(0, flags[name] + (-1 if slash else 1))
+            elif name == "br" and bare and not slash and len(out) < 64:
+                out.append({"t": "\n", **{k: v > 0 for k, v in flags.items()}, "host": ""})
+            elif name == "a" and slash:
+                host = ""
+            elif name == "a" and (m := cls.HREF.fullmatch(attrs)):
+                host = cls._host(cls.ENT.sub(lambda e: cls.ENTS[e[1]], m[1]))
+        return out
+
+    @staticmethod
+    def _host(href):
+        try:
+            u = urlparse(href.strip())
+            if u.scheme.lower() in ("http", "https"):
+                return (u.hostname or "")[:80]
+            return u.path.rpartition("@")[2].split("?")[0][:80] if u.scheme.lower() == "mailto" else ""
+        except ValueError:
+            return ""
+
+    @classmethod
     def rows(cls, out):
         """Checked rows from a delegate reply; text only with notify_details, and never a secret."""
         try:
@@ -2393,6 +2443,28 @@ class Inbox:
                 summary = body = ""
             row = {"key": x["key"], "app": str(x.get("app") or "")[:60], "source": str(x.get("source") or "")[:80],
                    "category": x["category"], "summary": summary, "body": body}
+            cls.acts.pop(row["key"], None)                       # (an update replaces its buttons)
+            buttons = [a for a in x["actions"] if isinstance(a, dict) and isinstance(a.get("id"), str) and isinstance(a.get("text"), str)][:3] if isinstance(x.get("actions"), list) else []
+            image = x["image"] if isinstance(x.get("image"), str) else ""
+            if buttons or image:                                 # a card: markup, then the gate over all of it, then the image, then the buttons
+                runs, labels = cls.runs(x.get("rich")), [a["text"][:40] for a in buttons]
+                whole = "\n".join([str(x.get("summary") or ""), "".join(r["t"] for r in runs), *labels])
+                if not CFG.get("notify_details") or SECRET_LINE.search(whole) or cls.OTP.search(whole):
+                    if buttons:                                  # the shell keeps the row, with its buttons
+                        cls.call("showKey", row["key"])
+                        continue
+                    row["summary"] = row["body"] = ""
+                else:
+                    card = {"runs": runs, "buttons": labels}
+                    if image and (nid := NImage.add(image)):
+                        card["image"] = nid
+                    if buttons:
+                        card["rev"] = secrets.token_hex(8)
+                        cls.acts[row["key"]] = (card["rev"], [a["id"] for a in buttons], time.monotonic())
+                        if len(cls.acts) > 64:
+                            cls.acts.pop(min(cls.acts, key=lambda k: cls.acts[k][2]))
+                    if buttons or "image" in card:
+                        row["card"] = card
             icon = Icons.lookup(row["app"], row["source"])
             if icon:
                 row["icon"] = Icons.register(icon)
@@ -2405,12 +2477,18 @@ class Inbox:
         for key, (_, _, t) in list(cls.origin.items()):
             if now - t > 600:
                 cls.origin.pop(key, None)
+        for key, (_, _, t) in list(cls.acts.items()):
+            if now - t > 30:
+                cls.acts.pop(key, None)
         for key, t in list(cls.unseen.items()):               # (handler threads pop from it)
             if now - t > 5:                                   # the page never drew it: the shell shows it as a popup
                 cls.unseen.pop(key, None)
                 cls.call("showKey", key)
         if cls.want():
-            out = cls.call("delegate", "5000")
+            out = None if cls.legacy else cls.call("delegateRich", "5000")
+            if out is None:                                   # an old shell answers nothing to delegateRich
+                out = cls.call("delegate", "5000")
+                cls.legacy = out is not None
             cls.wanted = out is not None
             for row in cls.rows(out):
                 cls.unseen[row["key"]] = now
@@ -6562,8 +6640,16 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/notify/act":             # a click / Esc on a row the shell handed over
                 b = json.loads(self._body() or b"{}")
                 key = str(b.get("key") or "")
-                if not Inbox.KEY.fullmatch(key) or b.get("how") not in ("open", "dismiss"):
+                if not Inbox.KEY.fullmatch(key) or b.get("how") not in ("open", "dismiss", "action"):
                     return self._json({"error": "bad request"}, 400)
+                if b["how"] == "action":                   # a button: the page sends its index and rev, never an id
+                    i, act = b.get("i"), Inbox.acts.get(key)
+                    if type(i) is not int or not 0 <= i <= 2:
+                        return self._json({"error": "bad request"}, 400)
+                    if not act or act[0] != b.get("rev") or i >= len(act[1]) or Inbox.acts.pop(key, None) is None:
+                        return self._json({"ok": False})
+                    return self._json({"ok": Inbox.call("invokeKey", key, act[1][i]) == "ok"})
+                Inbox.acts.pop(key, None)
                 origin = Inbox.origin.pop(key, None)
                 if b["how"] == "dismiss":
                     return self._json({"ok": Inbox.call("dismissKey", key) == "ok"})
