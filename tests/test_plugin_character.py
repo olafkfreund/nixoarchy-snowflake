@@ -56,6 +56,8 @@ class PluginCharacterTest(CharEnv):
             ch = s.state_info()["plugin_characters"]
         self.assertEqual([c["id"] for c in ch], ["dots"])
         self.assertIn("Adds a character (pick it in Look)", s.plugin_caps({"character": {}}))
+        self.assertNotIn("Private: keep this folder out of Nix and out of any repo.", s.plugin_caps({"character": {}}))
+        self.assertIn("Private: keep this folder out of Nix and out of any repo.", s.plugin_caps({"character": {"private": True}}))
 
     def test_json_routes_are_no_store(self):
         s = self.server

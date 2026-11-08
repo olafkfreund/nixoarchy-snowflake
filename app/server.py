@@ -2222,6 +2222,8 @@ def plugin_caps(m):
         out.append(f"Adds a prop for his {m['prop']['anchor']} (pick it in Look)")
     if "character" in m:
         out.append("Adds a character (pick it in Look)")
+        if (m["character"] or {}).get("private") is True:
+            out.append("Private: keep this folder out of Nix and out of any repo.")
     if m.get("notifications"):
         out.append("Sorts notifications from some apps or sites into mail, chat or feed")
     if "stage" in m:
