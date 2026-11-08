@@ -530,7 +530,7 @@ class MailBoardTest(_ServerEnv):
         s.CFG["mail_model"] = "gemma4:e4b"
         sid = 1_000_000_777
         S = s.Speaker
-        S.mail_sids[sid] = s.MAIL_GEN
+        S.mail_sids[sid] = (s.MAIL_GEN, row["hear"])
         S.ready.append((S.gen, sid, "private mail", b"\0\0", 22050, None, None, 0.1, False, "local", None))
         self.addCleanup(S.ready.clear)
         with mock.patch.object(s.Desk, "locked", return_value=True), mock.patch.object(s.FLOOR, "hold", return_value=True), mock.patch.object(S, "_player"), \
@@ -745,11 +745,14 @@ class MailBoardTest(_ServerEnv):
         self.assertEqual(len(answers), 2)
 
     # ---- step 6.2 review fixes
-    def play_queued(self, gen, board=True, locked=False):
-        """Run the player on one ready mail item queued at `gen`; -> (written, events)."""
+    def play_queued(self, gen, board=True, locked=False, token=None):
+        """Run the player on one ready mail item queued at `gen` by `token` (default: the board up now); -> (written, events)."""
         s, S = self.server, self.server.Speaker
         sid = 1_000_000_888
-        S.mail_sids[sid] = gen
+        if token is None:
+            cur = s.STAGES.current()
+            token = cur["rows"][0]["hear"] if cur and cur.get("rows") else "gone"
+        S.mail_sids[sid] = (gen, token)
         S.ready.append((S.gen, sid, "private mail", b"\0\0", 22050, None, None, 0.1, False, "local", None))
         self.addCleanup(S.ready.clear)
         self.events.clear()
@@ -764,9 +767,9 @@ class MailBoardTest(_ServerEnv):
 
     def test_queued_mail_speech_drops_after_a_switch_or_the_board_goes(self):
         s = self.server
-        self.board()
+        row = self.board()["rows"][0]
         with mock.patch.object(s.Desk, "locked", return_value=False), mock.patch.object(s.Ambient, "meeting", False):
-            self.assertTrue(s.mail_play_ok(s.MAIL_GEN))             # nothing changed: it may play
+            self.assertTrue(s.mail_play_ok((s.MAIL_GEN, row["hear"])))   # nothing changed: it may play
         gen = s.MAIL_GEN
         s.mail_reset()                                              # mail switched after it was queued
         self.board()
@@ -786,7 +789,16 @@ class MailBoardTest(_ServerEnv):
         row = self.board()["rows"][0]
         with mock.patch.object(s.Desk, "locked", return_value=False), mock.patch.object(s.Ambient, "meeting", False), mock.patch.object(s.Speaker, "say") as say:
             self.post("/api/mail/hear", {"token": row["hear"]})
-        self.assertEqual(s.Speaker.mail_sids[say.call_args.args[1]], s.MAIL_GEN)
+        self.assertEqual(s.Speaker.mail_sids[say.call_args.args[1]], (s.MAIL_GEN, row["hear"]))
+
+    def test_queued_mail_speech_drops_when_the_board_is_closed_and_reopened(self):
+        s = self.server                                             # Codex review on #66: bind audio to the board that asked
+        old = self.board()["rows"][0]["hear"]
+        s.STAGES.close()
+        self.board()                                                # a new mail board, same MAIL_GEN
+        with mock.patch.object(s.Desk, "locked", return_value=False), mock.patch.object(s.Ambient, "meeting", False):
+            self.assertFalse(s.mail_play_ok((s.MAIL_GEN, old)))
+        self.assertEqual(self.play_queued(s.MAIL_GEN, token=old)[1], [{"t": "spk_skip", "id": 1_000_000_888}])
 
     def test_an_expired_draft_no_longer_counts_as_mail_on_screen(self):
         s = self.server

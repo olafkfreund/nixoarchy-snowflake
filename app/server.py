@@ -4436,7 +4436,7 @@ class Speaker:
     making_item = None
     sending = set()
     strict = set()
-    mail_sids = {}       # sid -> MAIL_GEN when queued: mail audio gets a second privacy check when it is ready to play
+    mail_sids = {}       # sid -> (MAIL_GEN, hear token) when queued: mail audio gets a second privacy check when it is ready to play
     current_engine = None
     current_sid = None
     queued_at = {}
@@ -5844,13 +5844,13 @@ def mail_may_speak():
     return Desk.locked() is False and not Ambient.meeting
 
 
-def mail_play_ok(gen):
-    """Mail audio plays only if he may speak now, and mail was not switched or its board closed since it was queued."""
+def mail_play_ok(queued):
+    """Mail audio plays only if he may speak now and the board that asked is still up (its Hear token still resolves)."""
+    gen, token = queued
     if not mail_may_speak():
         return False
     with MAIL_LOCK:
-        cur = STAGES.current()
-        return gen == MAIL_GEN and bool(CFG.get("mail_on")) and bool(cur and cur.get("kind") == "mail")
+        return _mail_hear_ok(token, gen)
 
 
 def _mail_hear_ok(token, gen):         # (caller holds MAIL_LOCK, or does not need the gen to stay put)
@@ -5903,7 +5903,7 @@ def mail_hear_work(token, account, message_id, model, gen):
                 with Speaker.cv:
                     MAIL_SID += 1
                     sid = MAIL_SID
-                    Speaker.mail_sids[sid] = gen
+                    Speaker.mail_sids[sid] = (gen, token)   # bound to the board that asked, not any mail board
         if speak:
             try:
                 Speaker.say(result["summary"], sid, local=True)
