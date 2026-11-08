@@ -63,6 +63,18 @@ STATE_PATH = DATA_DIR / "state.json"
 # password helper) and only works for those: asking you to approve, looking at the screen, and the sudo card in root mode.
 TOKEN = secrets.token_urlsafe(24)
 TOOL_TOKEN = secrets.token_urlsafe(24)
+CLICK_KEY = secrets.token_urlsafe(24)
+CLICK = {"claimed": False, "spoiled": False}
+CLICK_LOCK = threading.Lock()
+AGENT_APPROVE_WAIT = 60
+AGENT_APPROVE_FROM = frozenset()  # set from probe P6/P9 (#211 step 1)
+
+
+def click_ok(header):
+    with CLICK_LOCK:
+        return CLICK["claimed"] and not CLICK["spoiled"] and secrets.compare_digest(header or "", CLICK_KEY)
+
+
 TOOL_PATHS = {"/api/approve", "/api/capture", "/api/askpass", "/api/theme", "/api/agent-say/ready", "/api/agent-say"}   # /api/theme: the omarchy theme hook
 
 VOICE_PROMPT = (
@@ -212,6 +224,7 @@ DEFAULTS = {
     "follow_focus": False,                  # move to the screen you focus (Hyprland)
     "answer_stages": True,                  # a board/notebook beside him for commands and facts (#144); off = captions only
     "peers_on": False,
+    "agent_approvals": False,
     "peers_asked": False,
     "step_aside": True,                     # slide out of the way while nixi's card is open
     "idle_mode": "shrink",                  # when idle: off (stay) | shrink (peek at the edge) | doze
@@ -1041,6 +1054,116 @@ class Approvals:
 
 
 APPROVALS = Approvals()
+
+
+class AgentApprovals:
+    """One pending request per hook, with one owner for every terminal transition."""
+    def __init__(self):
+        self.pending = {}
+        self.finished = {}
+        self.lock = threading.Lock()
+
+    @staticmethod
+    def result_key(req):
+        if req.get("tool_use_id"):
+            return str(req["tool_use_id"])
+        inp = req.get("tool_input") or {}
+        digest = hashlib.sha256(json.dumps(inp, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        return (req.get("from"), req.get("session_id"), req.get("turn_id"), req.get("tool_name"), digest)
+
+    def _finish(self, item, state, decision=None):
+        with self.lock:
+            if item["state"] != "pending":
+                return False
+            if decision == "allow" and (CFG.get("agent_approvals") is not True or
+                                        not click_ok(item.get("click_header")) or time.monotonic() >= item["deadline"]):
+                return False
+            item["state"] = state
+            item["decision"] = decision
+            self.pending.pop(item["id"], None)
+            if state == "answered":
+                self.finished[item["id"]] = item
+            item["ev"].set()
+        BUS.pub(t="approve_done", id=item["id"], ans="yes" if decision == "allow" else "no")
+        if decision == "deny":
+            BUS.pub(t="agent_result", agent=item["from"], ok=False, state="denied")
+        if item["audit"]:
+            sends_log(send_detail(item["cmd"]), decision if decision in ("allow", "deny") else "timeout")
+        return True
+
+    def ask(self, req, conn):
+        if not isinstance(req, dict):
+            return {"decision": None}
+        frm = req.get("from")
+        if (CFG.get("agent_approvals") is not True or frm not in ("claude", "codex") or frm not in AGENT_APPROVE_FROM or
+                not click_ok(CLICK_KEY) or not BUS.subs):
+            return {"decision": None}
+        inp = req.get("tool_input") if isinstance(req.get("tool_input"), dict) else {}
+        tool = str(req.get("tool_name") or "?")
+        raw = inp.get("command") if tool == "Bash" else None
+        cmd = raw if isinstance(raw, str) else shlex.join(map(str, raw)) if isinstance(raw, list) else ""
+        def without_description(value):
+            if isinstance(value, dict):
+                return {k: without_description(v) for k, v in value.items() if k != "description"}
+            if isinstance(value, list):
+                return [without_description(v) for v in value]
+            return value
+        detail = cmd if tool == "Bash" else tool + " " + json.dumps(without_description(inp), sort_keys=True)
+        cwd = req.get("cwd") if isinstance(req.get("cwd"), str) else ""
+        project = os.path.basename(cwd.rstrip("/"))
+        if not re.fullmatch(r"[\w.@+-]{1,40}", project):
+            project = ""
+        target = attention_target(req.get("target"))
+        _ATTN_TARGET[frm] = target
+        item = {"id": secrets.token_hex(8), "from": frm, "state": "pending", "deadline": time.monotonic() + AGENT_APPROVE_WAIT,
+                "key": self.result_key(req), "click": True, "target": target, "ev": threading.Event(), "decision": None,
+                "cmd": cmd, "audit": tool == "Bash" and click_only(cmd), "click_header": None}
+        with self.lock:
+            self.pending[item["id"]] = item
+        BUS.pub(t="approve", id=item["id"], agent=frm, tool=tool, project=project, detail=detail,
+                say=f"{_ATTN_NAMES[frm]} wants to run a command", confirm="click", always=False, click=True,
+                target=target)
+        while item["state"] == "pending":
+            remaining = item["deadline"] - time.monotonic()
+            if remaining <= 0:
+                self._finish(item, "expired")
+                break
+            item["ev"].wait(min(.5, remaining))
+            if item["state"] != "pending":
+                break
+            if conn is not None:
+                try:
+                    readable, _, exceptional = select.select([conn], [], [conn], 0)
+                    if exceptional or (readable and conn.recv(1, socket.MSG_PEEK | socket.MSG_DONTWAIT) == b""):
+                        self._finish(item, "cancelled")
+                except OSError:
+                    self._finish(item, "cancelled")
+        return {"decision": item["decision"]}
+
+    def answer(self, aid, ans, keyed):
+        if ans not in ("yes", "no"):
+            return False
+        with self.lock:
+            item = self.pending.get(aid)
+        if not item or (ans == "yes" and not keyed):
+            return False
+        if ans == "yes":
+            item["click_header"] = CLICK_KEY if keyed else None
+        return self._finish(item, "answered", "allow" if ans == "yes" else "deny")
+
+    def release(self, aid):
+        with self.lock:
+            item = self.pending.get(aid)
+        return bool(item and self._finish(item, "released"))
+
+    def release_all(self):
+        with self.lock:
+            items = list(self.pending.values())
+        for item in items:
+            self._finish(item, "released")
+
+
+AGENT_APPROVALS = AgentApprovals()
 
 
 class AskPass:
@@ -6321,7 +6444,7 @@ def state_info():
         "weather": {"sky": Ambient.sky, "cold": Ambient.cold, "windy": Ambient.windy, "lean": Ambient.lean,
                     "heavy": Ambient.heavy, "feel": Ambient.feel, "wind": Ambient.wspeed, "day": Ambient.day, "source": Ambient.wsrc},
         "follow_focus": bool(CFG.get("follow_focus")), "step_aside": CFG.get("step_aside", True) is not False, "answer_stages": CFG.get("answer_stages", True) is not False,
-        "peers_on": CFG.get("peers_on") is True, "peers_asked": CFG.get("peers_asked") is True, "peers_configured": bool(PEERS),
+        "peers_on": CFG.get("peers_on") is True, "agent_approvals": CFG.get("agent_approvals") is True, "peers_asked": CFG.get("peers_asked") is True, "peers_configured": bool(PEERS),
         **{k: bool(CFG.get(k, k == "ambient_system")) for k in Ambient.FLAG.values()},
         "projects": quick.projects(),
         **{k: bool(CFG.get(k, k == "notify_sound")) for k in NOTIFY_FLAGS}, "notify_speak": CFG.get("notify_speak", ["meeting"]),
@@ -6471,6 +6594,24 @@ class Handler(BaseHTTPRequestHandler):
         if not full and not (secrets.compare_digest(tok, TOOL_TOKEN) and p in TOOL_PATHS):
             return self._json({"error": "forbidden"}, 403)
         try:
+            if p == "/api/click-key":
+                with CLICK_LOCK:
+                    if not CLICK["claimed"] and not CLICK["spoiled"]:
+                        CLICK["claimed"] = True
+                        key = CLICK_KEY
+                    else:
+                        CLICK["spoiled"] = True
+                        key = None
+                if key is None:
+                    AGENT_APPROVALS.release_all()
+                    BUS.pub(t="note", text="Agent approvals are off: something else asked for the click key. Restart Nixi to turn them back on.")
+                    return self._json({"error": "forbidden"}, 403)
+                return self._json({"key": key})
+            if p == "/api/agent-approve":
+                return self._json(AGENT_APPROVALS.ask(json.loads(self._body() or b"{}"), self.connection))
+            if p == "/api/approve/release":
+                b = json.loads(self._body() or b"{}")
+                return self._json({"ok": AGENT_APPROVALS.release(str(b.get("id")))})
             if p == "/api/mirror/off":
                 return self._json(Mirror.revoke())
             if p == "/api/ticket":                 # (window token only) a one-time ticket for the browser fallback
@@ -6657,7 +6798,7 @@ class Handler(BaseHTTPRequestHandler):
                 except (TypeError, ValueError):
                     pass
                 for key in ("wake_word", "notify_done", "popup_done", "code_panel", "hover", "click_through", "autostart", "listen_on_show",
-                            "barge_in", "sfx", "update_check", "auto_compact", "full_text", "lean", "follow_focus", "step_aside", "answer_stages", "peers_on", "peers_asked", "ambient_system", "ambient_calendar", "ambient_weather", *NOTIFY_FLAGS):
+                            "barge_in", "sfx", "update_check", "auto_compact", "full_text", "lean", "follow_focus", "step_aside", "answer_stages", "peers_on", "agent_approvals", "peers_asked", "ambient_system", "ambient_calendar", "ambient_weather", *NOTIFY_FLAGS):
                     if key in b:
                         upd[key] = bool(b[key])
                 if "answer_stages" in b and not b["answer_stages"]:
@@ -6713,6 +6854,8 @@ class Handler(BaseHTTPRequestHandler):
                             fetch_voice(name)
                     if cut_cloud:
                         Speaker.cut_cloud()
+                    if upd.get("agent_approvals") is False:
+                        AGENT_APPROVALS.release_all()
                     if peers_changed:
                         global _peer_followup_round
                         _peer_followup_round = False
@@ -6813,7 +6956,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": AskPass.answer(str(b.get("id")), pw if isinstance(pw, str) else None)})
             if p == "/api/approve/answer":
                 b = json.loads(self._body() or b"{}")
-                ans = b.get("ans") if b.get("ans") in ("yes", "no", "always") else "no"
+                raw_ans = b.get("ans")
+                ans = raw_ans if raw_ans in ("yes", "no", "always") else "no"
+                aid = str(b.get("id"))
+                keyed = click_ok(self.headers.get("X-Nixi-Click") or "")
+                with AGENT_APPROVALS.lock:
+                    agent_id = aid in AGENT_APPROVALS.pending or aid in AGENT_APPROVALS.finished
+                if agent_id:
+                    return self._json({"ok": AGENT_APPROVALS.answer(aid, raw_ans, keyed)})
                 return self._json({"ok": APPROVALS.answer(str(b.get("id")), ans)})
             if p == "/api/speaking":                 # the page tells us while he talks (so "hey Nixi" can't wake himself)
                 b = json.loads(self._body() or b"{}")
