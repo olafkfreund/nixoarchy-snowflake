@@ -995,6 +995,7 @@ class Approvals:
         ev = threading.Event()
         aid = secrets.token_hex(4)
         item = {"id": aid, "tool": tool, "key": key, "detail": approval_text(tool, inp), "ev": ev, "ans": None}
+        item["click"] = co
         with self.lock:
             self.pending[aid] = item
         BUS.pub(t="approve", id=aid, tool=tool, detail=item["detail"], key=key, say=approval_say(tool, inp),
@@ -1024,10 +1025,11 @@ class Approvals:
         ev = threading.Event()
         aid = secrets.token_hex(4)
         item = {"id": aid, "tool": title, "key": aid, "detail": detail, "ev": ev, "ans": None}
+        item["click"] = confirm == "click"
         with self.lock:
             self.pending[aid] = item
         ask = bridge_question(title, summary)
-        BUS.pub(t="approve", id=aid, tool=title, detail=detail, key=aid, say=ask, q=ask, always="allow_always" in kinds, confirm=confirm)
+        BUS.pub(t="approve", id=aid, tool=title, detail=detail, key=aid, say=ask, q=ask, always=False if confirm == "click" else "allow_always" in kinds, confirm=confirm)
         ev.wait(timeout)
         with self.lock:
             self.pending.pop(aid, None)
@@ -1037,10 +1039,12 @@ class Approvals:
             return kinds.get("allow_always") or kinds.get("allow_once") or ""
         return (kinds.get("allow_once") or "") if ans == "yes" else rej or ""
 
-    def answer(self, aid, ans):
+    def answer(self, aid, ans, keyed=False):
         with self.lock:
             it = self.pending.get(aid)
         if it:
+            if it.get("click") and (ans == "always" or (ans == "yes" and not keyed)):
+                return False
             it["ans"] = ans
             it["ev"].set()
         return bool(it)
@@ -6964,7 +6968,7 @@ class Handler(BaseHTTPRequestHandler):
                     agent_id = aid in AGENT_APPROVALS.pending or aid in AGENT_APPROVALS.finished
                 if agent_id:
                     return self._json({"ok": AGENT_APPROVALS.answer(aid, raw_ans, keyed)})
-                return self._json({"ok": APPROVALS.answer(str(b.get("id")), ans)})
+                return self._json({"ok": APPROVALS.answer(str(b.get("id")), ans, keyed)})
             if p == "/api/speaking":                 # the page tells us while he talks (so "hey Nixi" can't wake himself)
                 b = json.loads(self._body() or b"{}")
                 Wake.talking_until(time.monotonic() + (60 if b.get("on") else 0.8), b.get("follow", True) is not False)

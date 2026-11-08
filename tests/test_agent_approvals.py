@@ -63,6 +63,9 @@ class AgentApprovalsTest(unittest.TestCase):
         with self.s.CLICK_LOCK:
             self.s.CLICK.update(claimed=False, spoiled=False)
 
+    def tearDown(self):
+        self.assertTrue(all(x["decision"] in {"allow", "deny", "timeout"} for x in self.log()))
+
     def req(self, cmd="echo hi", **extra):
         return {"from": "codex", "cwd": "/tmp/project", "session_id": "s", "turn_id": "t",
                 "tool_name": "Bash", "tool_input": {"command": cmd, "description": "private description"}, **extra}
