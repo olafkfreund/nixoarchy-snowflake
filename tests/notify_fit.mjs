@@ -32,7 +32,7 @@ await ev(`
   const f0=window.fetch.bind(window);
   window.fetch=(u,o)=>{ if(/\\/api\\/notify\\/(act|seen)/.test(String(u))){ window.__posts.push({u:String(u),b:JSON.parse((o&&o.body)||'{}')}); return Promise.resolve(new Response(JSON.stringify({ok:window.__actOk!==false}))); } return f0(u,o); };
   sfx=n=>window.__sfx.push(n); enqueue=(t,o)=>window.__say.push(t); startRec=m=>window.__rec.push(m);
-  window.reset=()=>{ notifyQ.length=0; if(notifyRow) notifyClear(); notifyRow=null; notifyAt=0; notifyBurst={cat:'',n:0,t:0}; propOn=null; busy=false; playing=false; rec=null; follow=false; pendingAppr=null;
+  window.reset=()=>{ notifyQ.length=0; nudgeQ.clear(); if(notifyRow) notifyClear(); notifyRow=null; notifyAt=0; notifyBurst={cat:'',n:0,t:0}; propOn=null; busy=false; playing=false; rec=null; follow=false; pendingAppr=null;
     SIT.meeting=false; SIT.fullscreen=false; SIT.locked=false; muted=false; info.hover=false; info.sfx=true; info.notify_sound=true; info.notify_speak=[]; info.notify_details=false;
     mailT.forEach(clearTimeout); mailT=[]; $('#mailPop').classList.remove('on','open','up'); window.__posts.length=0; window.__sfx.length=0; window.__say.length=0; window.__rec.length=0; clicks=[]; };
   window.N=(key,cat,o={})=>Object.assign({t:'notify',key,category:cat,app:'',source:'',summary:'',body:'',icon:''},o);
@@ -270,6 +270,54 @@ check(!bur.txt.includes("3 new"), "a burst's card is not merged into a count", b
 // a row with no card: seen before it is shown, as today
 await ev(`reset(); notifyIn(N('p1','other',{summary:'x'})); await new Promise(r=>setTimeout(r,300)); return 1;`);
 eq(await ev(`return [seenOf('p1'), !document.querySelector('.ncard')];`), [[false], true], "a row with no card is marked seen as before and is not a card");
+
+// Quiet gate: all signals arrive through situation; no fetch in these cases reaches the server.
+const quiet = await ev(`
+  const fetch0=window.fetch, restore0=restore, poke0=poke, aside0=sayAside, burst0=burstLines;
+  window.fetch=()=>Promise.resolve(new Response(JSON.stringify({ok:true,go:false})));
+  window.__restore=[]; window.__poke=[]; window.__aside=[]; window.__burst=[];
+  restore=(...a)=>__restore.push(a); poke=(...a)=>__poke.push(a); sayAside=t=>__aside.push(t); burstLines=(...a)=>__burst.push(a);
+  const sit=o=>onEvent({t:'situation',...Object.fromEntries(Object.entries(SIT).filter(([k])=>k!=='weather')),weather:SIT.weather,...o});
+  const prep=()=>{ reset(); sit({dnd:false,locked:false,fullscreen:false,meeting:false,weather:null});
+    notifyAt=performance.now()+1e7; lastSpokeAt=-1e9; himEl.textContent=''; cap.classList.add('off'); capOn=false;
+    __restore.length=0; __poke.length=0; __aside.length=0; __sfx.length=0; __say.length=0; };
+  const held={};
+  for(const flag of ['dnd','locked','fullscreen','meeting']){
+    prep(); onEvent({t:'nudge',kind:'break',text:'stretch',speak:false,wait:null});
+    const start=performance.now(); sit({[flag]:true}); __restore.length=0; __poke.length=0;
+    nudgeDrain(start+610000);
+    const during={q:nudgeQ.size,caption:himEl.textContent,speech:__aside.length+__say.length,restore:__restore.length,poke:__poke.length};
+    sit({[flag]:false}); notifyAt=0; nudgeDrain(start+610001);
+    const after={q:nudgeQ.size,caption:himEl.textContent};
+    nudgeDrain(start+610002); after.once=nudgeQ.size===0&&himEl.textContent==='stretch';
+    held[flag]={during,after};
+  }
+  prep(); sit({dnd:true}); onEvent({t:'nudge',kind:'break',text:'under DND',wait:null});
+  const arrival={restore:__restore.length,q:nudgeQ.size};
+  prep(); AMB.sys=[]; sit({dnd:true,weather:'snow'}); onEvent({t:'ambient',sys:['bad.service'],glint:true,alert:true,cal:{time:'10:00',title:'test'}});
+  const unasked={poke:[...__poke],burst:__burst.length,restore:__restore.length,line:chip.textContent};
+  prep(); sit({dnd:true}); onEvent({t:'attention',kind:'done',name:'Claude',from:'claude',text:''});
+  const finished={mark:AM&&AM.kind,from:AM&&AM.from,line:chip.textContent,sfx:[...__sfx],poke:[...__poke],restore:__restore.length};
+  prep(); sit({dnd:true}); onEvent({t:'approve',id:'quiet-a1',agent:'codex',tool:'Bash',detail:'true',confirm:'click',always:false});
+  const approval={shown:apEl.classList.contains('on'),id:pendingAppr&&pendingAppr.id};
+  pendingAppr=null; apprQ.length=0; apEl.classList.remove('on'); document.body.classList.remove('appr');
+  const expiry={};
+  for(const [name,wait,delta] of [['none',null,610000],['short',60,61000]]){
+    prep(); onEvent({t:'nudge',kind:'break',text:name,speak:true,wait}); const start=performance.now();
+    notifyAt=0; nudgeDrain(start+delta); expiry[name]={q:nudgeQ.size,said:__aside.includes(name)};
+  }
+  restore=restore0; poke=poke0; sayAside=aside0; burstLines=burst0; window.fetch=fetch0;
+  return {held,arrival,unasked,finished,approval,expiry};`);
+for (const flag of ['dnd','locked','fullscreen','meeting']) {
+  eq(quiet.held[flag].during, {q:1,caption:'',speech:0,restore:0,poke:0}, `${flag}: queued break stays silent past ten minutes`);
+  eq(quiet.held[flag].after, {q:0,caption:'stretch',once:true}, `${flag}: queued break draws once when quiet ends`);
+}
+eq(quiet.arrival, {restore:0,q:1}, "a nudge arriving under DND does not restore him");
+eq(quiet.unasked, {poke:[],burst:0,restore:0,line:'📅 10:00 test'}, "snow, a failed unit and a new generation stay quiet; the alert line shows");
+check(quiet.finished.mark==='done'&&quiet.finished.from==='claude'&&quiet.finished.line.includes('finished')&&quiet.finished.sfx.length===0&&quiet.finished.poke.length===0&&quiet.finished.restore===0,
+  "an agent finish under DND shows its mark and line silently", quiet.finished);
+eq(quiet.approval, {shown:true,id:'quiet-a1'}, "an approval card still shows under DND");
+eq(quiet.expiry, {none:{q:0,said:true},short:{q:0,said:false}}, "null wait survives ten minutes; a 60 second wait expires");
 
 if (fails.length) { console.log(`${fails.length} check(s) failed`); process.exit(1); }
 console.log("notify fit ok");
