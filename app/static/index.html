@@ -2457,7 +2457,7 @@ function cardEl(ev,row){ const c=ev.card, el=(t,cls,x)=>{ const e=document.creat
     const s=el('span','',String(r.t)); if(r.b) s.style.fontWeight='700'; if(r.i) s.style.fontStyle='italic'; if(r.u||r.host) s.style.textDecoration='underline'; rs.appendChild(s);
     if(r.host&&String(r.t).trim().toLowerCase()!==r.host) rs.appendChild(el('span','nh',' ('+r.host+')')); }   // (a link shows where it goes; it isn't clickable)
   d.appendChild(rs);
-  if(/^[0-9a-f]{16}$/.test(c.image||'')){ const im=el('img','nci'); im.alt=''; im.src='/api/nimage/'+c.image; im.onerror=()=>im.remove(); d.appendChild(im); }
+  if(/^[0-9a-f]{16}$/.test(c.image||'')){ const im=el('img','nci'); im.alt=''; im.onload=()=>sendRegion(true); im.src='/api/nimage/'+c.image; im.onerror=()=>{ im.remove(); sendRegion(true); }; d.appendChild(im); }
   if(c.buttons.length&&typeof c.rev==='string'){ const bs=el('div','ncb');
     c.buttons.slice(0,3).forEach((label,i)=>{ const b=el('button','',String(label)); b.type='button'; b.tabIndex=-1;   // (click only: nothing else can press one)
       b.addEventListener('click',e=>{ e.stopPropagation(); if(notifyRow!==row) return; notifyClear();
