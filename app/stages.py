@@ -250,6 +250,8 @@ def validate(obj, plugin_ok=None):
         return {"v": 1, "kind": "place", "dest": dest, **({"mode": mode} if mode else {})}
     if kind == "day":  # server-made, off the turn: day.snapshot() runs in a thread, see server.day_stage()
         return {"v": 1, "kind": "day"}
+    if kind == "mail":  # server-made, off the turn: server.mail_stage() lists the unread mail (#210)
+        return {"v": 1, "kind": "mail"}
     if kind in SERVER_KINDS:  # the agent only asks; desk_stage() fills them from what the server already has cached
         return {"v": 1, "kind": kind}
     if kind == "video":  # server-made: the agent says only what to look for; results are added by video_stage()
@@ -422,6 +424,11 @@ class Store:
     def _live(self, e):
         return e if e and self.now() - e[2] < self.ttl else None
 
+    @staticmethod
+    def _keep(e):
+        """A mail board is never kept as the previous stage: Back can't bring someone's mail back (#210)."""
+        return None if e and e[0].get("kind") == "mail" else e
+
     def put(self, stage, refresh=None):
         """-> the stage for the page: items (or the stage) carry a token, nothing else added."""
         toks, page = {}, dict(stage)
@@ -446,6 +453,15 @@ class Store:
             self._place(stage, page, toks)
         elif stage["kind"] == "day":        # every item URL becomes a token (allowlisted hosts only); the page never sees a URL
             self._day(stage, page, toks)
+        elif stage["kind"] == "mail":       # the page gets two tokens per row, never an account's message id (#210)
+            page["rows"] = []
+            for r in stage["rows"]:
+                row = {"account": r["account"], "from": r["from"], "subject": r["subject"], "age": r["age"], "hear": None, "reply": None}
+                if r.get("id") and r.get("thread"):
+                    row["hear"], row["reply"] = secrets.token_urlsafe(12), secrets.token_urlsafe(12)
+                    toks[row["hear"]] = ("mail_hear", {"account": r["account"], "id": r["id"]})
+                    toks[row["reply"]] = ("mail_reply", {"account": r["account"], "id": r["id"], "thread": r["thread"]})
+                page["rows"].append(row)
         elif stage["kind"] == "weather":    # read-only: nothing to press
             pass
         elif stage["kind"] == "calendar":   # Join per event with a link, and Open calendar; URLs held here, the page gets tokens
@@ -485,7 +501,7 @@ class Store:
             toks[t] = ("facts", {"text": "\n".join([stage["title"], *stage["points"]])})
             page["token"] = t
         with self.lock:
-            self.prev, self.cur, self.vis = self.cur, (page, toks, self.now()), False
+            self.prev, self.cur, self.vis = self._keep(self.cur), (page, toks, self.now()), False
         if self.on_new:
             self.on_new()
         return page
@@ -575,7 +591,7 @@ class Store:
             e = self._live(self.prev)
             if not e:
                 return None
-            self.cur, self.prev, self.vis = e, self.cur, False
+            self.cur, self.prev, self.vis = e, self._keep(self.cur), False
             return e[0]
 
     def has_prev(self):
@@ -592,7 +608,7 @@ class Store:
 
     def close(self):
         with self.lock:
-            self.prev, self.cur, self.vis = self.cur, None, False
+            self.prev, self.cur, self.vis = self._keep(self.cur), None, False
 
     def forget_where(self, pred):
         """Forget the current and the previous stage where pred(page) holds, so neither can be shown or restored. -> True if the current one went."""
