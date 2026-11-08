@@ -30,7 +30,7 @@ class WeatherTest(_ServerEnv):
     def setUp(self):
         S = self.server
         A = self.A = S.Ambient
-        saved, saved_attrs = dict(S.CFG), {k: getattr(A, k) for k in ("wx", "omx", "sky", "day", "cold", "windy", "lean", "heavy", "wkey", "wsrc", "feel", "wspeed", "weather", "urlopen", "due", "run")}
+        saved, saved_attrs = dict(S.CFG), {k: getattr(A, k) for k in ("wx", "omx", "sky", "day", "cold", "windy", "lean", "heavy", "storm", "hot", "wkey", "wsrc", "feel", "wspeed", "weather", "urlopen", "due", "run")}
         def restore():
             S.CFG.clear()
             S.CFG.update(saved)
@@ -41,12 +41,14 @@ class WeatherTest(_ServerEnv):
         env = mock.patch.dict(os.environ, {"XDG_STATE_HOME": os.path.join(self.tmp, "wx-state")})
         env.start()
         self.addCleanup(env.stop)
-        for p in (mock.patch.object(A, "events", []), mock.patch.object(S.Desk, "locked", return_value=False),
+        for p in (mock.patch.object(A, "events", []), mock.patch.object(A, "machine"),
+                  mock.patch.object(S.Desk, "locked", return_value=False),
                   mock.patch.object(S, "location", side_effect=lambda: self.places)):
             p.start()
             self.addCleanup(p.stop)
         self.places = {"now": dict(PLACE), "home": None, "work": None}
         A.wx = A.omx = None
+        A.storm = A.hot = False
         A.sky = None
         A.wkey = None
         A.due = {k: 0.0 for k in A.due}
@@ -84,6 +86,58 @@ class WeatherTest(_ServerEnv):
             self.assertEqual((r["sky"], r["heavy"]), (sky, heavy), code)
         self.assertIsNone(self.current(weather_code=None)["sky"])
         self.assertIsNone(self.current(weather_code="3")["sky"])
+
+    def test_storm_codes_keep_rain_sky(self):
+        for code in (95, 96, 99):
+            reading = self.current(weather_code=code)
+            self.assertEqual((reading["sky"], reading["storm"]), ("rain", True), code)
+        self.assertFalse(self.current(weather_code=61)["storm"])
+
+    def test_storm_requires_open_meteo_and_the_weather_gate(self):
+        self.hold(sky="rain", storm=True)
+        self.tick()
+        self.assertTrue(self.A.storm)
+        self.assertTrue(self.A.situation()["storm"])
+        self.server.CFG["look_weather"] = False
+        self.tick()
+        self.assertFalse(self.A.storm)
+        self.server.CFG["look_weather"] = True
+        self.A.wx = None
+        self.A.omx = {"sky": "rain", "temp": 29, "wind": 5, "at": time.monotonic()}
+        self.tick()
+        self.assertEqual(self.A.wsrc, "omarchy")
+        self.assertFalse(self.A.storm)
+        self.hold(sky="rain")  # older hand-built forecast dictionaries omit storm
+        self.tick()
+        self.assertFalse(self.A.storm)
+
+    def test_hot_hysteresis_and_boundaries(self):
+        for feel, want in ((27.9, False), (28, True), (26.5, True), (25.9, False), (26.5, False)):
+            self.hold(feel=feel)
+            self.tick()
+            self.assertIs(self.A.hot, want, feel)
+        self.hold(feel=29, day=0)
+        self.tick()
+        self.assertFalse(self.A.hot)
+        self.hold(feel=29, sky="cloudy")
+        self.tick()
+        self.assertFalse(self.A.hot)
+        self.hold(feel=None)
+        self.tick()
+        self.assertFalse(self.A.hot)
+        self.hold(feel=29, sky="partly")
+        self.tick()
+        self.assertTrue(self.A.hot)
+        self.server.CFG["look_weather"] = False
+        self.tick()
+        self.assertFalse(self.A.hot)
+        self.server.CFG["look_weather"] = True
+        self.A.wx = None
+        self.A.omx = {"sky": "clear", "temp": 29, "wind": 5, "at": time.monotonic()}
+        self.tick()
+        self.assertEqual(self.A.wsrc, "omarchy")
+        self.assertFalse(self.A.hot)
+        self.assertFalse(self.A.situation()["hot"])
 
     def test_out_of_range_values_are_none(self):
         self.assertIsNone(self.current(apparent_temperature=999)["feel"])
@@ -272,6 +326,71 @@ class WeatherTest(_ServerEnv):
         self.assertEqual((w["source"], w["sky"], w["feel"], w["wind"], w["day"]), ("open-meteo", "snow", -1, 30, True))
         self.assertTrue(set(w) >= {"cold", "windy", "lean", "heavy"})
         self.assertIn("weather", self.A.situation())
+
+
+class WeatherNudgeTest(_ServerEnv):
+    def setUp(self):
+        S = self.server
+        A, N = S.Ambient, S.Nudge
+        cfg = dict(S.CFG)
+        a = {k: getattr(A, k) for k in ("storm", "hot", "locked", "dnd", "fullscreen", "meeting", "unlocked_at")}
+        n = {k: getattr(N, k) for k in ("pending", "last_visual", "last_speech", "last_kind", "active_since",
+                                      "seen_unlock", "was_hot", "was_low", "quipped", "coding_offered")}
+        last_event, coding_since = S.Desk.last_event, S.Desk.coding_since
+        def restore():
+            S.CFG.clear()
+            S.CFG.update(cfg)
+            for k, v in a.items():
+                setattr(A, k, v)
+            for k, v in n.items():
+                setattr(N, k, v)
+            S.Desk.last_event, S.Desk.coding_since = last_event, coding_since
+        self.addCleanup(restore)
+        S.CFG.update(proactive=True, ambient_weather=True, look_weather=True, react_quips=False,
+                     react_load=False, react_break=False, react_welcome=False)
+        A.storm = A.hot = A.locked = A.dnd = A.fullscreen = A.meeting = False
+        A.unlocked_at = 0.0
+        N.pending, N.last_kind, N.quipped = {}, {}, {}
+        N.last_visual = N.last_speech = N.active_since = None
+        N.seen_unlock = N.coding_offered = 0.0
+        N.was_hot = N.was_low = False
+        S.Desk.last_event, S.Desk.coding_since = 1.0, 0.0
+        self.q = S.BUS.sub()
+        self.addCleanup(S.BUS.unsub, self.q)
+
+    def tick(self, t):
+        self.server.Nudge.tick(mono=t, wall=10000, hist=os.path.join(self.tmp, "absent-history.json"))
+        out = []
+        while not self.q.empty():
+            event = self.q.get_nowait()
+            if event.get("t") == "nudge":
+                out.append((event["kind"], event["speak"]))
+        return out
+
+    def test_storm_and_hot_offer_once_with_weather_gate_only(self):
+        A = self.server.Ambient
+        A.storm = True
+        self.assertEqual(self.tick(1000), [("storm", False)])
+        self.assertEqual(self.tick(1400), [])
+        A.storm, A.hot = False, True
+        self.assertEqual(self.tick(1800), [("hot", False)])
+        self.assertEqual(self.tick(2200), [])
+        A.hot = False
+        self.tick(2600)
+        A.hot = True
+        self.assertEqual(self.tick(3000), [])  # a second edge is inside the 20-hour cooldown
+        self.assertEqual(self.tick(75001), [("hot", False)])
+
+    def test_weather_gate_rearms_a_storm(self):
+        S = self.server
+        S.Ambient.storm = True
+        self.assertEqual(self.tick(1000), [("storm", False)])
+        S.CFG["ambient_weather"] = False
+        self.assertEqual(self.tick(1400), [])
+        self.assertFalse(S.Nudge.quipped["storm"])
+        S.CFG["ambient_weather"] = True
+        self.assertEqual(self.tick(1500), [])  # re-armed, but still cooling down
+        self.assertEqual(self.tick(73001), [("storm", False)])
 
 
 if __name__ == "__main__":

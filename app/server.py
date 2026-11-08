@@ -1589,6 +1589,7 @@ class Ambient:
     cpu_hot = ram_low = fullscreen = locked = False
     coding = night = party = False
     weather = sky = None
+    storm = hot = False
     day = True
     wx = omx = None
     cold, windy, lean, heavy, wkey = 0, False, 0, False, None
@@ -1834,6 +1835,7 @@ class Ambient:
                    else "snow" if code is not None and (71 <= code <= 77 or 85 <= code <= 86) else None)
             day = current.get("is_day")
             return {"key": key, "at": time.monotonic(), "sky": sky, "heavy": code in (65, 67, 82),
+                    "storm": code in (95, 96, 99),
                     "feel": number("apparent_temperature", -80, 60), "temp": number("temperature_2m", -80, 60),
                     "wind": number("wind_speed_10m", 0, 400), "dir": number("wind_direction_10m", 0, 360),
                     "day": day if type(day) is int and day in (0, 1) else None}
@@ -1912,7 +1914,7 @@ class Ambient:
 
     @classmethod
     def situation(cls):
-        return {k: getattr(cls, k) for k in ("meeting", "music", "cpu_hot", "ram_low", "fullscreen", "locked", "dnd", "coding", "weather", "day", "cold", "windy", "lean", "heavy", "night", "party")}
+        return {k: getattr(cls, k) for k in ("meeting", "music", "cpu_hot", "ram_low", "fullscreen", "locked", "dnd", "coding", "weather", "day", "cold", "windy", "lean", "heavy", "storm", "hot", "night", "party")}
 
     @classmethod
     def sense(cls, now=None, proc="/proc", mono=None):
@@ -1971,6 +1973,9 @@ class Ambient:
             BUS.pub(t="ambient", glint=False, alert=False, **cls.data)
         cls.weather = sky if gate else None
         cls.day = bool(cls.wx["day"]) if source == "open-meteo" and cls.wx["day"] is not None else 7 <= now.hour < 19
+        cls.storm = bool(cls.wx.get("storm")) if gate and source == "open-meteo" else False
+        cls.hot = bool(gate and source == "open-meteo" and cls.day and sky in ("clear", "partly")
+                       and feel is not None and feel >= (26 if cls.hot else 28))
         if gate:
             if feel is None:
                 cls.cold = 0
@@ -2041,7 +2046,8 @@ QUIP_FALLBACK = {
     "night": ("Getting late. Don't forget to rest.",), "party": ("Something to celebrate today!",),
     "coding": ("{n} hours of code. Water?",), "done": ("All done!",),
     "error": ("{unit} failed.",), "disk": ("Disk {path} is {n}% full.",),
-    "offline": ("No network connection.",), "host": ("{name} is back.",)}
+    "offline": ("No network connection.",), "host": ("{name} is back.",),
+    "storm": ("Thunder outside. Stay in!",), "hot": ("Hot and sunny out there.",)}
 
 
 class Plug:
@@ -2294,7 +2300,7 @@ class Nudge:
     """Unasked nudges (#133b): break, welcome back, memory, load. They wait for a breakpoint (an unlock, a workspace switch, or
     20 s without window events), and a budget keeps them rare: one visual per 5 minutes, one spoken per 10, a cooldown per kind."""
     COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "welcome": 0, "rain": 72000, "snow": 72000, "night": 72000, "party": 72000, "coding": 7200,
-            "error": 1800, "disk": 21600, "offline": 1800, "host": 1800}
+            "error": 1800, "disk": 21600, "offline": 1800, "host": 1800, "storm": 72000, "hot": 72000}
     pending = {}                                              # kind -> (text, spoken, deadline); oldest first
     last_visual = last_speech = None
     last_kind = {}
@@ -2368,6 +2374,12 @@ class Nudge:
             if since and since != cls.coding_offered and t - since >= 7200:       # once per coding session of 2 hours or more
                 cls.coding_offered = since
                 cls.offer("coding", quip("coding", n=int((t - since) // 3600)), False, t)
+        weather_on = A.gated()
+        for kind, on in (("storm", A.storm), ("hot", A.hot)):
+            on = bool(weather_on and on)
+            if on and not cls.quipped.get(kind):
+                cls.offer(kind, quip(kind), False, t)
+            cls.quipped[kind] = on
 
     @classmethod
     def tick(cls, mono=None, wall=None, hist=None, now=None):
