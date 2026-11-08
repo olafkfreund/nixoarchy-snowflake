@@ -278,7 +278,7 @@ def _open_app(name):
             return None
         cmd = [a for a in shlex.split(ex.group(1)) if not a.startswith("%")]
     _spawn(cmd)
-    return {"say": f"Opening {nm}.", "mood": "happy", "sfx": "ok"}
+    return {"say": f"Opening {nm}.", "mood": "happy", "sfx": "ok", "opened": True}   # (#208: the page plays its "open" reaction)
 
 
 def _lock():

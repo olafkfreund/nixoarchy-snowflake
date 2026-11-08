@@ -26,7 +26,7 @@ class MediaPhrasesTest(_ServerEnv):
             return self.post(text), run
 
     def test_each_phrase_runs_the_player_not_the_memory(self):
-        for phrase in PHRASES + ["  Pause ", "NEXT SONG"]:
+        for phrase in PHRASES + ["  Pause ", "NEXT SONG", "what’s playing"]:   # (speech-to-text writes a curly apostrophe)
             with self.subTest(phrase):
                 j, run = self.run_post(phrase)
                 self.assertTrue(run.called, "the media command did not run")

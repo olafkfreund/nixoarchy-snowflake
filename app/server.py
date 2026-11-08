@@ -7625,7 +7625,7 @@ class Handler(BaseHTTPRequestHandler):
                 if fp and ((fp[0] == "close" and STAGES.current()) or (fp[0] in ("back", "show") and (STAGES.current() or STAGES.has_prev()))):
                     return self._json({"handled": False})
                 # (#208) the six media phrases are the player's before they are his memory's: a stored answer must not stand in for the control
-                mem = None if said.strip().lower() in MEDIA_PHRASES else recall.answer(said)   # answered from his quick memory: no Claude call, no usage
+                mem = None if said.strip().lower().replace("\u2019", "'") in MEDIA_PHRASES else recall.answer(said)   # answered from his quick memory: no Claude call, no usage
                 if mem:
                     return self._json({"handled": True, "say": mem, "mood": "happy", "state": state_info()})
                 r = quick.handle(said)
