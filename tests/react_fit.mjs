@@ -24,23 +24,29 @@ const eq = (got, want, what) => check(JSON.stringify(got) === JSON.stringify(wan
 await ev(`
   window.__say=[]; sfx=n=>{}; enqueue=(t,o)=>window.__say.push(t);
   nixiIdleScale(1000); const f0=window.fetch.bind(window);   // the page re-reads /api/state every few seconds: keep the flags the test turned on
-  window.fetch=async(u,o)=>{ const r=await f0(u,o); if(!/\\/api\\/state/.test(String(u))) return r; const j=await r.json(); return new Response(JSON.stringify({...j,proactive:true,reactions:true,look_meeting:true,look_weather:true})); };
+  window.fetch=async(u,o)=>{ const r=await f0(u,o); if(!/\\/api\\/state/.test(String(u))) return r; const j=await r.json(); return new Response(JSON.stringify({...j,proactive:true,reactions:true,look_meeting:true,look_weather:true,look_music:true,click_through:true})); };
   window.IDS=['load','memory','error','soon','meeting','notice','ask','done','open','rain','snow','wind','workout'];
   window.CH=['snowflake','terminal','robot','devil'];
   window.grp=()=>['#rxSky','#rxBack','#rxFront'].map(s=>document.querySelector(s).innerHTML.length);
   window.empty=()=>grp().every(n=>n===0);
   window.sit=o=>onEvent({t:'situation',...Object.fromEntries(Object.entries(SIT).filter(([k])=>k!=='weather')),weather:SIT.weather,...o});
-  window.rxReset=()=>{ RXS.clear(); rxEnd(); RX_AT={};
+  window.rxReset=()=>{ RXS.clear(); musKeep=false; rxEnd(); musSync(); RX_AT={}; stgState='closed'; info.look_beat=false;
     sit({meeting:false,fullscreen:false,locked:false,cpu_hot:false,ram_low:false,music:false,windy:false,weather:null});
     for(const k in sitOn){ sitOn[k]=false; sitSeen[k]=false; } nudgeQ.clear(); notifyQ.length=0; if(notifyRow) notifyClear(); notifyRow=null; notifyAt=0;
-    Object.assign(info,{proactive:true,reactions:true,look_meeting:true,look_weather:true,hover:false}); hiddenNow=false; delete document.hidden;
+    Object.assign(info,{proactive:true,reactions:true,look_meeting:true,look_weather:true,look_music:true,hover:false}); hiddenNow=false; delete document.hidden;
     document.body.classList.remove('bar','hover','calm','peek'); setCharacter('snowflake'); lastActive=performance.now(); };
   rxReset(); return 1;`);
 await sleep(300);
 const settle = () => ev(`await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))); await new Promise(r=>setTimeout(r,60)); return 1;`);
 
+// a real mouse click at a point, or a real key
+const click = async (x, y) => { for (const type of ["mouseMoved", "mousePressed", "mouseReleased"])
+  await send("Input.dispatchMouseEvent", { type, x, y, button: "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: 1 }); await sleep(120); };
+const esc = async () => { for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 }); await sleep(120); };
+const centre = sel => ev(`const r=(${sel}).getBoundingClientRect(); return [r.left+r.width/2, r.top+r.height/2];`);
+
 // 1. every in-scope reaction on every character: draws, stays inside the viewBox, keeps off the eyes, leaves the groups empty
-for (const ch of ["snowflake", "terminal", "robot", "devil"]) for (const id of ["load","memory","error","soon","meeting","notice","ask","done","open","rain","snow","wind","workout"]) {
+for (const ch of ["snowflake", "terminal", "robot", "devil"]) for (const id of ["load","memory","error","soon","meeting","notice","ask","done","open","rain","snow","wind","workout","music"]) {
   const r = await ev(`rxReset(); setCharacter('${ch}'); const ok=rxPlay('${id}'); await new Promise(r=>setTimeout(r,120)); document.getAnimations().forEach(a=>{ a.pause(); a.currentTime=0; });
     const sv=document.querySelector('#guy').getBoundingClientRect(), eyes=[E.eL,E.eR].map(e=>e.getBoundingClientRect()), out=[], hit=[];
     for(const s of ['#rxSky','#rxBack','#rxFront']) for(const c of document.querySelector(s).querySelectorAll('rect,circle,path,ellipse,line,polygon,text')){ const b=c.getBoundingClientRect(); if(!b.width&&!b.height) continue;
@@ -147,6 +153,71 @@ const sc = await ev(`rxReset(); const b0=document.querySelector('#body>path.ball
   setCharacter('snowflake'); RXS.clear(); rxEnd(); document.body.classList.add('bar'); await new Promise(r=>setTimeout(r,80)); o.push(rxPlay('rain')); document.body.classList.remove('bar');
   await new Promise(r=>setTimeout(r,80)); o.push(document.querySelector('#body>path.ball').getAttribute('d')===b0, empty()); return o;`);
 eq(sc, [true, true, true, true, true, true, true, true, false, true, true], "setCharacter round trip and the notch");
+
+// 11. music: the boombox stands in for the headphones, bops on start and on a track change, and the chip and card follow it
+await click(5, 5);                                   // (a real pointer on the page first)
+await ev(`rxReset(); window.__q=[]; window.__qr={}; window.fetch0=window.fetch; const f1=window.fetch;
+  window.fetch=async(u,o)=>{ if(!/\\/api\\/quick/.test(String(u))) return f1(u,o); const t=JSON.parse(o.body).text; window.__q.push(t);
+    const r=window.__qr[t]||{handled:true,say:{"what's playing":"That's Song by Band.",pause:'Paused.',play:'Playing.','next song':'Next one.',quieter:'Volume 40 percent.',louder:'Volume 60 percent.'}[t]}; return new Response(JSON.stringify(r)); };
+  window.__nat=[]; window.webkit={messageHandlers:{nixiui:{postMessage:m=>window.__nat.push(String(m))}}}; info.click_through=true; sit({music:true}); return 1;`);
+await sleep(3600);
+const m1 = await ev(`const cs=SIT_P.hb.getAttribute('opacity'); return {rx:RX&&RX.id, has:RXS.has('music'), hb:+cs, chip:!$('#musChip').hidden, card:!$('#musCard').hidden, sp:document.querySelectorAll('#rxFront .sp').length>0, cl:$('#stage').classList.contains('r-music')};`);
+check(m1.rx === "music" && m1.has && m1.hb === 0 && m1.chip && !m1.card && m1.sp && m1.cl, "music: the boombox bops on start, the headphones are gone, the chip shows, the card does not open by itself", m1);
+await sleep(4500);
+const m2 = await ev(`return {rx:RX&&RX.id, drawn:!empty(), cl:$('#stage').classList.contains('r-music'), chip:!$('#musChip').hidden};`);
+check(m2.rx === null && m2.drawn && !m2.cl && m2.chip, "music: after the 4 s bop the boombox stays still", m2);
+const m3 = await ev(`const o=[]; sit({track:1}); o.push(RX&&RX.id); rxEnd(); sit({track:2}); o.push(RX&&RX.id); rxEnd(); sit({track:2}); o.push(RX&&RX.id); return o;`);
+eq(m3, ["music", "music", null], "music: a track change bops again, ignoring the 10 minute rule; no change, no bop");
+const m4 = await ev(`info.look_beat=true; beat=1; beatAt=performance.now(); await new Promise(r=>setTimeout(r,80)); const a=document.querySelector('#rxFront .sp').style.transform; info.look_beat=false; beatAt=0; await new Promise(r=>setTimeout(r,300)); return [a, document.querySelector('#rxFront .sp').style.transform];`);
+check(/scale\((1\.\d+)\)/.test(m4[0]) && !/1\.1\d/.test(m4[1]), "music: with look_beat the speakers pulse, without it they rest", m4);
+const m5 = await ev(`info.reactions=false; showInfo(); await new Promise(r=>setTimeout(r,500)); const o={empty:empty(), chip:$('#musChip').hidden, hb:+SIT_P.hb.getAttribute('opacity')}; info.reactions=true; showInfo(); return o;`);
+check(m5.empty && m5.chip && m5.hb > 0, "music: with reactions off, no boombox or chip and the headphones are back", m5);
+await sleep(300);
+// the card: opens on a click only, one fixed phrase per button, the answer is shown by textContent, never spoken
+await ev(`window.__say.length=0; return 1;`);
+const chipAt = await centre("$('#musChip')");
+await click(...chipAt);
+const c1 = await ev(`const c=$('#musCard'); return {open:!c.hidden, said:c.querySelector('.mt').textContent, q:[...window.__q], say:window.__say.length};`);
+eq([c1.open, c1.said, c1.q, c1.say], [true, "That's Song by Band.", ["what's playing"], 0], "card: a click opens it and asks what's playing; nothing is spoken");
+const regionCovers = async sel => ev(`const rs=window.__nat.filter(m=>m.startsWith('region:')).pop(); const R=(rs&&JSON.parse(rs.slice(7)))||[]; const r=document.querySelector('${sel}').getBoundingClientRect(), x=r.left+r.width/2, y=r.top+r.height/2; return R.some(([a,b,w,h])=>x>=a&&x<=a+w&&y>=b&&y<=b+h);`);
+check(await regionCovers("#musChip") && await regionCovers("#musCard"), "card: sendRegion covers the chip and the card");
+for (const [label, phrase, say] of [["Next", "next song", "Next one."], ["Quieter", "quieter", "Volume 40 percent."], ["Louder", "louder", "Volume 60 percent."]]) {
+  const at = await centre(`[...document.querySelectorAll('#musCard .mbs button')].find(b=>b.textContent==='${label}')`);
+  await click(...at);
+  const r = await ev(`return [window.__q.at(-1), $('#musCard .mt').textContent];`);
+  eq(r, [phrase, say], `card: ${label} posts "${phrase}" and shows the answer`);
+}
+await ev(`window.__qr.louder={handled:false}; return 1;`);
+await click(...await centre(`[...document.querySelectorAll('#musCard .mbs button')].find(b=>b.textContent==='Louder')`));
+eq(await ev(`return [$('#musCard .mt').textContent, window.__say.length];`), ["I couldn't do that.", 0], "card: an unhandled answer shows the fixed line");
+await ev(`delete window.__qr.louder; return 1;`);
+// Pause: the card and chip stay with Play when the music stops, until Play
+await click(...await centre(`$('#musCard .mp')`));
+eq(await ev(`return [window.__q.at(-1), $('#musCard .mp').textContent];`), ["pause", "Play"], "card: Pause posts pause and turns into Play");
+const kept = await ev(`sit({music:false}); sitOn.music=false; sitSeen.music=false; RXS.delete('music'); rxCheck(); await new Promise(r=>setTimeout(r,100)); return [!$('#musCard').hidden, !$('#musChip').hidden, $('#musCard .mp').textContent];`);
+eq(kept, [true, true, "Play"], "card: after its own Pause the card and chip stay with Play");
+await click(...await centre(`$('#musCard .mp')`));
+eq(await ev(`return [window.__q.at(-1), $('#musCard .mp').textContent];`), ["play", "Pause"], "card: Play posts play");
+const gone = await ev(`rxCheck(); await new Promise(r=>setTimeout(r,100)); return [$('#musCard').hidden, $('#musChip').hidden];`);
+eq(gone, [true, true], "card: music stopping on its own closes the card and the chip");
+// the close paths
+const reopen = async () => { await ev(`rxReset(); window.__q.length=0; sit({music:true}); sitOn.music=true; sitSeen.music=true; RXS.add('music'); rxCheck(); return 1;`); await click(...await centre("$('#musChip')")); };
+await reopen(); await esc();
+eq(await ev(`return $('#musCard').hidden;`), true, "card: Esc closes it");
+await reopen(); await click(...await centre("$('#musCard .mx')"));
+eq(await ev(`return $('#musCard').hidden;`), true, "card: × closes it");
+await reopen(); await click(810, 610);
+eq(await ev(`return $('#musCard').hidden;`), true, "card: a click elsewhere closes it");
+await reopen();
+const side = await ev(`const c=$('#musCard'); const o=[]; for(const sd of ['r','l']){ stgState='open'; stgSide=sd; musClose(); musOpen(); o.push(c.style.left); } stgState='closed'; return o;`);
+check(side[0] !== "350px" && side[1] !== "-220px", "card: it opens on the side away from a board", side);
+await reopen(); await sleep(15600);
+eq(await ev(`return $('#musCard').hidden;`), true, "card: 15 s idle closes it");
+for (const [name, js] of Object.entries({ fullscreen: "sit({fullscreen:true})", "notch": "document.body.classList.add('bar')", "meeting": "sit({meeting:true})", "hover": "document.body.classList.add('hover')" })) {
+  await reopen(); await ev(`${js}; await new Promise(r=>setTimeout(r,100)); return 1;`);
+  eq(await ev(`return [$('#musCard').hidden, $('#musChip').hidden];`), [true, true], `card: ${name} closes the card and hides the chip`);
+}
+await ev(`rxReset(); window.fetch=window.fetch0; return 1;`);
 
 if (fails.length) { console.log(`${fails.length} check(s) failed`); process.exit(1); }
 console.log("react fit ok");

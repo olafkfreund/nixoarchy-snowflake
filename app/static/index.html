@@ -416,6 +416,11 @@ input[type=range]{accent-color:var(--acc)}
   background:color-mix(in srgb,var(--panel) 87%,transparent);border:1px solid var(--edge);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;z-index:9;
   opacity:0;transform:translate(-50%,-6px) scale(.94);transition:opacity .5s var(--ease),transform .7s var(--ease)}
 #chip.on{opacity:1;transform:translate(-50%,0)}
+#musChip{position:absolute;left:296px;top:196px;z-index:9;width:30px;height:26px;padding:0;border-radius:999px;font:14px var(--mono);color:var(--tint);cursor:pointer;background:color-mix(in srgb,var(--panel) 87%,transparent);border:1px solid var(--edge)}
+#musCard{position:absolute;top:150px;width:210px;z-index:9;padding:8px 10px;border-radius:12px;font:12px var(--mono);color:var(--text);background:var(--panel);border:1px solid var(--edge)}
+#musCard .mh{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px} #musCard .mt{flex:1;min-height:16px;overflow-wrap:anywhere}
+#musCard button{font:inherit;color:inherit;background:var(--panel2);border:1px solid var(--edge);border-radius:8px;padding:3px 8px;cursor:pointer}
+#musCard .mbs{display:flex;flex-wrap:wrap;gap:6px} #musCard[hidden],#musChip[hidden]{display:none}
 @keyframes glint{0%,100%{filter:none}40%{filter:brightness(2.4) saturate(1.4) drop-shadow(0 0 6px #77b6e1)}}
 .nix.glint{animation:glint 1.5s ease-in-out}   /* a new NixOS generation: one blue glint across the lambdas */
 @keyframes cuep{0%,100%{opacity:1}50%{opacity:.55}} #cue.attn{animation:cuep 1.1s infinite}
@@ -840,6 +845,9 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 
 <div id="code"><div class="tb"><b></b><span></span></div><div class="lines"></div><i class="rootb" title="Root mode: Claude can run anything, incl. sudo">ROOT</i></div>
 <div id="chip"></div>
+<button id="musChip" type="button" aria-label="Music controls" hidden>♪</button>
+<div id="musCard" role="dialog" aria-label="Music controls" hidden><div class="mh"><span class="mt"></span><button class="mx" type="button" aria-label="Close">×</button></div>
+  <div class="mbs"><button type="button" class="mp" data-p="pause">Pause</button><button type="button" data-p="next song">Next</button><button type="button" data-p="quieter">Quieter</button><button type="button" data-p="louder">Louder</button></div></div>
 <section id="stg" role="dialog" aria-labelledby="stgT" aria-hidden="true" inert><header><button class="hb" id="stgBack" aria-label="Previous answer" hidden>←</button><h2 id="stgT"></h2><span class="prd" id="stgDt"></span><button class="hb" id="stgX" aria-label="Close">✕</button></header><svg class="ul" viewBox="0 0 160 8" aria-hidden="true"><path pathLength="1" d="M2 5 C 40 1, 90 8, 158 3"/></svg><div class="bd" id="stgBd"></div><footer><div class="fn" id="stgFn"></div><div class="acts" id="stgActs"></div></footer></section>
 <button id="stgTab" aria-label="Show the answer again" inert></button><div id="chalk" aria-hidden="true"></div><svg id="pop" viewBox="0 0 34 40" aria-hidden="true"><path d="M5 14L8 38H26L29 14Z" fill="#fff" stroke="#b3261e" stroke-width="2"/><path d="M11 14L12 38M17 14V38M23 14L22 38" stroke="#b3261e" stroke-width="2.5"/><g fill="#fff6d8" stroke="#d9b45b"><circle cx="10" cy="11" r="5"/><circle cx="18" cy="8" r="6"/><circle cx="25" cy="12" r="5"/></g></svg><svg id="wtc" viewBox="0 0 34 44" aria-hidden="true"><path d="M17 6C9 -2 3 4 9 14" fill="none" stroke="#b98b4e" stroke-width="2"/><rect x="14" y="5" width="6" height="5" rx="1" fill="#c99a5b" stroke="#6b4a2b"/><circle cx="17" cy="27" r="14" fill="#fffdf6" stroke="#6b4a2b" stroke-width="2.5"/><path d="M17 27V18M17 27L24 31" stroke="#2a2824" stroke-width="2" stroke-linecap="round"/><circle cx="17" cy="27" r="1.6" fill="#b3261e"/></svg><svg id="hat" viewBox="0 0 64 40" aria-hidden="true"><ellipse cx="32" cy="32" rx="30" ry="7" fill="#b98b4e" stroke="#6b4a2b" stroke-width="2"/><path d="M14 31C14 12 22 5 32 5S50 12 50 31Z" fill="#c99a5b" stroke="#6b4a2b" stroke-width="2"/><path d="M15 26Q32 31 49 26L50 31Q32 36 14 31Z" fill="#7a3b2a"/></svg>
 <div id="mailPop" aria-hidden="true"><div class="env"><div class="bk"></div><div class="lt"><b></b><span></span></div><div class="fr"></div><div class="fl"></div></div></div>
@@ -1718,12 +1726,13 @@ function applyAnchors(character=BODY,roots=[$('#accBack'),$('#accFront'),$('#sit
 // ---- reactions (#208): a short silent animation for what he senses. The art is REACT; it goes into #rxSky / #rxBack / #rxFront.
 // RX = the one playing; RXS = sustained props that still apply (high load, low memory); RX_AT = when each last played.
 let RX=null, RXT=0, RXS=new Set(), RX_AT={}, rxKey='';
-const RX_SIT={meeting:'meeting',rain:'rain',snow:'snow',windy:'wind'}, RX_DUR=3000,   // (music is step 4)
+let musKeep=false;   // after the card's own Pause: chip and card stay, with Play
+const RX_SIT={meeting:'meeting',rain:'rain',snow:'snow',windy:'wind'}, RX_DUR={music:4000},
   RX_MOOD={load:'running',memory:'t_unsure',soon:'surprised',open:'happy',wind:'surprised'};
 // everything but the once-per-10-minutes and one-at-a-time rules: what a playing or sustained one depends on
 const rxBase=()=>{ const B=document.body.classList; return !!info.proactive&&!!info.reactions&&!document.hidden&&!hiddenNow&&!SIT.fullscreen&&!SIT.locked&&!['bar','hover','calm','peek'].some(c=>B.contains(c)); };
 const rxState=id=>rxBase()&&(!SIT.meeting||id==='meeting'||id==='ask');   // (SIT.meeting as it arrives, not sitOn.meeting)
-function rxOk(id){ const now=performance.now(); return rxState(id)&&(id==='ask'||!(RX_AT[id]&&now-RX_AT[id]<600000))&&(!RX||id==='ask'); }
+function rxOk(id){ const now=performance.now(); return rxState(id)&&(id==='ask'||id==='music'||!(RX_AT[id]&&now-RX_AT[id]<600000))&&(!RX||id==='ask'); }
 function rxPaint(){
   if(!RX&&!RXS.size&&!rxKey) return;
   const ids=[...RXS,...(RX&&!RXS.has(RX.id)?[RX.id]:[])].filter(rxState), ch=Object.keys(CHARACTERS).find(k=>CHARACTERS[k]===BODY)||'snowflake';
@@ -1735,14 +1744,36 @@ function rxPaint(){
   const sl=$('#stage').classList; [...sl].filter(c=>/^(r|c)-/.test(c)||c==='rx').forEach(c=>sl.remove(c));
   if(ids.length){ sl.add('rx','c-'+ch); if(RX) sl.add('r-'+RX.id); } }
 function rxEnd(){ clearTimeout(RXT); RX=null; rxPaint(); }
-function rxHide(){ /* step 4: close the music card and chip here */ }
-function rxCheck(){ try{ if(RX&&!rxState(RX.id)) rxEnd(); else rxPaint(); if(!rxBase()) rxHide(); }catch(e){} }
+function rxHide(){ musKeep=false; musSync(); }   // (a failed rxOk: the card closes and the chip goes)
+function rxCheck(){ try{ if(RX&&!rxState(RX.id)) rxEnd(); else rxPaint(); if(!rxBase()) rxHide(); else musSync(); }catch(e){} }
 function rxPlay(id,sustained){ try{ if(!REACT.props[id]||!rxOk(id)) return false;   // dropped, never queued
-    if(RX) rxEnd(); RX_AT[id]=performance.now(); if(sustained) RXS.add(id); RX={id}; RXT=setTimeout(rxEnd,RX_DUR); if(RX_MOOD[id]) poke(RX_MOOD[id],1500); rxPaint(); return true; }catch(e){ return false; } }
-function rxSignals(hot,low){   // the situation handler: load and memory start on the turn-on, and stay while the signal does
+    if(RX) rxEnd(); RX_AT[id]=performance.now(); if(sustained) RXS.add(id); RX={id}; RXT=setTimeout(rxEnd,RX_DUR[id]||3000); if(RX_MOOD[id]) poke(RX_MOOD[id],1500); rxPaint(); return true; }catch(e){ return false; } }
+function rxSignals(hot,low,trk){   // the situation handler: load and memory start on the turn-on, and stay while the signal does
   if(SIT.cpu_hot&&!hot){ RXS.add('load'); rxPlay('load'); } if(!SIT.cpu_hot) RXS.delete('load');   // (the still prop stays whether or not the animation may play)
   if(SIT.ram_low&&!low){ RXS.add('memory'); rxPlay('memory'); } if(!SIT.ram_low) RXS.delete('memory');
+  if(SIT.track!==trk&&sitOn.music) rxPlay('music');   // a new track: the boombox bops again
   rxCheck(); }
+// the music chip and card: textContent only, the answers are shown and never spoken, nothing goes to the agent
+let musIdle=0;
+function musSync(){ const chipEl=$('#musChip'); if(!chipEl) return; const show=(RXS.has('music')&&rxState('music'))||(musKeep&&rxBase());
+  const was=!chipEl.hidden; chipEl.hidden=!show; if(!show){ musClose(); musKeep=false; } else $('#musCard .mp').textContent=musKeep?'Play':'Pause'; if(was!==show) sendRegion(true); }
+function musClose(){ const c=$('#musCard'); if(!c||c.hidden) return; c.hidden=true; clearTimeout(musIdle); sendRegion(true); }
+function musSay(t){ $('#musCard .mt').textContent=t; }
+function musTouch(){ clearTimeout(musIdle); musIdle=setTimeout(musClose,15000); }
+async function musAsk(phrase){ musTouch(); let q=null;
+  try{ q=await (await post('/api/quick',{text:phrase})).json(); }catch(e){}
+  if(!q||!q.handled){ musSay("I couldn't do that."); return; }
+  musSay(q.say||''); if(phrase==='pause'){ musKeep=true; } else if(phrase==='play'){ musKeep=false; }
+  $('#musCard .mp').dataset.p=musKeep?'play':'pause'; $('#musCard .mp').textContent=musKeep?'Play':'Pause'; }
+function musOpen(){ const c=$('#musCard'); if(!c.hidden) return musClose();
+  const roomL=layoutX/fitK, roomR=innerWidth/fitK-layoutX-340, boardL=stgState!=='closed'&&stgSide==='l', boardR=stgState!=='closed'&&stgSide!=='l';   // (the side away from a board)
+  const side=!boardL&&roomL>=220?'l':!boardR&&roomR>=220?'r':null; c.style.left=side==='l'?'-220px':side==='r'?'350px':'70px'; c.style.top=side?'150px':'300px';
+  c.hidden=false; musSay(''); musAsk("what's playing"); sendRegion(true); }
+{ const card=$('#musCard'); $('#musChip').addEventListener('click',e=>{ e.stopPropagation(); musOpen(); });
+  card.querySelector('.mx').addEventListener('click',e=>{ e.stopPropagation(); musClose(); });
+  card.querySelectorAll('.mbs button').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); musAsk(b.dataset.p); }));
+  addEventListener('keydown',e=>{ if(e.key==='Escape'&&!card.hidden) musClose(); });
+  addEventListener('pointerdown',e=>{ if(!card.hidden&&!e.target.closest('#musCard,#musChip')) musClose(); }, true); }
 document.addEventListener('visibilitychange',()=>rxCheck());
 new MutationObserver(()=>rxCheck()).observe(document.body,{attributes:true,attributeFilter:['class']});
 function setCharacter(id){
@@ -2348,7 +2379,7 @@ function frame(ts){
     const put=(el,x,ax,ay,rot)=>{ el.setAttribute('opacity',clamp(x,0,1).toFixed(2)); el.setAttribute('transform',`translate(${ax} ${ay})${rot?` rotate(${rot.toFixed(2)})`:''} scale(${(.7+.3*x).toFixed(3)}) translate(${-ax} ${-ay})`); };
     const lift=(el,x)=>{ put(el,x,0,-4); el.setAttribute('transform',`translate(0 ${(-32*L).toFixed(1)}) scale(${(1-.08*L).toFixed(3)}) `+el.getAttribute('transform')); };   // (lifted onto the forehead while he talks, so his eyes stay visible)
     const off=!(sitOn.meeting||sitOn.music||sitOn.fullscreen||sitOn.coding||tp||tn||tb||ts6)&&Math.max(a,b,c,g,pa,ni,bnn,scc,pch,pf)<.002;
-    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,b,0,-4,G.sitW.x*.25); put(SIT_P.hf,b,0,-4,G.sitW.x*.25); sitSettled=off;
+    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,info.reactions?0:b,0,-4,G.sitW.x*.25); put(SIT_P.hf,info.reactions?0:b,0,-4,G.sitW.x*.25);   // (the boombox stands in for them with reactions on) sitSettled=off;
       lift(SIT_P.sh,c); put(SIT_P.gl,g,0,-4); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3);
       put(SIT_P.bn,bnn,0,-84,ww*.5-8*wn); put(SIT_P.sc,scc,0,50); SIT_P.scT.setAttribute('transform',`rotate(${(-(ww*.6)+8*wn).toFixed(2)} 40 50)`);
       const el=propOn?ts-propOn.t0:0, prop=(Q,x,ax,ay,f)=>{ if(x>.002){ put(Q.g,x,ax,ay); Q.on=true; f(Q); } else if(Q.on){ Q.g.setAttribute('opacity','0'); Q.on=false; } };   // (a prop writes only while it shows)
@@ -2360,6 +2391,8 @@ function frame(ts){
         const k=info.look_beat&&beatAt>ts-500?beat:.25*(.5+.5*Math.sin(t*2.2)), X=Math.max(BODY.cupX,EYE_HALFW*G.sz.x+EYE.cx+22);
         for(const [s,cu] of [[-1,SIT_P.cL],[1,SIT_P.cR]]) cu.setAttribute('transform',`translate(${(s*X-s*lx*.6).toFixed(2)} -8) rotate(${(s*8+(s<0?-12*L:0)).toFixed(2)}) scale(${(1+.07*k).toFixed(3)})`);
         SIT_P.bd.setAttribute('transform',`translate(0 ${(-1.5*k).toFixed(2)})`);
+        if(RXS.has('music')&&info.reactions){ const kb=info.look_beat&&beatAt>ts-500?beat:0;   // the boombox's speakers pulse to the beat (still, between bops)
+          document.querySelectorAll('#rxFront .sp').forEach(e=>{ e.style.transformBox='fill-box'; e.style.transformOrigin='center'; e.style.transform=RX&&RX.id==='music'?'':`scale(${(1+.14*kb).toFixed(3)})`; }); }
         if(k>.6&&ts-nodAt>=200){ nodAt=ts; G.jelly.kick(.015*k); } } } }   // (nothing to write while all are off)
   { wxOn=wxAside(ts); const on=wxOn&&!wxHat(), dx=REDUCED.matches?(on?WX_ASIDE:0):G.wxAside.to(on?WX_ASIDE:0,dt);   // (#187: a notification mark must never sit under the cloud)
     const [hx,hy]=BODY.anchors.head; wxEl.setAttribute('transform',`translate(${(hx+dx).toFixed(1)} ${Math.max(hy,-3)})`); }   // (the weather follows his head, as far as the window lets it: 3 px of room above the clouds)
@@ -2759,9 +2792,9 @@ function onEvent(ev){
     if(!muted) sayAside(head+(ev.project?', in '+ev.project:'')); }
   else if(ev.t==='notify') notifyIn(ev);
   else if(ev.t==='nudge') { if(!(SIT.fullscreen||SIT.meeting)) restore(11000,false); ev.rt=performance.now(); nudgeQ.set(ev.kind,ev); nudgeDrain(performance.now()); }
-  else if(ev.t==='situation'){ const hot0=SIT.cpu_hot, low0=SIT.ram_low; SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party; SIT.heavy=!!ev.heavy; SIT.windy=!!ev.windy; SIT.lean=ev.lean||0; SIT.cold=ev.cold||0; SIT.day=ev.day!==false;
+  else if(ev.t==='situation'){ const hot0=SIT.cpu_hot, low0=SIT.ram_low, trk0=SIT.track; SIT.track=ev.track||0; SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party; SIT.heavy=!!ev.heavy; SIT.windy=!!ev.windy; SIT.lean=ev.lean||0; SIT.cold=ev.cold||0; SIT.day=ev.day!==false;
     if(ev.weather==='snow'&&SIT.weather!=='snow'&&info.look_weather) poke('excited',1800);      // he loves snow: once, when it starts
-    SIT.weather=ev.weather||null; rxSignals(hot0,low0); }
+    SIT.weather=ev.weather||null; rxSignals(hot0,low0,trk0); }
   else if(ev.t==='ambient'){ if(ev.alert) restore(12000,false); const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive) poke('confused',1500); if(more) rxPlay('error'); if(ev.alert&&ev.cal) rxPlay('soon');
     if(ev.glint&&info.proactive){ poke('t_beam',1800); burstLines('#77b6e1',8); }      // a new NixOS generation: proud
     if(ev.glint&&BODY===CHARACTERS.snowflake){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
@@ -2858,13 +2891,13 @@ function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts-e.rt>600000) nudgeQ.de
   else { karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; plateReset(); ntfDrop(); setYou('');
     const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); shownTxt=''; capShow(); sendRegion(true); dropSync();
     setTimeout(()=>{ if(sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } },6000); } }
-let SIT={meeting:false,music:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false,heavy:false,windy:false,lean:0,cold:0,day:true};   // situation signals, as the server sends them
+let SIT={track:0,meeting:false,music:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false,heavy:false,windy:false,lean:0,cold:0,day:true};   // situation signals, as the server sends them
 // a look goes on after 3 s of signal and off after 8 s without it: timestamps, no timers
 const sitOn={meeting:false,music:false,fullscreen:false,coding:false,night:false,party:false,rain:false,snow:false,clear:false,partly:false,cloudy:false,windy:false,cold1:false,cold2:false}, sitSeen={...sitOn}, sitAt=Object.fromEntries(Object.keys(sitOn).map(k=>[k,0]));
 function sitStep(ts){ const weather={rain:SIT.weather==='rain',snow:SIT.weather==='snow',clear:SIT.weather==='clear',partly:SIT.weather==='partly',cloudy:SIT.weather==='cloudy',windy:SIT.windy,cold1:SIT.cold>=1,cold2:SIT.cold>=2};
   for(const k in sitOn){ const raw=k in weather?weather[k]&&!!info.look_weather:!!SIT[k]&&!!info['look_'+k]; if(raw!==sitSeen[k]){ sitSeen[k]=raw; sitAt[k]=ts; }
-  if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(RX_SIT[k]) rxPlay(RX_SIT[k]); if(['rain','snow','clear','partly','cloudy'].includes(k)) for(const other of ['rain','snow','clear','partly','cloudy']) if(other!==k) sitOn[other]=false; if(k==='meeting') G.jelly.kick(.35); if(k==='party'&&wornSkin(LOOK)==='none') confetti(18); }
-  else if(!raw&&sitOn[k]&&ts-sitAt[k]>=8000) sitOn[k]=false; } }
+  if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(RX_SIT[k]) rxPlay(RX_SIT[k]); if(k==='music'){ RXS.add('music'); rxPlay('music'); rxCheck(); } if(['rain','snow','clear','partly','cloudy'].includes(k)) for(const other of ['rain','snow','clear','partly','cloudy']) if(other!==k) sitOn[other]=false; if(k==='meeting') G.jelly.kick(.35); if(k==='party'&&wornSkin(LOOK)==='none') confetti(18); }
+  else if(!raw&&sitOn[k]&&ts-sitAt[k]>=8000){ sitOn[k]=false; if(k==='music'){ RXS.delete('music'); rxCheck(); } } } }
 const NOTE={mail:['✉','New mail','#4d6fb7','reading',2200,'pop'], chat:['💬','New message','#7fd6ae','curious',1800,'chat'],
   meeting:['📅','Meeting','#ffb02a','surprised',700,'remind'], video:['▶','New post','#e0569a','t_excited',1400,'ok'],
   download:['⬇','Download','#3ddc84','t_beam',1600,'done'], job:['✔','A long command finished','#3ddc84','t_beam',1800,'done'], other:['🔔','Notification','#7fd6ae','curious',1000,'pop']};
@@ -4492,6 +4525,7 @@ function sendRegion(force){
   if(document.body.classList.contains('calm')&&MIR.owner==='agent') add($('#mirBar'),2);
   if(ask.classList.contains('on')) add(ask,4);
   if(chip.classList.contains('act')&&chip.classList.contains('on')) add(chip,4);
+  add($('#musChip'),4); add($('#musCard'),4);
   if(cap.classList.contains('ntf')) add(plate,4);
   if(SIT_P&&notifyRow&&notifyRow.span&&notifyRow.span.isConnected&&propOn&&propOn.cat==='chat'&&performance.now()<propOn.until) add(SIT_P.chat.g,4);
   if($('#mailPop').classList.contains('on')){ add($('#mailPop'),4); add($('#mailPop .lt'),2); }
