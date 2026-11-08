@@ -20,6 +20,7 @@ class MachineSensesTest(_ServerEnv):
         self.A.off_since = None
         self.A.offline = False
         self.A.peer_last = {}
+        self.A.peer_due = 0
         self.A.later = []
         self.N.pending.clear()
         self.proc = Path(tempfile.mkdtemp(dir=self.tmp))
@@ -174,3 +175,83 @@ class MachineSensesTest(_ServerEnv):
             self.server.CFG["react_load"] = False
             one_pass()
             self.assertEqual(N.pending["host"][0], "host is back.")
+
+    def test_peer_round_edges_and_callback_followup(self):
+        S, A = self.server, self.A
+        rows = [{"name": "oak", "state": "down"}]
+        with mock.patch.object(S.plugins, "peers_allowed", return_value=True), \
+                mock.patch.object(S.peers, "current", side_effect=lambda: list(rows)), \
+                mock.patch.object(S.peers, "snapshot"):
+            S._peer_followup_round = True
+            self.addCleanup(setattr, S, "_peer_followup_round", False)
+            S.peer_round_done()  # even a board follow-up round records its edges
+            self.assertEqual(A.peer_last, {"oak": "down"})
+            rows[0] = {"name": "oak", "state": "up"}
+            S.peer_round_done()
+            self.assertEqual(len(A.later), 1)
+            self.assertEqual(A.later[0][:2], ("host", "oak is back."))
+            self.assertNotIn("host", self.N.pending)
+            S.peer_round_done()
+            self.assertEqual(len(A.later), 1)
+            rows[0] = {"name": "oak", "state": "down"}
+            S.peer_round_done()
+            self.assertEqual(len(A.later), 1)  # going down is silent
+            rows[0] = {"name": "oak", "state": "up"}
+            S.peer_round_done()
+            self.assertEqual(len(A.later), 2)
+            rows[0] = {"name": "birch", "state": "asking"}
+            S.peer_round_done()
+            rows[0] = {"name": "birch", "state": "up"}
+            S.peer_round_done()
+            self.assertEqual(len(A.later), 2)
+
+    def test_peer_switches_clear_baseline_even_without_round(self):
+        S, A = self.server, self.A
+        rows = [{"name": "oak", "state": "down"}]
+        allowed = True
+        with mock.patch.object(S.plugins, "peers_allowed", side_effect=lambda: allowed), \
+                mock.patch.object(S.peers, "current", side_effect=lambda: list(rows)), \
+                mock.patch.object(S.peers, "snapshot"):
+            A.peer_edges()
+            allowed = False
+            self.machine(100)  # no callback happened while peers were off
+            self.assertEqual(A.peer_last, {})
+            allowed = True
+            rows[0] = {"name": "oak", "state": "up"}
+            A.peer_edges()
+            self.assertEqual(A.later, [])
+            rows[0] = {"name": "oak", "state": "down"}
+            A.peer_edges()
+            S.CFG["react_load"] = False
+            self.machine(220)
+            self.assertEqual(A.peer_last, {})
+            S.CFG["react_load"] = True
+            rows[0] = {"name": "oak", "state": "up"}
+            A.peer_edges()
+            self.assertEqual(A.later, [])
+
+    def test_peer_handoff_checks_switch_at_drain(self):
+        S, A, N = self.server, self.A, self.N
+        N.offer.side_effect = self.real_offer
+        with mock.patch.object(S.plugins, "peers_allowed", return_value=True), \
+                mock.patch.object(S.peers, "current", side_effect=[
+                    [{"name": "oak", "state": "down"}], [{"name": "oak", "state": "up"}],
+                    [{"name": "birch", "state": "down"}], [{"name": "birch", "state": "up"}]]):
+            A.peer_edges()
+            A.peer_edges()
+            self.assertNotIn("host", N.pending)
+
+            def drain():
+                with mock.patch.object(A, "step"), mock.patch.object(A, "sense"), \
+                        mock.patch.object(N, "tick"), \
+                        mock.patch.object(S.time, "sleep", side_effect=[None, KeyboardInterrupt()]):
+                    with self.assertRaises(KeyboardInterrupt):
+                        A.loop()
+
+            drain()
+            self.assertEqual(N.pending["host"][0], "oak is back.")
+            A.peer_edges()
+            A.peer_edges()
+            S.CFG["react_load"] = False
+            drain()
+            self.assertEqual(N.pending["host"][0], "oak is back.")

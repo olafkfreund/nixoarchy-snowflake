@@ -1604,7 +1604,9 @@ class Ambient:
     disk_full = set()
     off_since = None
     offline = False
-    peer_last = {}                                              # step 2 will track finished peer rounds here
+    peer_last = {}                                              # states from the last finished peer round
+    peer_lock = threading.Lock()
+    peer_due = 0.0
     later = []
     later_lock = threading.Lock()
 
@@ -1612,6 +1614,21 @@ class Ambient:
     def hand(cls, kind, text, ok):
         with cls.later_lock:
             cls.later.append((kind, text, ok))
+
+    @classmethod
+    def peer_edges(cls):
+        """Record finished peer states and hand host recoveries to the ambient thread."""
+        with cls.peer_lock:
+            if not (CFG.get("proactive") and CFG.get("react_load") and plugins.peers_allowed()):
+                cls.peer_last = {}
+                return
+            rows = peers.current()
+            for row in rows:
+                name, state = row["name"], row["state"]
+                if cls.peer_last.get(name) == "down" and state == "up":
+                    cls.hand("host", quip("host", name=name),
+                             lambda: bool(CFG.get("proactive") and CFG.get("react_load") and plugins.peers_allowed()))
+            cls.peer_last = {row["name"]: row["state"] for row in rows}
 
     @staticmethod
     def route_up(proc="/proc"):
@@ -1644,10 +1661,19 @@ class Ambient:
             cls.disk_full = set()
             cls.off_since = None
             cls.offline = False
-            cls.peer_last = {}
+            cls.peer_due = 0.0
+            with cls.peer_lock:
+                cls.peer_last = {}
             for kind in ("error", "disk", "offline"):
                 Nudge.pending.pop(kind, None)
             return
+        if not plugins.peers_allowed():
+            cls.peer_due = 0.0
+            with cls.peer_lock:
+                cls.peer_last = {}
+        elif t >= cls.peer_due:
+            cls.peer_due = t + 300
+            peers.snapshot()
         if t >= cls.machine_due:
             cls.machine_due = t + 120
             out = [None, None]
@@ -2015,7 +2041,7 @@ QUIP_FALLBACK = {
     "night": ("Getting late. Don't forget to rest.",), "party": ("Something to celebrate today!",),
     "coding": ("{n} hours of code. Water?",), "done": ("All done!",),
     "error": ("{unit} failed.",), "disk": ("Disk {path} is {n}% full.",),
-    "offline": ("No network connection.",)}
+    "offline": ("No network connection.",), "host": ("{name} is back.",)}
 
 
 class Plug:
@@ -2268,7 +2294,7 @@ class Nudge:
     """Unasked nudges (#133b): break, welcome back, memory, load. They wait for a breakpoint (an unlock, a workspace switch, or
     20 s without window events), and a budget keeps them rare: one visual per 5 minutes, one spoken per 10, a cooldown per kind."""
     COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "welcome": 0, "rain": 72000, "snow": 72000, "night": 72000, "party": 72000, "coding": 7200,
-            "error": 1800, "disk": 21600, "offline": 1800}
+            "error": 1800, "disk": 21600, "offline": 1800, "host": 1800}
     pending = {}                                              # kind -> (text, spoken, deadline); oldest first
     last_visual = last_speech = None
     last_kind = {}
@@ -5893,6 +5919,7 @@ _peer_followup_round = False
 
 def peer_round_done():
     global _peer_followup_round
+    Ambient.peer_edges()
     if not plugins.peers_allowed():
         return
     if _peer_followup_round:

@@ -41,5 +41,6 @@
   "done": ["All done!", "Finished!", "That's done."],
   "error": ["{unit} failed.", "Looks like {unit} failed.", "A service needs attention: {unit} failed."],
   "disk": ["Disk {path} is {n}% full.", "Disk {path} is {n}% full. Could use some room.", "Running out of room on {path}: {n}% full."],
-  "offline": ["No network connection.", "The network connection has dropped.", "Looks like we're offline for now."]
+  "offline": ["No network connection.", "The network connection has dropped.", "Looks like we're offline for now."],
+  "host": ["{name} is back.", "{name} is online again.", "Good news: {name} is back."]
 }
