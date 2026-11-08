@@ -26,6 +26,7 @@ class NudgeTest(_ServerEnv):
         for k, v in dict(locked=False, unlocked_at=0.0, last_lock_len=0.0, lock_since=0.0, meeting=False, ram_low=False, cpu_hot=False, events=[]).items():
             setattr(A, k, v)
         A.dnd, A.dnd_due, A.fullscreen = False, 0.0, False
+        self.addCleanup(lambda: [setattr(A, k, False) for k in ("dnd", "fullscreen", "meeting", "locked")])   # (a held cue would silence later suites)
         ipc = mock.patch.object(S.Inbox, "call", return_value=None)
         self.ipc = ipc.start()
         self.addCleanup(ipc.stop)

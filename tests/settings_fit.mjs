@@ -25,7 +25,7 @@ await ev(`setInterval(()=>{ nextFidAt=1e15; },50); await post('/api/settings',{i
   Object.defineProperty(screen,'availHeight',{get:()=>window.__ah||1080,configurable:true});
   return 1`);
 
-const fails = [], check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} ${name}${extra ? "  " + extra : ""}`); if (!ok) fails.push(name); };
+const fails = []; let checks=0; const check = (ok, name, extra = "") => { checks++; console.log(`${ok ? "ok  " : "FAIL"} ${name}${extra ? "  " + extra : ""}`); if (!ok) fails.push(name); };
 const msgs = () => ev("return __msgs.slice()");
 const clearMsgs = () => ev("__msgs.length=0; return 1");
 const nonRegion = list => list.filter(m => !m.startsWith("region:"));
@@ -666,7 +666,36 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   check(c[0] === true && c[1] === true, "Reactions: the switch saves", JSON.stringify(c));
   await ev("await post('/api/settings',{proactive:false,reactions:false}); settings(false); return 1"); }
 
+// #209: schedule and water controls render from info and save their values.
+{ const r=await ev(`const original=setSetting; window.__breakSaves=[];
+    setSetting=async b=>{ __breakSaves.push(structuredClone(b)); Object.assign(info,b); renderSettings(); return true; };
+    try{
+      info.react_break=true; info.workout=[{days:[0,2],at:'09:30'}]; info.water_every=45; renderSettings();
+      const filled=[...document.querySelectorAll('#workoutList .workoutDays button')].map(b=>b.getAttribute('aria-pressed'));
+      const time=document.querySelector('[data-workout-time="0"]').value, water=$('#waterEvery').value;
+      $('#workoutAdd').click(); await new Promise(r=>setTimeout(r,0));
+      const added=structuredClone(__breakSaves.at(-1).workout);
+      document.querySelector('[data-workout-remove="0"]').click(); await new Promise(r=>setTimeout(r,0));
+      const removed=structuredClone(__breakSaves.at(-1).workout);
+      info.workout=Array.from({length:7},()=>({days:[0],at:'09:00'})); renderSettings(); const capped=$('#workoutAdd').hidden;
+      $('#workoutAdd').click(); const count=__breakSaves.length;
+      $('#waterEvery').value='60'; $('#waterEvery').dispatchEvent(new Event('change',{bubbles:true})); await new Promise(r=>setTimeout(r,0));
+      const waterSave=__breakSaves.at(-1).water_every;
+      info.react_break=false; renderSettings(); const disabled=$('#waterEvery').disabled&&$('#workoutAdd').disabled&&[...document.querySelectorAll('#workoutList button,#workoutList input')].every(e=>e.disabled);
+      return {filled,time,water,added,removed,capped,count,waterSave,disabled,saves:__breakSaves.length};
+    }finally{ setSetting=original; }`);
+  check(JSON.stringify(r.filled)===JSON.stringify(['true','false','true','false','false','false','false'])&&r.time==='09:30'&&r.water==='45',"break settings fill from info",JSON.stringify(r));
+  check(r.added.length===2&&r.removed.length===1&&r.removed[0].at==='09:00',"workout add and remove save the list",JSON.stringify(r));
+  check(r.capped&&r.count===2,"an eighth workout time cannot be added",JSON.stringify(r));
+  check(r.waterSave===60&&r.disabled,"water saves 60 and controls disable when movement reminders are off",JSON.stringify(r)); }
+{ const r=await ev(`const original=setSetting; window.__breakSaves=[]; setSetting=async b=>{ __breakSaves.push(structuredClone(b)); Object.assign(info,b); renderSettings(); return true; };
+    try{ info.react_break=true; info.workout=[{days:[0],at:'09:00'}]; renderSettings();
+      document.querySelector('[data-workout-day="2"]').click(); await new Promise(r=>setTimeout(r,0)); const days=__breakSaves.at(-1).workout[0].days;
+      const time=document.querySelector('[data-workout-time="0"]'); time.value='10:30'; time.dispatchEvent(new Event('change',{bubbles:true})); await new Promise(r=>setTimeout(r,0));
+      return {days,time:__breakSaves.at(-1).workout[0].at}; }finally{setSetting=original;}`);
+  check(JSON.stringify(r.days)==='[0,2]'&&r.time==='10:30',"day toggle and time change save the schedule",JSON.stringify(r)); }
+
 check(exc.size === 0, "no page exceptions", [...exc].join(" ;; "));
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
-console.log(fails.length ? `\n${fails.length} failed: ${fails.join(", ")}` : "\nall pass");
+console.log(`settings fit: ${checks} checks, ${fails.length} failed`);
 process.exit(fails.length ? 1 : 0);

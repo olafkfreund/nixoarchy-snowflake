@@ -16,8 +16,8 @@ await send("Page.enable");
 await send("Emulation.setDeviceMetricsOverride", { width: 820, height: 620, deviceScaleFactor: 1, mobile: false });
 await send("Page.navigate", { url }); await sleep(4000);
 
-const fails = [];
-const check = (ok, what, got) => { if (!ok) { fails.push(what); console.log(`CUT  ${what}${got === undefined ? "" : "  → " + JSON.stringify(got)}`); } };
+const fails = []; let checks=0;
+const check = (ok, what, got) => { checks++; if (!ok) { fails.push(what); console.log(`CUT  ${what}${got === undefined ? "" : "  → " + JSON.stringify(got)}`); } };
 const eq = (got, want, what) => check(JSON.stringify(got) === JSON.stringify(want), what, got);
 
 // a real mouse click at a point, or a real key
@@ -30,9 +30,9 @@ const centre = sel => ev(`const r=(${sel}).getBoundingClientRect(); return [r.le
 await ev(`
   window.__posts=[]; window.__sfx=[]; window.__say=[]; window.__rec=[];
   const f0=window.fetch.bind(window);
-  window.fetch=(u,o)=>{ if(/\\/api\\/notify\\/(act|seen)/.test(String(u))){ window.__posts.push({u:String(u),b:JSON.parse((o&&o.body)||'{}')}); return Promise.resolve(new Response(JSON.stringify({ok:window.__actOk!==false}))); } return f0(u,o); };
+  window.fetch=(u,o)=>{ if(/\\/api\\/(notify\\/(act|seen)|nudge)/.test(String(u))){ window.__posts.push({u:String(u),b:JSON.parse((o&&o.body)||'{}')}); return Promise.resolve(new Response(JSON.stringify({ok:window.__actOk!==false}))); } return f0(u,o); };
   sfx=n=>window.__sfx.push(n); enqueue=(t,o)=>window.__say.push(t); startRec=m=>window.__rec.push(m);
-  window.reset=()=>{ notifyQ.length=0; nudgeQ.clear(); if(notifyRow) notifyClear(); notifyRow=null; notifyAt=0; notifyBurst={cat:'',n:0,t:0}; propOn=null; busy=false; playing=false; rec=null; follow=false; pendingAppr=null;
+  window.reset=()=>{ notifyQ.length=0; nudgeQ.clear(); remClose(); if(notifyRow) notifyClear(); notifyRow=null; notifyAt=0; notifyBurst={cat:'',n:0,t:0}; propOn=null; busy=false; playing=false; rec=null; follow=false; pendingAppr=null;
     SIT.meeting=false; SIT.fullscreen=false; SIT.locked=false; muted=false; info.hover=false; info.sfx=true; info.notify_sound=true; info.notify_speak=[]; info.notify_details=false;
     mailT.forEach(clearTimeout); mailT=[]; $('#mailPop').classList.remove('on','open','up'); window.__posts.length=0; window.__sfx.length=0; window.__say.length=0; window.__rec.length=0; clicks=[]; };
   window.N=(key,cat,o={})=>Object.assign({t:'notify',key,category:cat,app:'',source:'',summary:'',body:'',icon:''},o);
@@ -319,6 +319,31 @@ check(quiet.finished.mark==='done'&&quiet.finished.from==='claude'&&quiet.finish
 eq(quiet.approval, {shown:true,id:'quiet-a1'}, "an approval card still shows under DND");
 eq(quiet.expiry, {none:{q:0,said:true},short:{q:0,said:false}}, "null wait survives ten minutes; a 60 second wait expires");
 
+// #209: reminder controls use the id last displayed and yield to quiet and approvals.
+const rem=await ev(`const seen={}; const show=(kind,id,speak=false)=>{ reset(); SIT.dnd=false; notifyAt=0; onEvent({t:'nudge',kind,id,text:'stretch',speak,wait:null}); return !remEl.hidden; };
+  const settle=()=>new Promise(r=>setTimeout(r,0));   // (post() waits for the token first)
+  setEl.classList.remove('on'); panelEl.classList.remove('on'); calmCheck();   // (a panel left open by an earlier case makes him calm, which hides the chip)
+  seen.break=show('break',11); remEl.querySelector('[data-rem="10"]').click(); await settle();
+  seen.snooze=__posts.filter(p=>p.u==='/api/nudge').map(p=>p.b); seen.closed=remEl.hidden;
+  seen.doneShown=show('water',12); remEl.querySelector('[data-rem="done"]').click(); await settle(); seen.done=__posts.filter(p=>p.u==='/api/nudge').map(p=>p.b);
+  seen.cpu=show('cpu',13);
+  reset(); SIT.dnd=true; onEvent({t:'nudge',kind:'break',id:14,text:'held',speak:false,wait:null}); seen.held=remEl.hidden&&nudgeQ.size===1;
+  SIT.dnd=false; notifyAt=0; nudgeDrain(performance.now()); seen.released=!remEl.hidden;
+  seen.spoken=show('break',15,true);
+  show('break',16); capTick(performance.now()+7000); seen.outlives=cap.classList.contains('off')&&!remEl.hidden;
+  show('break',17); onEvent({t:'approve',id:'rem-a1',agent:'codex',tool:'Bash',detail:'true',confirm:'click',always:false}); seen.approval=remEl.hidden; pendingAppr=null; apprQ.length=0; apEl.classList.remove('on'); document.body.classList.remove('appr');
+  show('break',18); document.body.classList.add('bar'); remSync(); seen.bar=remEl.hidden; document.body.classList.remove('bar');
+  show('break',19); onEvent({t:'nudge',kind:'break',id:20,text:'new',speak:false,wait:null}); seen.replaced=remEl.hidden; notifyAt=0; nudgeDrain(performance.now()); seen.newer=seen.replaced&&remId===20&&!remEl.hidden;
+  show('break',21); SIT.dnd=true; remSync(); seen.quiet=remEl.hidden; SIT.dnd=false;
+  show('break',22); remSync(remUntil+1); seen.expired=remEl.hidden;
+  show('break',23); remEl.querySelector('[data-rem="30"]').click(); await settle(); seen.thirty=__posts.filter(p=>p.u==='/api/nudge').at(-1).b;
+  reset(); return seen;`);
+check(rem.break&&rem.closed&&JSON.stringify(rem.snooze)==='[{"id":11,"act":"snooze","minutes":10}]',"break chip posts 10 minute snooze and closes",rem);
+check(rem.doneShown&&JSON.stringify(rem.done)==='[{"id":12,"act":"dismiss"}]',"Done posts dismiss without minutes",rem);
+check(!rem.cpu&&rem.held&&rem.released&&rem.spoken,"CPU has no chip; DND holds a reminder; spoken break has a chip",rem);
+check(rem.outlives&&rem.approval&&rem.bar&&rem.newer&&rem.quiet,"chip outlives caption and closes for approval, bar, newer reminder and quiet",rem);
+check(rem.expired&&JSON.stringify(rem.thirty)==='{"id":23,"act":"snooze","minutes":30}',"chip expires at 30 seconds and posts 30 minute snooze",rem);
+
 if (fails.length) { console.log(`${fails.length} check(s) failed`); process.exit(1); }
-console.log("notify fit ok");
+console.log(`notify fit: ${checks} checks, 0 failed`);
 process.exit(0);
