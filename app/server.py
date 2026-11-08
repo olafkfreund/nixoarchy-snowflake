@@ -26,6 +26,8 @@ import secrets
 import shutil
 import signal
 import socket
+import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -33,6 +35,7 @@ import threading
 import time
 import unicodedata
 import wave
+import zlib
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -2298,11 +2301,93 @@ def _launch(id):
 
 
 class NImage:
-    """Card pictures (#214). Step 3 replaces this stub with the real store."""
+    """Short-lived copies of checked local PNGs for notification cards."""
+    MAX = 1024 * 1024
+    TTL = 60
+    lock = threading.Lock()
+    served = {}                                  # id -> (bytes, time added), insertion order is oldest first
 
     @staticmethod
-    def add(path):
-        return None
+    def _png(data):
+        if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+            return False
+        pos, first, has_pixels = 8, True, False
+        while pos + 12 <= len(data):
+            size = int.from_bytes(data[pos:pos + 4], "big")
+            end = pos + 12 + size
+            if end > len(data):
+                return False
+            kind = data[pos + 4:pos + 8]
+            chunk = data[pos + 8:pos + 8 + size]
+            crc = int.from_bytes(data[pos + 8 + size:end], "big")
+            if zlib.crc32(kind + chunk) != crc or kind == b"acTL":
+                return False
+            if first:
+                if kind != b"IHDR" or size != 13:
+                    return False
+                width, height, depth, color, compression, filtering, interlace = struct.unpack(">IIBBBBB", chunk)
+                if not (1 <= width <= 2048 and 1 <= height <= 2048 and
+                        (depth, color) in {(1, 0), (2, 0), (4, 0), (8, 0), (16, 0),
+                                           (8, 2), (16, 2), (1, 3), (2, 3), (4, 3), (8, 3),
+                                           (8, 4), (16, 4), (8, 6), (16, 6)} and
+                        compression == filtering == 0 and interlace in (0, 1)):
+                    return False
+                first = False
+            elif kind == b"IHDR":
+                return False
+            if kind == b"IDAT":
+                has_pixels = True
+            if kind == b"IEND":
+                return has_pixels and size == 0 and end == len(data)
+            pos = end
+        return False
+
+    @classmethod
+    def add(cls, path):
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            try:
+                info = os.fstat(fd)
+                if not stat.S_ISREG(info.st_mode) or info.st_size > cls.MAX:
+                    return None
+                data = bytearray()
+                while len(data) <= cls.MAX:
+                    part = os.read(fd, cls.MAX + 1 - len(data))
+                    if not part:
+                        break
+                    data.extend(part)
+            finally:
+                os.close(fd)
+            if len(data) > cls.MAX or not cls._png(data):
+                return None
+            with cls.lock:
+                now = time.monotonic()
+                cls._expire(now)
+                if len(cls.served) >= 8:
+                    cls.served.pop(next(iter(cls.served)))
+                key = secrets.token_hex(8)
+                cls.served[key] = (bytes(data), now)
+                return key
+        except (OSError, TypeError, ValueError):
+            return None
+
+    @classmethod
+    def _expire(cls, now):
+        for key, (_, added) in list(cls.served.items()):
+            if now - added >= cls.TTL:
+                del cls.served[key]
+
+    @classmethod
+    def get(cls, key):
+        with cls.lock:
+            cls._expire(time.monotonic())
+            hit = cls.served.get(key)
+            return hit[0] if hit else None
+
+    @classmethod
+    def clear(cls):
+        with cls.lock:
+            cls.served.clear()
 
 
 class Inbox:
@@ -5015,6 +5100,8 @@ def save_config(**kw):
             cur = {}
         cur.update(kw)
         CFG.update(kw)
+        if kw.get("notify_details") is False:
+            NImage.clear()
         CONF_PATH.parent.mkdir(parents=True, exist_ok=True)
         CONF_PATH.write_text(json.dumps(cur, indent=2) + "\n")
 
@@ -6478,6 +6565,18 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'")   # (an SVG opened on its own can't run script)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "max-age=86400")
+            self.end_headers()
+            return self.wfile.write(data)
+        if p.startswith("/api/nimage/"):
+            key = p[len("/api/nimage/"):]
+            data = NImage.get(key) if re.fullmatch(r"[0-9a-f]{16}", key) else None
+            if data is None:
+                return self._json({"error": "not found"}, 404)
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return self.wfile.write(data)
         if p.startswith("/api/stage/thumb/"):      # a poster for the current stage: only a token the store handed out, only i.ytimg.com
