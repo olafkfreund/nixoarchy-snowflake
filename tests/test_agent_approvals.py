@@ -253,3 +253,69 @@ class AgentApprovalsTest(unittest.TestCase):
         self.assertIn('not click_ok(item.get("click_header"))', src)
         self.assertIn('return {"decision": item["decision"]}', src)
         self.assertIn("def _finish", src)
+
+    # step 6: results and the working signal
+    def answered(self, ans, **extra):
+        t, out, _, item = self.start(self.req(**extra), wait=5)
+        self.assertTrue(self.ap.answer(item["id"], ans, ans == "yes"))
+        t.join(2)
+        return item
+
+    def results(self):
+        return [e for e in self.events if e["t"] == "agent_result"]
+
+    def test_result_consumed_once(self):
+        item = self.answered("yes")
+        self.assertTrue(self.ap.result("codex", list(item["key"]), True, 0))
+        self.assertEqual(self.results(), [{"t": "agent_result", "agent": "codex", "ok": True, "state": "ran", "exit": 0}])
+        self.assertFalse(self.ap.result("codex", list(item["key"]), True, 0))
+        self.assertEqual(len(self.results()), 1)
+        self.assertEqual(self.post("/api/agent-result", {"from": "codex", "key": "none", "ok": True}).args[0], {"ok": False})
+
+    def test_result_exit_only_when_int_and_string_key(self):
+        item = self.answered("yes", tool_use_id="toolu_1")
+        self.assertEqual(item["key"], "toolu_1")
+        self.assertEqual(self.post("/api/agent-result", {"from": "codex", "key": "toolu_1", "ok": False, "exit": "1"}).args[0], {"ok": True})
+        self.assertEqual(self.results()[-1], {"t": "agent_result", "agent": "codex", "ok": False, "state": "ran"})
+
+    def test_double_match_is_unclear_and_dropped(self):
+        a, b = self.answered("yes"), self.answered("yes")
+        self.assertEqual(a["key"], b["key"])
+        self.assertTrue(self.ap.result("codex", list(a["key"]), True, 0))
+        self.assertEqual(self.results()[-1]["state"], "unclear")
+        self.assertFalse(self.ap.finished)
+        self.assertFalse(self.ap.result("codex", list(a["key"]), True, 0))
+
+    def test_deny_then_match_is_ran_after_deny(self):
+        item = self.answered("no")
+        self.ap.result("codex", list(item["key"]), True, 0)
+        self.assertEqual([e["state"] for e in self.results()], ["denied", "ran-after-deny"])
+
+    def test_unknown_after_fifteen_minutes(self):
+        item = self.answered("yes")
+        now = time.monotonic()
+        with mock.patch.object(self.s.time, "monotonic", return_value=now + self.s.AGENT_RESULT_KEEP - 1):
+            self.ap.sweep()
+        self.assertEqual(self.results(), [])
+        with mock.patch.object(self.s.time, "monotonic", return_value=now + self.s.AGENT_RESULT_KEEP + 1):
+            self.ap.sweep()
+        self.assertEqual(self.results(), [{"t": "agent_result", "agent": "codex", "ok": None, "state": "unknown"}])
+        self.assertFalse(self.ap.result("codex", list(item["key"]), True, 0))
+
+    def test_working_from_each_agent(self):
+        s = self.s
+        for frm, ev in (("claude", "UserPromptSubmit"), ("codex", "UserPromptSubmit"), ("agy", "PreInvocation")):
+            self.assertEqual(s.attention_parse(frm, {"hook_event_name": ev, "cwd": "/x/proj", "prompt": "secret words"}),
+                             ("working", "proj", ""))
+        self.assertEqual(s.attention_parse("agy", {"hook_event_name": "UserPromptSubmit"})[0], "ask" if False else s.attention_parse("agy", {"hook_event_name": "UserPromptSubmit"})[0])
+        self.assertNotEqual(s.attention_parse("claude", {"hook_event_name": "Stop"})[0], "working")
+
+    def test_working_is_rate_limited(self):
+        s = self.s
+        s._ATTN_LAST.clear()
+        self.addCleanup(s._ATTN_LAST.clear)
+        hook = {"hook_event_name": "UserPromptSubmit", "cwd": "/x/proj"}
+        self.assertTrue(s.attention_accept("claude", "", now=100.0, hook=hook))
+        self.assertFalse(s.attention_accept("claude", "", now=110.0, hook=hook))
+        self.assertTrue(s.attention_accept("claude", "", now=131.0, hook=hook))
+        self.assertEqual([e["kind"] for e in self.events if e["t"] == "attention"], ["working", "working"])

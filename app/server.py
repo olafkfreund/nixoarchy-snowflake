@@ -1086,8 +1086,13 @@ class AgentApprovals:
             item["decision"] = decision
             self.pending.pop(item["id"], None)
             if state == "answered":
+                item["done_at"] = time.monotonic()
                 self.finished[item["id"]] = item
             item["ev"].set()
+        if decision == "allow":                     # "approved, result unknown" after 15 min with no result
+            t = threading.Timer(AGENT_RESULT_KEEP, self.sweep)
+            t.daemon = True
+            t.start()
         BUS.pub(t="approve_done", id=item["id"], ans="yes" if decision == "allow" else "no")
         if decision == "deny":
             BUS.pub(t="agent_result", agent=item["from"], ok=False, state="denied")
@@ -1160,6 +1165,42 @@ class AgentApprovals:
             item = self.pending.get(aid)
         return bool(item and self._finish(item, "released"))
 
+    def sweep(self):
+        """Drop answered items older than 15 min; an approved one with no result shows as unknown."""
+        now = time.monotonic()
+        with self.lock:
+            old = [it for it in self.finished.values() if now - it["done_at"] >= AGENT_RESULT_KEEP]
+            for it in old:
+                del self.finished[it["id"]]
+        for it in old:
+            if it["decision"] == "allow":
+                BUS.pub(t="agent_result", agent=it["from"], ok=None, state="unknown")
+
+    def result(self, frm, key, ok, code):
+        """A tool result from a hook: consumed by the one answered request with that key."""
+        self.sweep()
+        key = tuple(key) if isinstance(key, list) else key
+        if not isinstance(key, (str, tuple)):
+            return False
+        with self.lock:
+            hits = [it for it in self.finished.values() if it["from"] == frm and it["key"] == key]
+            for it in hits:
+                del self.finished[it["id"]]
+        if not hits:
+            return False
+        ok = ok if isinstance(ok, bool) else None
+        ev = {"agent": frm, "ok": ok}
+        if len(hits) > 1:
+            ev["state"] = "unclear"
+        elif hits[0]["decision"] == "deny":
+            ev["state"] = "ran-after-deny"
+        else:
+            ev["state"] = "ran"
+            if isinstance(code, int) and not isinstance(code, bool):
+                ev["exit"] = code
+        BUS.pub(t="agent_result", **ev)
+        return True
+
     def release_all(self):
         with self.lock:
             items = list(self.pending.values())
@@ -1167,6 +1208,7 @@ class AgentApprovals:
             self._finish(item, "released")
 
 
+AGENT_RESULT_KEEP = 15 * 60
 AGENT_APPROVALS = AgentApprovals()
 
 
@@ -1431,6 +1473,10 @@ def attention_parse(frm, hook):
     if not isinstance(hook, dict):
         return "ask", "", hook if isinstance(hook, str) else ""
     g = lambda *ks: next((hook[k] for k in ks if isinstance(hook.get(k), str) and hook[k].strip()), "")
+    if g("hook_event_name") == ("PreInvocation" if frm == "agy" else "UserPromptSubmit"):
+        cwd = hook.get("cwd") if isinstance(hook.get("cwd"), str) else ""
+        proj = os.path.basename(cwd.rstrip("/"))
+        return "working", proj if re.fullmatch(r"[\w.@+-]{1,40}", proj) else "", ""
     if frm == "claude":
         nt = g("notification_type")
         if nt == "auth_success":
@@ -6613,6 +6659,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"key": key})
             if p == "/api/agent-approve":
                 return self._json(AGENT_APPROVALS.ask(json.loads(self._body() or b"{}"), self.connection))
+            if p == "/api/agent-result":
+                b = json.loads(self._body() or b"{}")
+                b = b if isinstance(b, dict) else {}
+                return self._json({"ok": AGENT_APPROVALS.result(b.get("from"), b.get("key"), b.get("ok"), b.get("exit"))})
             if p == "/api/approve/release":
                 b = json.loads(self._body() or b"{}")
                 return self._json({"ok": AGENT_APPROVALS.release(str(b.get("id")))})
