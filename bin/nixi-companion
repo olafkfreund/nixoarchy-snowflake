@@ -81,7 +81,7 @@ except Exception:
   exit 0
 fi
 # agent permission and result hooks: no server start, no output unless a decision was returned
-if [ "${1:-}" = approve ] || [ "${1:-}" = result ]; then
+case "${1:-}" in approve|result)
   MODE="$1"; shift
   FROM=""; [ "${1:-}" = --from ] && FROM="${2:-}"
   "${NIXI_COMPANION_PYTHON:-python3}" -c 'import hashlib,json,os,sys,urllib.request as u
@@ -144,8 +144,8 @@ try:
             sys.stdout.write(json.dumps((ALLOW_JSON if decision == "allow" else DENY_JSON)[frm], separators=(",", ":")) + "\n")
 except Exception:
     pass' "$MODE" "$FROM" 2>/dev/null || true
-  exit 0
-fi
+  exit 0 ;;
+esac
 # move him to another screen from a key bind: nixi-companion monitor next|prev|focused|<name> (e.g. DP-1)
 if [ "${1:-}" = monitor ]; then
   PSOCK="${XDG_RUNTIME_DIR:-/tmp}/nixi-companion-$(id -u).sock"
