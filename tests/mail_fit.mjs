@@ -37,6 +37,7 @@ await ev(`
   window.__posts=[]; window.__q={draft:[],hear:null};
   const f0=window.fetch.bind(window), R=o=>Promise.resolve(new Response(JSON.stringify(o)));
   window.fetch=(u,o)=>{ u=String(u);
+    if(u.includes('/api/say/stop')){ window.__posts.push({u:'/api/say/stop'}); return R({ok:true}); }
     if(u.includes('/api/mail/options')) return R({accounts:['you@example.com','other@example.com'],models:['gemma4:e4b']});
     if(u.includes('/api/settings')&&o&&o.method==='POST'){ const b=JSON.parse(o.body||'{}'); window.__posts.push({u:'/api/settings',b}); info={...info,...b}; return R(info); }
     const m=u.match(/\\/api\\/mail\\/(\\w+)/);
@@ -163,6 +164,9 @@ eq(o12[0], [["/api/mail/draft", null], ["/api/mail/cancel", "stale"]], "a draft 
 eq(o12[1], [["/api/mail/draft", null], ["/api/mail/cancel", "pending"]], "closing while a Review is on its way cancels it at once");
 eq(o12[2].filter(x => x[1] === "late").length, 1, "and the draft that then arrives is cancelled too");
 
+// 13. a server mail summary (id from 1e9) is tracked, so turning the voice off or a click stops it (Codex, #66)
+const m13 = await ev(`window.__posts.length=0; info.voice_native=true; onEvent({t:'spk',id:1000000001,at:0,dur:5}); const p=playing; shush(); await new Promise(r=>setTimeout(r,150)); return [p, window.__posts.some(x=>x.u==='/api/say/stop')];`);
+eq(m13, [true, true], "a mail summary sets playing, and shush posts /api/say/stop");
 if (fails.length) { console.log(`${fails.length} check(s) failed`); process.exit(1); }
 console.log("mail fit ok");
 process.exit(0);

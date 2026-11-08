@@ -2310,7 +2310,7 @@ function onEvent(ev){
   else if(ev.t==='barge'){ if(!playing) return; agentStop(); sfx('pop'); poke('surprised',600);
     if(ev.listen){ const heard=ev.path?{path:ev.path,media:ev.media}:null; if(ev.text&&ev.text.split(/\s+/).length>=2) send(ev.text,{heard}); else startRec('auto',heard); } else tick('okay, okay — shh'); }
   else if(ev.t==='remind'){ if(hiddenNow) native('show'); restore(12000,false); if(info.hover) comeBack(); sfx('remind'); poke('excited',1800); say(ev.text); tick('⏰ '+ev.text); }
-  else if(ev.t==='spk'){ const it=spkMap.get(ev.id); if(!it) return; spkMap.delete(ev.id); spkGuard=performance.now()+ev.at+ev.dur*1000;
+  else if(ev.t==='spk'){ const it=spkMap.get(ev.id)||(ev.id>=1e9?{cap:''}:null); if(!it) return; spkMap.delete(ev.id);   // ids from 1e9 are the server's mail summaries (#210): track them so mute and a click stop them spkGuard=performance.now()+ev.at+ev.dur*1000;
     playing=true; setSpkEngine(ev.engine||'');
     const t0=performance.now()+ev.at;
     if(ev.level) spkLv.push({t0,level:ev.level,step:ev.step||40}); if(spkLv.length>12) spkLv.shift();
