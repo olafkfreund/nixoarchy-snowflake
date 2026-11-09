@@ -16,7 +16,7 @@ def window_methods(*names):
     """Load selected methods without importing window.py's GTK dependencies."""
     tree = ast.parse((ROOT / "app/window.py").read_text())
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "NixiWindow")
-    methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in names]
+    methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in (*names, "_px", "_css", "_region_rect")]
     code = compile(ast.fix_missing_locations(ast.Module(body=[ast.ClassDef(
         name="Window", bases=[], keywords=[], body=methods, decorator_list=[])], type_ignores=[])),
         str(ROOT / "app/window.py"), "exec")
@@ -32,6 +32,43 @@ def window_methods(*names):
 
 
 class RoomTest(unittest.TestCase):
+    def test_layer_size_growth_clamps_base_before_room(self):
+        ns = window_methods("set_wide")
+        w = ns["Window"]()
+        w.z = 1.0
+        w.layer, w.mx, w.my = True, 1706, 794
+        w.wide_shift = w.top_shift = 0
+        w.cur_w, w.cur_h = 204, 276  # 60% size before growing to 100%
+        w.want_panel = w.want_code = w.want_bar = w.hover = False
+        w.want_xw = w.want_h = 0
+        w._geom = lambda: (None, SimpleNamespace(width=1920, height=1080))
+        w.win = SimpleNamespace(set_size_request=Mock(), resize=Mock(), queue_draw=Mock())
+        w._place, w._js = Mock(), Mock()
+
+        w.set_wide((0, 0), "size")
+
+        self.assertEqual((w.cur_w, w.cur_h), (340, 460))
+        w._place.assert_called_once_with(1580, 620)
+
+    def test_zoom_converts_regions_and_room_requests(self):
+        ns = window_methods("set_wide")
+        w = ns["Window"]()
+        w.z = 0.6
+        self.assertEqual((w._px(340), w._px(460)), (204, 276))
+        self.assertEqual(w._region_rect((10, 20, 101, 51)), (6, 12, 61, 31))
+        w.layer, w.mx, w.my = True, 300, 200
+        w.wide_shift = w.top_shift = 0
+        w.cur_w, w.cur_h = 204, 276
+        w.want_panel = w.want_code = w.want_bar = w.hover = False
+        w.want_xw = w.want_h = 0
+        w._geom = lambda: (None, SimpleNamespace(width=1000, height=900))
+        w.win = SimpleNamespace(set_size_request=Mock(), resize=Mock(), queue_draw=Mock())
+        w._place, w._js = Mock(), Mock()
+        w.set_wide((200, 100), "size")
+        self.assertEqual((w.want_xw, w.want_h), (120, 60))
+        self.assertEqual((w.wide_shift, w.top_shift, w.cur_w, w.cur_h), (60, 0, 324, 336))
+        w._js.assert_called_with("window.nixiLayout&&nixiLayout(100.0,0.0)")
+
     def test_monitor_edges_and_height(self):
         mon = (0, 0, 1000, 900)
         cases = [
