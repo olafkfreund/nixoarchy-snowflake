@@ -716,7 +716,7 @@ body.hover #nixiB,body.pnl #nixiB,body.appr #nixiB{display:none!important}
   background:var(--tbg,var(--panel));border:2.5px solid var(--ink,var(--edge2));box-shadow:5px 6px 0 var(--inksh,#000c);font:15px/21px var(--mono);color:var(--text);
   opacity:0;scale:.5;transition:opacity .3s,scale .4s cubic-bezier(.3,1.5,.5,1)}
 #code.on{opacity:1;scale:1}
-#code.on.mini{scale:.6}
+#code.on.mini{scale:1}   /* (mini is in the sheet's transform, with his size) */
 #code .tb{display:flex;align-items:center;gap:6px;height:30px;padding:0 16px;font-size:13px;border-bottom:2px dashed var(--line);color:var(--tacc,var(--hot));font-weight:600}
 #code .tb b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 #code .tb span{color:var(--dim)} #code .tb span.ok{color:var(--tgreen,var(--hot))} #code .tb span.bad{color:var(--tred,#ff6b6b)}
@@ -4688,7 +4688,7 @@ addEventListener('blur',()=>{ spaceHeld=false; if(rec&&rec.mode==='ptt') stopRec
    His eyes keep an eye on it. */
 const CP=(()=>{
   const el=$('#code'), out=el.querySelector('.lines'), titleEl=el.querySelector('.tb b'), stEl=el.querySelector('.tb span');
-  let W=380, H=120; const ROWS=24, MAXH=442;                       // size, visible lines
+  let W=380, H=120; const ROWS=24, MAXH=442, SHEET_K=.7;           // (drawn at 70%: it sits beside him, it mustn't fill the screen)                       // size, visible lines
   let on=false, last=0, wide=false, offT=null, pos=null;
   const sp={x:0,y:0,vx:0,vy:0,r:0};                // held in a "hand": follows where he looks, with a little lag and tilt
   const ball=()=>document.querySelector('#body > .ball').getBoundingClientRect();
@@ -4704,10 +4704,9 @@ const CP=(()=>{
     const dt=Math.min(.05,(ts-(last||ts))/1000); last=ts;
     if(!on&&!el.classList.contains('on')) return;
     const edge=barEdge();
-    if(edge){ el.style.scale=''; pos={x:170,y:230,cx:170,cy:230}; return; }  // the notch: CSS puts it inside the notch (see body.bar #code)
+    if(edge){ pos={x:170,y:230,cx:170,cy:230}; return; }  // the notch: CSS puts it inside the notch (see body.bar #code)
     const {cx,cy,reach}=geo(), st=new DOMMatrix(getComputedStyle($('#stage')).transform).a||1;
-    const k=clamp(st,.4,1)*(el.classList.contains('mini')?.6:1), w2=W*k/2, h2=H*k/2, half=w2+14, rr=innerWidth-cx;   // (it shrinks and grows with him: peek, hover)
-    el.style.scale=el.classList.contains('on')?k.toFixed(3):'';   // (off: the CSS pop-out scale)
+    const k=SHEET_K*clamp(st,.4,1)*(el.classList.contains('mini')?.6:1), w2=W*k/2, h2=H*k/2, half=w2+14, rr=innerWidth-cx;   // (it shrinks and grows with him: peek, hover)
     if(side>0?cx>rr+40:rr>cx+40) side=-side;                 // (a margin, so it doesn't flip back and forth)
     const tx=clamp(cx+side*(reach*.92+18*k+w2),half,innerWidth-half);
     const ty=clamp(cy+Math.sin(ts/1400)*2,h2+4,innerHeight-h2-4);
@@ -4718,7 +4717,7 @@ const CP=(()=>{
     pos={x:sp.x,y:sp.y,cx,cy};
     el.classList.toggle('tr',side<0);
     el.style.setProperty('--ty',clamp((cy-(sp.y-h2))/k,24,H-24).toFixed(0)+'px');   // (in the sheet's own unscaled px)
-    el.style.transform=`translate(${(sp.x-W/2).toFixed(1)}px,${(sp.y-H/2).toFixed(1)}px) rotate(${(sp.r-1).toFixed(2)}deg)`;
+    el.style.transform=`translate(${(sp.x-W/2).toFixed(1)}px,${(sp.y-H/2).toFixed(1)}px) rotate(${(sp.r-1).toFixed(2)}deg) scale(${k.toFixed(3)})`;   // (scale last: the move stays in window px)
   }
   requestAnimationFrame(tick);
 
