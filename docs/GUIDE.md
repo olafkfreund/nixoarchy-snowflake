@@ -530,7 +530,7 @@ All subcommands handled by `bin/nixi-companion`:
 | `nixi-companion ptt-down` · `nixi-companion ptt-up` | push-to-talk key press and release |
 | `nixi-companion hover` · `nixi-companion hover-on` · `nixi-companion hover-off` | toggle, turn on, or turn off hover mode |
 | `nixi-companion monitor` | move to another screen (`next`, `prev`, `focused`, or an output name like `DP-1`) |
-| `nixi-companion size up\|down\|reset` | change size by 10 percentage points or reset to 75%; bind SUPER+ALT+= → `up`, SUPER+ALT+- → `down`, SUPER+ALT+0 → `reset` in `nixos_config` |
+| `nixi-companion size up\|down\|reset` | change size by 10 percentage points or reset to 75%; bound to SUPER+CTRL+ALT+= → `up`, SUPER+CTRL+ALT+- → `down`, SUPER+CTRL+ALT+0 → `reset` in `nixos_config` (SUPER+ALT+-/= are Omarchy's window nudges) |
 | `nixi-companion attention` | receive a terminal agent alert (`--from claude\|codex\|agy --hook`) |
 | `nixi-companion approve` · `nixi-companion result` | agent hooks (`--from claude\|codex`): ask for a click and report the result; see "Approve or deny from Nixi" |
 | `nixi-companion doctor` | check the window, list your mics, record 3 seconds with a level meter and test the voice |
