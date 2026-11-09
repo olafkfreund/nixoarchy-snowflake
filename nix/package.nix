@@ -22,6 +22,7 @@
   espeak-ng,
   ffmpeg-headless,
   procps,
+  util-linux,
   wireplumber,
   pipewire,
   alsa-utils,
@@ -111,6 +112,7 @@ stdenvNoCC.mkDerivation {
           espeak-ng
           ffmpeg-headless
           procps
+          util-linux # flock: one window even when two restarts race
           wireplumber
           pipewire
           alsa-utils
