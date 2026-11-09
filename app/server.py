@@ -2643,6 +2643,7 @@ class Nudge:
             if A.last_lock_len >= 300:                              # a real break: the counter starts again
                 cls.active_since = A.unlocked_at
                 cls.water_since = A.unlocked_at
+                cls.pending.pop("water", None)
             if CFG.get("react_welcome") and A.last_lock_len >= 1800:
                 cls.offer("welcome", cls.welcome(wall, hist, now), True, t)
         if not CFG.get("react_break"):

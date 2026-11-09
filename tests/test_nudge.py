@@ -367,6 +367,25 @@ class NudgeTest(_ServerEnv):
         self.assertNotIn("water", N.pending)
         self.assertIsNone(N.water_since)
 
+    def test_long_lock_clears_water_offer_held_by_dnd(self):
+        S, N, A = self.server, self.server.Nudge, self.server.Ambient
+        S.CFG["water_every"] = 45
+        self.tick(0)
+        A.dnd = True
+        self.tick(2700)
+        self.assertIn("water", N.pending)
+        A.locked = True
+        self.tick(2800)
+        A.locked, A.unlocked_at, A.last_lock_len = False, 3200, 400
+        self.tick(3200)
+        self.assertEqual(N.water_since, 3200)
+        self.assertNotIn("water", N.pending)
+        A.dnd = False
+        self.tick(3201)
+        self.assertEqual(self.sent(), [])
+        self.tick(5900)
+        self.assertEqual([e["kind"] for e in self.sent()], ["water"])
+
     def test_water_counter_waits_for_a_snooze(self):
         S, N = self.server, self.server.Nudge
         S.CFG["water_every"] = 45
