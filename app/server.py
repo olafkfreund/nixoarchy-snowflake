@@ -305,6 +305,11 @@ CHARACTERS = ("snowflake", "terminal", "robot", "devil")
 HEX = re.compile(r"#[0-9a-f]{6}")
 
 
+def character_ok(k):
+    """A built-in character id, or `plug:<id>` of a loaded plugin's character."""
+    return isinstance(k, str) and (k in CHARACTERS or (k.startswith("plug:") and Plug.has_character(k[5:])))
+
+
 def look(raw=None):
     lk = dict((CFG.get("look") if raw is None else raw) or {})
     ec, ew = (CFG.get("eye_color") or "#3e5993").lower(), (CFG.get("eye_white") or "#ffffff").lower()   # NixOS blues
@@ -317,7 +322,7 @@ def look(raw=None):
             out[k] = v.lower()
         elif k == "skin" and (v in SKINS or (isinstance(v, str) and v.startswith("plug:") and Plug.has_prop(v[5:]))):
             out[k] = v
-        elif k == "character" and v in CHARACTERS:       # (a non-string is never in the tuple)
+        elif k == "character" and character_ok(v):
             out[k] = v
         elif k in ("link", "random", "follow_theme"):
             out[k] = bool(v)
@@ -2101,6 +2106,7 @@ class Plug:
     quips = {}                                                  # event -> lines from enabled packs
     rules = []                                                  # (kind "app"|"host", value, category)
     props = []                                                  # [{id, name, anchor, layer, nodes}] of enabled, sanitised props
+    characters = []                                             # [{id, name, template, fill, fits, back, front}] of enabled, sanitised characters
     prop_errors = {}                                            # id -> why a prop was dropped (A4 shows it)
     stage = {}                                                  # id -> Plugin of the enabled, consented stage plugins (B2)
     updated = {}                                                # id -> "Updated": a Nix stage plugin whose hash changed since it was recorded
@@ -2127,7 +2133,7 @@ class Plug:
         cls.review(found, st)                                   # (a changed Folder plugin is switched off here)
         plugins.forget()                                        # (a result from before a reload or a switch-off is never shown again)
         loaded = [p for p in found if not p.error and st.get(p.id)["enabled"]]
-        quips, rules, props, errors = {}, [], [], {}               # built aside, then swapped in at once: no half-loaded state
+        quips, rules, props, chars, errors = {}, [], [], [], {}               # built aside, then swapped in at once: no half-loaded state
         for p in loaded:
             m = p.manifest
             if "quips" in m:
@@ -2140,10 +2146,17 @@ class Plug:
                 try:
                     nodes = plugins.sanitize_svg((p.dir / m["prop"]["file"]).read_bytes())
                     props.append({"id": p.id, "name": m["name"], "anchor": m["prop"]["anchor"], "layer": m["prop"].get("layer", "front"), "nodes": nodes})
+                except (OSError, ValueError) as e:            # the whole prop is dropped; the plugin's other parts stay
+                    errors[p.id] = plugins.PRIVATE_ART_ERROR if (m.get("character") or {}).get("private") is True else str(e)
+            if "character" in m:
+                c = m["character"]
+                try:
+                    chars.append({"id": p.id, "name": c["label"], "template": c["template"], "fill": c["fill"], "fits": c["fits"],
+                                  "back": plugins.sanitize_svg((p.dir / c["back"]).read_bytes()), "front": plugins.sanitize_svg((p.dir / c["front"]).read_bytes())})
                 except (OSError, ValueError) as e:
-                    errors[p.id] = str(e)                       # the whole prop is dropped; the plugin's other parts stay
+                    errors[p.id] = plugins.PRIVATE_ART_ERROR if c.get("private") is True else str(e)   # (a private plugin's reason is never sanitiser text)
             rules += [(k, n[k], n["category"]) for n in m.get("notifications", []) for k in ("app", "host") if k in n]
-        cls.loaded, cls.quips, cls.rules, cls.props, cls.prop_errors = loaded, quips, rules, props, errors
+        cls.loaded, cls.quips, cls.rules, cls.props, cls.characters, cls.prop_errors = loaded, quips, rules, props, chars, errors
         if any("system-status" in p.manifest.get("stage", {}).get("reads", []) for p in loaded):
             plugins.prime()
         cls.stage = {p.id: p for p in loaded if "stage" in p.manifest} if any("stage" in p.manifest for p in loaded) and plugins.bwrap_ok() else {}
@@ -2174,6 +2187,11 @@ class Plug:
         return [re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", f"- {p.id}: {p.manifest['stage'].get('hint') or p.manifest['name']}")[:79] for p in list(cls.stage.values())[:8]]
 
     @classmethod
+    def has_character(cls, pid):
+        cls.ensure()
+        return any(c["id"] == pid for c in cls.characters)
+
+    @classmethod
     def has_prop(cls, pid):
         cls.ensure()
         return any(p["id"] == pid for p in cls.props)
@@ -2202,6 +2220,10 @@ def plugin_caps(m):
         out.append("Adds lines to what he says")
     if "prop" in m:
         out.append(f"Adds a prop for his {m['prop']['anchor']} (pick it in Look)")
+    if "character" in m:
+        out.append("Adds a character (pick it in Look)")
+        if (m["character"] or {}).get("private") is True:
+            out.append("Private: keep this folder out of Nix and out of any repo.")
     if m.get("notifications"):
         out.append("Sorts notifications from some apps or sites into mail, chat or feed")
     if "stage" in m:
@@ -7013,9 +7035,10 @@ def voice_settings(b, upd):
     """Check the voice-engine keys of a settings call and copy the good ones into upd → a sentence when one is refused."""
     if "voice_by_character" in b:
         m = b["voice_by_character"]
-        if not isinstance(m, dict) or any(k not in CHARACTERS or not isinstance(v, str) or v not in VOICES for k, v in m.items()):
+        if not isinstance(m, dict) or any(not character_ok(k) or not isinstance(v, str) or v not in VOICES for k, v in m.items()):
             return "A character's voice must be one of the voices listed."
-        upd["voice_by_character"] = m
+        old = CFG.get("voice_by_character") if isinstance(CFG.get("voice_by_character"), dict) else {}
+        upd["voice_by_character"] = {**{k: v for k, v in old.items() if str(k).startswith("plug:") and not character_ok(k)}, **m}   # (a switched-off plugin keeps its voice)
     if "tts_fallback" in b:
         if b["tts_fallback"] not in ("auto", "kokoro", "piper", "espeak"):
             return "The fallback voice must be auto, kokoro, piper or espeak."
@@ -7115,7 +7138,7 @@ def state_info():
         "popup_done": bool(CFG.get("popup_done")), "hover": bool(CFG.get("hover")), "code_panel": CFG.get("code_panel", True) is not False, "live_minutes": int(CFG.get("live_minutes") or 10), "voice_native": Speaker.available(), "code_face": "you" if CFG.get("code_face") == "you" else "him",
         "click_through": bool(CFG.get("click_through")), "mirror": Mirror.snapshot(),
         "autostart": bool(CFG.get("autostart")), "listen_on_show": bool(CFG.get("listen_on_show")),
-        "barge_in": bool(CFG.get("barge_in")), "sfx": bool(CFG.get("sfx")), "look": look(), "skins": SKINS, "plugin_props": (Plug.ensure(), Plug.props)[1], "ambient": Ambient.snapshot(),
+        "barge_in": bool(CFG.get("barge_in")), "sfx": bool(CFG.get("sfx")), "look": look(), "skins": SKINS, "plugin_props": (Plug.ensure(), Plug.props)[1], "plugin_characters": Plug.characters, "ambient": Ambient.snapshot(),
         "weather": {"sky": Ambient.sky, "cold": Ambient.cold, "windy": Ambient.windy, "lean": Ambient.lean,
                     "heavy": Ambient.heavy, "feel": Ambient.feel, "wind": Ambient.wspeed, "day": Ambient.day, "source": Ambient.wsrc},
         "follow_focus": bool(CFG.get("follow_focus")), "step_aside": CFG.get("step_aside", True) is not False, "answer_stages": CFG.get("answer_stages", True) is not False,
@@ -7134,7 +7157,7 @@ def state_info():
         "idle_mode": CFG.get("idle_mode") if CFG.get("idle_mode") in ("off", "shrink", "doze") else "shrink",
         "voice": CFG.get("voice") or "girl", "voice_speaking": voice_key(),
         "voice_pinned": bool(eng == "kokoro" and CFG.get("kokoro_voice") or eng == "piper" and lang.active == "en" and CFG.get("piper_voice")),
-        "voice_by_character": {k: v for k, v in by_character.items() if k in CHARACTERS and isinstance(v, str) and v in VOICES} if isinstance(by_character, dict) else {},
+        "voice_by_character": {k: v for k, v in by_character.items() if character_ok(k) and isinstance(v, str) and v in VOICES} if isinstance(by_character, dict) else {},
         "voice_pitch": voice_preset().get("pitch", 1.0),
         "voices": [{"id": k, "label": v["label"],
                     "ready": voice_ready(v),
@@ -7166,6 +7189,7 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(obj).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
