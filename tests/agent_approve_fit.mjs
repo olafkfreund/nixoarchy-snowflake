@@ -78,6 +78,15 @@ await ev("attnPend=null; return 1");
 await ev("onEvent({t:'attention',from:'claude',name:'Claude',kind:'working',project:'p',text:''}); return 1");
 check(await waitFor("document.querySelector('#code').classList.contains('on')&&document.querySelector('#code .tb b').textContent==='Claude'"), "working opens the panel with the agent's name");
 check(await ev("return attnPend===null && !chip.classList.contains('act')"), "working sets no attnPend and no chip");
+// full size: the sheet is drawn at 70%, beside him (once its spring out of him has settled)
+await sleep(1500);
+const fz = await ev("const c=document.querySelector('#code').getBoundingClientRect(), b=document.querySelector('#body > .ball').getBoundingClientRect(); const over=Math.max(0,Math.min(c.right,b.right)-Math.max(c.left,b.left))*Math.max(0,Math.min(c.bottom,b.bottom)-Math.max(c.top,b.top)); return {w:Math.round(c.width), over:Math.round(over), ball:Math.round(b.width*b.height)};");
+check(fz.w <= 300 && fz.over < fz.ball * 0.1, "the sheet is drawn small (<=300 px) and doesn't cover him", JSON.stringify(fz));
+// he shrinks to the corner when idle (peek): the panel shrinks with him and stays beside him, not over him
+await ev("document.body.classList.add('peek'); return 1"); await sleep(1500);
+const pk = await ev("const c=document.querySelector('#code').getBoundingClientRect(), b=document.querySelector('#body > .ball').getBoundingClientRect(); const over=Math.max(0,Math.min(c.right,b.right)-Math.max(c.left,b.left))*Math.max(0,Math.min(c.bottom,b.bottom)-Math.max(c.top,b.top)); return {w:Math.round(c.width), over:Math.round(over), ball:Math.round(b.width*b.height)};");
+check(pk.w < 250 && pk.over < pk.ball * 0.1, "in peek the panel is scaled down with him and doesn't cover him", JSON.stringify(pk));
+await ev("document.body.classList.remove('peek'); return 1"); await sleep(1000);
 await ev("onEvent({t:'attention',from:'claude',name:'Claude',kind:'done',project:'p',text:''}); return 1");
 check(await waitFor("!document.querySelector('#code').classList.contains('on')"), "the agent's done closes the panel");
 

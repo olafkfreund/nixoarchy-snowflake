@@ -102,11 +102,23 @@ class AgentApprovalsTest(unittest.TestCase):
         h.do_POST()
         return h._json.call_args
 
-    def test_default_probe_set_refuses_both_agents(self):
-        with mock.patch.object(self.s, "AGENT_APPROVE_FROM", frozenset()):
-            for frm in ("claude", "codex"):
-                self.assertEqual(self.ap.ask(self.req(**{"from": frm}), None), {"decision": None})
-                self.assertEqual(self.post("/api/agent-approve", self.req(**{"from": frm})).args[0], {"decision": None})
+    def test_probe_set_refuses_claude_and_accepts_codex(self):
+        self.assertEqual(self.s.AGENT_APPROVE_FROM, frozenset({"codex"}))
+        claude = self.req(**{"from": "claude"})
+        self.assertEqual(self.ap.ask(claude, None), {"decision": None})
+        self.assertEqual(self.post("/api/agent-approve", claude).args[0], {"decision": None})
+        t, out, _, item = self.start()
+        self.assertIsNotNone(item)
+        self.assertTrue(self.post("/api/approve/answer", {"id": item["id"], "ans": "yes"},
+                                  click=self.s.CLICK_KEY).args[0]["ok"])
+        t.join(2)
+        self.assertEqual(out, [{"decision": "allow"}])
+
+    def test_codex_result_key_ignores_permission_description(self):
+        approval = self.req(tool_input={"command": "printf hello", "description": "private"})
+        result = self.req(tool_input={"command": "printf hello"})
+        self.assertEqual(self.ap.result_key(approval), self.ap.result_key(result))
+        self.assertNotEqual(self.ap.result_key(result), self.ap.result_key(self.req("printf goodbye")))
 
     def test_off_unclaimed_and_no_page_return_immediately(self):
         for change in (lambda: self.s.CFG.update(agent_approvals=False), self.reset_click,
@@ -271,6 +283,21 @@ class AgentApprovalsTest(unittest.TestCase):
         self.assertFalse(self.ap.result("codex", list(item["key"]), True, 0))
         self.assertEqual(len(self.results()), 1)
         self.assertEqual(self.post("/api/agent-result", {"from": "codex", "key": "none", "ok": True}).args[0], {"ok": False})
+
+    def test_sandbox_result_before_permission_is_ignored(self):
+        req = self.req()
+        result = self.req(tool_input={"command": req["tool_input"]["command"]})
+        key = list(self.ap.result_key(result))
+        self.assertEqual(self.post("/api/agent-result", {"from": "codex", "key": key, "ok": False}).args[0],
+                         {"ok": False})
+        self.assertEqual(self.results(), [])
+        t, out, _, item = self.start(req)
+        self.assertTrue(self.ap.answer(item["id"], "yes", True))
+        t.join(2)
+        self.assertEqual(out, [{"decision": "allow"}])
+        self.assertEqual(self.post("/api/agent-result", {"from": "codex", "key": key, "ok": True}).args[0],
+                         {"ok": True})
+        self.assertEqual(self.results(), [{"t": "agent_result", "agent": "codex", "ok": True, "state": "ran"}])
 
     def test_result_exit_only_when_int_and_string_key(self):
         self.assertIsInstance(self.answered("no", tool_use_id="toolu_0")["key"], tuple)   # default: tool_use_id unused

@@ -1,4 +1,4 @@
-"""Launcher hook protocol tests with synthetic payloads pending probe P9."""
+"""Launcher hook protocol tests with synthetic payloads."""
 import json
 import os
 import shutil
@@ -131,6 +131,20 @@ class AgentHooksTest(unittest.TestCase):
             self.assertNotIn("private output", json.dumps(body))
             approve_body.pop("tool_use_id", None)                # one end without tool_use_id: the key still matches
             self.assertEqual(body["key"], list(self.server_module.AgentApprovals.result_key(approve_body)))
+
+    def test_codex_command_key_matches_across_different_tool_input(self):
+        approval = {"hook_event_name": "PermissionRequest", "session_id": "s", "turn_id": "t",
+                    "tool_name": "shell_command", "tool_input": {"command": "printf hello", "description": "private"}}
+        result = {"hook_event_name": "PostToolUse", "session_id": "s", "turn_id": "t",
+                  "tool_name": "shell_command", "tool_input": {"command": "printf hello"},
+                  "tool_response": "private output"}
+        self.assertEqual(self.run_hook("approve", "codex", json.dumps(approval).encode()), ALLOW)
+        approve_body = self.received[-1][2]
+        self.assertEqual(self.run_hook("result", "codex", json.dumps(result).encode()), b"")
+        path, _, body = self.received[-1]
+        self.assertEqual(path, "/api/agent-result")
+        self.assertEqual(body["key"], list(self.server_module.AgentApprovals.result_key(approve_body)))
+        self.assertNotIn("private", json.dumps(body))
 
     def test_failure_event_is_not_ok_and_has_no_unprobed_exit(self):
         result = json.loads((FIX / "claude-result.json").read_text())

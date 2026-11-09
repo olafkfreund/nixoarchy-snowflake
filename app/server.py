@@ -73,8 +73,8 @@ CLICK_KEY = secrets.token_urlsafe(24)
 CLICK = {"claimed": False, "spoiled": False}
 CLICK_LOCK = threading.Lock()
 AGENT_APPROVE_WAIT = 60
-AGENT_APPROVE_FROM = frozenset()  # set from probe P6/P9 (#211 step 1)
-RESULT_BY_TOOL_USE_ID = frozenset()  # set from probe P9 (#211 step 1): agents giving tool_use_id at both ends; as in bin/nixi-companion
+AGENT_APPROVE_FROM = frozenset({"codex"})  # probes P6/P7 (#211): Codex honors deny; Claude can take another hook's allow
+RESULT_BY_TOOL_USE_ID = frozenset()  # probe P9 (#211): Codex gives no tool_use_id at PermissionRequest; as in bin/nixi-companion
 
 
 def click_ok(header):
@@ -1086,6 +1086,8 @@ class AgentApprovals:
         if req.get("from") in RESULT_BY_TOOL_USE_ID and req.get("tool_use_id"):
             return str(req["tool_use_id"])
         inp = req.get("tool_input") or {}
+        if isinstance(inp, dict) and isinstance(inp.get("command"), str):
+            inp = {"command": inp["command"]}
         digest = hashlib.sha256(json.dumps(inp, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         return (req.get("from"), req.get("session_id"), req.get("turn_id"), req.get("tool_name"), digest)
 
@@ -1778,6 +1780,7 @@ class Ambient:
     cpu_hot = ram_low = fullscreen = locked = False
     coding = night = party = False
     weather = sky = None
+    storm = hot = False
     day = True
     wx = omx = None
     cold, windy, lean, heavy, wkey = 0, False, 0, False, None
@@ -1788,6 +1791,129 @@ class Ambient:
     SNOW = {0xE327, 0xE30A, 0xE31A}
     hot_since = None                                           # load has been over the core count since then
     lock_since = unlocked_at = last_lock_len = 0.0             # monotonic; lock_since is 0 while unlocked
+    machine_due = 0.0
+    failed = {"user": None, "system": None}
+    disk_full = set()
+    off_since = None
+    offline = False
+    peer_last = {}                                              # states from the last finished peer round
+    peer_lock = threading.Lock()
+    peer_due = 0.0
+    later = []
+    later_lock = threading.Lock()
+
+    @classmethod
+    def hand(cls, kind, text, ok, peer=None):
+        with cls.later_lock:
+            cls.later.append((kind, text, ok, peer))
+
+    @classmethod
+    def peer_edges(cls):
+        """Record finished peer states and hand host recoveries to the ambient thread."""
+        with cls.peer_lock:
+            if not (CFG.get("proactive") and CFG.get("react_load") and plugins.peers_allowed()):
+                cls.peer_last = {}
+                return
+            rows = peers.current()
+            for row in rows:
+                name, state = row["name"], row["state"]
+                if cls.peer_last.get(name) == "down" and state == "up":
+                    cls.hand("host", quip("host", name=name),
+                             lambda name=name: bool(CFG.get("proactive") and CFG.get("react_load")
+                                                    and plugins.peers_allowed() and cls.peer_last.get(name) == "up"), name)
+            cls.peer_last = {row["name"]: row["state"] for row in rows}
+            with cls.later_lock:
+                cls.later = [item for item in cls.later if item[3] is None or cls.peer_last.get(item[3]) == "up"]
+            host = Nudge.pending.get("host")
+            if host and len(host) > 3 and host[3] is not None and cls.peer_last.get(host[3]) != "up":
+                Nudge.pending.pop("host", None)
+
+    @staticmethod
+    def route_up(proc="/proc"):
+        """Default route present, absent, or unknown when a route table cannot be read."""
+        found = False
+        readable = 0
+        for name in ("route", "ipv6_route"):
+            try:
+                rows = Path(proc, "net", name).read_text().splitlines()
+            except OSError:
+                continue
+            readable += 1
+            for row in rows:
+                cols = row.split()
+                try:
+                    if name == "route":
+                        found |= len(cols) >= 4 and cols[1] == "00000000" and bool(int(cols[3], 16) & 1)
+                    else:
+                        found |= (len(cols) >= 10 and cols[0] == "0" * 32 and cols[1] == "00"
+                                  and bool(int(cols[8], 16) & 1) and not int(cols[8], 16) & 0x200 and cols[9] != "lo")
+                except ValueError:
+                    continue
+        return True if found else False if readable == 2 else None
+
+    @classmethod
+    def machine(cls, t, proc="/proc"):
+        if not (CFG.get("proactive") and CFG.get("react_load")):
+            cls.machine_due = 0.0
+            cls.failed = {"user": None, "system": None}
+            cls.disk_full = set()
+            cls.off_since = None
+            cls.offline = False
+            cls.peer_due = 0.0
+            with cls.peer_lock:
+                cls.peer_last = {}
+            for kind in ("error", "disk", "offline", "host"):
+                Nudge.pending.pop(kind, None)
+            return
+        if not plugins.peers_allowed():
+            cls.peer_due = 0.0
+            with cls.peer_lock:
+                cls.peer_last = {}
+            Nudge.pending.pop("host", None)
+        elif t >= cls.peer_due:
+            cls.peer_due = t + 300
+            peers.snapshot()
+        if t >= cls.machine_due:
+            cls.machine_due = t + 120
+            out = [None, None]
+            threads = [threading.Thread(target=plugins._failed, args=(["systemctl", *scope, "--failed", "--plain", "--no-legend"], out, i))
+                       for i, scope in enumerate((["--user"], []))]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+            for i, scope in enumerate(("user", "system")):
+                if out[i] is None:
+                    continue
+                current = set(out[i])
+                previous = cls.failed[scope]
+                if previous is not None:
+                    new = current - previous
+                    if new:
+                        Nudge.offer("error", quip("error", unit=min(new)), False, t)
+                cls.failed[scope] = current
+            for path in ("/", "/nix/store"):
+                try:
+                    v = os.statvfs(path)
+                    if not v.f_blocks:
+                        continue
+                    used = (v.f_blocks - v.f_bfree) / v.f_blocks
+                except OSError:
+                    continue
+                if used >= .90 and path not in cls.disk_full:
+                    cls.disk_full.add(path)
+                    Nudge.offer("disk", quip("disk", path=path, n=round(100 * used)), False, t)
+                elif used < .85:
+                    cls.disk_full.discard(path)
+        route = cls.route_up(proc)
+        if route is True:
+            cls.off_since, cls.offline = None, False
+            Nudge.pending.pop("offline", None)                   # back before it showed: no line
+        elif route is False:
+            cls.off_since = t if cls.off_since is None else cls.off_since
+            if not cls.offline and t - cls.off_since >= 30:
+                cls.offline = True
+                Nudge.offer("offline", quip("offline"), False, t)
 
     @staticmethod
     def run(argv, timeout=3):
@@ -1908,6 +2034,7 @@ class Ambient:
                    else "snow" if code is not None and (71 <= code <= 77 or 85 <= code <= 86) else None)
             day = current.get("is_day")
             return {"key": key, "at": time.monotonic(), "sky": sky, "heavy": code in (65, 67, 82),
+                    "storm": code in (95, 96, 99),
                     "feel": number("apparent_temperature", -80, 60), "temp": number("temperature_2m", -80, 60),
                     "wind": number("wind_speed_10m", 0, 400), "dir": number("wind_direction_10m", 0, 360),
                     "day": day if type(day) is int and day in (0, 1) else None}
@@ -1986,7 +2113,7 @@ class Ambient:
 
     @classmethod
     def situation(cls):
-        return {k: getattr(cls, k) for k in ("meeting", "music", "track", "cpu_hot", "ram_low", "fullscreen", "locked", "dnd", "coding", "weather", "day", "cold", "windy", "lean", "heavy", "night", "party")}
+        return {k: getattr(cls, k) for k in ("meeting", "music", "track", "cpu_hot", "ram_low", "fullscreen", "locked", "dnd", "coding", "weather", "day", "cold", "windy", "lean", "heavy", "storm", "hot", "night", "party")}
 
     @classmethod
     def sense(cls, now=None, proc="/proc", mono=None):
@@ -2023,6 +2150,7 @@ class Ambient:
         elif not locked and cls.lock_since:
             cls.last_lock_len, cls.unlocked_at, cls.lock_since = t - cls.lock_since, t, 0.0
         cls.locked = locked
+        cls.machine(t, proc)
         cls.fullscreen = on and Desk.fullscreen
         cls.coding = bool(on and CFG.get("look_coding") and Desk.coding_since and t - Desk.coding_since >= 60)
         gate = on and CFG.get("look_weather") and CFG.get("ambient_weather")
@@ -2044,6 +2172,9 @@ class Ambient:
             BUS.pub(t="ambient", glint=False, alert=False, **cls.data)
         cls.weather = sky if gate else None
         cls.day = bool(cls.wx["day"]) if source == "open-meteo" and cls.wx["day"] is not None else 7 <= now.hour < 19
+        cls.storm = bool(cls.wx.get("storm")) if gate and source == "open-meteo" else False
+        cls.hot = bool(gate and source == "open-meteo" and cls.day and sky in ("clear", "partly")
+                       and feel is not None and feel >= (26 if cls.hot else 28))
         if gate:
             if feel is None:
                 cls.cold = 0
@@ -2098,6 +2229,11 @@ class Ambient:
                     print(f"[nixi] ambient: {e}", file=sys.stderr)
             try:
                 cls.sense()
+                with cls.later_lock:
+                    later, cls.later = cls.later, []
+                for kind, caption, ok, peer in later:
+                    if ok():
+                        Nudge.offer(kind, caption, False, peer=peer)
                 Nudge.tick()
             except Exception as e:  # noqa: BLE001
                 print(f"[nixi] ambient: {e}", file=sys.stderr)
@@ -2118,7 +2254,10 @@ QUIP_FALLBACK = {
     "welcome": ("Welcome back!",), "ram": ("Memory's getting tight. Maybe close something heavy?",), "cpu": ("The machine is working hard.",),
     "rain": ("Rain outside. Cosy in here!",), "snow": ("Snow! My favourite thing in the whole world.",),
     "night": ("Getting late. Don't forget to rest.",), "party": ("Something to celebrate today!",),
-    "coding": ("{n} hours of code. Water?",), "done": ("All done!",)}
+    "coding": ("{n} hours of code. Water?",), "done": ("All done!",),
+    "error": ("{unit} failed.",), "disk": ("Disk {path} is {n}% full.",),
+    "offline": ("No network connection.",), "host": ("{name} is back.",),
+    "storm": ("Thunder outside. Stay in!",), "hot": ("Hot and sunny out there.",)}
 
 
 class Plug:
@@ -2126,6 +2265,7 @@ class Plug:
     loaded = None
     quips = {}                                                  # event -> lines from enabled packs
     rules = []                                                  # (kind "app"|"host", value, category)
+    rx_rules = []                                               # (plugin id, kind, value, reaction)
     props = []                                                  # [{id, name, anchor, layer, nodes}] of enabled, sanitised props
     characters = []                                             # [{id, name, template, fill, fits, back, front}] of enabled, sanitised characters
     prop_errors = {}                                            # id -> why a prop was dropped (A4 shows it)
@@ -2154,7 +2294,7 @@ class Plug:
         cls.review(found, st)                                   # (a changed Folder plugin is switched off here)
         plugins.forget()                                        # (a result from before a reload or a switch-off is never shown again)
         loaded = [p for p in found if not p.error and st.get(p.id)["enabled"]]
-        quips, rules, props, chars, errors = {}, [], [], [], {}               # built aside, then swapped in at once: no half-loaded state
+        quips, rules, rx, props, chars, errors = {}, [], [], [], [], {}               # built aside, then swapped in at once: no half-loaded state
         for p in loaded:
             m = p.manifest
             if "quips" in m:
@@ -2177,6 +2317,8 @@ class Plug:
                 except (OSError, ValueError) as e:
                     errors[p.id] = plugins.PRIVATE_ART_ERROR if c.get("private") is True else str(e)   # (a private plugin's reason is never sanitiser text)
             rules += [(k, n[k], n["category"]) for n in m.get("notifications", []) for k in ("app", "host") if k in n]
+            rx += [(p.id, k, n[k], n["reaction"]) for n in m.get("reactions", []) for k in ("app", "host") if k in n]
+        cls.rx_rules = rx
         cls.loaded, cls.quips, cls.rules, cls.props, cls.characters, cls.prop_errors = loaded, quips, rules, props, chars, errors
         if any("system-status" in p.manifest.get("stage", {}).get("reads", []) for p in loaded):
             plugins.prime()
@@ -2222,14 +2364,24 @@ class Plug:
         if cls.loaded is None:
             cls.reload()
 
+    @staticmethod
+    def _hit(kind, v, app, source):
+        app = app.strip().lower()
+        host = re.sub(r"^[a-z][a-z0-9+.-]*://", "", source.strip().lower()).split("/")[0].split(":")[0]
+        return (kind == "app" and v == app) or (kind == "host" and host and (host == v or (v.startswith("*.") and host.endswith(v[1:]))))
+
+    @classmethod
+    def reaction(cls, app, source):
+        """(plugin id, reaction) of the first enabled plugin whose app or host rule matches; only app and source are read."""
+        cls.ensure()
+        return next(((pid, r) for pid, kind, v, r in cls.rx_rules if cls._hit(kind, v, app, source)), None)
+
     @classmethod
     def category(cls, app, source):
         """The plugin map's category for a notification the built-in rules left in "other", or "other"."""
         cls.ensure()
-        app = app.strip().lower()
-        host = re.sub(r"^[a-z][a-z0-9+.-]*://", "", source.strip().lower()).split("/")[0].split(":")[0]
         for kind, v, cat in cls.rules:
-            if (kind == "app" and v == app) or (kind == "host" and host and (host == v or (v.startswith("*.") and host.endswith(v[1:])))):
+            if cls._hit(kind, v, app, source):
                 return "video" if cat == "feed" else cat
         return "other"
 
@@ -2247,6 +2399,8 @@ def plugin_caps(m):
             out.append("Private: keep this folder out of Nix and out of any repo.")
     if m.get("notifications"):
         out.append("Sorts notifications from some apps or sites into mail, chat or feed")
+    if m.get("reactions"):
+        out.append("Reacts to notifications from some apps or sites")
     if "stage" in m:
         out.append("Runs a program when you ask for it" + (" and uses the network" if m["stage"].get("network") else ""))
         if "system-status" in m["stage"].get("reads", []):
@@ -2402,9 +2556,10 @@ def workout_cfg():
 class Nudge:
     """Unasked nudges (#133b): break, welcome back, memory, load. They wait for a breakpoint (an unlock, a workspace switch, or
     20 s without window events), and a budget keeps them rare: one visual per 5 minutes, one spoken per 10, a cooldown per kind."""
-    COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "workout": 0, "water": 0, "welcome": 0, "rain": 72000, "snow": 72000, "night": 72000, "party": 72000, "coding": 7200}
+    COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "workout": 0, "water": 0, "welcome": 0, "rain": 72000, "snow": 72000, "night": 72000, "party": 72000, "coding": 7200,
+            "error": 1800, "disk": 21600, "offline": 1800, "host": 1800, "storm": 72000, "hot": 72000}
     lock = threading.Lock()
-    pending = {}                                              # kind -> (text, spoken, deadline); oldest first
+    pending = {}                                              # kind -> (text, spoken, deadline, peer); oldest first
     last_visual = last_speech = None
     last_kind = {}
     active_since = None                                       # the break counter's zero
@@ -2422,11 +2577,11 @@ class Nudge:
     coding_offered = 0.0                                      # the coding_since a coding quip was offered for
 
     @classmethod
-    def offer(cls, kind, text, spoken, t=None, until="default"):
+    def offer(cls, kind, text, spoken, t=None, until="default", peer=None):
         t = time.monotonic() if t is None else t
         deadline = (None if kind in ("break", "water") else t + 600) if until == "default" else until
         cls.pending.pop(kind, None)                           # newest wins
-        cls.pending[kind] = (text, spoken, deadline)
+        cls.pending[kind] = (text, spoken, deadline, peer)
 
     @staticmethod
     def missed(path, since, until):
@@ -2540,6 +2695,14 @@ class Nudge:
             if since and since != cls.coding_offered and t - since >= 7200:       # once per coding session of 2 hours or more
                 cls.coding_offered = since
                 cls.offer("coding", quip("coding", n=int((t - since) // 3600)), False, t)
+        weather_on = A.gated()
+        for kind, on in (("storm", A.storm), ("hot", A.hot)):
+            on = bool(weather_on and on)
+            if not weather_on:
+                cls.pending.pop(kind, None)
+            if on and not cls.quipped.get(kind):
+                cls.offer(kind, quip(kind), False, t)
+            cls.quipped[kind] = on
         for kind, (due, text, until) in list(cls.snoozed.items()):
             if due <= t:
                 del cls.snoozed[kind]
@@ -2586,9 +2749,13 @@ class Nudge:
             cls.skip_cool.clear()
             cls.workout_pending.clear()
             cls.active_since = cls.water_since = None
+            cls.quipped.update(storm=False, hot=False)          # (watch doesn't run: re-arm them here)
             return
         cls.watch(t, time.time() if wall is None else wall,
                   hist or Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "omarchy" / "notifications" / "history.json", now)
+        host = cls.pending.get("host")
+        if host and len(host) > 3 and host[3] is not None and Ambient.peer_last.get(host[3]) != "up":
+            cls.pending.pop("host", None)
         for k in [k for k, v in cls.pending.items() if v[2] is not None and t > v[2]]:
             del cls.pending[k]                                      # gone stale while it waited
             if k == "workout":
@@ -2600,7 +2767,7 @@ class Nudge:
         if not at_break or (cls.last_visual is not None and t - cls.last_visual < 300):
             return
         kind = next(iter(cls.pending))
-        text, spoken, deadline = cls.pending.pop(kind)
+        text, spoken, deadline = cls.pending.pop(kind)[:3]
         if kind not in cls.skip_cool and kind in cls.last_kind and t - cls.last_kind[kind] < cls.COOL[kind]:
             if kind in ("ram", "cpu"):                                 # dropped; re-arm the edge so it is offered again
                 setattr(cls, "was_low" if kind == "ram" else "was_hot", False)   # once the cooldown has passed, if it still holds
@@ -2776,6 +2943,8 @@ class Inbox:
     wanted = False                                            # a lease is out
     unseen = {}                                               # key -> when it was sent to the page; 5 s unseen and the shell shows it
     origin = {}                                               # key -> (app, source, time), never row text
+    rxkeys = {}                                               # key -> when a plugin reaction was set on it (once per key)
+    rxat = {}                                                 # plugin id -> when its reaction was last sent (once per 5 minutes)
     acts = {}                                                 # key -> (rev, action ids, time), never row text; 64, 30 s
     alock = threading.Lock()                                  # acts: the tick thread writes, handler threads compare-and-pop
     legacy = 0.0                                              # until then the shell had no delegateRich: use delegate, then ask again
@@ -2938,6 +3107,9 @@ class Inbox:
             for key, (_, _, t) in list(cls.acts.items()):
                 if now - t > 30:
                     cls.acts.pop(key, None)
+        for key, t in list(cls.rxkeys.items()):
+            if now - t > 600:
+                cls.rxkeys.pop(key, None)
         for key, t in list(cls.unseen.items()):               # (handler threads pop from it)
             if now - t > 5:                                   # the page never drew it: the shell shows it as a popup
                 cls.unseen.pop(key, None)
@@ -2952,6 +3124,14 @@ class Inbox:
             cls.wanted = out is not None
             for row in cls.rows(out):
                 cls.unseen[row["key"]] = now
+                if (row["key"] not in cls.rxkeys and row["app"] != "nixi-job" and len(row["source"]) < 80   # (a cut source has no trustworthy host; long commands stay silent, #208)
+                        and (hit := Plug.reaction(row["app"], row["source"]))):
+                    cls.rxkeys[row["key"]] = now
+                    if len(cls.rxkeys) > 64:
+                        cls.rxkeys.pop(min(cls.rxkeys, key=cls.rxkeys.get))
+                    if now - cls.rxat.get(hit[0], -300) >= 300:
+                        cls.rxat[hit[0]] = now
+                        row["reaction"] = hit[1]
                 if (row["category"] in ("mail", "chat") and
                         row["app"].strip().lower().replace("-", " ") not in Icons.BROWSERS and
                         (row["source"].strip().lower() == row["app"].strip().lower() or   # (a native app's source is its own name, even a dotted one)
@@ -6749,6 +6929,7 @@ _peer_followup_round = False
 
 def peer_round_done():
     global _peer_followup_round
+    Ambient.peer_edges()
     if not plugins.peers_allowed():
         return
     if _peer_followup_round:

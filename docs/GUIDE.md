@@ -175,14 +175,16 @@ PostToolUse                           … result --from codex            (timeou
 UserPromptSubmit                      … attention --from codex --hook  (timeout 5)
 ```
 
-- **Off by default.** Turn it on in Settings → Agents → "Approve other agents' commands here (click only)". Until this
-  release's live probes enable them, approvals are refused for every agent.
+- **Off by default.** Turn it on in Settings → Agents → "Approve other agents' commands here (click only)". Approvals
+  work for Codex. Claude Code is left out: when two hooks disagree it takes whichever answers first, so it keeps
+  asking in its own terminal.
 - **Click only.** A yes needs a real click on the card: Y, Enter and the voice never approve, and there is no "always".
   No or Esc denies. Nixi's own send and herdr-write cards need the same click.
 - **60 s.** Nixi waits 60 s (the hook timeout is 75 s), then the card goes and the agent asks in its own terminal as
   usual. "Answer in the terminal" hands it back at once. With the setting off, the agent asks as before.
-- **Result.** After you approve, a line says whether it ran ("Codex ran it ✓", or ✗ with the exit code), "approved,
-  result unknown", "denied in Nixi", or a red warning if a matching command ran after you denied. Output is never sent.
+- **Result.** After you approve, a line says "Codex ran it ✓" (Codex reports no exit code, so a command that ran
+  and failed shows ✓ too), "approved, result unknown", "denied in Nixi", or a red warning if a matching command ran
+  after you denied. Output is never sent.
 - **Working.** While one of them works, the code panel shows a decorative terminal with the agent's name (no real
   text), smaller after a minute, gone when it finishes. agy gets this too, from its `PreInvocation` line.
 - **agy can't be approved from Nixi** (no hook at its prompt); it keeps "open the session".

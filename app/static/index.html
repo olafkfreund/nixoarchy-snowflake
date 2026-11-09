@@ -725,7 +725,7 @@ body.hover #nixiB,body.pnl #nixiB,body.appr #nixiB{display:none!important}
   background:var(--tbg,var(--panel));border:2.5px solid var(--ink,var(--edge2));box-shadow:5px 6px 0 var(--inksh,#000c);font:15px/21px var(--mono);color:var(--text);
   opacity:0;scale:.5;transition:opacity .3s,scale .4s cubic-bezier(.3,1.5,.5,1)}
 #code.on{opacity:1;scale:1}
-#code.on.mini{scale:.6}
+#code.on.mini{scale:1}   /* (mini is in the sheet's transform, with his size) */
 #code .tb{display:flex;align-items:center;gap:6px;height:30px;padding:0 16px;font-size:13px;border-bottom:2px dashed var(--line);color:var(--tacc,var(--hot));font-weight:600}
 #code .tb b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 #code .tb span{color:var(--dim)} #code .tb span.ok{color:var(--tgreen,var(--hot))} #code .tb span.bad{color:var(--tred,#ff6b6b)}
@@ -920,7 +920,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="lookMusicSw"><span class="sw"></span><span class="l">Headphones for music<small>He wears headphones while a player is playing.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="lookBeatSw"><span class="sw"></span><span class="l">Pulse to the beat<small>He listens to what's playing (not your mic) while music plays. Needs headphones for music.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="lookFsSw"><span class="sw"></span><span class="l">Shades in fullscreen<small>He puts on shades while a window is fullscreen.</small></span></label></div>
-      <div class="row"><label class="tg"><input type="checkbox" id="reactLoadSw"><span class="sw"></span><span class="l">Notice a busy machine<small>A sweat drop when the CPU works hard for a while; a word when memory runs low.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="reactLoadSw"><span class="sw"></span><span class="l">React to the machine<small>A sweat drop when the CPU works hard; a word when memory runs low, a service fails, a disk is nearly full or the network drops.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="reactBreakSw"><span class="sw"></span><span class="l">Remind me to move<small>After an hour unlocked he suggests a stretch. A lock of five minutes or more counts as a break. Nothing watches your keyboard.</small></span></label></div>
       <div class="row" id="workoutRow"><div class="t">Workout times</div><div class="h">A reminder during each selected hour.</div><div id="workoutList"></div><button type="button" class="btn sm" id="workoutAdd">Add a time</button></div>
       <div class="row" id="waterRow"><label for="waterEvery" class="t">Remind me to drink water</label><select id="waterEvery"><option value="0">Off</option><option value="45">Every 45 minutes</option><option value="60">Every hour</option><option value="90">Every 90 minutes</option></select></div>
@@ -3003,7 +3003,7 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
   if(!ev.card) notifySeen(ev.key);
   restore(11000,false);   // (before the mail pop-out is measured)
   const c=ev.app==='nixi-job'?NOTE.job:NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null,card:!!ev.card}; notifyRow=row; notifyAt=ts+(ev.card?7000:5000);
-  if(ev.category==='other'&&ev.app!=='nixi-job') rxPlay('notice');
+  if(ev.reaction) rxPlay(ev.reaction); else if(ev.category==='other'&&ev.app!=='nixi-job') rxPlay('notice');
   wake(); G.jelly.kick(-.45); popPupils(); poke(c[3],c[4]); burstLines(c[2],ev.category==='meeting'?8:ev.category==='download'?10:ev.category==='other'&&ev.app!=='nixi-job'?1:3);
   if(ev.category==='chat') G.tilt.kick(-8);
   { const pt={chat:2800,video:2400}[ev.category];                      // the prop for this kind; a new one replaces the old
@@ -4747,7 +4747,7 @@ addEventListener('blur',()=>{ spaceHeld=false; if(rec&&rec.mode==='ptt') stopRec
    His eyes keep an eye on it. */
 const CP=(()=>{
   const el=$('#code'), out=el.querySelector('.lines'), titleEl=el.querySelector('.tb b'), stEl=el.querySelector('.tb span');
-  let W=380, H=120; const ROWS=24, MAXH=442;                       // size, visible lines
+  let W=380, H=120; const ROWS=24, MAXH=442, SHEET_K=.7;           // (drawn at 70%: it sits beside him, it mustn't fill the screen)                       // size, visible lines
   let on=false, last=0, wide=false, offT=null, pos=null;
   const sp={x:0,y:0,vx:0,vy:0,r:0};                // held in a "hand": follows where he looks, with a little lag and tilt
   const ball=()=>document.querySelector('#body > .ball').getBoundingClientRect();
@@ -4764,18 +4764,19 @@ const CP=(()=>{
     if(!on&&!el.classList.contains('on')) return;
     const edge=barEdge();
     if(edge){ pos={x:170,y:230,cx:170,cy:230}; return; }  // the notch: CSS puts it inside the notch (see body.bar #code)
-    const {cx,cy,reach}=geo(), half=W/2+14, rr=innerWidth-cx;
+    const {cx,cy,reach}=geo(), st=new DOMMatrix(getComputedStyle($('#stage')).transform).a||1;
+    const k=SHEET_K*clamp(st,.4,1)*(el.classList.contains('mini')?.6:1), w2=W*k/2, h2=H*k/2, half=w2+14, rr=innerWidth-cx;   // (it shrinks and grows with him: peek, hover)
     if(side>0?cx>rr+40:rr>cx+40) side=-side;                 // (a margin, so it doesn't flip back and forth)
-    const tx=clamp(cx+side*(reach*.92+18+W/2),half,innerWidth-half);
-    const ty=clamp(cy+Math.sin(ts/1400)*2,H/2+4,innerHeight-H/2-4);
+    const tx=clamp(cx+side*(reach*.92+18*k+w2),half,innerWidth-half);
+    const ty=clamp(cy+Math.sin(ts/1400)*2,h2+4,innerHeight-h2-4);
     if(!pos){ sp.x=cx; sp.y=cy; sp.vx=sp.vy=0; }            // pops out of him
     sp.vx+=((tx-sp.x)*45-sp.vx*9.5)*dt; sp.vy+=((ty-sp.y)*45-sp.vy*9.5)*dt; sp.x+=sp.vx*dt; sp.y+=sp.vy*dt;
     sp.x=clamp(sp.x,half-6,innerWidth-half+6);              // a springy overshoot mustn't poke out of the window
     sp.r+=(clamp(sp.vx*.02,-6,6)-sp.r)*Math.min(1,dt*8);   // tips a little only while it's moving
     pos={x:sp.x,y:sp.y,cx,cy};
     el.classList.toggle('tr',side<0);
-    el.style.setProperty('--ty',clamp(cy-(sp.y-H/2),24,H-24).toFixed(0)+'px');
-    el.style.transform=`translate(${(sp.x-W/2).toFixed(1)}px,${(sp.y-H/2).toFixed(1)}px) rotate(${(sp.r-1).toFixed(2)}deg)`;
+    el.style.setProperty('--ty',clamp((cy-(sp.y-h2))/k,24,H-24).toFixed(0)+'px');   // (in the sheet's own unscaled px)
+    el.style.transform=`translate(${(sp.x-W/2).toFixed(1)}px,${(sp.y-H/2).toFixed(1)}px) rotate(${(sp.r-1).toFixed(2)}deg) scale(${k.toFixed(3)})`;   // (scale last: the move stays in window px)
   }
   requestAnimationFrame(tick);
 
