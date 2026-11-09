@@ -890,6 +890,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <label class="tg" style="margin-top:9px"><input type="checkbox" id="linkSw"><span class="sw"></span><span class="l">Matching eyes<small>Change both eyes (and both whites) together.</small></span></label>
         <label class="tg" style="margin-top:7px"><input type="checkbox" id="rndSw"><span class="sw"></span><span class="l">Surprise me<small>New random colours every time he pops up.</small></span></label>
       </div>
+      <div class="row"><div class="t">Size</div><div class="h">Nixi and everything he shows shrink together.</div><div class="seg" id="sizeChips"></div></div>
       <div class="row"><div class="t">Character</div><div class="h">Each character can have its own voice. My voice uses your choice in the Voice tab.</div><div class="skins" id="characterGrid"></div><label for="charVoice" id="charVoiceLabel" class="h" style="display:block;margin:9px 0 5px"></label><select id="charVoice"></select><div class="h" id="charVoiceNote"></div></div>
       <div class="row"><div class="t">Skin</div><div class="h">Something to wear. The sprout sways.</div><div class="skins" id="skinGrid"></div></div>
       <div class="row"><div class="t">Resting pupils</div><div class="h">His everyday look — they still change with his mood.</div><div class="seg" id="pupChips"></div></div>
@@ -4154,6 +4155,7 @@ function renderSettings(){
   $('#projList').innerHTML=Object.keys(pr).length?Object.entries(pr).map(([n,p])=>`<div class="proj"><b>${esc(n)}</b><span title="${esc(p)}">${esc(p.replace(/^\/home\/[^/]+/,'~'))}</span><button data-pdel="${esc(n)}" title="remove">✕</button></div>`).join('')
     :'<div class="h" style="margin:0">none yet</div>';
   // look
+  $('#sizeChips').innerHTML=[60,75,85,100].map(n=>`<button type="button" data-size="${n}" class="${Math.round((info.size||0.6)*100)===n?'on':''}" aria-pressed="${Math.round((info.size||0.6)*100)===n}">${n}%</button>`).join('');
   const L=curLook();
   miniNixi($('#set .hd .logo'),L,false);
   $('#characterGrid').innerHTML=Object.entries(CHARACTERS).map(([id,c])=>`<button type="button" data-character="${id}" class="${(L.character||'snowflake')===id?'on':''}" aria-pressed="${(L.character||'snowflake')===id}"><svg viewBox="-125 -150 250 250" aria-hidden="true"></svg>${esc(c.label)}</button>`).join('');
@@ -4361,6 +4363,7 @@ setEl.addEventListener('click',e=>{
   if(e.target.closest('[data-close]')) return settings(false);
   const g=k=>e.target.closest(`[data-${k}]`);
   const be=g('eff'); if(be) return setSetting({effort:be.dataset.eff}).then(()=>tick('effort → '+be.dataset.eff));
+  const bz=g('size'); if(bz) return setSetting({size:Number(bz.dataset.size)/100}).then(ok=>{ if(ok) native('zoom:'+info.size); });
   const bn=g('ns'); if(bn){ const l=info.notify_speak||[], c=bn.dataset.ns; return setSetting({notify_speak:l.includes(c)?l.filter(x=>x!==c):[...l,c]}); }
   const blang=g('lang'); if(blang){ if(blang.dataset.lang===(info.lang_active||'en')&&(info.language||info.lang_active||'en')===blang.dataset.lang&&!info.lang_status) return; return setSetting({language:blang.dataset.lang},'#langErr'); }
   const beng=g('eng'); if(beng){ if(beng.disabled) return; return setSetting({tts:beng.dataset.eng},'#voiceErr').then(ok=>{ if(ok&&beng.dataset.eng!=='off'&&muted) toggleMute(); }); }
@@ -4531,7 +4534,7 @@ function fit(){ const k=Math.min(1, innerWidth/340, innerHeight/460); fitK=k>0.9
   bs.transform=fitK===1?'':`scale(${fitK})`;
   if(NATIVE&&fitK<1) console.log(`[nixi] window is ${innerWidth}x${innerHeight} (expected 340x460) — scaling the page to fit`); }
 // the window widened for a panel: it grew to the left by ox px, so shift the page back and he stays exactly where he was
-window.nixiLayout=(ox,oy)=>{ layoutX=ox|0; layoutY=oy|0; fit(); cardPlace(); stagePlace(); sendRegion(true); requestAnimationFrame(moveInd); };
+window.nixiLayout=(ox,oy)=>{ layoutX=+ox; layoutY=+oy; fit(); cardPlace(); stagePlace(); sendRegion(true); requestAnimationFrame(moveInd); };
 addEventListener('resize',()=>{ fit(); cardPlace(); sendRegion(true); moveInd(); }); fit();
 if(NATIVE){ native('wide:off'); sizeWindow(); }   // (a reload forgets any panel: the window must not keep its size)
 function sendRegion(force){

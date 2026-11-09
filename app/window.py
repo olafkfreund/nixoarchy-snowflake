@@ -125,6 +125,23 @@ BAR_SIDE = 70                # docked at the top / bottom: room either side of t
 GLIDE = 0.26                 # seconds the window takes to glide into the notch and back (quick: it should feel snappy)
 SOCK = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", f"nixi-companion-{os.getuid()}.sock")
 BALL = (170, 165)            # where the ball's centre sits inside the window (CSS px)
+CONF_FILE = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "nixi-companion", "config.json")
+
+
+def window_size(raw):
+    try:
+        z = float(raw)
+        return max(0.5, min(1.0, z)) if math.isfinite(z) else 0.6
+    except (TypeError, ValueError):
+        return 0.6
+
+
+def saved_size():
+    try:
+        return window_size(json.load(open(CONF_FILE)).get("size", 0.6))
+    except (OSError, ValueError):
+        return 0.6
+
 POS_FILE = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "nixi-companion", "pos.json")
 
 
@@ -207,7 +224,7 @@ class Hypr:
             log(f"hyprland: '{what}' -> {r!r}")
         return r == "ok"
 
-    def setup(self):
+    def setup(self, width=W, height=H):
         """Don't trust window rules (their syntax keeps changing): make him floating, pinned and exactly W×H directly."""
         c = self.find()
         if not c:
@@ -218,8 +235,8 @@ class Hypr:
             self.dispatch(f"setfloating {a}") or self.dispatch(f"togglefloating {a}")
         if not c.get("pinned"):
             self.dispatch(f"pin {a}")
-        if list(c.get("size") or []) != [W, H]:
-            self.dispatch(f"resizewindowpixel exact {W} {H},{a}")
+        if list(c.get("size") or []) != [width, height]:
+            self.dispatch(f"resizewindowpixel exact {width} {height},{a}")
         c = self.find() or {}
         log(f"hyprland: window {self.addr} floating={c.get('floating')} pinned={c.get('pinned')} "
             f"size={c.get('size')} at={c.get('at')}")
@@ -249,8 +266,8 @@ class Ghost:
     """The notch left on the wall when he's pulled out of it: it melts back into the screen edge on its own (black,
     shrinking into the edge) while he goes wherever you take him. Click-through, never takes focus, gone in 0.3 s.
     x, y: margins on monitor `mon` (layer-shell) or screen coordinates (X11)."""
-    def __init__(self, x, y, w, h, edge, mon=None):
-        self.edge, self.k, self.t0 = edge, 1.0, time.monotonic()
+    def __init__(self, x, y, w, h, edge, mon=None, z=1.0):
+        self.edge, self.k, self.t0, self.z = edge, 1.0, time.monotonic(), z
         g = self.win = Gtk.Window(type=Gtk.WindowType.TOPLEVEL if mon is not None else Gtk.WindowType.POPUP)
         g.set_decorated(False)
         g.set_app_paintable(True)
@@ -293,13 +310,13 @@ class Ghost:
         cr.set_source_rgba(0, 0, 0, 0)
         cr.paint()
         cr.set_operator(cairo.OPERATOR_OVER)
-        w, h, k, o = win.get_allocated_width(), win.get_allocated_height(), self.k, 24   # o: runs off the edge
+        w, h, k, o = win.get_allocated_width(), win.get_allocated_height(), self.k, round(24 * self.z)   # o: runs off the edge
         if self.edge in ("top", "bottom"):
             rw, rh = w * (0.55 + 0.45 * k), h * k
-            x, y, bw, bh, r = (w - rw) / 2, (-o if self.edge == "top" else h - rh), rw, rh + o, min(18, rh)
+            x, y, bw, bh, r = (w - rw) / 2, (-o if self.edge == "top" else h - rh), rw, rh + o, min(18 * self.z, rh)
         else:
             rw, rh = w * k, h * (0.55 + 0.45 * k)
-            x, y, bw, bh, r = (-o if self.edge == "left" else w - rw), (h - rh) / 2, rw + o, rh, min(18, rw)
+            x, y, bw, bh, r = (-o if self.edge == "left" else w - rw), (h - rh) / 2, rw + o, rh, min(18 * self.z, rw)
         if bw > 0 and bh > 0:
             r = max(0.0, min(r, bw / 2, bh / 2))
             cr.new_sub_path()
@@ -315,11 +332,12 @@ class Ghost:
 
 class NixiWindow:
     def __init__(self, url):
+        self.z = saved_size()
         w = self.win = Gtk.Window(title="Nixi")
         w.set_decorated(False)
         w.set_resizable(False)
-        w.set_default_size(W, H)
-        w.set_size_request(W, H)
+        w.set_default_size(self._px(W), self._px(H))
+        w.set_size_request(self._px(W), self._px(H))
         w.set_keep_above(True)
         w.set_type_hint(Gdk.WindowTypeHint.UTILITY)       # i3/sway(X) float utility windows by default
         w.set_app_paintable(True)
@@ -330,8 +348,9 @@ class NixiWindow:
             print("[nixi] no compositor/RGBA visual — window won't be see-through", file=sys.stderr)
         # (no draw handler that clears the window: with GPU rendering WebKit only repaints what changed,
         #  so clearing here made everything outside the animating ball vanish until the mouse moved)
-        self.cur_w, self.wide_shift = W, 0
-        self.cur_h, self.top_shift, self.want_xw, self.want_h = H, 0, 0, 0   # the page asks for room for a long approval card / terminal sheet
+        self.cur_w, self.wide_shift = self._px(W), 0
+        self.cur_h, self.top_shift, self.want_xw, self.want_h = self._px(H), 0, 0, 0   # the page asks for room for a long approval card / terminal sheet
+        self.want_css = (0, 0)
         self.want_panel = self.want_code = self.want_bar = False
         self.glide_n = 0                        # the current window glide (a newer one cancels it)
         self.glide_end = 0.0
@@ -378,6 +397,7 @@ class NixiWindow:
         ucm.connect("script-message-received::nixiui", self._on_msg)
         v = self.view = WebKit2.WebView.new_with_user_content_manager(ucm)
         v.set_background_color(Gdk.RGBA(0, 0, 0, 0))
+        v.set_zoom_level(self.z)
         st = v.get_settings()
         st.set_enable_webaudio(True)
         st.set_media_playback_requires_user_gesture(False)
@@ -424,6 +444,29 @@ class NixiWindow:
             if self.hypr.ok():
                 threading.Thread(target=self._watch_focus, daemon=True).start()
 
+    def _px(self, value):
+        return round(value * getattr(self, "z", 1.0))
+
+    def _css(self, value):
+        return value / getattr(self, "z", 1.0)
+
+    def _region_rect(self, rect):
+        x, y, w, h = rect
+        z = getattr(self, "z", 1.0)
+        left, top = math.floor(x * z), math.floor(y * z)
+        return left, top, math.ceil((x + w) * z) - left, math.ceil((y + h) * z) - top
+
+    def set_zoom(self, value):
+        z = window_size(value)
+        if z == self.z:
+            return
+        self.z = z
+        self.view.set_zoom_level(z)
+        self.set_wide(getattr(self, "want_css", (self.want_xw / z, self.want_h / z)), "size")
+        if self.bar:
+            self.set_bar(self.bar, glide=False)
+        self._apply_region()
+
     # ---- where he is (layer mode: margins from the top-left of a monitor)
     @staticmethod
     def _monitors():
@@ -452,7 +495,7 @@ class NixiWindow:
         except Exception:  # noqa: BLE001
             self.mon_i = 0
             _, g = self._geom()
-            self.mx, self.my = g.width - W - 10, g.height - H - 10       # default: bottom-right corner
+            self.mx, self.my = g.width - self._px(W) - 10, g.height - self._px(H) - 10       # default: bottom-right corner
         GtkLayerShell.set_monitor(self.win, self._geom()[0])
         self._place(self.mx, self.my, clamp=True)
 
@@ -461,12 +504,12 @@ class NixiWindow:
         try:
             p = json.load(open(POS_FILE))
             x, y = int(p["gx"]), int(p["gy"])
-            if not any(g.x <= x + W // 2 < g.x + g.width and g.y <= y + H // 2 < g.y + g.height
+            if not any(g.x <= x + self._px(W) // 2 < g.x + g.width and g.y <= y + self._px(H) // 2 < g.y + g.height
                        for g in (m.get_geometry() for m in self._monitors())):
                 raise ValueError                              # that monitor is gone
         except Exception:  # noqa: BLE001
             g = self._geom(0)[1]
-            x, y = g.x + g.width - W - 10, g.y + g.height - H - 10     # default: bottom-right corner
+            x, y = g.x + g.width - self._px(W) - 10, g.y + g.height - self._px(H) - 10     # default: bottom-right corner
         self.mx, self.my = x, y
         self.win.move(x, y)
 
@@ -513,7 +556,7 @@ class NixiWindow:
 
     def _send_corner(self):
         """Tell the page which corner of his screen he sits in (tl/tr/bl/br), from the middle of his own 340px strip."""
-        cx, cy = self.mx + self.wide_shift + W / 2, self.my + self.top_shift + H / 2
+        cx, cy = self.mx + self.wide_shift + self._px(W) / 2, self.my + self.top_shift + self._px(H) / 2
         if self.layer:                                   # layer mode: mx/my are margins from this monitor's top-left
             g = self._geom()[1]
         else:                                            # X11: mx/my are global screen coordinates
@@ -553,15 +596,16 @@ class NixiWindow:
         """Make room: panels (settings / history) widen him to the left; the code panel wants room on both sides.
         The page is told how far he moved inside the window so he stays exactly where he was on screen."""
         if kind == "size":                         # on = (extra width, extra height) the page wants for its card / sheet
-            self.want_xw, self.want_h = on
+            self.want_css = on
+            self.want_xw, self.want_h = (self._px(v) for v in on)
         elif kind == "panel":
             self.want_panel = on
         elif kind == "bar":
             self.want_bar = on
         else:
             self.want_code = on
-        L = max(WIDE - W if self.want_panel else 0, CODE_SIDE if self.want_code else 0, BAR_SIDE if self.want_bar else 0)
-        R = max(CODE_SIDE if self.want_code else 0, BAR_SIDE if self.want_bar else 0)
+        L = max(self._px(WIDE - W) if self.want_panel else 0, self._px(CODE_SIDE) if self.want_code else 0, self._px(BAR_SIDE) if self.want_bar else 0)
+        R = max(self._px(CODE_SIDE) if self.want_code else 0, self._px(BAR_SIDE) if self.want_bar else 0)
         xw, eh = (0, 0) if (self.hover or self.want_bar) else (self.want_xw, self.want_h)
         if self.hover:
             L = R = 0
@@ -572,13 +616,13 @@ class NixiWindow:
         else:
             g = Gdk.Display.get_default().get_monitor_at_point(base, basey).get_geometry()
             mon = (g.x, g.y, g.width, g.height)
-        L, R, T, extra_h = split_room(base, basey, W, H, xw, eh, (L, R), mon)
+        L, R, T, extra_h = split_room(base, basey, self._px(W), self._px(H), xw, eh, (L, R), mon)
         if self.hover:
             L = R = 0
-        if W + L + R == self.cur_w and L == self.wide_shift and H + extra_h == self.cur_h and T == self.top_shift:
+        if self._px(W) + L + R == self.cur_w and L == self.wide_shift and self._px(H) + extra_h == self.cur_h and T == self.top_shift:
             return
         old, old_top = self.wide_shift, self.top_shift
-        self.wide_shift, self.cur_w, self.top_shift, self.cur_h = L, W + L + R, T, H + extra_h
+        self.wide_shift, self.cur_w, self.top_shift, self.cur_h = L, self._px(W) + L + R, T, self._px(H) + extra_h
         self.win.set_size_request(self.cur_w, self.cur_h)
         self.win.resize(self.cur_w, self.cur_h)
         if self.layer:
@@ -590,7 +634,7 @@ class NixiWindow:
                 self.hypr.dispatch(f"resizewindowpixel exact {self.cur_w} {self.cur_h},address:{self.hypr.addr}")
             except Exception:  # noqa: BLE001
                 pass
-        self._js(f"window.nixiLayout&&nixiLayout({self.wide_shift},{self.top_shift})")
+        self._js(f"window.nixiLayout&&nixiLayout({self._css(self.wide_shift)},{self._css(self.top_shift)})")
         self.win.queue_draw()
 
     def _mon_at(self, gx, gy):
@@ -615,8 +659,8 @@ class NixiWindow:
         """Move him to another screen, to the spot he had there last (bottom-right the first time). Docked, he re-docks on
         the same edge. False if there is nowhere to go."""
         ms = self._hmons() if self.hypr.ok() else []
-        cur = self.mon_i if self.layer else self._mon_at(self.mx + self.wide_shift + W // 2,
-                                                        self.my + self.top_shift + H // 2)[0]
+        cur = self.mon_i if self.layer else self._mon_at(self.mx + self.wide_shift + self._px(W) // 2,
+                                                        self.my + self.top_shift + self._px(H) // 2)[0]
         k = next((j for j, m in enumerate(ms) if m[1] == cur), 0)
         arg = (arg or "").strip()
         if arg in ("next", "prev") and len(ms) > 1:
@@ -636,14 +680,14 @@ class NixiWindow:
             mem = json.load(open(POS_FILE)).get("mons", {}).get(tgt[0])
             x, y = int(mem[0]), int(mem[1])
         except Exception:  # noqa: BLE001
-            x, y = g.width - W - 10, g.height - H - 10
+            x, y = g.width - self._px(W) - 10, g.height - self._px(H) - 10
         self.glide_n += 1                                                      # (cancel any glide in progress)
         if self.bar:
             gw, gh = g.width, g.height
             if self.bar_home:
                 self.bar_home = (tgt[1], x, y)
-            bx = {"top": (gw - W) // 2, "bottom": (gw - W) // 2, "left": 0, "right": gw - W}[self.bar]
-            by = {"top": 0, "bottom": gh - H, "left": (gh - H) // 2, "right": (gh - H) // 2}[self.bar]
+            bx = {"top": (gw - self._px(W)) // 2, "bottom": (gw - self._px(W)) // 2, "left": 0, "right": gw - self._px(W)}[self.bar]
+            by = {"top": 0, "bottom": gh - self._px(H), "left": (gh - self._px(H)) // 2, "right": (gh - self._px(H)) // 2}[self.bar]
             self._place(bx - self.wide_shift, by - self.top_shift, True, tgt[1])
         elif self.layer:
             self._place(x - self.wide_shift, y - self.top_shift, True, tgt[1])
@@ -703,7 +747,7 @@ class NixiWindow:
         mode = aside.plan(g.width, len(ms) > 1)
         self.aside = {"home": home, "mode": mode, "parked": None}
         if mode == "side":
-            tx, ty = aside.target(g.width, g.height, home[1], W, H)
+            tx, ty = aside.target(g.width, g.height, home[1], self._px(W), self._px(H))
             self._save_pos()
             self._glide_to(tx - self.wide_shift, ty - self.top_shift, self._parked)
             self.aside["glide"] = self.glide_n                     # (closed before it lands: still ours to undo)
@@ -772,7 +816,7 @@ class NixiWindow:
 
     def _hypr_setup(self):
         try:
-            self.hypr.setup()
+            self.hypr.setup(self.cur_w, self.cur_h)
         except Exception as e:  # noqa: BLE001
             log(f"hyprland setup failed: {e}")
         return False
@@ -842,21 +886,21 @@ class NixiWindow:
             # the notch stays on the wall and melts away (not on Hyprland without layer-shell: a new window gets tiled)
             if c and cairo is not None and (self.layer or not self.hypr.ok()):
                 bx, e = self.mx + self.wide_shift, self.bar
-                nx, ny, nw, nh = {"top": (bx + 170 - 140, self.my, 280, 52),
-                                  "bottom": (bx + 170 - 140, self.my + H - 52, 280, 52),
-                                  "left": (bx, self.my + 230 - 115, 68, 230),
-                                  "right": (bx + W - 68, self.my + 230 - 115, 68, 230)}[e]
+                nx, ny, nw, nh = {"top": (bx + self._px(30), self.my, self._px(280), self._px(52)),
+                                  "bottom": (bx + self._px(30), self.my + self._px(H - 52), self._px(280), self._px(52)),
+                                  "left": (bx, self.my + self._px(115), self._px(68), self._px(230)),
+                                  "right": (bx + self._px(W - 68), self.my + self._px(115), self._px(68), self._px(230))}[e]
                 mon = self._geom()[0] if self.layer else None
 
                 def ghost():
                     try:
-                        self.ghost = Ghost(nx, ny, nw, nh, e, mon)
+                        self.ghost = Ghost(nx, ny, nw, nh, e, mon, self.z)
                     except Exception as ex:  # noqa: BLE001
                         log(f"ghost notch: {ex}")
                     return False
                 GLib.timeout_add(30, ghost)          # (a moment later: a new window right as the drag starts can upset it)
             self.grab_ball = bool(c)                 # (the loop then keeps the ball under the cursor)
-            self.set_bar(None, to=(c[0] - BALL[0], c[1] - BALL[1]) if c else "here")
+            self.set_bar(None, to=(c[0] - self._px(BALL[0]), c[1] - self._px(BALL[1])) if c else "here")
         if not self.layer:
             seat = Gdk.Display.get_default().get_default_seat()
             _, x, y = seat.get_pointer().get_position()
@@ -968,16 +1012,21 @@ class NixiWindow:
                 ox, oy, gw_, gh_ = 0, 0, g.width, g.height        # (over any panels: exclusive zone -1)
             else:                                                 # a window: the monitor's work area (above taskbars)
                 gx, gy = self.win.get_position()
-                i, _ = self._mon_at(gx + W // 2, gy + H // 2)
+                i, _ = self._mon_at(gx + self._px(W) // 2, gy + self._px(H) // 2)
                 wa = self._monitors()[i].get_workarea()
                 ox, oy, gw_, gh_ = wa.x, wa.y, wa.width, wa.height
-            x = {"top": (gw_ - W) // 2, "bottom": (gw_ - W) // 2, "left": 0, "right": gw_ - W}[edge]
-            y = {"top": 0, "bottom": gh_ - H, "left": (gh_ - H) // 2, "right": (gh_ - H) // 2}[edge]
+            x = {"top": (gw_ - self._px(W)) // 2, "bottom": (gw_ - self._px(W)) // 2, "left": 0, "right": gw_ - self._px(W)}[edge]
+            y = {"top": 0, "bottom": gh_ - self._px(H), "left": (gh_ - self._px(H)) // 2, "right": (gh_ - self._px(H)) // 2}[edge]
             room = None                                           # (no growing round the notch: it flickered)
-            if self.layer:
-                self._glide_to(x - self.wide_shift, y - self.top_shift, room)
+            tx, ty = ox + x - self.wide_shift, oy + y - self.top_shift
+            if not glide:
+                self.glide_n += 1
+                if self.layer:
+                    self._place(tx, ty)
+                else:
+                    self._xmove(tx, ty)
             else:
-                self._glide_to(ox + x - self.wide_shift, oy + y - self.top_shift, room)
+                self._glide_to(tx, ty, room)
         else:
             was, self.bar = self.bar, None
             self.set_wide(False, "bar")
@@ -986,7 +1035,7 @@ class NixiWindow:
             elif to:
                 self.glide_n += 1
                 if self.layer:
-                    i, g = self._mon_at(to[0] + BALL[0], to[1] + BALL[1])      # the cursor's screen, not the corner's
+                    i, g = self._mon_at(to[0] + self._px(BALL[0]), to[1] + self._px(BALL[1]))      # the cursor's screen, not the corner's
                     self._place(to[0] - g.x, to[1] - g.y, True, i)
                 else:
                     self._xmove(*to)
@@ -1015,7 +1064,7 @@ class NixiWindow:
             return
         g = self._geom()[1]
         if self.grab_ball:                               # pulled off the notch: the ball is under the cursor
-            off = (BALL[0] + self.wide_shift, BALL[1] + self.top_shift)
+            off = (self._px(BALL[0]) + self.wide_shift, self._px(BALL[1]) + self.top_shift)
         else:
             off = (sx - (g.x + self.mx), sy - (g.y + self.my))
         self.grab_ball = False
@@ -1063,8 +1112,8 @@ class NixiWindow:
             geoms = self._geoms()
             # (dx,dy) is relative to where the window is now (the page measures from its own grab point), so the wanted
             # spot is today's spot plus it, never a running sum: held at an outer edge, it doesn't pile up overflow
-            self.dpos = [geoms[self.mon_i][0] + self.mx + dx, geoms[self.mon_i][1] + self.my + dy]
-            ball = (self.wide_shift + BALL[0], self.top_shift + BALL[1])
+            self.dpos = [geoms[self.mon_i][0] + self.mx + self._px(dx), geoms[self.mon_i][1] + self.my + self._px(dy)]
+            ball = (self.wide_shift + self._px(BALL[0]), self.top_shift + self._px(BALL[1]))
             i = screens.mon_strict(geoms, self.dpos[0] + ball[0], self.dpos[1] + ball[1])
             i = self.mon_i if i is None else i
             nx, ny, ox, oy = screens.outer_clamp(geoms, i, self.dpos[0], self.dpos[1], self.cur_w, self.cur_h, ball)
@@ -1081,9 +1130,9 @@ class NixiWindow:
                 return
             edge = None
             if o and not self.pmoving:                     # pushed 40px+ past an edge: dock there
-                if abs(o[1]) >= 40 and abs(o[1]) >= abs(o[0]):
+                if abs(o[1]) >= self._px(40) and abs(o[1]) >= abs(o[0]):
                     edge = "top" if o[1] < 0 else "bottom"
-                elif abs(o[0]) >= 40:
+                elif abs(o[0]) >= self._px(40):
                     edge = "left" if o[0] < 0 else "right"
             self._drag_finished(edge)
 
@@ -1104,9 +1153,10 @@ class NixiWindow:
             return
         self.region_on = True
         reg = cairo.Region()
-        for x, y, w, h in self.rects:
+        for rect in self.rects:
+            x, y, w, h = self._region_rect(rect)
             if w > 0 and h > 0:
-                reg.union(cairo.RectangleInt(int(x), int(y), int(math.ceil(w)), int(math.ceil(h))))
+                reg.union(cairo.RectangleInt(x, y, w, h))
         try:
             self.win.input_shape_combine_region(reg)
         except (TypeError, AttributeError):
@@ -1124,7 +1174,7 @@ class NixiWindow:
             self.set_bar(None, glide=False)                        # (at once: the cursor-following starts here)
         home = (self.mon_i, self.mx + self.wide_shift, self.my + self.top_shift) if on else None
         self.hover = on
-        if on and (self.cur_w > W or self.cur_h > H or self.top_shift):
+        if on and (self.cur_w > self._px(W) or self.cur_h > self._px(H) or self.top_shift):
             self.want_code = False
             self.set_wide(False)
         log(f"hover mode {'on' if on else 'off'}")
@@ -1147,7 +1197,7 @@ class NixiWindow:
             while start:
                 k = min(1.0, (time.monotonic() - t0) / dur)
                 e = 1 - (1 - k) ** 3
-                GLib.idle_add(self.win.move, int(sx + (hx - sx) * e), int(sy + (hy - sy) * e + math.sin(math.pi * k) * -40))
+                GLib.idle_add(self.win.move, int(sx + (hx - sx) * e), int(sy + (hy - sy) * e - math.sin(math.pi * k) * self._px(40)))
                 if k >= 1:
                     break
                 time.sleep(0.008)
@@ -1165,7 +1215,7 @@ class NixiWindow:
         while True:
             k = min(1.0, (time.monotonic() - t0) / dur)
             e = 1 - (1 - k) ** 3                          # ease out
-            arc = math.sin(math.pi * k) * -40             # a little swoop up on the way
+            arc = -math.sin(math.pi * k) * self._px(40)   # a little swoop up on the way
             GLib.idle_add(self._place, sx + (hx - sx) * e, sy + (hy - sy) * e + arc, False, m)
             if k >= 1:
                 break
@@ -1234,7 +1284,7 @@ class NixiWindow:
                 vx = vx * 0.8 + (cx - last[0]) / dtt * 0.2
                 vy = vy * 0.8 + (cy - last[1]) / dtt * 0.2
             last = (cx, cy, now)
-            x, y = cx - BALL[0], cy - BALL[1]
+            x, y = cx - self._px(BALL[0]), cy - self._px(BALL[1])
             if self.hpos is None:
                 self.hpos = [x, y]
             self.hpos[0] += (x - self.hpos[0]) * 0.7          # tiny bit of lag so he feels alive, not glued
@@ -1303,6 +1353,9 @@ class NixiWindow:
         if msg == "reauth":                                            # the server restarted: hand over its new token
             self._hand_token()
             self.view.load_uri(self.url)
+            return
+        if msg.startswith("zoom:"):
+            self.set_zoom(msg[5:])
             return
         if msg.startswith("region:"):
             try:
@@ -1381,7 +1434,7 @@ def main():
             if win.layer:
                 a = win._geom()[1]
             else:
-                a = win._monitors()[win._mon_at(x + W // 2, y + H // 2)[0]].get_workarea()
+                a = win._monitors()[win._mon_at(x + win._px(W) // 2, y + win._px(H) // 2)[0]].get_workarea()
             try:
                 Gdk.pixbuf_get_from_window(gw, 0, 0, w, h).savev(out, "png", [], [])
             except Exception as e:  # noqa: BLE001

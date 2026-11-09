@@ -227,6 +227,7 @@ DEFAULTS = {
     "sfx": True,
     # how he looks: body + each eye + each eye white, a skin (accessory), and whether to roll random colours each time
     "look": {},
+    "size": 0.6,
     # lambda-tip cues: failed user units + new generation (local); next calendar item (gog) and weather look (network): off
     "follow_focus": False,                  # move to the screen you focus (Hyprland)
     "answer_stages": True,                  # a board/notebook beside him for commands and facts (#144); off = captions only
@@ -5371,6 +5372,14 @@ NOTIFY_FLAGS = ("proactive", "reactions", "notifications_takeover", "notify_deta
 NOTIFY_CATS = ("mail", "chat", "meeting", "video", "download", "other")
 
 
+def size_value(raw):
+    try:
+        value = float(raw)
+        return max(0.5, min(1.0, value)) if math.isfinite(value) else 0.6
+    except (TypeError, ValueError):
+        return 0.6
+
+
 def save_config(**kw):
     """Persist a few settings into config.json without clobbering the user's other edits."""
     with _config_lock:
@@ -7188,7 +7197,7 @@ def state_info():
         "popup_done": bool(CFG.get("popup_done")), "hover": bool(CFG.get("hover")), "code_panel": CFG.get("code_panel", True) is not False, "live_minutes": int(CFG.get("live_minutes") or 10), "voice_native": Speaker.available(), "code_face": "you" if CFG.get("code_face") == "you" else "him",
         "click_through": bool(CFG.get("click_through")), "mirror": Mirror.snapshot(),
         "autostart": bool(CFG.get("autostart")), "listen_on_show": bool(CFG.get("listen_on_show")),
-        "barge_in": bool(CFG.get("barge_in")), "sfx": bool(CFG.get("sfx")), "look": look(), "skins": SKINS, "plugin_props": (Plug.ensure(), Plug.props)[1], "plugin_characters": Plug.characters, "ambient": Ambient.snapshot(),
+        "barge_in": bool(CFG.get("barge_in")), "sfx": bool(CFG.get("sfx")), "size": size_value(CFG.get("size")), "look": look(), "skins": SKINS, "plugin_props": (Plug.ensure(), Plug.props)[1], "plugin_characters": Plug.characters, "ambient": Ambient.snapshot(),
         "weather": {"sky": Ambient.sky, "cold": Ambient.cold, "windy": Ambient.windy, "lean": Ambient.lean,
                     "heavy": Ambient.heavy, "feel": Ambient.feel, "wind": Ambient.wspeed, "day": Ambient.day, "source": Ambient.wsrc},
         "follow_focus": bool(CFG.get("follow_focus")), "step_aside": CFG.get("step_aside", True) is not False, "answer_stages": CFG.get("answer_stages", True) is not False,
@@ -7560,6 +7569,8 @@ class Handler(BaseHTTPRequestHandler):
                         ec = str(b[key] or "").strip().lower()
                         if ec == "random" or re.fullmatch(r"#[0-9a-f]{6}", ec):
                             upd[key] = ec
+                if "size" in b:
+                    upd["size"] = size_value(b["size"])
                 if isinstance(b.get("look"), dict):
                     cur = dict(CFG.get("look") or {})
                     cur.update(b["look"])
