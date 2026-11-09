@@ -193,7 +193,8 @@ body.bar #mailPop,body.hover #mailPop,body.calm #mailPop{display:none}
 .ncard .ncs{grid-column:1/-1;font-weight:600}
 .ncard .ncr{white-space:pre-wrap;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;line-clamp:4;overflow-wrap:anywhere}
 .ncard .ncr .nh{opacity:.65}
-.ncard .nci{width:96px;height:96px;object-fit:contain;border-radius:8px;grid-row:3/5}
+.ncard .nci{width:64px;height:64px;object-fit:contain;border-radius:8px;grid-row:3;grid-column:1}   /* left of the words, small: the card has to stay under his face */
+.ncard:has(.nci) .ncr{grid-row:3;grid-column:2;-webkit-line-clamp:3;line-clamp:3}
 .ncard .ncb{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap}
 .ncard .ncb button{font:inherit;font-size:12px;padding:3px 10px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer}
 .nicon{width:22px;height:22px;border-radius:50%;box-shadow:0 0 0 1px #ffffff55;vertical-align:middle;margin-right:6px;animation:nipop .2s var(--ease)}
@@ -400,6 +401,7 @@ body.bar #stg,body.hover #stg,body.calm #stg,body.bar #stgTab,body.hover #stgTab
 #you.pop{animation:wIn .7s var(--ease) both}
 /* "Show everything I said": the last few lines of it, wrapped, instead of one cut-off line */
 body.fulltext #cap{top:248px;height:148px}      /* same bottom edge as before; it grows up into the gap under his body, not down */
+#him:has(.ncard){max-height:none}   /* a card (#214) is taller than three lines: #him's cap would cut its top off and keep only the picture */
 body.fulltext #you{white-space:normal;max-height:4.3em;line-height:1.4;font-size:12.5px;color:var(--cap-dim,var(--dim));display:flex;flex-direction:column;justify-content:flex-end;text-overflow:clip;margin-bottom:2px}
 .row .t.sub{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
 .row .t .pct{margin-left:auto;font:600 11.5px var(--mono);color:var(--dim)}
