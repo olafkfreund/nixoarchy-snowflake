@@ -118,6 +118,73 @@ class PluginMapsTest(_ServerEnv):
         for d in sorted(ex.iterdir()):
             self.assertIsNone(S.plugins.check_dir(d), d.name)
 
+    def ticks(self, rows, n=1, t0=1000.0):
+        """Run Inbox.tick n times over the same shell reply; the published notify rows of the last run."""
+        S = self.server
+        got = []
+        reply = json.dumps(rows)
+        with mock.patch.object(S.Inbox, "want", return_value=True), mock.patch.object(S.Inbox, "call", return_value=reply), \
+                mock.patch.object(S.BUS, "pub", side_effect=lambda **kw: got.append(kw)), \
+                mock.patch.object(S.time, "monotonic", return_value=t0):
+            for _ in range(n):
+                S.Inbox.tick()
+        return got
+
+    def row(self, key, app="element", source="", **kw):
+        return {"key": key, "category": "other", "app": app, "source": source, "summary": "secret", **kw}
+
+    def setup_rx(self):
+        S = self.server
+        S.Inbox.rxkeys.clear()
+        S.Inbox.rxat.clear()
+        S.CFG["proactive"] = True
+        self.addCleanup(lambda: (S.Inbox.rxkeys.clear(), S.Inbox.rxat.clear(), S.Inbox.unseen.clear()))
+
+    def test_reaction_matches_app_and_host_only(self):
+        self.setup_rx()
+        self.mk("rx-map", reactions=[{"app": "element", "reaction": "music"}, {"host": "*.example.org", "reaction": "notice"}])
+        S = self.server
+        for n, (app, src, want) in enumerate([("x", "other.net", None), ("x", "example.org", None), ("Element", "", "music"),
+                                              ("x", "app.example.org", "notice"), ("x", "https://a.example.org/p", "notice")]):
+            S.Inbox.rxat.clear()                                         # (the 5-minute limit has its own test)
+            (r,) = self.ticks([self.row(f"k{n}", app, src)])
+            self.assertEqual(r.get("reaction"), want, (app, src))
+
+    def test_reaction_outside_allowlist_refused(self):
+        self.mk("rx-map", reactions=[{"app": "element", "reaction": "ask"}])
+        (item,) = self.server.plugins_api()["items"]
+        self.assertTrue(item["error"])
+
+    def test_shell_reaction_key_dropped_and_row_unchanged(self):
+        self.setup_rx()
+        (r,) = self.ticks([self.row("a", reaction="music")])
+        self.assertNotIn("reaction", r)
+        self.assertEqual((r["category"], r["summary"]), ("other", ""))   # (no notify_details: text stays blank)
+
+    def test_one_reaction_per_key_and_per_plugin_every_5_minutes(self):
+        self.setup_rx()
+        self.mk("rx-map", reactions=[{"app": "element", "reaction": "notice"}])
+        S = self.server
+        self.assertEqual([r.get("reaction") for r in self.ticks([self.row("a")], n=2)], ["notice", None])   # same key twice
+        self.assertEqual([r.get("reaction") for r in self.ticks([self.row("b")], t0=1100.0)], [None])        # within 5 minutes
+        self.assertEqual([r.get("reaction") for r in self.ticks([self.row("c")], t0=1301.0)], ["notice"])
+        self.assertEqual(S.Inbox.rxat["rx-map"], 1301.0)
+
+    def test_two_matching_plugins_give_one(self):
+        self.setup_rx()
+        self.mk("rx-one", reactions=[{"app": "element", "reaction": "music"}])
+        self.mk("rx-two", reactions=[{"app": "element", "reaction": "notice"}])
+        (r,) = self.ticks([self.row("a")])
+        self.assertIn(r["reaction"], ("music", "notice"))
+        self.assertEqual(len(self.server.Inbox.rxat), 1)
+
+    def test_reaction_does_not_read_text(self):
+        S = self.server
+        self.mk("rx-map", reactions=[{"app": "element", "reaction": "notice"}])
+        with mock.patch.object(S.Plug, "_hit", wraps=S.Plug._hit) as h:
+            S.Plug.reaction("element", "")
+        self.assertEqual(h.call_args.args[2:], ("element", ""))
+
 
 if __name__ == "__main__":
     unittest.main()
