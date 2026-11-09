@@ -307,7 +307,7 @@ def scan(dirs):
             try:
                 link = _symlink(d)
                 err = (f"contains a symlink: {link}" if i == 0 else "contains a symlink") if link else None
-                if link and i:
+                if link:   # (read anyway: a private one's error must not name its files)
                     try:
                         m = json.loads(_manifest(d / "plugin.json"))
                     except (OSError, ValueError):
@@ -328,7 +328,7 @@ def scan(dirs):
             except Exception as e:  # one odd manifest must never stop the scan
                 err = f"plugin.json not understood: {type(e).__name__}" if i == 0 else "plugin.json unreadable"
             if isinstance(m, dict) and isinstance(m.get("character"), dict) and m["character"].get("private") is True and err not in (None, PRIVATE_STORE_ERROR, PRIVATE_MODE_ERROR):
-                err = PRIVATE_ART_ERROR
+                err = PRIVATE_STORE_ERROR if i == 0 else PRIVATE_ART_ERROR
             if isinstance(m, dict) and isinstance(m.get("id"), str) and ID_RE.fullmatch(m["id"]):
                 vid = m["id"]
             out.append(Plugin(vid or d.name, d, m if isinstance(m, dict) else None, "nix" if i == 0 and _in_store(d) else "folder", err))

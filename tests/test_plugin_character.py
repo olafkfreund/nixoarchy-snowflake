@@ -63,6 +63,16 @@ class PluginCharacterTest(CharEnv):
         self.assertNotIn("Private: keep this folder out of Nix and out of any repo.", s.plugin_caps({"character": {}}))
         self.assertIn("Private: keep this folder out of Nix and out of any repo.", s.plugin_caps({"character": {"private": True}}))
 
+    def test_private_with_a_symlink_in_the_package_names_no_file(self):
+        s = self.server
+        pkg = self.root / "pkg" / "dots"
+        pkg.mkdir(parents=True)
+        c = {"label": "Dots", "template": "round", "fill": "#778899", "back": "back.svg", "front": "front.svg", "fits": ["none"], "private": True}
+        (pkg / "plugin.json").write_text(json.dumps({"api": 1, "id": "dots", "name": "Dots", "version": "1", "character": c}))
+        (pkg / f"{MARK}.svg").symlink_to(self.root / "elsewhere.svg")
+        [p] = [p for p in s.plugins.scan([self.root / "pkg"]) if p.id == "dots"]
+        self.assertEqual(p.error, s.plugins.PRIVATE_STORE_ERROR)
+
     def test_switched_off_plugin_keeps_its_voice(self):
         s = self.server
         v = sorted(s.VOICES)[0]
