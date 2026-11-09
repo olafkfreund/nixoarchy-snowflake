@@ -1848,7 +1848,7 @@ class Ambient:
 
     @classmethod
     def news_tick(cls, t):
-        if not cls.news_ok() or t < cls.news_due or (cls.news_thread and cls.news_thread.is_alive()):
+        if t < cls.news_due or (cls.news_thread and cls.news_thread.is_alive()) or not cls.news_ok():   # (the clock first: news_ok reads the config file)
             return
         cls.news_due = t + 1800
         p = Plug.stage["news"]
@@ -2839,6 +2839,8 @@ class Nudge:
         host = cls.pending.get("host")
         if host and len(host) > 3 and host[3] is not None and Ambient.peer_last.get(host[3]) != "up":
             cls.pending.pop("host", None)
+        if "news" in cls.pending and not Ambient.news_ok():            # switched off, or the plugin gone, while it waited
+            cls.pending.pop("news", None)
         for k in [k for k, v in cls.pending.items() if v[2] is not None and t > v[2]]:
             del cls.pending[k]                                      # gone stale while it waited
             if k == "workout":

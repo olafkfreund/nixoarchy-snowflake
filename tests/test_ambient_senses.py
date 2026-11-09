@@ -39,6 +39,16 @@ class NewsWatchTest(_ServerEnv):
             patch.start()
             self.addCleanup(patch.stop)
 
+    def test_a_waiting_news_nudge_goes_when_news_is_switched_off(self):   # (Codex review: its check was only at the handoff)
+        S, N = self.server, self.server.Nudge
+        prior = dict(N.pending)
+        self.addCleanup(lambda: (N.pending.clear(), N.pending.update(prior)))
+        N.pending.clear()
+        N.offer("news", "2 new headlines.", False, 100)
+        S.CFG["news_watch"] = False
+        N.tick(mono=101, wall=0, hist=Path("/nonexistent/history.json"), now=0)
+        self.assertNotIn("news", N.pending)
+
     @staticmethod
     def item(title):
         return {"source": "Private", "title": title, "url": "https://example.com/story"}
