@@ -42,6 +42,14 @@ class VoiceSettingsTest(_ServerEnv):
         d = self.server.DEFAULTS
         self.assertEqual((d["tts_fallback"], d["eleven_on"], d["eleven_voice"], d["eleven_daily_chars"]), ("auto", False, "", 20000))
 
+    def test_size_accepts_125_percent_and_clamps_above_it(self):
+        self.assertEqual(self.server.DEFAULTS["size"], 0.75)
+        for requested in (1.25, 1.5):
+            code, response = self.post({"size": requested})
+            self.assertEqual(code, 200)
+            self.assertEqual(response["size"], 1.25)
+            self.assertEqual(self.server.CFG["size"], 1.25)
+
     def test_bad_values_are_refused_with_a_sentence(self):
         for body in ({"tts": "nope"}, {"tts_fallback": "elevenlabs"}, {"eleven_voice": "short"}, {"eleven_voice": "a b" * 5},
                      {"eleven_daily_chars": 999}, {"eleven_daily_chars": 500001}, {"eleven_daily_chars": "5000"}):

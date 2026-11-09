@@ -32,6 +32,14 @@ const nonRegion = list => list.filter(m => !m.startsWith("region:"));
 const lastSize = list => [...list].reverse().find(m => m.startsWith("size:"));
 const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
 
+// Size choices include the new maximum, and the saved value is selected on opening Settings.
+{ await ev("info.size=1.25; settings(true); return 1");
+  const chips = await ev("return [...document.querySelectorAll('#sizeChips button')].map(b=>[b.textContent,b.classList.contains('on')])");
+  check(JSON.stringify(chips) === JSON.stringify([["60%",false],["75%",false],["85%",false],["100%",false],["125%",true]]),
+    "Settings offers 125% and selects the saved size", JSON.stringify(chips));
+  await ev("settings(false); return 1");
+}
+
 // 1. Opening Settings sends size:244,266 and wide:off (never wide:on), and sets setWant = [244, 266]
 { await clearMsgs();
   await ev("setW=0; setH=0; settings(true); return 1");
