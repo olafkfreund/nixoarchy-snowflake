@@ -33,8 +33,9 @@ class SituationTest(_ServerEnv):
         lk = mock.patch.object(S.Desk, "locked", return_value=False)
         self.lock = lk.start()
         self.addCleanup(lk.stop)
-        S.Ambient.meeting = S.Ambient.music = False
+        S.Ambient.meeting = S.Ambient.music = S.Ambient.video = False
         self.addCleanup(lambda: setattr(S.Ambient, "meeting", False))
+        self.addCleanup(lambda: (setattr(S.Ambient, "music", False), setattr(S.Ambient, "video", False)))
         self.addCleanup(lambda: S.Ambient.__dict__ and [setattr(S.Ambient, k, False) for k in ("cpu_hot", "ram_low", "fullscreen", "locked")])
         S.Ambient.hot_since, S.Ambient.lock_since = None, 0.0
         S.Desk.fullscreen = False
@@ -254,16 +255,16 @@ class SituationTest(_ServerEnv):
         A.followed, A.track, A.music = None, 0, False
         def sense(*rows):
             A.music_due = 0.0
-            out = "".join(f"{n}\t{st}\t{t}\n" for n, st, t in rows)
+            out = "".join(f"{n}\t{st}\t\t{t}\n" for n, st, t in rows)
             with mock.patch.object(A, "run", return_value=out) as r:
                 A.sense()
             self.assertEqual(r.call_args[0][0][:3], ["playerctl", "-a", "metadata"])
-        sense(("mpv", "Playing", "/t/1Song A"))
+        sense(("mpv", "Playing", "/t/1Song\tA"))
         self.assertTrue(A.music)
         self.assertEqual(A.track, 0)                                      # starting is not a change
-        sense(("mpv", "Playing", "/t/1Song A"))
+        sense(("mpv", "Playing", "/t/1Song\tA"))
         self.assertEqual(A.track, 0)
-        sense(("mpv", "Playing", "/t/1Song A"), ("firefox", "Playing", "/x/9Video"))
+        sense(("mpv", "Playing", "/t/1Song\tA"), ("firefox", "Playing", "/x/9Video"))
         self.assertEqual(A.track, 0)                                      # a second player starting changes nothing
         sense(("mpv", "Playing", "/t/2Song B"), ("firefox", "Playing", "/x/9Video"))
         self.assertEqual(A.track, 1)
@@ -278,13 +279,88 @@ class SituationTest(_ServerEnv):
         S.CFG.update(look_music=True, reactions=False)
         self.addCleanup(lambda: (setattr(A, "followed", None), setattr(A, "track", 0), setattr(A, "music", False)))
         A.followed, A.track = None, 0
-        for out in ("Playing\n", "Playing\n"):
+        for out in ("spotify\tPlaying\tspotify:track:1\t/t/1Song A\n", "spotify\tPlaying\tspotify:track:2\t/t/2Song B\n"):
             A.music_due = 0.0
             with mock.patch.object(A, "run", return_value=out) as r:
                 A.sense()
-            self.assertEqual(r.call_args[0][0], ["playerctl", "-a", "status"])
+            self.assertEqual(r.call_args[0][0], ["playerctl", "-a", "metadata", "--format",
+                                               "{{playerName}}\t{{status}}\t{{xesam:url}}\t{{mpris:trackid}}{{title}}"])
         self.assertTrue(A.music)
         self.assertEqual(A.track, 0)
+
+    def test_media_kind_player_rows(self):
+        S = self.server
+        cases = (
+            ("spotify\tPlaying\tspotify:track:1\tSong", (True, False)),
+            ("firefox\tPlaying\thttps://www.youtube.com/watch?v=x\tVideo", (False, True)),
+            ("firefox\tPlaying\thttps://m.youtube.com/watch?v=x\tVideo", (False, True)),
+            ("firefox\tPlaying\thttps://youtu.be/x\tVideo", (False, True)),
+            ("firefox\tPlaying\thttps://www.twitch.tv/x\tVideo", (False, True)),
+            ("firefox\tPlaying\thttps://vimeo.com/x\tVideo", (False, True)),
+            ("firefox\tPlaying\thttps://netflix.com/x\tVideo", (False, True)),
+            ("firefox\tPlaying\thttps://notyoutube.com/x\tSong", (True, False)),
+            ("firefox\tPlaying\thttps://youtube.com.evil.net/x\tSong", (True, False)),
+            ("mpv\tPlaying\tfile:///x/probe.mkv\tFile", (True, False)),
+            ("mpv\tPlaying\thttps://www.youtube.com/watch?v=jNQXAC9IVRw\tVideo", (False, True)),
+            ("freetube\tPlaying\t\tVideo", (False, True)),
+            ("grayjay\tPlaying\t\tVideo", (False, True)),
+            ("chromium\tPlaying\t\tVideo", (True, False)),
+            ("mpv\tPlaying\tfile:///x/probe.mkv\tA\tB", (True, False)),
+            ("mpv\tPlaying\thttp://[::1\tBad URL", (True, False)),
+            ("mpv\tPlaying", (True, False)),
+            ("mpv\tPaused\thttps://youtube.com/x\tVideo", (False, False)),
+            ("", (False, False)),
+        )
+        for row, want in cases:
+            with self.subTest(row=row):
+                self.assertEqual(S.media_kind([row]), want)
+        self.assertEqual(S.media_kind(["mpv\tPlaying\thttps://www.youtube.com/watch?v=jNQXAC9IVRw\tVideo",
+                                       "chromium\tPlaying\t\tVideo"]), (False, True))
+        self.assertEqual(S.media_kind([]), (False, False))
+
+    def test_media_sense_publishes_only_kind_and_clears_it(self):
+        S, A = self.server, self.server.Ambient
+        S.CFG.update(look_music=True, reactions=False)
+        q = S.BUS.sub()
+        self.addCleanup(S.BUS.unsub, q)
+        url = "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+        title = "Private\tTitle"
+        A.music_due = 0.0
+        with mock.patch.object(A, "run", return_value=f"mpv\tPlaying\t{url}\t{title}\n"):
+            A.sense()
+        self.assertEqual((A.music, A.video), (False, True))
+        event = q.get_nowait()
+        self.assertEqual((event["music"], event["video"]), (False, True))
+        self.assertNotIn(url, repr(event))
+        self.assertNotIn(title, repr(event))
+        self.assertNotIn(url, repr(A.situation()))
+        A.music_due = 0.0
+        with mock.patch.object(A, "run", return_value=None):
+            A.sense()
+        self.assertEqual((A.music, A.video), (False, False))
+        S.CFG["look_music"] = False
+        A.video = True
+        A.sense()
+        self.assertEqual((A.music, A.video), (False, False))
+        with mock.patch.object(S.Wake, "asleep", True):
+            A.music = A.video = True
+            A.sense()
+        self.assertEqual((A.music, A.video), (False, False))
+
+    def test_player_check_output_through_sense(self):
+        S, A = self.server, self.server.Ambient
+        S.CFG.update(look_music=True, reactions=False)
+        chromium = "chromium\tPlaying\t\tBrowser"
+        file = "mpv\tPlaying\tfile:///x/probe.mkv\tFile"
+        video = "mpv\tPlaying\thttps://www.youtube.com/watch?v=jNQXAC9IVRw\tVideo"
+        for out, want in ((chromium, (True, False)), (file, (True, False)),
+                          (video, (False, True)), (video + "\n" + chromium, (False, True))):
+            with self.subTest(out=out):
+                A.music_due = 0.0
+                with mock.patch.object(A, "run", return_value=out) as run:
+                    A.sense()
+                run.assert_called_once()
+                self.assertEqual((A.music, A.video), want)
 
 if __name__ == "__main__":
     unittest.main()

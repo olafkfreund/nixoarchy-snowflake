@@ -42,7 +42,7 @@ import zlib
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlsplit
 
 APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
@@ -238,7 +238,7 @@ DEFAULTS = {
     "idle_mode": "shrink",                  # when idle: off (stay) | shrink (peek at the edge) | doze
     "ambient_system": True, "ambient_calendar": False, "ambient_weather": False,
     # desktop awareness (#133): all off but the per-category sound and the spoken categories
-    "proactive": False, "reactions": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"], "agent_voice_mute": [],
+    "proactive": False, "reactions": False, "news_watch": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"], "agent_voice_mute": [],
     "mail_on": False, "mail_accounts": [], "mail_model": "",       # hear and answer mail (#210): off, no address, no summaries
     "notify_sound": True, "look_meeting": False, "look_music": False,
     "look_beat": False, "notify_speak_subject": False,
@@ -1759,6 +1759,25 @@ def location_suggest(q, urlopen=None):
     return out
 
 
+def media_kind(lines):
+    """Classify playing MPRIS rows without retaining their URLs or titles."""
+    domains = ("youtube.com", "youtu.be", "twitch.tv", "vimeo.com", "netflix.com")
+    music = video = False
+    for line in lines:
+        name, status, url, _ = (line.split("\t", 3) + [""] * 4)[:4]
+        if status != "Playing":
+            continue
+        try:
+            host = (urlsplit(url).hostname or "").lower()
+        except ValueError:
+            host = ""
+        if name.lower() in ("freetube", "grayjay") or any(host == d or host.endswith("." + d) for d in domains):
+            video = True
+        else:
+            music = True
+    return music and not video, video
+
+
 class Ambient:
     """Small cues for the lambda tips: failed user units / a new NixOS generation (local), the next calendar item (gog) and
     the weather (omarchy weather). Its own thread, a TTL per source, paused while he is hidden; never run from state_info()."""
@@ -1772,7 +1791,7 @@ class Ambient:
     cal_at = None                                              # monotonic time of that fetch
     alerted = set()                                            # calendar items already announced
     thread = None
-    meeting = music = False                                    # what the look layer wears, and what quiets him (#133)
+    meeting = music = video = False                            # what the look layer wears, and what quiets him (#133)
     music_due = 0.0
     dnd = False
     dnd_due = 0.0
@@ -1802,11 +1821,72 @@ class Ambient:
     peer_due = 0.0
     later = []
     later_lock = threading.Lock()
+    news_due = 0.0
+    news_thread = None
+    news_seen = None
+    news_conf = None
 
     @classmethod
     def hand(cls, kind, text, ok, peer=None):
         with cls.later_lock:
             cls.later.append((kind, text, ok, peer))
+
+    @classmethod
+    def news_ok(cls):
+        if not (CFG.get("proactive") and CFG.get("news_watch") and not Wake.asleep and Plug.stage.get("news")):
+            return False
+        try:
+            config, _ = plugins.read_user_config("news")
+            return isinstance(config, dict) and isinstance(config.get("feeds"), list) and bool(config["feeds"])
+        except Exception:  # a bad saved config must never enable the default feeds
+            return False
+
+    @staticmethod
+    def news_conf_hash():
+        config, _ = plugins.read_user_config("news")
+        return hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()
+
+    @classmethod
+    def news_tick(cls, t):
+        if t < cls.news_due or (cls.news_thread and cls.news_thread.is_alive()) or not cls.news_ok():   # (the clock first: news_ok reads the config file)
+            return
+        cls.news_due = t + 1800
+        p = Plug.stage["news"]
+        cls.news_thread = threading.Thread(target=cls.news_run, args=(p,), daemon=True)
+        cls.news_thread.start()
+
+    @classmethod
+    def news_run(cls, p):
+        try:
+            before = cls.news_conf_hash()
+            st = plugins.run_stage(p, "news", locale=lang.LANGS[lang.active]["locale"])
+            after = cls.news_conf_hash()
+            if before != after:
+                cls.news_seen = None
+                return
+            if not cls.news_ok() or Plug.stage.get("news") is not p:
+                return
+            plugins._consented(p)
+            if st.get("kind") != "headlines" or any(word in str(st.get("source", ""))
+                                                          for word in ("couldn't be reached", "couldn't refresh")):
+                return
+            seen = {hashlib.sha256((item["source"] + "\0" + item["title"]).encode()).hexdigest()
+                    for item in st.get("items", [])[:5]}
+            if cls.news_seen is not None and after == cls.news_conf:
+                n = len(seen - cls.news_seen)
+                if n:
+                    def still_ok():
+                        try:
+                            if not cls.news_ok() or Plug.stage.get("news") is not p:
+                                return False
+                            plugins._consented(p)
+                            return True
+                        except Exception:
+                            return False
+                    cls.hand("news", quip("news", n=n), still_ok)
+            cls.news_seen, cls.news_conf = seen, after
+        except Exception as exc:  # feed names, URLs and titles can appear in exception text
+            print(f"[nixi] news watch: {type(exc).__name__}", file=sys.stderr)
 
     @classmethod
     def peer_edges(cls):
@@ -2114,7 +2194,7 @@ class Ambient:
 
     @classmethod
     def situation(cls):
-        return {k: getattr(cls, k) for k in ("meeting", "music", "track", "cpu_hot", "ram_low", "fullscreen", "locked", "dnd", "coding", "weather", "day", "cold", "windy", "lean", "heavy", "storm", "hot", "night", "party")}
+        return {k: getattr(cls, k) for k in ("meeting", "music", "video", "track", "cpu_hot", "ram_low", "fullscreen", "locked", "dnd", "coding", "weather", "day", "cold", "windy", "lean", "heavy", "storm", "hot", "night", "party")}
 
     @classmethod
     def sense(cls, now=None, proc="/proc", mono=None):
@@ -2199,22 +2279,21 @@ class Ambient:
         cls.night = bool(on and CFG.get("look_night") and (now.hour >= 23 or now.hour < 5))
         cls.party = bool(on and CFG.get("look_party") and ((now.month, now.day) in ((1, 1), (12, 24), (12, 25), (12, 31))
                                                            or now.date().isoformat() in cls.birthdays))
-        music = cls.music
+        music, video = cls.music, cls.video
         if not CFG.get("look_music") or Wake.asleep:
-            music = False
+            music = video = False
             cls.followed = None
         elif t >= cls.music_due:
             cls.music_due = t + 5
+            lines = (cls.run(["playerctl", "-a", "metadata", "--format", "{{playerName}}\t{{status}}\t{{xesam:url}}\t{{mpris:trackid}}{{title}}"]) or "").splitlines()
+            music, video = media_kind(lines)
             if CFG.get("reactions"):                          # (#208) follow the first Playing player and count its track changes
-                rows = [ln.split("\t", 2) for ln in (cls.run(["playerctl", "-a", "metadata", "--format", "{{playerName}}\t{{status}}\t{{mpris:trackid}}{{title}}"]) or "").splitlines()]
-                cur = next((r for r in rows if len(r) == 3 and r[1].strip() == "Playing"), None)
-                music = cur is not None
-                if cur and cls.followed and cls.followed[0] == cur[0] and cls.followed[1] != hash(cur[2]):
+                rows = [ln.split("\t", 3) for ln in lines]
+                cur = next((r for r in rows if len(r) == 4 and r[1].strip() == "Playing"), None)
+                if cur and cls.followed and cls.followed[0] == cur[0] and cls.followed[1] != hash(cur[3]):
                     cls.track += 1
-                cls.followed = (cur[0], hash(cur[2])) if cur else None
-            else:
-                music = any(x.strip() == "Playing" for x in (cls.run(["playerctl", "-a", "status"]) or "").splitlines())
-        cls.meeting, cls.music = meeting, music
+                cls.followed = (cur[0], hash(cur[3])) if cur else None
+        cls.meeting, cls.music, cls.video = meeting, music, video
         if cls.situation() != before:
             BUS.pub(t="situation", **cls.situation())
         Beat.sync()
@@ -2230,6 +2309,7 @@ class Ambient:
                     print(f"[nixi] ambient: {e}", file=sys.stderr)
             try:
                 cls.sense()
+                cls.news_tick(time.monotonic())
                 with cls.later_lock:
                     later, cls.later = cls.later, []
                 for kind, caption, ok, peer in later:
@@ -2249,6 +2329,7 @@ class Ambient:
 
 # Short friendly lines, in app/quips.json (editable without code); these are what is used when that file is broken or missing.
 QUIP_FALLBACK = {
+    "news": ("{n} new headlines.",),
     "break": ("An hour already! Stand up and stretch?", "Time for a stretch. Your back will thank you.", "That's a good long stretch of work. Water and a walk?"),
     "workout": ("Workout time!", "Ready to move for a bit?",),
     "water": ("Time for some water.", "A drink of water sounds good.",),
@@ -2557,7 +2638,7 @@ def workout_cfg():
 class Nudge:
     """Unasked nudges (#133b): break, welcome back, memory, load. They wait for a breakpoint (an unlock, a workspace switch, or
     20 s without window events), and a budget keeps them rare: one visual per 5 minutes, one spoken per 10, a cooldown per kind."""
-    COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "workout": 0, "water": 0, "welcome": 0, "rain": 72000, "snow": 72000, "night": 72000, "party": 72000, "coding": 7200,
+    COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "workout": 0, "water": 0, "welcome": 0, "rain": 72000, "snow": 72000, "night": 72000, "party": 72000, "coding": 7200, "news": 1800,
             "error": 1800, "disk": 21600, "offline": 1800, "host": 1800, "storm": 72000, "hot": 72000}
     lock = threading.Lock()
     pending = {}                                              # kind -> (text, spoken, deadline, peer); oldest first
@@ -2758,6 +2839,8 @@ class Nudge:
         host = cls.pending.get("host")
         if host and len(host) > 3 and host[3] is not None and Ambient.peer_last.get(host[3]) != "up":
             cls.pending.pop("host", None)
+        if "news" in cls.pending and not Ambient.news_ok():            # switched off, or the plugin gone, while it waited
+            cls.pending.pop("news", None)
         for k in [k for k, v in cls.pending.items() if v[2] is not None and t > v[2]]:
             del cls.pending[k]                                      # gone stale while it waited
             if k == "workout":
@@ -5655,7 +5738,7 @@ def clamp01(x):
 
 
 MEDIA_PHRASES = {"pause", "play", "next song", "quieter", "louder", "what's playing"}
-NOTIFY_FLAGS = ("proactive", "reactions", "notifications_takeover", "notify_details", "notify_sound", "look_meeting", "look_music",
+NOTIFY_FLAGS = ("proactive", "reactions", "news_watch", "notifications_takeover", "notify_details", "notify_sound", "look_meeting", "look_music",
                 "look_fullscreen", "react_load", "react_break", "react_welcome",
                 "look_coding", "look_night", "look_weather", "look_party", "react_quips", "look_beat", "notify_speak_subject")
 NOTIFY_CATS = ("mail", "chat", "meeting", "video", "download", "other")
