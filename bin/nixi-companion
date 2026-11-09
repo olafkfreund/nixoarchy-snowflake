@@ -243,6 +243,8 @@ if [ "${NIXI_COMPANION_BROWSER:-0}" != 1 ]; then
     done
   fi
   if [ -n "$SP" ]; then
+    # one launcher at a time: two restarts at once (a deploy and a session) each saw no window and each started one
+    command -v flock >/dev/null 2>&1 && { exec 9>"$ROOT/window.lock"; flock -w 10 9 || true; }
     # already running → just send it show/hide/toggle
     if winalive && [ -S "$SOCK" ]; then exec "$SP" "$APP/window.py" "${URL}?native=1" "$CMD"; fi
     [ "$CMD" = hide ] || [ "$CMD" = quit ] && exit 0
@@ -261,7 +263,7 @@ if [ "${NIXI_COMPANION_BROWSER:-0}" != 1 ]; then
         nocomp)   env=(WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1) ;;
       esac
       echo "[nixi] window: starting (render mode: $MODE)" >>"$LOG"
-      env "${env[@]}" setsid -f "$SP" "$APP/window.py" "${URL}?native=1" "$FIRST" >>"$LOG" 2>&1 </dev/null
+      env "${env[@]}" setsid -f "$SP" "$APP/window.py" "${URL}?native=1" "$FIRST" >>"$LOG" 2>&1 </dev/null 9>&-   # (the window must not keep the launch lock)
       for _ in $(seq 25); do sleep 0.1; done
       if winalive; then echo "$MODE" > "$ROOT/window.mode"; exit 0; fi
       echo "[nixi] window died in mode $MODE" >>"$LOG"
