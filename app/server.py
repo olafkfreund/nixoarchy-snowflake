@@ -1800,9 +1800,9 @@ class Ambient:
     later_lock = threading.Lock()
 
     @classmethod
-    def hand(cls, kind, text, ok):
+    def hand(cls, kind, text, ok, peer=None):
         with cls.later_lock:
-            cls.later.append((kind, text, ok))
+            cls.later.append((kind, text, ok, peer))
 
     @classmethod
     def peer_edges(cls):
@@ -1816,8 +1816,14 @@ class Ambient:
                 name, state = row["name"], row["state"]
                 if cls.peer_last.get(name) == "down" and state == "up":
                     cls.hand("host", quip("host", name=name),
-                             lambda: bool(CFG.get("proactive") and CFG.get("react_load") and plugins.peers_allowed()))
+                             lambda name=name: bool(CFG.get("proactive") and CFG.get("react_load")
+                                                    and plugins.peers_allowed() and cls.peer_last.get(name) == "up"), name)
             cls.peer_last = {row["name"]: row["state"] for row in rows}
+            with cls.later_lock:
+                cls.later = [item for item in cls.later if item[3] is None or cls.peer_last.get(item[3]) == "up"]
+            host = Nudge.pending.get("host")
+            if host and len(host) > 3 and host[3] is not None and cls.peer_last.get(host[3]) != "up":
+                Nudge.pending.pop("host", None)
 
     @staticmethod
     def route_up(proc="/proc"):
@@ -2222,9 +2228,9 @@ class Ambient:
                 cls.sense()
                 with cls.later_lock:
                     later, cls.later = cls.later, []
-                for kind, caption, ok in later:
+                for kind, caption, ok, peer in later:
                     if ok():
-                        Nudge.offer(kind, caption, False)
+                        Nudge.offer(kind, caption, False, peer=peer)
                 Nudge.tick()
             except Exception as e:  # noqa: BLE001
                 print(f"[nixi] ambient: {e}", file=sys.stderr)
@@ -2517,7 +2523,7 @@ class Nudge:
     20 s without window events), and a budget keeps them rare: one visual per 5 minutes, one spoken per 10, a cooldown per kind."""
     COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "welcome": 0, "rain": 72000, "snow": 72000, "night": 72000, "party": 72000, "coding": 7200,
             "error": 1800, "disk": 21600, "offline": 1800, "host": 1800, "storm": 72000, "hot": 72000}
-    pending = {}                                              # kind -> (text, spoken, deadline); oldest first
+    pending = {}                                              # kind -> (text, spoken, deadline, peer); oldest first
     last_visual = last_speech = None
     last_kind = {}
     active_since = None                                       # the break counter's zero
@@ -2527,11 +2533,11 @@ class Nudge:
     coding_offered = 0.0                                      # the coding_since a coding quip was offered for
 
     @classmethod
-    def offer(cls, kind, text, spoken, t=None, until="default"):
+    def offer(cls, kind, text, spoken, t=None, until="default", peer=None):
         t = time.monotonic() if t is None else t
         deadline = (None if kind in ("break", "water") else t + 600) if until == "default" else until
         cls.pending.pop(kind, None)                           # newest wins
-        cls.pending[kind] = (text, spoken, deadline)
+        cls.pending[kind] = (text, spoken, deadline, peer)
 
     @staticmethod
     def missed(path, since, until):
@@ -2609,6 +2615,9 @@ class Nudge:
             return
         cls.watch(t, time.time() if wall is None else wall,
                   hist or Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "omarchy" / "notifications" / "history.json", now)
+        host = cls.pending.get("host")
+        if host and len(host) > 3 and host[3] is not None and Ambient.peer_last.get(host[3]) != "up":
+            cls.pending.pop("host", None)
         for k in [k for k, v in cls.pending.items() if v[2] is not None and t > v[2]]:
             del cls.pending[k]                                      # gone stale while it waited
         if not cls.pending or Ambient.locked or Ambient.dnd or Ambient.fullscreen or Ambient.meeting:
@@ -2618,7 +2627,7 @@ class Nudge:
         if not at_break or (cls.last_visual is not None and t - cls.last_visual < 300):
             return
         kind = next(iter(cls.pending))
-        text, spoken, deadline = cls.pending.pop(kind)
+        text, spoken, deadline = cls.pending.pop(kind)[:3]
         if kind in cls.last_kind and t - cls.last_kind[kind] < cls.COOL[kind]:
             if kind in ("ram", "cpu"):                                 # dropped; re-arm the edge so it is offered again
                 setattr(cls, "was_low" if kind == "ram" else "was_hot", False)   # once the cooldown has passed, if it still holds

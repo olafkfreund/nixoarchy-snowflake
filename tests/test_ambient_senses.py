@@ -211,15 +211,53 @@ class MachineSensesTest(_ServerEnv):
             self.assertEqual(len(A.later), 1)
             rows[0] = {"name": "oak", "state": "down"}
             S.peer_round_done()
-            self.assertEqual(len(A.later), 1)  # going down is silent
+            self.assertEqual(A.later, [])  # going down cancels the held recovery
             rows[0] = {"name": "oak", "state": "up"}
             S.peer_round_done()
-            self.assertEqual(len(A.later), 2)
+            self.assertEqual(len(A.later), 1)
             rows[0] = {"name": "birch", "state": "asking"}
             S.peer_round_done()
             rows[0] = {"name": "birch", "state": "up"}
             S.peer_round_done()
-            self.assertEqual(len(A.later), 2)
+            self.assertEqual(A.later, [])
+
+    def test_peer_down_again_cancels_handed_off_and_pending_recovery(self):
+        S, A, N = self.server, self.A, self.N
+        N.offer.side_effect = self.real_offer
+        rows = [{"name": "oak", "state": "down"}]
+        q = S.BUS.sub()
+        self.addCleanup(S.BUS.unsub, q)
+
+        def drain():
+            with mock.patch.object(A, "step"), mock.patch.object(A, "sense"), \
+                    mock.patch.object(N, "tick"), \
+                    mock.patch.object(S.time, "sleep", side_effect=[None, KeyboardInterrupt()]):
+                with self.assertRaises(KeyboardInterrupt):
+                    A.loop()
+
+        with mock.patch.object(S.plugins, "peers_allowed", return_value=True), \
+                mock.patch.object(S.peers, "current", side_effect=lambda: list(rows)), \
+                mock.patch.object(N, "watch"):
+            A.peer_edges()
+            rows[0] = {"name": "oak", "state": "up"}
+            A.peer_edges()
+            self.assertEqual(A.later[0][:2], ("host", "oak is back."))
+            rows[0] = {"name": "oak", "state": "down"}
+            A.peer_edges()
+            self.assertEqual(A.later, [])
+            drain()
+            self.assertNotIn("host", N.pending)
+
+            rows[0] = {"name": "oak", "state": "up"}
+            A.peer_edges()
+            drain()
+            self.assertEqual(N.pending["host"][3], "oak")
+            rows[0] = {"name": "oak", "state": "down"}
+            A.peer_edges()
+            self.assertNotIn("host", N.pending)
+            N.tick()
+            self.assertFalse(any(event.get("t") == "nudge" and "is back" in event.get("text", "")
+                                 for event in list(q.queue)))
 
     def test_peer_switches_clear_baseline_even_without_round(self):
         S, A = self.server, self.A
@@ -252,7 +290,8 @@ class MachineSensesTest(_ServerEnv):
         with mock.patch.object(S.plugins, "peers_allowed", return_value=True), \
                 mock.patch.object(S.peers, "current", side_effect=[
                     [{"name": "oak", "state": "down"}], [{"name": "oak", "state": "up"}],
-                    [{"name": "birch", "state": "down"}], [{"name": "birch", "state": "up"}]]):
+                    [{"name": "oak", "state": "up"}, {"name": "birch", "state": "down"}],
+                    [{"name": "oak", "state": "up"}, {"name": "birch", "state": "up"}]]):
             A.peer_edges()
             A.peer_edges()
             self.assertNotIn("host", N.pending)
