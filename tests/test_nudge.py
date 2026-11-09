@@ -246,6 +246,22 @@ class NudgeTest(_ServerEnv):
         self.assertEqual(N.active_since, 4000)
         self.assertEqual(self.sent(), [])
 
+    def test_snoozed_break_restarts_hourly_counter_on_delivery(self):
+        N = self.server.Nudge
+        self.tick(0)
+        self.tick(3600)
+        first = self.sent()
+        self.assertEqual([e["kind"] for e in first], ["break"])
+        self.assertTrue(N.act(first[0]["id"], "snooze", 10, t=3600))
+
+        self.tick(4200)
+        self.assertEqual([e["kind"] for e in self.sent()], ["break"])
+        self.assertEqual(N.active_since, 4200)
+        self.tick(7200)
+        self.assertEqual(self.sent(), [])
+        self.tick(7800)
+        self.assertEqual([e["kind"] for e in self.sent()], ["break"])
+
     def test_welcome_counts_ts_only(self):
         N, A = self.server.Nudge, self.server.Ambient
         self.hist.write_text(json.dumps([

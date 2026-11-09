@@ -2776,6 +2776,8 @@ class Nudge:
                 cls.quipped[kind] = False                              # (so is a look quip: 20 h, so tonight's follows yesterday's)
             return
         cls.last_visual = cls.last_kind[kind] = t
+        if kind == "break" and kind in cls.skip_cool:
+            cls.active_since = t
         speak = bool(spoken) and not Ambient.meeting and (cls.last_speech is None or t - cls.last_speech >= 600)
         if speak:
             cls.last_speech = t
