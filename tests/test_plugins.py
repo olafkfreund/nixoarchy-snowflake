@@ -14,6 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 import plugins  # noqa: E402
 
 GOOD = {"api": 1, "id": "pirate-quips", "name": "Pirate", "version": "1.0"}
+DOTS = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 -10 20 20"><circle cx="0" cy="0" r="9" fill="#778899"/><circle cx="-3" cy="-2" r="1"/><circle cx="3" cy="-2" r="1"/></svg>'
+CHARACTER = {"label": "Dots", "template": "round", "fill": "#778899", "back": "back.svg", "front": "front.svg", "fits": ["none", "halo", "plug"], "private": False}
 
 
 class T(unittest.TestCase):
@@ -100,6 +102,74 @@ class T(unittest.TestCase):
         self.assertIsNone(self.one(dict(GOOD, prop=prop, quips="quips.json"), ["prop.svg", "quips.json"]).error)
         self.assertTrue(self.one(dict(GOOD, prop=dict(prop, anchor="feet")), ["prop.svg"]).error)
         self.assertTrue(self.one(dict(GOOD, prop=prop)).error)  # file missing
+
+    def character_dir(self, private=False, base="user"):
+        c = dict(CHARACTER, private=private)
+        d = self.mk("dots", dict(GOOD, character=c), base)
+        for side in ("back", "front"):
+            (d / f"{side}.svg").write_text(DOTS)
+        if private:
+            for p in (d, *d.iterdir()):
+                p.chmod(0o700 if p.is_dir() else 0o600)
+        return d
+
+    def test_character_manifest_and_art(self):
+        d = self.character_dir()
+        self.assertIsNone(plugins._check(json.loads((d / "plugin.json").read_text()), d))
+        self.assertIsNone(plugins.scan([self.root / "pkg", self.root / "user"])[0].error)
+        no_private = {k: v for k, v in CHARACTER.items() if k != "private"}   # (private is optional)
+        self.assertIsNone(plugins._check(dict(GOOD, character=no_private), d))
+        self.assertIsNotNone(plugins._check(dict(GOOD, character={k: v for k, v in CHARACTER.items() if k != "fill"}), d))
+        for change in ({"template": "square"}, {"fits": ["none", "wings"]}, {"fill": "url(#x)"},
+                       {"label": "x" * 21}, {"label": "bad\u202e"}, {"private": 1}, {"extra": 1}):
+            with self.subTest(change=change):
+                m = dict(GOOD, character={**CHARACTER, **change})
+                self.assertIsNotNone(plugins._check(m, d))
+        (d / "front.svg").unlink()
+        self.assertIsNotNone(plugins._check(dict(GOOD, character=CHARACTER), d))
+
+    def test_character_refuses_unsafe_art(self):
+        d = self.character_dir()
+        bad = ('<linearGradient/>', '<circle class="x"/>', '<script/>',
+               '<circle onload="x()"/>', '<circle href="#x"/>', '<circle fill="url(#x)"/>')
+        for node in bad:
+            with self.subTest(node=node):
+                (d / "front.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg">' + node + '</svg>')
+                self.assertIsNotNone(plugins.scan([self.root / "pkg", self.root / "user"])[0].error)
+
+    def test_private_character_refusals(self):
+        d = self.character_dir(private=True)
+        self.assertIsNone(plugins.scan([self.root / "pkg", self.root / "user"])[0].error)
+        self.assertEqual(plugins.check_dir(d), plugins.PRIVATE_STORE_ERROR)
+        (self.root / "pkg").mkdir()
+        shutil.move(str(d), self.root / "pkg" / "dots")
+        self.assertEqual(plugins.scan([self.root / "pkg", self.root / "user"])[0].error, plugins.PRIVATE_STORE_ERROR)
+        shutil.move(str(self.root / "pkg" / "dots"), d)
+        (d / "front.svg").chmod(0o640)
+        self.assertEqual(plugins.scan([self.root / "pkg", self.root / "user"])[0].error, plugins.PRIVATE_MODE_ERROR)
+        (d / "front.svg").chmod(0o600)
+        real_lstat = os.lstat
+        def foreign(path, *args, **kwargs):
+            st = real_lstat(path, *args, **kwargs)
+            return mock.Mock(st_uid=os.getuid() + 1, st_mode=st.st_mode) if os.fspath(path) == os.fspath(d / "front.svg") else st
+        with mock.patch.object(plugins.os, "lstat", side_effect=foreign):
+            self.assertEqual(plugins.scan([self.root / "pkg", self.root / "user"])[0].error, plugins.PRIVATE_MODE_ERROR)
+        with mock.patch.object(plugins.os, "lstat", side_effect=OSError("secret marker")):
+            self.assertEqual(plugins.scan([self.root / "pkg", self.root / "user"])[0].error, plugins.PRIVATE_MODE_ERROR)
+
+    def test_private_errors_are_fixed(self):
+        d = self.character_dir(private=True)
+        (d / "front.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"><script/></svg>')
+        self.assertEqual(plugins.scan([self.root / "pkg", self.root / "user"])[0].error, plugins.PRIVATE_ART_ERROR)
+        (d / "front.svg").write_text(DOTS)
+        m = json.loads((d / "plugin.json").read_text())
+        m["character"]["extra"] = "secret marker"
+        (d / "plugin.json").write_text(json.dumps(m))
+        self.assertEqual(plugins.scan([self.root / "pkg", self.root / "user"])[0].error, plugins.PRIVATE_ART_ERROR)
+        m["character"].pop("extra")
+        (d / "plugin.json").write_text(json.dumps(m))
+        (d / "secret-marker").symlink_to(self.root / "outside")
+        self.assertEqual(plugins.scan([self.root / "pkg", self.root / "user"])[0].error, plugins.PRIVATE_ART_ERROR)
 
     def test_stage_and_argv_escape(self):
         st = {"phrases": ["nixi status"], "argv": ["run"], "cache_seconds": 30}
@@ -188,6 +258,41 @@ class T(unittest.TestCase):
         d = plugins.plugin_dirs()
         self.assertEqual(d[0], plugins.APP_DIR.parent / "plugins")
         self.assertEqual(d[1].name, "plugins")
+
+
+from test_speakable import _ServerEnv
+
+
+class FolderErrorApi(_ServerEnv):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(dir=self.tmp))
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.user = self.root / "user"
+        self.user.mkdir()
+        mock.patch.object(self.server.plugins, "plugin_dirs", return_value=[self.root / "pkg", self.user]).start()
+        self.addCleanup(mock.patch.stopall)
+        mock.patch.object(self.server.plugins, "State", return_value=self.server.plugins.State(self.root / "state.json")).start()
+
+    def test_pre_manifest_errors_hide_marker_from_api(self):
+        marker = "private-marker-213"
+        for kind in ("link", "manifest"):
+            with self.subTest(kind=kind):
+                d = self.user / kind
+                d.mkdir()
+                if kind == "link":
+                    (d / "plugin.json").write_text(json.dumps(dict(GOOD, id=kind)))
+                    (d / marker).symlink_to(self.root / "outside")
+                    expected = "contains a symlink"
+                else:
+                    (d / "plugin.json").write_text("{" + marker)
+                    expected = "plugin.json unreadable"
+                rows = self.server.plugins_api()["items"]
+                row = next(x for x in rows if x["id"] == kind)
+                self.assertEqual(row["error"], expected)
+                self.assertNotIn(marker, json.dumps(rows))
+                if kind == "link":
+                    (d / marker).unlink()
+                shutil.rmtree(d)
 
 
 HAT = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g transform="translate(1 2) scale(1.5)"><path d="M50 8L88 92Z" fill="acc" stroke="#fff"/><circle cx="5" cy="5" r="2" fill="#abc" opacity=".5"/></g></svg>'

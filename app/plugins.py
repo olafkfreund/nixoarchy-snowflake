@@ -24,8 +24,14 @@ Plugin = namedtuple("Plugin", "id dir manifest source error")
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{2,63}$")
 REQUIRED = {"api", "id", "name", "version"}
-OPTIONAL = {"description", "quips", "prop", "notifications", "stage"}
+OPTIONAL = {"description", "quips", "prop", "notifications", "stage", "character"}
 PROP_KEYS = {"file", "anchor", "layer"}
+CHARACTER_KEYS = {"label", "template", "fill", "back", "front", "fits", "private"}
+ROUND_FITS = {"none", "halo", "crown", "sprout", "bow", "nightcap", "beanie", "party", "scarf", "tie",
+              "headphones", "shades", "glasses", "chat", "feed", "plug"}
+PRIVATE_ART_ERROR = "the character art was refused"
+PRIVATE_MODE_ERROR = "the folder is readable by other users: run chmod -R go= <folder>"
+PRIVATE_STORE_ERROR = "a private character can't come from the Nix store"
 STAGE_KEYS = {"phrases", "hint", "argv", "network", "cache_seconds", "reads", "config", "videos"}
 CATEGORIES = {"mail", "chat", "feed"}
 APP_RE = re.compile(r"^[a-z0-9._-]+$")
@@ -128,6 +134,28 @@ def _check(m, d):
             return "bad prop anchor or layer"
         if not _inside(d, p["file"]):
             return "prop file missing or outside the folder"
+    if "character" in m:
+        c = m["character"]
+        if not isinstance(c, dict) or not c.keys() <= CHARACTER_KEYS or not CHARACTER_KEYS - {"private"} <= c.keys():   # (private is optional)
+            return "bad character"
+        if not isinstance(c["label"], str) or not 0 < len(c["label"]) <= 20 or _bad(c["label"]):
+            return "bad character label"
+        if c["template"] != "round":
+            return "bad character template"
+        if not isinstance(c["fill"], str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", c["fill"]):
+            return "bad character fill"
+        if not isinstance(c["fits"], list) or any(not isinstance(f, str) or f not in ROUND_FITS for f in c["fits"]):
+            return "bad character fits"
+        if type(c.get("private", False)) is not bool:
+            return "bad character private"
+        for side in ("back", "front"):
+            rel = c[side]
+            if not isinstance(rel, str) or not rel.lower().endswith(".svg") or not _inside(d, rel):
+                return "character art missing or outside the folder"
+            try:
+                sanitize_svg((Path(d) / rel).read_bytes())
+            except (OSError, ValueError) as e:
+                return f"character art: {e}"
     if "notifications" in m:
         if not isinstance(m["notifications"], list):
             return "bad notifications"
@@ -249,6 +277,23 @@ def _manifest(p):
         os.close(fd)
 
 
+def _private_permissions(d):
+    """Private plugins require user-owned, user-only folders and files; stat failures refuse them."""
+    try:
+        owner = os.getuid()
+        root_stat = os.lstat(d)
+        if root_stat.st_uid != owner or root_stat.st_mode & 0o077:
+            return False
+        for root, dirs, files in os.walk(d, onerror=_raise):
+            for p in (os.path.join(root, n) for n in dirs + files):
+                st = os.lstat(p)
+                if st.st_uid != owner or st.st_mode & 0o077:
+                    return False
+        return True
+    except OSError:
+        return False
+
+
 def scan(dirs):
     """Every plugin folder under dirs (the first dir counts as Nix, the rest as Folder). Never raises for one plugin."""
     out, valid = [], []
@@ -260,16 +305,30 @@ def scan(dirs):
         for d in subs:
             m, err, vid = None, None, None
             try:
-                err = f"contains a symlink: {_symlink(d)}" if _symlink(d) else None
+                link = _symlink(d)
+                err = (f"contains a symlink: {link}" if i == 0 else "contains a symlink") if link else None
+                if link:   # (read anyway: a private one's error must not name its files)
+                    try:
+                        m = json.loads(_manifest(d / "plugin.json"))
+                    except (OSError, ValueError):
+                        pass  # the generic folder error remains free of paths and parser details
                 if not err:
                     m = json.loads(_manifest(d / "plugin.json"))
-                    err = _check(m, d)
+                    private = isinstance(m, dict) and isinstance(m.get("character"), dict) and m["character"].get("private") is True
+                    if private and i == 0:
+                        err = PRIVATE_STORE_ERROR
+                    elif private and not _private_permissions(d):
+                        err = PRIVATE_MODE_ERROR
+                    else:
+                        err = _check(m, d)
             except FileNotFoundError:
-                err = "plugin.json missing"
+                err = "plugin.json missing" if i == 0 else "plugin.json unreadable"
             except (OSError, ValueError) as e:  # ValueError covers bad JSON and bad UTF-8
-                err = f"plugin.json unreadable: {e}"
+                err = f"plugin.json unreadable: {e}" if i == 0 else "plugin.json unreadable"
             except Exception as e:  # one odd manifest must never stop the scan
-                err = f"plugin.json not understood: {type(e).__name__}"
+                err = f"plugin.json not understood: {type(e).__name__}" if i == 0 else "plugin.json unreadable"
+            if isinstance(m, dict) and isinstance(m.get("character"), dict) and m["character"].get("private") is True and err not in (None, PRIVATE_STORE_ERROR, PRIVATE_MODE_ERROR):
+                err = PRIVATE_STORE_ERROR if i == 0 else PRIVATE_ART_ERROR
             if isinstance(m, dict) and isinstance(m.get("id"), str) and ID_RE.fullmatch(m["id"]):
                 vid = m["id"]
             out.append(Plugin(vid or d.name, d, m if isinstance(m, dict) else None, "nix" if i == 0 and _in_store(d) else "folder", err))
@@ -283,7 +342,7 @@ def scan(dirs):
         nix = [p for p in g if p.source == "nix"]
         if len(g) > 1:                             # a Nix plugin beats a Folder one; otherwise every one of them is marked
             dup.update(id(p) for p in (g if len(nix) != 1 else [p for p in g if p.source != "nix"]))
-    return [p._replace(error=p.error or "duplicate id") if id(p) in dup else p for p in out]
+    return [p._replace(error=p.error or "duplicate id") if id(p) in dup else p for p in out]   # (a fixed string: it names nothing)
 
 
 SNAP_MAX = 64 * 1024 * 1024                          # a plugin folder bigger than this is refused (hashing never holds it in memory)
@@ -949,6 +1008,8 @@ def check_dir(d):
         m = json.loads(_manifest(d / "plugin.json"))
     except (OSError, ValueError) as e:
         return f"plugin.json unreadable: {e}"
+    if isinstance(m, dict) and isinstance(m.get("character"), dict) and m["character"].get("private") is True:
+        return PRIVATE_STORE_ERROR
     try:
         err = f"contains a symlink: {_symlink(d)}" if _symlink(d) else _check(m, d)
     except OSError as e:
