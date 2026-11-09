@@ -2226,6 +2226,8 @@ def plugin_caps(m):
             out.append("Private: keep this folder out of Nix and out of any repo.")
     if m.get("notifications"):
         out.append("Sorts notifications from some apps or sites into mail, chat or feed")
+    if m.get("reactions"):
+        out.append("Reacts to notifications from some apps or sites")
     if "stage" in m:
         out.append("Runs a program when you ask for it" + (" and uses the network" if m["stage"].get("network") else ""))
         if "system-status" in m["stage"].get("reads", []):

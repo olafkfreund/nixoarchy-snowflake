@@ -20,7 +20,7 @@ class PluginMapsTest(_ServerEnv):
             self.addCleanup(p.stop)
         S.Plug.loaded = None
 
-    def mk(self, pid, quips=None, notifications=None, on=True):
+    def mk(self, pid, quips=None, notifications=None, reactions=None, on=True):
         d = self.root / "pk" / pid
         d.mkdir(parents=True, exist_ok=True)
         m = {"api": 1, "id": pid, "name": pid, "version": "1"}
@@ -29,6 +29,8 @@ class PluginMapsTest(_ServerEnv):
             (d / "quips.json").write_text(json.dumps(quips))
         if notifications:
             m["notifications"] = notifications
+        if reactions is not None:
+            m["reactions"] = reactions
         (d / "plugin.json").write_text(json.dumps(m))
         self.state.set(pid, on)
         self.server.Plug.loaded = None
@@ -69,6 +71,13 @@ class PluginMapsTest(_ServerEnv):
     def test_builtin_rules_win(self):
         self.mk("element-map", notifications=[{"app": "whatsapp", "category": "feed"}])
         self.assertEqual(self.cats(("whatsapp", "")), ["chat"])
+
+    def test_reactions_settings_line(self):
+        S = self.server
+        self.mk("reaction-map", reactions=[{"app": "element", "reaction": "notice"}])
+        (item,) = S.plugins_api()["items"]
+        self.assertEqual(item["error"], "")
+        self.assertIn("Reacts to notifications from some apps or sites", item["caps"])
 
     def mk_prop(self, pid, svg, on=True):
         d = self.root / "pk" / pid

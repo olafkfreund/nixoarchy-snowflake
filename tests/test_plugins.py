@@ -97,6 +97,24 @@ class T(unittest.TestCase):
                     [{"app": "a", "category": "spam"}]):
             self.assertTrue(self.one(dict(GOOD, notifications=bad)).error, bad)
 
+    def test_reactions(self):
+        for entry in ({"app": "element", "reaction": "notice"},
+                      {"host": "example.org", "reaction": "music"},
+                      {"host": "*.example.org", "reaction": "notice"}):
+            with self.subTest(entry=entry):
+                self.assertIsNone(self.one(dict(GOOD, reactions=[entry])).error)
+
+        bad = (({"app": "element", "reaction": "video"}, "reaction not allowed"),
+               ({"app": "element", "reaction": "news"}, "reaction not allowed"),
+               ({"app": "element", "reaction": "notice", "extra": 1}, "bad reactions entry"),
+               ({"app": "element", "host": "example.org", "reaction": "notice"}, "bad reactions entry"),
+               ({"app": "Element", "reaction": "notice"}, "notification app must be a literal lowercase id"),
+               ({"host": "a/b", "reaction": "notice"}, "notification host must be a name or *.suffix"))
+        for entry, error in bad:
+            with self.subTest(entry=entry):
+                self.assertEqual(self.one(dict(GOOD, reactions=[entry])).error, error)
+        self.assertEqual(self.one(dict(GOOD, reactions={"app": "element"})).error, "bad reactions")
+
     def test_prop_and_quips(self):
         prop = {"file": "prop.svg", "anchor": "head", "layer": "front"}
         self.assertIsNone(self.one(dict(GOOD, prop=prop, quips="quips.json"), ["prop.svg", "quips.json"]).error)

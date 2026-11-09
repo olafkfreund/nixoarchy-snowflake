@@ -24,7 +24,7 @@ Plugin = namedtuple("Plugin", "id dir manifest source error")
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{2,63}$")
 REQUIRED = {"api", "id", "name", "version"}
-OPTIONAL = {"description", "quips", "prop", "notifications", "stage", "character"}
+OPTIONAL = {"description", "quips", "prop", "notifications", "reactions", "stage", "character"}
 PROP_KEYS = {"file", "anchor", "layer"}
 CHARACTER_KEYS = {"label", "template", "fill", "back", "front", "fits", "private"}
 ROUND_FITS = {"none", "halo", "crown", "sprout", "bow", "nightcap", "beanie", "party", "scarf", "tie",
@@ -106,6 +106,9 @@ def _strs(v, n=None):
     return isinstance(v, list) and bool(v) and all(isinstance(x, str) and x for x in v) and (n is None or len(v) <= n)
 
 
+REACTIONS = {"notice", "music"}
+
+
 def _check(m, d):
     """Return the reason the manifest is bad, or None."""
     import stages
@@ -164,6 +167,18 @@ def _check(m, d):
                 return "bad notifications entry"
             if not _in(n["category"], CATEGORIES):
                 return "bad notification category"
+            if "app" in n and not (isinstance(n["app"], str) and APP_RE.fullmatch(n["app"])):
+                return "notification app must be a literal lowercase id"
+            if "host" in n and not (isinstance(n["host"], str) and HOST_RE.fullmatch(n["host"])):
+                return "notification host must be a name or *.suffix"
+    if "reactions" in m:
+        if not isinstance(m["reactions"], list):
+            return "bad reactions"
+        for n in m["reactions"]:
+            if not isinstance(n, dict) or n.keys() not in ({"app", "reaction"}, {"host", "reaction"}):
+                return "bad reactions entry"
+            if not _in(n["reaction"], REACTIONS):
+                return "reaction not allowed"
             if "app" in n and not (isinstance(n["app"], str) and APP_RE.fullmatch(n["app"])):
                 return "notification app must be a literal lowercase id"
             if "host" in n and not (isinstance(n["host"], str) and HOST_RE.fullmatch(n["host"])):
