@@ -391,12 +391,24 @@ never downloads plugins from the network.
 ```
 
 A plugin folder has a `plugin.json` (`"api": 1`, `"id"`, `"name"`, `"version"`, and an optional `"description"`) and any of
-four parts. `mkCompanionPlugin` checks the manifest when it builds, so a bad one fails the build.
+five parts. `mkCompanionPlugin` checks the manifest when it builds, so a bad one fails the build.
 
 - **`quips`:** the path of a JSON file with extra lines for the little jokes, keyed `break`, `welcome`, `ram`, `cpu`,
   `rain`, `snow`, `night`, `party`, `coding` and `done`. Each key holds a list of strings.
 - **`prop`:** an SVG `file`, an `anchor` of `head`, `left`, `right` or `base`, and an optional `layer` of `front` or
   `back`. It appears in Settings → Look → Skin as `plug:<id>`.
+- **`character`:** a whole body you pick in Settings → Look → Character as `plug:<id>`. It has a `label` (at most 20
+  characters), `template` (only `"round"`, which supplies every size and position), `fill` (one `#rrggbb`), `back` and
+  `front` (SVG files in the folder, drawn behind and in front of the face), `fits` (the skins it can wear, a subset of
+  the template's) and an optional `private`. The art follows the same limits as a prop (flat colours only). Each file's
+  `viewBox` is fitted to the body box, so draw with `viewBox="-96 -120 192 220"` (the face sits near 0,0); anything
+  outside it is cut off. A tiny
+  example: a plain circle with two dots for eyes. Turning the plugin on is allowed to add it; choosing it in Look is
+  your consent.
+  - A `private` character is for art that must stay yours. It loads only from `~/.local/share/nixi-companion/plugins/`,
+    never from the package directory or the Nix store, and only if the folder and its files are yours alone: run
+    `chmod -R go= <folder>`. Its errors are fixed sentences and its art is never logged. The rule: **never name a private
+    folder in any Nix expression**, and keep it out of every repo; a Nix build of a `private` plugin fails on purpose.
 - **`notifications`:** a list of `{ "app": …, "category": … }` or `{ "host": …, "category": … }`. The category is `mail`,
   `chat` or `feed`.
 - **`stage`:** a program that fills the board under him. It has `phrases` (what you say to open it) and `argv` (the

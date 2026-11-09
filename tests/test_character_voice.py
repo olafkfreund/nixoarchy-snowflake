@@ -6,6 +6,7 @@ import urllib.request
 from http.server import HTTPServer
 from unittest import mock
 
+from test_plugin_character import CharEnv
 from test_speakable import _ServerEnv
 
 
@@ -240,3 +241,17 @@ class CharacterVoiceSettingsTest(_ServerEnv):
                 self.assertEqual(s.CFG["voice_by_character"], {})
                 self.assertFalse(s.CONF_PATH.exists())
                 s.fetch_voice.assert_not_called()
+
+
+class PluginCharacterVoiceTest(CharEnv):
+    def test_loaded_plugin_id_accepted_and_unknown_refused(self):
+        s = self.server
+        self.make()
+        with mock.patch.dict(s.CFG, {"voice_by_character": {}}):
+            upd = {}
+            self.assertFalse(s.voice_settings({"voice_by_character": {"plug:dots": "girl"}}, upd))
+            self.assertEqual(upd["voice_by_character"], {"plug:dots": "girl"})
+            self.assertTrue(s.voice_settings({"voice_by_character": {"plug:nope": "girl"}}, {}))
+            s.CFG["voice_by_character"] = {"plug:dots": "girl", "plug:nope": "girl"}
+            with mock.patch.object(s.eleven, "voices", return_value=[]), mock.patch.object(s.quick, "projects", return_value={}):
+                self.assertEqual(s.state_info()["voice_by_character"], {"plug:dots": "girl"})

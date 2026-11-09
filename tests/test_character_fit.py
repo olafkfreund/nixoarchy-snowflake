@@ -21,6 +21,9 @@ from _browser import start_browser
 REPO = Path(__file__).resolve().parent.parent
 BROWSER = shutil.which("chromium") or shutil.which("chromium-browser")
 BASE_REF = os.environ.get("CHARACTER_BASE", "origin/main")
+# #213: a synthetic plugin character, a plain circle with two dots
+FIXTURE_ART = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="-96 -120 192 220"><circle cx="0" cy="4" r="80" fill="#778899"/>'
+               '<circle cx="-30" cy="-60" r="4" fill="#223344"/><circle cx="30" cy="-60" r="4" fill="#223344"/></svg>')
 MISSING = 77                                                  # the .mjs says: this id is not in CHARACTERS
 
 
@@ -50,12 +53,12 @@ class CharacterFit(unittest.TestCase):
         home = Path(tempfile.mkdtemp(prefix="nixi-charfit-"))
         cls.dirs.append(home)
         cls.procs.append(start_browser(BROWSER, cls.cdp, home / "chromium"))
-        cls.url = cls._serve(REPO)
+        cls.url = cls._serve(REPO, fixture=True)
         assert _wait(f"http://127.0.0.1:{cls.cdp}/json/version"), "chromium did not start"
 
     @classmethod
-    def _serve(cls, tree):
-        """A server for `tree` in a throwaway home; returns the page URL with its token."""
+    def _serve(cls, tree, fixture=False):
+        """A server for `tree` in a throwaway home; returns the page URL with its token. fixture: add plug:fixture (#213)."""
         home = Path(tempfile.mkdtemp(prefix="nixi-charfit-"))
         cls.dirs.append(home)
         env = dict(os.environ, HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
@@ -64,6 +67,14 @@ class CharacterFit(unittest.TestCase):
             (home / d).mkdir(parents=True, exist_ok=True)
         port = _free_port()
         (home / ".config/nixi-companion/config.json").write_text(json.dumps({"port": port}))
+        if fixture:
+            d = home / "data/nixi-companion/plugins/fixture"
+            d.mkdir(parents=True)
+            c = {"label": "<b>x</b>", "template": "round", "fill": "#778899", "back": "back.svg", "front": "front.svg", "fits": ["none", "halo"]}
+            (d / "plugin.json").write_text(json.dumps({"api": 1, "id": "fixture", "name": "Fixture", "version": "1", "character": c}))
+            (d / "back.svg").write_text(FIXTURE_ART)
+            (d / "front.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="-96 -120 192 220"><circle cx="0" cy="40" r="3" fill="#223344"/></svg>')
+            (home / "data/nixi-companion/plugins-state.json").write_text(json.dumps({"fixture": {"enabled": True, "sha256": None}}))
         cls.procs.append(subprocess.Popen([sys.executable, str(tree / "app/server.py")], env=nixi_env.server_env(env, home),
                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         assert _wait(f"http://127.0.0.1:{port}/"), "server did not start"
@@ -120,6 +131,12 @@ class CharacterFit(unittest.TestCase):
 
     def test_devil(self):
         self._char("devil")
+
+    def test_plugin_character(self):
+        """#213: plug:fixture holds to the contract; its label is text, its art is clipped, and it goes when the plugin does."""
+        self._char("plug:fixture")
+        r = self.node("plugpage")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
 
 if __name__ == "__main__":

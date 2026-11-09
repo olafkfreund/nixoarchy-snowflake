@@ -106,6 +106,9 @@ class DocsNamesTest(unittest.TestCase):
     def test_guide(self):
         self.check_doc(DOCS[2])
 
+    def test_guide_says_never_name_a_private_folder(self):
+        self.assertIn("never name a private folder in any Nix expression", " ".join((ROOT / "docs/GUIDE.md").read_text().split()))
+
     def test_wrong_setting_fails(self):
         path = Path(self.tmp) / "wrong-setting.md"
         path.write_text("## Settings reference\n\n| Key | Default |\n| --- | --- |\n| `not_a_setting` | `1` |\n")

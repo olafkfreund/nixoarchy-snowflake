@@ -76,6 +76,35 @@ if (mode === "pixels") {
   await done(cmp);
 }
 
+// ---------- #213: a plugin character's label, clip and removal (the test server serves plug:fixture) ----------
+if (mode === "plugpage") {
+  const tab = await Tab.open();
+  await tab.go(url);
+  const r = await tab.ev(`const bad=[], c=CHARACTERS['plug:fixture']; if(!c) return ['no plug:fixture'];
+    applyLook({...LOOK, character:'plug:fixture'}); await new Promise(r=>setTimeout(r,400));
+    if(BODY!==c) bad.push('BODY'); if(document.querySelector('#body>path.ball').getAttribute('fill')!=='#778899') bad.push('flat fill');
+    if(document.getElementById('rim').getAttribute('fill')!=='none') bad.push('rim filled');
+    const clipped=(inner,where)=>{ if(!inner) return bad.push('no nested svg '+where);   // dots past each edge of x ±96, y -120…+100
+      for(const [cx,cy] of [[-130,0],[130,0],[0,-150],[0,130]]){ const d=sv('circle',{cx,cy,r:20,fill:'#ff00ff'},inner), r=d.getBoundingClientRect();
+        if(r.width&&document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===d) bad.push(where+' dot '+cx+','+cy+' not clipped'); d.remove(); } };
+    clipped(document.querySelector('#body>.nix>svg'),'stage');
+    renderSettings();
+    const b=document.querySelector('#characterGrid [data-character="plug:fixture"]');
+    if(!b) bad.push('not in the grid'); else { settings(true,'look'); await new Promise(r=>setTimeout(r,300));
+      const g=document.querySelector('#characterGrid [data-character="plug:fixture"]'); g.scrollIntoView({block:'center'}); await new Promise(r=>setTimeout(r,100));
+      if(!g.getBoundingClientRect().width) bad.push('grid not shown'); clipped(g.querySelector('g[data-part="body"]>svg'),'grid'); if(!b.textContent.includes('<b>x</b>')) bad.push('label not text'); if(b.querySelector('b')) bad.push('label is markup'); }
+    info.look={...(info.look||{}),character:'plug:fixture',random:true}; syncLook(true);   // random colours: a changed plugin is still redrawn
+    info.plugin_characters=info.plugin_characters.map(p=>({...p,fill:'#112233'})); syncLook();
+    if(BODY!==CHARACTERS['plug:fixture']||document.querySelector('#body>path.ball').getAttribute('fill')!=='#112233') bad.push('random mode kept the old art');
+    info.plugin_characters=[]; syncLook(); renderSettings();
+    if(Object.keys(CHARACTERS).some(k=>k.startsWith('plug:'))) bad.push('plug: left in CHARACTERS');
+    if(document.querySelector('#characterGrid [data-character^="plug:"]')) bad.push('plug: left in the grid');
+    if(BODY===c) bad.push('still drawn');
+    return bad;`);
+  check(r.length === 0, "plug:fixture: label as text, art clipped, gone after the plugin goes", r.join(", "));
+  await done(tab);
+}
+
 // ---------- the per-character cases ----------
 if (mode !== "char") { console.log("usage: character_fit.mjs <cdp> <url> char <id> | pixels <base-url>"); process.exit(2); }
 const ID = arg;
@@ -100,7 +129,8 @@ await ev(`window.bodyBox=el=>{ const b=el.getBBox(), m=document.getElementById('
 {
   const r = await ev(`const c=CHARACTERS[__id], A=['head','face','neck','base','left','right'], bad=[];
     if(typeof c.label!=='string'||!c.label) bad.push('label'); if(typeof c.ball!=='string'||!c.ball) bad.push('ball');
-    if(typeof c.back!=='string') bad.push('back'); if(typeof c.front!=='string') bad.push('front'); if(typeof c.gloss!=='boolean') bad.push('gloss');
+    if(typeof c.back!=='string') bad.push('back'); if(typeof c.front!=='string') bad.push('front');
+    if(__id.startsWith('plug:')&&!(Array.isArray(c.nodes?.back)&&Array.isArray(c.nodes?.front)&&c.nodes.back.length>1)) bad.push('nodes'); if(typeof c.gloss!=='boolean') bad.push('gloss');
     if(!Array.isArray(c.faceBox)||c.faceBox.length!==4||!c.faceBox.every(Number.isFinite)) bad.push('faceBox');
     if(!Number.isFinite(c.cupX)) bad.push('cupX'); if(typeof c.band!=='string'||!c.band) bad.push('band');
     if(!A.every(k=>Array.isArray(c.anchors?.[k])&&c.anchors[k].length===2&&c.anchors[k].every(Number.isFinite))) bad.push('anchors');
@@ -201,8 +231,8 @@ if (ID !== "snowflake") {
     const drawn=grid().filter(b=>b.querySelector('svg path[data-part="body"]')?.getAttribute('d')===CHARACTERS[b.dataset.character].ball).length;
     const reached=!!hit&&pick.contains(hit); pick.focus(); pick.click(); for(let i=0;i<20;i++){ await new Promise(r=>setTimeout(r,100)); await refresh(); if(info.look?.character===__id) break; }
     const now=grid().find(b=>b.dataset.character===__id);
-    return {count:grid().length, drawn, reached, live:BODY===CHARACTERS[__id], saved:(await (await fetch('/api/state',{headers:hdr()})).json()).look?.character, pressed:now?.getAttribute('aria-pressed'), focused:document.activeElement===now};`);
-  check(row.count===4 && row.drawn===4 && row.reached && row.live && row.saved===ID && row.pressed==="true" && row.focused, `${ID}: Character row previews, picks, saves and keeps focus`, JSON.stringify(row));
+    return {count:grid().length, total:Object.keys(CHARACTERS).length, drawn, reached, live:BODY===CHARACTERS[__id], saved:(await (await fetch('/api/state',{headers:hdr()})).json()).look?.character, pressed:now?.getAttribute('aria-pressed'), focused:document.activeElement===now};`);
+  check(row.count===row.total && row.total>=4 && row.drawn===row.total && row.reached && row.live && row.saved===ID && row.pressed==="true" && row.focused, `${ID}: Character row previews, picks, saves and keeps focus`, JSON.stringify(row));
   await ev(`settings(false); return 1`);
   const wx = await ev(`await new Promise(r=>setTimeout(r,200)); return [document.querySelector('#wx').getAttribute('transform'), Math.max(CHARACTERS[__id].anchors.head[1],-3)];`);
   check(wx[0].endsWith(` ${wx[1]})`), `${ID}: the weather stays at his head, frame after frame`, String(wx));
@@ -286,7 +316,7 @@ if (ID === "snowflake" || ID === "robot") {
       if(!f||!k||!(parseFloat(s.strokeWidth)>0)){ bad.push(e.tagName+' accent has no literal fill or no stroke ('+s.fill+' / '+s.stroke+')'); continue; } const a=L(f), b=L(k), cr=(Math.max(a,b)+.05)/(Math.min(a,b)+.05);
       if(cr<3) bad.push(e.tagName+' '+s.fill+' on '+s.stroke+' '+cr.toFixed(2)); }
     return {n,bad};`);
-  if (ID !== "snowflake") check(r.n >= 1, `${ID}: at least one .accent is marked`, `${r.n} found`);
+  if (ID !== "snowflake" && !ID.startsWith("plug:")) check(r.n >= 1, `${ID}: at least one .accent is marked`, `${r.n} found`);
   check(r.bad.length === 0, `${ID}: fixed accents vs their outline are at least 3:1 (${r.n} checked)`, r.bad.join("; "));
 }
 
