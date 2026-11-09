@@ -154,11 +154,44 @@ sh -c 'command -v nixi-companion >/dev/null || exit 0; exec nixi-companion atten
 notify = ["sh", "-c", "command -v nixi-companion >/dev/null && nixi-companion attention --from codex --hook \"$1\"; exit 0", "codex-notify"]
 # ~/.gemini/config/hooks.json  Stop (and Notification, if agy fires one)
 sh -c 'command -v nixi-companion >/dev/null && nixi-companion attention --from agy --hook; echo "{}"'
+# ~/.gemini/config/hooks.json  PreInvocation (the "working" line; agy shows no approval)
+sh -c 'command -v nixi-companion >/dev/null && nixi-companion attention --from agy --hook; echo "{}"'
 ```
+
+### Approve or deny from Nixi (Claude Code and Codex)
+
+Claude Code and Codex can ask in Nixi's card instead of their terminal, and show a decorative terminal while they work.
+Add these hooks (each starts `sh -c 'command -v nixi-companion >/dev/null || exit 0; exec nixi-companion …'`, so they do
+nothing when Nixi is not running):
+
+```sh
+# ~/.claude/settings.json
+PermissionRequest                     … approve --from claude          (timeout 75)
+PostToolUse, PostToolUseFailure       … result --from claude           (timeout 5)
+UserPromptSubmit                      … attention --from claude --hook (timeout 5)
+# Codex: managed requirements.toml, or a trusted hooks.json (same timeouts)
+PermissionRequest                     … approve --from codex           (timeout 75)
+PostToolUse                           … result --from codex            (timeout 5)
+UserPromptSubmit                      … attention --from codex --hook  (timeout 5)
+```
+
+- **Off by default.** Turn it on in Settings → Agents → "Approve other agents' commands here (click only)". Until this
+  release's live probes enable them, approvals are refused for every agent.
+- **Click only.** A yes needs a real click on the card: Y, Enter and the voice never approve, and there is no "always".
+  No or Esc denies. Nixi's own send and herdr-write cards need the same click.
+- **60 s.** Nixi waits 60 s (the hook timeout is 75 s), then the card goes and the agent asks in its own terminal as
+  usual. "Answer in the terminal" hands it back at once. With the setting off, the agent asks as before.
+- **Result.** After you approve, a line says whether it ran ("Codex ran it ✓", or ✗ with the exit code), "approved,
+  result unknown", "denied in Nixi", or a red warning if a matching command ran after you denied. Output is never sent.
+- **Working.** While one of them works, the code panel shows a decorative terminal with the agent's name (no real
+  text), smaller after a minute, gone when it finishes. agy gets this too, from its `PreInvocation` line.
+- **agy can't be approved from Nixi** (no hook at its prompt); it keeps "open the session".
+- **Trust.** Requests and results come from processes of your own user. Anything running as you could show a fake card
+  or a fake result line, but it can never make an agent run something without your click on a real request.
 
 Old hook lines (`nixi-companion attention --from claude is waiting for you`) still work; they count as "needs you".
 
-Two limits: Codex has no approval hook, so it only ever says "finished". agy does not send its reply text, so its
+Two limits: Codex's `notify` has no approval event (its PermissionRequest hook above is the approval path), so `notify` only ever says "finished". agy does not send its reply text, so its
 "finished" has no reason line.
 
 ## Hover mode
@@ -358,12 +391,24 @@ never downloads plugins from the network.
 ```
 
 A plugin folder has a `plugin.json` (`"api": 1`, `"id"`, `"name"`, `"version"`, and an optional `"description"`) and any of
-four parts. `mkCompanionPlugin` checks the manifest when it builds, so a bad one fails the build.
+five parts. `mkCompanionPlugin` checks the manifest when it builds, so a bad one fails the build.
 
 - **`quips`:** the path of a JSON file with extra lines for the little jokes, keyed `break`, `welcome`, `ram`, `cpu`,
   `rain`, `snow`, `night`, `party`, `coding` and `done`. Each key holds a list of strings.
 - **`prop`:** an SVG `file`, an `anchor` of `head`, `left`, `right` or `base`, and an optional `layer` of `front` or
   `back`. It appears in Settings → Look → Skin as `plug:<id>`.
+- **`character`:** a whole body you pick in Settings → Look → Character as `plug:<id>`. It has a `label` (at most 20
+  characters), `template` (only `"round"`, which supplies every size and position), `fill` (one `#rrggbb`), `back` and
+  `front` (SVG files in the folder, drawn behind and in front of the face), `fits` (the skins it can wear, a subset of
+  the template's) and an optional `private`. The art follows the same limits as a prop (flat colours only). Each file's
+  `viewBox` is fitted to the body box, so draw with `viewBox="-96 -120 192 220"` (the face sits near 0,0); anything
+  outside it is cut off. A tiny
+  example: a plain circle with two dots for eyes. Turning the plugin on is allowed to add it; choosing it in Look is
+  your consent.
+  - A `private` character is for art that must stay yours. It loads only from `~/.local/share/nixi-companion/plugins/`,
+    never from the package directory or the Nix store, and only if the folder and its files are yours alone: run
+    `chmod -R go= <folder>`. Its errors are fixed sentences and its art is never logged. The rule: **never name a private
+    folder in any Nix expression**, and keep it out of every repo; a Nix build of a `private` plugin fails on purpose.
 - **`notifications`:** a list of `{ "app": …, "category": … }` or `{ "host": …, "category": … }`. The category is `mail`,
   `chat` or `feed`.
 - **`stage`:** a program that fills the board under him. It has `phrases` (what you say to open it) and `argv` (the
@@ -484,6 +529,7 @@ All subcommands handled by `bin/nixi-companion`:
 | `nixi-companion hover` · `nixi-companion hover-on` · `nixi-companion hover-off` | toggle, turn on, or turn off hover mode |
 | `nixi-companion monitor` | move to another screen (`next`, `prev`, `focused`, or an output name like `DP-1`) |
 | `nixi-companion attention` | receive a terminal agent alert (`--from claude\|codex\|agy --hook`) |
+| `nixi-companion approve` · `nixi-companion result` | agent hooks (`--from claude\|codex`): ask for a click and report the result; see "Approve or deny from Nixi" |
 | `nixi-companion doctor` | check the window, list your mics, record 3 seconds with a level meter and test the voice |
 | `nixi-companion diagnostics` | print a setup report to paste when asking for help |
 | `nixi-companion restart` | restart the background server and show him |

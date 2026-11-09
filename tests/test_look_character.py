@@ -1,9 +1,10 @@
+import shutil
 from unittest import mock
 
-from test_speakable import _ServerEnv
+from test_plugin_character import CharEnv
 
 
-class LookCharacterTest(_ServerEnv):
+class LookCharacterTest(CharEnv):
     """#178: look() keeps one of the four character ids, defaults to snowflake and drops anything else."""
 
     def character(self, **look):
@@ -16,6 +17,20 @@ class LookCharacterTest(_ServerEnv):
 
     def test_unknown_dropped(self):
         self.assertEqual(self.character(character="plug:x"), "snowflake")
+
+    def test_plugin_character_kept_while_loaded(self):
+        d = self.make()
+        self.assertEqual(self.character(character="plug:dots"), "plug:dots")
+        self.state.set("dots", False)                      # off
+        self.server.Plug.reload()
+        self.assertEqual(self.character(character="plug:dots"), "snowflake")
+        self.state.set("dots", True)
+        (d / "front.svg").write_text("<svg><script/></svg>")   # art breaks
+        self.server.Plug.reload()
+        self.assertEqual(self.character(character="plug:dots"), "snowflake")
+        shutil.rmtree(d)                                   # deleted
+        self.server.Plug.reload()
+        self.assertEqual(self.character(character="plug:dots"), "snowflake")
 
     def test_non_string_dropped(self):
         for v in (None, 1, ["robot"], {"a": 1}, True):

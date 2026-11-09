@@ -1,0 +1,104 @@
+{
+  "body": "This week: three new posts. Read more at example.com.",
+  "headers": {
+    "bcc": "",
+    "cc": "",
+    "date": "Sat, 07 Nov 2026 12:00:00 +0000",
+    "from": "Sender Example <sender@example.com>",
+    "in_reply_to": "",
+    "message_id": "<fixture-1@example.com>",
+    "references": "",
+    "reply_to": "",
+    "subject": "Your weekly digest",
+    "to": "you@example.com"
+  },
+  "message": {
+    "historyId": "fixture0000000002",
+    "id": "fixture0000000002",
+    "internalDate": "1793966400000",
+    "labelIds": [
+      "UNREAD",
+      "SENT",
+      "INBOX"
+    ],
+    "payload": {
+      "body": {},
+      "headers": [
+        {
+          "name": "Received",
+          "value": "redacted"
+        },
+        {
+          "name": "From",
+          "value": "Sender Example <sender@example.com>"
+        },
+        {
+          "name": "To",
+          "value": "you@example.com"
+        },
+        {
+          "name": "Subject",
+          "value": "Your weekly digest"
+        },
+        {
+          "name": "Date",
+          "value": "Sat, 07 Nov 2026 12:00:00 +0000"
+        },
+        {
+          "name": "Message-Id",
+          "value": "redacted"
+        },
+        {
+          "name": "MIME-Version",
+          "value": "1.0"
+        },
+        {
+          "name": "Content-Type",
+          "value": "multipart/alternative; boundary=\"gogcli_B_fixtureboundary\""
+        }
+      ],
+      "mimeType": "multipart/alternative",
+      "parts": [
+        {
+          "body": {
+            "data": "VGhpcyB3ZWVrOiB0aHJlZSBuZXcgcG9zdHMuIFJlYWQgbW9yZSBhdCBleGFtcGxlLmNvbS4",
+            "size": 1000
+          },
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "text/plain; charset=\"utf-8\""
+            },
+            {
+              "name": "Content-Transfer-Encoding",
+              "value": "quoted-printable"
+            }
+          ],
+          "mimeType": "text/plain",
+          "partId": "0"
+        },
+        {
+          "body": {
+            "data": "PHA-VGhpcyB3ZWVrOiA8Yj50aHJlZTwvYj4gbmV3IHBvc3RzLiA8YSBocmVmPSJodHRwczovL2V4YW1wbGUuY29tLyI-UmVhZCBtb3JlPC9hPi48L3A-",
+            "size": 1000
+          },
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "text/html; charset=\"utf-8\""
+            },
+            {
+              "name": "Content-Transfer-Encoding",
+              "value": "7bit"
+            }
+          ],
+          "mimeType": "text/html",
+          "partId": "1"
+        }
+      ]
+    },
+    "sizeEstimate": 1000,
+    "snippet": "This week: three new posts. Read more at example.com.",
+    "threadId": "fixture0000000002"
+  }
+}

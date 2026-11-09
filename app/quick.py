@@ -278,7 +278,7 @@ def _open_app(name):
             return None
         cmd = [a for a in shlex.split(ex.group(1)) if not a.startswith("%")]
     _spawn(cmd)
-    return {"say": f"Opening {nm}.", "mood": "happy", "sfx": "ok"}
+    return {"say": f"Opening {nm}.", "mood": "happy", "sfx": "ok", "opened": True}   # (#208: the page plays its "open" reaction)
 
 
 def _lock():
@@ -354,6 +354,9 @@ def handle(text):
 
     if t in ("what's next", "whats next", "what is next"):      # answered from the day desk's cache (#144)
         return {"whats_next": True}
+
+    if t in ("read my mail", "any new email", "check my email"):   # the mail board, made by the server (#210)
+        return {"mail": True}
 
     if t in ("take control back", "stop the agent", "revoke control", "give me my desktop back"):
         return {"mirror": "off"}

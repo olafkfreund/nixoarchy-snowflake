@@ -26,6 +26,9 @@ body.still .tCursor,body.still .tAntenna,body.still .tTail{animation-play-state:
 .tCursor{animation:cursor-blink 1.05s steps(1) infinite}
 .tAntenna{transform-origin:0px -102px;animation:antenna-pulse 1.8s ease-in-out infinite}
 .tTail{transform-origin:44px 48px;animation:tail-swish 2.5s ease-in-out infinite}
+.dFork{transition:opacity .18s ease-in-out}
+#stage.c-devil:is(.r-load,.r-memory,.r-error,.r-done,.r-workout) .dFork,
+#stage.c-devil:has(#rxFront .mc,#rxFront .sk,#rxFront .wr,#rxFront .bx,#rxFront .db) .dFork{opacity:0}
 html.native body{background:transparent}
 button{font:inherit;color:inherit}
 
@@ -184,6 +187,16 @@ body.bar #mailPop,body.hover #mailPop,body.calm #mailPop{display:none}
 #you:empty,body.fulltext #you:empty{display:none}
 #him:not(:has(.w,span)){display:none}
 @media (prefers-reduced-motion:reduce){#plate{transition:none}}
+.ncard{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;text-align:left;max-width:100%}   /* a notification card (#214): sender text only ever as text nodes */
+.ncard .nch{grid-column:1/-1;display:flex;align-items:center;gap:6px;color:var(--cap-dim,var(--dim));font-size:12px}
+.ncard .nch .nicon{margin:0}.ncard .nch .nmore{margin-left:auto}
+.ncard .ncs{grid-column:1/-1;font-weight:600}
+.ncard .ncr{white-space:pre-wrap;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;line-clamp:4;overflow-wrap:anywhere}
+.ncard .ncr .nh{opacity:.65}
+.ncard .nci{width:64px;height:64px;object-fit:contain;border-radius:8px;grid-row:3;grid-column:1}   /* left of the words, small: the card has to stay under his face */
+.ncard:has(.nci) .ncr{grid-row:3;grid-column:2;-webkit-line-clamp:3;line-clamp:3}
+.ncard .ncb{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap}
+.ncard .ncb button{font:inherit;font-size:12px;padding:3px 10px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer}
 .nicon{width:22px;height:22px;border-radius:50%;box-shadow:0 0 0 1px #ffffff55;vertical-align:middle;margin-right:6px;animation:nipop .2s var(--ease)}
 @keyframes nipop{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
 #mailPop .lt b img{width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:5px}
@@ -353,6 +366,13 @@ body.appr #stg{opacity:.35;pointer-events:none}
 #stg .sb{border:1.5px solid var(--acc);background:transparent;color:var(--sfg);border-radius:8px;padding:4px 11px;font:600 13px/1.3 "Inter",system-ui,sans-serif;cursor:pointer}
 #stg .sb:hover:not(:disabled){background:var(--acc);color:#fff}
 #stg .sb:disabled{opacity:.4;cursor:not-allowed}
+#stg .vm{font-size:12px;color:var(--sdim);overflow-wrap:anywhere}#stg .mst{font-size:13px;margin-top:3px;overflow-wrap:anywhere;white-space:pre-wrap}
+#stg .mcard{margin:8px 0 4px;padding:8px 10px;border-radius:8px;background:#fffdf6;border:1px solid var(--sline)}
+#stg .mcard textarea{display:block;width:100%;box-sizing:border-box;min-height:70px;resize:vertical;font:13px/1.4 "Inter",system-ui,sans-serif;color:var(--sfg);background:#fff;border:1px solid var(--sline);border-radius:6px;padding:5px 7px}
+#stg .mall{display:block;font-size:12px;margin:5px 0;color:var(--sdim)}#stg .mact{display:flex;gap:8px;margin-top:6px}
+#stg .mln{font-size:12px;overflow-wrap:anywhere}#stg .mwarn{font-size:12px;font-weight:600;color:#b3261e;margin:3px 0;overflow-wrap:anywhere}
+#stg .mbody{margin:5px 0;padding:5px 7px;max-height:120px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.4 var(--mono);background:#fff;border:1px solid var(--sline);border-radius:6px}
+#stg .mmsg{font-size:12px;margin-top:5px;overflow-wrap:anywhere}
 #stgTab{position:absolute;top:96px;left:350px;max-width:150px;z-index:7;padding:6px 12px;border-radius:10px;border:2px solid var(--acc);background:#1d2a27;color:#eef3ee;font:600 18px/1.2 Chalk,cursive;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;opacity:0;pointer-events:none;transform:translateX(-10px);transition:transform .18s var(--ease),opacity .18s}
 #stgTab.l{left:-160px;transform:translateX(10px)}
@@ -381,6 +401,7 @@ body.bar #stg,body.hover #stg,body.calm #stg,body.bar #stgTab,body.hover #stgTab
 #you.pop{animation:wIn .7s var(--ease) both}
 /* "Show everything I said": the last few lines of it, wrapped, instead of one cut-off line */
 body.fulltext #cap{top:248px;height:148px}      /* same bottom edge as before; it grows up into the gap under his body, not down */
+#him:has(.ncard){max-height:none}   /* a card (#214) is taller than three lines: #him's cap would cut its top off and keep only the picture */
 body.fulltext #you{white-space:normal;max-height:4.3em;line-height:1.4;font-size:12.5px;color:var(--cap-dim,var(--dim));display:flex;flex-direction:column;justify-content:flex-end;text-overflow:clip;margin-bottom:2px}
 .row .t.sub{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
 .row .t .pct{margin-left:auto;font:600 11.5px var(--mono);color:var(--dim)}
@@ -400,6 +421,11 @@ input[type=range]{accent-color:var(--acc)}
   background:color-mix(in srgb,var(--panel) 87%,transparent);border:1px solid var(--edge);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;z-index:9;
   opacity:0;transform:translate(-50%,-6px) scale(.94);transition:opacity .5s var(--ease),transform .7s var(--ease)}
 #chip.on{opacity:1;transform:translate(-50%,0)}
+#musChip{position:absolute;left:296px;top:196px;z-index:9;width:30px;height:26px;padding:0;border-radius:999px;font:14px var(--mono);color:var(--tint);cursor:pointer;background:color-mix(in srgb,var(--panel) 87%,transparent);border:1px solid var(--edge)}
+#musCard{position:absolute;top:150px;width:210px;z-index:9;padding:8px 10px;border-radius:12px;font:12px var(--mono);color:var(--text);background:var(--panel);border:1px solid var(--edge)}
+#musCard .mh{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px} #musCard .mt{flex:1;min-height:16px;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden}   /* (three lines at most: the buttons stay inside the 460px window) */
+#musCard button{font:inherit;color:inherit;background:var(--panel2);border:1px solid var(--edge);border-radius:8px;padding:3px 8px;cursor:pointer}
+#musCard .mbs{display:flex;flex-wrap:wrap;gap:6px} #musCard[hidden],#musChip[hidden]{display:none}
 @keyframes glint{0%,100%{filter:none}40%{filter:brightness(2.4) saturate(1.4) drop-shadow(0 0 6px #77b6e1)}}
 .nix.glint{animation:glint 1.5s ease-in-out}   /* a new NixOS generation: one blue glint across the lambdas */
 @keyframes cuep{0%,100%{opacity:1}50%{opacity:.55}} #cue.attn{animation:cuep 1.1s infinite}
@@ -504,7 +530,7 @@ select:focus,.pn input[type=text]:focus,.pn textarea:focus{border-color:var(--ed
 .btn{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;transition:all .2s}
 .btn:hover{border-color:var(--edge2);color:#fff} .btn.pri{background:var(--acc);border-color:var(--hot);color:#fff}
 .btn.sm{padding:3px 9px;font-size:11.5px} .btn.danger:hover{border-color:#a33;color:#ff9b9b}
-.bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center} .bar[hidden]{display:none}
 .keys{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;color:var(--dim);font-size:11.5px}
 .keys kbd{font:10.5px var(--mono);color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 5px;justify-self:start}
 .empty{color:var(--dim);text-align:center;padding:22px 6px;font-size:12px;line-height:1.5}
@@ -578,10 +604,7 @@ body.calm.mir-agent #mirBar{display:flex} #mirBar span{overflow:hidden;text-over
 #set .sgrip.corner{right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;border-radius:0 0 14px 0}
 #set .sgrip.corner:focus-visible{outline:2px solid var(--hot);outline-offset:-2px}
 #set .hd{padding:12px 12px 8px 14px}
-#set .hd .logo{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%,var(--body0,#1b1b1b),var(--body2,#030303) 70%);
-  box-shadow:0 0 0 1.5px var(--edge2),0 0 10px var(--accA);position:relative}
-#set .hd .logo::before,#set .hd .logo::after{content:"";position:absolute;top:5px;width:4px;height:7px;border-radius:50%;background:var(--whiteL,#f3dccf)}
-#set .hd .logo::before{left:4.5px} #set .hd .logo::after{right:4.5px;background:var(--whiteR,#f3dccf)}
+#set .hd .logo{width:24px;height:24px;overflow:visible;flex:none}
 #set .hd b{font-size:14px;letter-spacing:.01em}
 #tabs{position:relative;display:flex;gap:0;margin:0 12px 8px;padding:3px;border:0;border-radius:13px;background:var(--panel2);box-shadow:inset 0 0 0 1px #1f1f1f}
 #tabs button{position:relative;z-index:1;flex:1;display:flex;align-items:center;justify-content:center;gap:5px;background:none;border:0;border-radius:10px;
@@ -693,6 +716,7 @@ body.hover #nixiB,body.pnl #nixiB,body.appr #nixiB{display:none!important}
   background:var(--tbg,var(--panel));border:2.5px solid var(--ink,var(--edge2));box-shadow:5px 6px 0 var(--inksh,#000c);font:15px/21px var(--mono);color:var(--text);
   opacity:0;scale:.5;transition:opacity .3s,scale .4s cubic-bezier(.3,1.5,.5,1)}
 #code.on{opacity:1;scale:1}
+#code.on.mini{scale:.6}
 #code .tb{display:flex;align-items:center;gap:6px;height:30px;padding:0 16px;font-size:13px;border-bottom:2px dashed var(--line);color:var(--tacc,var(--hot));font-weight:600}
 #code .tb b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 #code .tb span{color:var(--dim)} #code .tb span.ok{color:var(--tgreen,var(--hot))} #code .tb span.bad{color:var(--tred,#ff6b6b)}
@@ -755,10 +779,11 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <linearGradient id="termGlare" x1="-74" y1="-64" x2="26" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".09"/><stop offset=".5" stop-color="#fff" stop-opacity=".02"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
       <linearGradient id="botShell" x1="0" y1="-78" x2="0" y2="82" gradientUnits="userSpaceOnUse"><stop offset="0" class="b0"/><stop offset=".55" class="b1"/><stop offset="1" class="b2"/></linearGradient>
       <linearGradient id="botTrim" x1="0" y1="-80" x2="0" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0" class="b1"/><stop offset="1" class="b2"/></linearGradient>
-      <radialGradient id="devBody" cx="-24" cy="-30" r="118" gradientUnits="userSpaceOnUse"><stop offset="0" class="b0"/><stop offset=".55" class="b1"/><stop offset="1" class="b2"/></radialGradient>
-      <linearGradient id="devWing" x1="0" y1="-16" x2="0" y2="86" gradientUnits="userSpaceOnUse"><stop offset="0" class="b1"/><stop offset="1" class="b2"/></linearGradient>
+      <radialGradient id="devBody" cx="-24" cy="-30" r="118" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e0334f"/><stop offset=".55" stop-color="#c81e3a"/><stop offset="1" stop-color="#7a0f24"/></radialGradient>
+      <linearGradient id="devWing" x1="0" y1="-16" x2="0" y2="86" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e0334f"/><stop offset=".55" stop-color="#c81e3a"/><stop offset="1" stop-color="#7a0f24"/></linearGradient>
       <clipPath id="clipL"><path id="cpL"/></clipPath>
       <clipPath id="clipR"><path id="cpR"/></clipPath>
+      <linearGradient id='fx-gold' x2='0' y2='1'><stop offset='0' stop-color='#ffe27a'/><stop offset='1' stop-color='#f5a524'/></linearGradient><linearGradient id='fx-red' x2='0' y2='1'><stop offset='0' stop-color='#ff9a94'/><stop offset='1' stop-color='#e5484d'/></linearGradient><linearGradient id='fx-green' x2='0' y2='1'><stop offset='0' stop-color='#7fe8a0'/><stop offset='1' stop-color='#22b573'/></linearGradient><linearGradient id='fx-blue' x2='0' y2='1'><stop offset='0' stop-color='#a6e0ff'/><stop offset='1' stop-color='#4a9fe8'/></linearGradient><linearGradient id='fx-pink' x2='0' y2='1'><stop offset='0' stop-color='#ffbdd7'/><stop offset='1' stop-color='#ff6fa5'/></linearGradient><linearGradient id='fx-paper' x2='0' y2='1'><stop offset='0' stop-color='#fffdf6'/><stop offset='1' stop-color='#f1e6d0'/></linearGradient><linearGradient id='fx-steel' x2='0' y2='1'><stop offset='0' stop-color='#f2f5f9'/><stop offset='1' stop-color='#9aa7ba'/></linearGradient><linearGradient id='fx-shade' x2='0' y2='1'><stop offset='0' stop-color='#4a5068'/><stop offset='1' stop-color='#12141c'/></linearGradient><radialGradient id='fx-sun'><stop offset='0' stop-color='#fff2a8'/><stop offset='1' stop-color='#ffc23d'/></radialGradient><linearGradient id='fx-hat' x2='0' y2='1'><stop offset='0' stop-color='#3b3b44'/><stop offset='1' stop-color='#111115'/></linearGradient><linearGradient id='fx-shirt' x2='0' y2='1'><stop offset='0' stop-color='#55b56d'/><stop offset='1' stop-color='#2b7a45'/></linearGradient><linearGradient id='fx-grey' x2='0' y2='1'><stop offset='0' stop-color='#cfd1d5'/><stop offset='1' stop-color='#8d9096'/></linearGradient><linearGradient id="fx-cap" x1="0" y1="-112" x2="0" y2="-48" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#3a3f4b"/><stop offset="1" stop-color="#14161d"/></linearGradient>
     </defs>
     <g id="cam">
       <g id="haloW"><circle id="halo" r="150" fill="url(#halo)"/></g>
@@ -770,9 +795,11 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <g id="workW" opacity="0" filter="url(#glow)"><circle id="workTail" r="96"/><circle id="workHead" r="96"/></g>
       <g id="zz" opacity="0"><text class="zz" x="66" y="-66">z</text><text class="zz" x="82" y="-88" font-size="20">z</text></g>
       <g id="qmark" opacity="0"><text class="qm" x="70" y="-70">?</text></g>
-      <g id="body">
+      <g class="whole"><g id="body">
+        <g id="rxSky"></g>
         <g id="accBack"></g>
         <g id="sitBack"></g>
+        <g id="rxBack"></g>
         <path class="ball" fill="url(#ballG)"/>
         <g class="ball nix"></g>
         <g id="face">
@@ -787,6 +814,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <path id="rim" class="ball" fill="none" stroke-width="1.6" stroke-linejoin="round" pointer-events="none"/>
         <g id="accFront"></g>
         <g id="sitFront"></g>
+        <g id="rxFront"></g>
         <g id="frost" display="none" pointer-events="none"></g>
         <g id="cue" display="none" transform="translate(8 -110)" style="cursor:pointer"><circle id="cueD" r="10" stroke="#0008" stroke-width="1"/><text id="cueT" text-anchor="middle" y="4.5" font-size="12" pointer-events="none"></text></g>
         <g id="agentMark" opacity="0" transform="translate(8 -90)" pointer-events="none">   <!-- who is calling: original marks, not logos -->
@@ -807,7 +835,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <g id="think" opacity="0"><circle class="thk" cx="64" cy="-70" r="4"/><circle class="thk" cx="79" cy="-86" r="6"/><circle class="thk" cx="99" cy="-106" r="9"/></g>
         <g id="anger" opacity="0"><path class="ang" d="M-10-3Q-3-3-3-10M3-10Q3-3 10-3M10 3Q3 3 3 10M-3 10Q-3 3-10 3"/></g>
         <path id="sweat" opacity="0" fill="#cfe8ff" d="M0-8C4-2 6 2 6 5A6 6 0 0 1-6 5C-6 2-4-2 0-8Z"/>
-      </g>
+      </g></g>
       <circle id="mirHov" r="140" opacity="0"/>
       <g id="orbFront" class="orb" filter="url(#glow)"></g>
       <g id="fx"></g>
@@ -819,6 +847,9 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 
 <div id="code"><div class="tb"><b></b><span></span></div><div class="lines"></div><i class="rootb" title="Root mode: Claude can run anything, incl. sudo">ROOT</i></div>
 <div id="chip"></div>
+<button id="musChip" type="button" aria-label="Music controls" hidden>♪</button>
+<div id="musCard" role="dialog" aria-label="Music controls" hidden><div class="mh"><span class="mt"></span><button class="mx" type="button" aria-label="Close">×</button></div>
+  <div class="mbs"><button type="button" class="mp" data-p="pause">Pause</button><button type="button" data-p="next song">Next</button><button type="button" data-p="quieter">Quieter</button><button type="button" data-p="louder">Louder</button></div></div>
 <section id="stg" role="dialog" aria-labelledby="stgT" aria-hidden="true" inert><header><button class="hb" id="stgBack" aria-label="Previous answer" hidden>←</button><h2 id="stgT"></h2><span class="prd" id="stgDt"></span><button class="hb" id="stgX" aria-label="Close">✕</button></header><svg class="ul" viewBox="0 0 160 8" aria-hidden="true"><path pathLength="1" d="M2 5 C 40 1, 90 8, 158 3"/></svg><div class="bd" id="stgBd"></div><footer><div class="fn" id="stgFn"></div><div class="acts" id="stgActs"></div></footer></section>
 <button id="stgTab" aria-label="Show the answer again" inert></button><div id="chalk" aria-hidden="true"></div><svg id="pop" viewBox="0 0 34 40" aria-hidden="true"><path d="M5 14L8 38H26L29 14Z" fill="#fff" stroke="#b3261e" stroke-width="2"/><path d="M11 14L12 38M17 14V38M23 14L22 38" stroke="#b3261e" stroke-width="2.5"/><g fill="#fff6d8" stroke="#d9b45b"><circle cx="10" cy="11" r="5"/><circle cx="18" cy="8" r="6"/><circle cx="25" cy="12" r="5"/></g></svg><svg id="wtc" viewBox="0 0 34 44" aria-hidden="true"><path d="M17 6C9 -2 3 4 9 14" fill="none" stroke="#b98b4e" stroke-width="2"/><rect x="14" y="5" width="6" height="5" rx="1" fill="#c99a5b" stroke="#6b4a2b"/><circle cx="17" cy="27" r="14" fill="#fffdf6" stroke="#6b4a2b" stroke-width="2.5"/><path d="M17 27V18M17 27L24 31" stroke="#2a2824" stroke-width="2" stroke-linecap="round"/><circle cx="17" cy="27" r="1.6" fill="#b3261e"/></svg><svg id="hat" viewBox="0 0 64 40" aria-hidden="true"><ellipse cx="32" cy="32" rx="30" ry="7" fill="#b98b4e" stroke="#6b4a2b" stroke-width="2"/><path d="M14 31C14 12 22 5 32 5S50 12 50 31Z" fill="#c99a5b" stroke="#6b4a2b" stroke-width="2"/><path d="M15 26Q32 31 49 26L50 31Q32 36 14 31Z" fill="#7a3b2a"/></svg>
 <div id="mailPop" aria-hidden="true"><div class="env"><div class="bk"></div><div class="lt"><b></b><span></span></div><div class="fr"></div><div class="fl"></div></div></div>
@@ -833,7 +864,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 
 <!-- settings -->
 <div class="pn" id="set">
-  <div class="hd"><span class="logo"></span><b>Settings</b><button class="x" data-close title="Close (Esc)">✕</button></div>
+  <div class="hd"><svg class="logo" viewBox="-125 -150 250 250" aria-hidden="true"></svg><b>Settings</b><button class="x" data-close title="Close (Esc)">✕</button></div>
   <div class="tabs" id="tabs" role="tablist">
     <button id="tab-look" role="tab" aria-selected="true" aria-controls="panel-look" tabindex="0" data-tab="look" class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="9.3" cy="11" rx="1.6" ry="3"/><ellipse cx="14.7" cy="11" rx="1.6" ry="3"/></svg>Look</button>
     <button id="tab-voice" role="tab" aria-selected="false" aria-controls="panel-voice" tabindex="-1" data-tab="voice"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>Voice</button>
@@ -870,6 +901,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="ambCalSw"><span class="sw"></span><span class="l">Next calendar item (uses gog)<small>Ten minutes before, a calendar mark and the title. Asks Google Calendar every 15 minutes.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="ambWxSw"><span class="sw"></span><span class="l">Weather look (uses omarchy weather)<small>Frost on his tips below 0 °C, a slight thaw above 28 °C. Fetches the weather every 30 minutes.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="proactiveSw"><span class="sw"></span><span class="l">Desktop companion<small>Let him notice what happens on your desktop. Everything below is off until you switch it on.</small></span></label></div>
+      <div class="row"><label class="tg"><input type="checkbox" id="reactSw"><span class="sw"></span><span class="l">Reactions<small id="reactHelp">Short animations for what he notices. Silent.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="takeoverSw"><span class="sw"></span><span class="l">Show notifications through him<small>He shows your notifications himself instead of the shell popup. Critical alerts and codes keep their popup. While a window is fullscreen, the shell shows them.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="detailsSw"><span class="sw"></span><span class="l">Show the notification text<small>Otherwise he only shows the kind and the app. The text never goes to the agent or to disk; codes are always hidden.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="speakSubjSw"><span class="sw"></span><span class="l">Read mail subjects aloud<small>He says the subject of new mail when mail is one of the spoken kinds. Needs the notification text.</small></span></label></div>
@@ -887,6 +919,9 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="lookPartySw"><span class="sw"></span><span class="l">Party hat on special days<small>New Year, Christmas, and birthdays in your calendar (needs the calendar on).</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="reactQuipsSw"><span class="sw"></span><span class="l">Little jokes<small>Now and then a short line about the weather, the hour or a long session. Never spoken.</small></span></label></div>
       <div class="row"><div class="t">Say out loud</div><div class="h">Notifications he speaks. In a meeting he stays silent.</div><div class="seg" id="nsChips"></div></div>
+      <div class="row" id="mailRow"><label class="tg"><input type="checkbox" id="mailSw"><span class="sw"></span><span class="l">Mail<small>Open a board of unread mail, hear a summary of one message and reply with a click. Off until you switch it on. Needs answer boards in nixi mode. Summaries come from a model on this computer.</small></span></label>
+        <div id="mailOpts" hidden><div class="t sub">Addresses</div><div class="h">Only the ones you tick are read.</div><div id="mailAccts"></div>
+          <div class="t sub">Summary model</div><div class="h">Local models only. None lists and replies without summaries.</div><select id="mailModel"></select></div></div>
       <div class="row"><label class="tg"><input type="checkbox" id="asideSw"><span class="sw"></span><span class="l">Step aside for Nixi's card<small>When nixi's card opens he slides out of its way, and comes back when it closes (Hyprland).</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="followSw"><span class="sw"></span><span class="l">Follow my focused screen<small>When you focus another monitor he moves there too (Hyprland). Also: "move to the other screen", or bind <code>nixi-companion monitor next</code>.</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="clickSw"><span class="sw"></span><span class="l">Click through around him<small>Clicks on the empty space around him go to the window behind. Turn off if he flickers.</small></span></label></div>
@@ -919,6 +954,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <label class="tg"><input type="checkbox" id="agentClaudeSw" data-agent="claude"><span class="sw"></span><span class="l">Claude</span></label>
         <label class="tg"><input type="checkbox" id="agentCodexSw" data-agent="codex"><span class="sw"></span><span class="l">Codex</span></label>
         <label class="tg"><input type="checkbox" id="agentAgySw" data-agent="agy"><span class="sw"></span><span class="l">agy</span></label>
+        <label class="tg"><input type="checkbox" id="agentApproveSw"><span class="sw"></span><span class="l">Approve other agents' commands here (click only)<small>Claude Code and Codex ask in Nixi's card; only a click on yes runs it. agy can't be approved here.</small></span></label>
         <div id="agentList"></div>
       </div>
       <div class="row tgs">
@@ -1002,7 +1038,8 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 <div class="pn" id="panel"><div class="hd"><b id="pTitle"></b><span id="pTools"></span><button class="x" data-close title="Close (Esc)">✕</button></div><div class="bd" id="pBody"></div></div>
 
 <div id="appr"><div class="q">✋ <span id="apQ">Can I run this?</span></div><pre id="apCmd"></pre>
-  <div class="bar"><span class="hint" id="apHint">say “yes” or “no”</span><button class="btn sm" data-ans="always" title="don't ask again for this exact command in this chat">always</button><button class="btn sm" data-ans="no">no</button><button class="btn sm yes" data-ans="yes">yes</button></div></div>
+  <div class="bar"><span class="hint" id="apHint">say “yes” or “no”</span><button class="btn sm" data-ans="always" title="don't ask again for this exact command in this chat">always</button><button class="btn sm" data-ans="no">no</button><button class="btn sm yes" data-ans="yes">yes</button></div>
+  <div class="bar" id="apTerm" hidden style="margin-top:6px"><button class="btn sm" data-term>Answer in the terminal</button></div></div>
 
 <form id="pwbox" autocomplete="off"><div class="q">🔑 <span id="pwQ">He needs root for this</span></div>
   <div class="pwrow"><input id="pwIn" type="password" spellcheck="false" placeholder="your sudo password" aria-label="sudo password">
@@ -1041,6 +1078,11 @@ function staleToken(){                       // the server restarted with a new 
   try{ sessionStorage.setItem('nixi-reload',Date.now()); sessionStorage.removeItem('nixi-t'); }catch(e){}
   if(!native('reauth')) tick('Nixi restarted — close this window and run “nixi-companion” again',true);
 }
+// The click key: claimed once per page load (a reload in the same server run gets a 403 and approvals stay off until
+// Nixi restarts; the server's note says so). Held in this closure only: never in info, localStorage or the URL.
+const CLICKKEY=(()=>{ let k='';
+  tokenReady.then(async()=>{ if(!TOKEN) return; try{ const r=await fetch('/api/click-key',{method:'POST',headers:hdr({'Content-Type':'application/json'}),body:'{}'}); if(r.ok) k=String((await r.json()).key||''); }catch(e){} });   // (not post(): its 403 means "taken", not a stale token)
+  return {hdr:()=>k?{'X-Nixi-Click':k}:{}}; })();
 const native=msg=>{ try{ window.webkit.messageHandlers.nixiui.postMessage(msg); return true; }catch(e){ return false; } };
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -1135,9 +1177,10 @@ function randomLook(L){
 }
 let lookShown='', lookRolled=false;
 function syncLook(reroll){
+  const plugNew=plugChars(info.plugin_characters);
   const L=themed({...LOOK_DEFAULT,...(info.look||{})});
-  if(L.random){ if(reroll||!lookRolled){ applyLook({...L,...randomLook(L)}); lookRolled=true; lookShown=''; } else if(L.skin!==LOOK.skin||L.character!==LOOK.character) applyLook({...LOOK,skin:L.skin,character:L.character}); return; }
-  lookRolled=false; const k=JSON.stringify([L,info.theme]); if(k!==lookShown){ applyLook(L); lookShown=k; }
+  if(L.random){ if(reroll||!lookRolled){ applyLook({...L,...randomLook(L)}); lookRolled=true; lookShown=''; } else if(plugNew||L.skin!==LOOK.skin||L.character!==LOOK.character) applyLook({...LOOK,skin:L.skin,character:L.character}); return; }
+  lookRolled=false; const k=JSON.stringify([L,info.theme,info.plugin_characters]); if(k!==lookShown){ applyLook(L); lookShown=k; }
 }
 const syncEye=syncLook;
 
@@ -1217,9 +1260,10 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
   return {chat:{g:chat,dots,badge,bt,n:0,img:ic(-99,-80,chat)},feed:{g:feed,scr,ant:tvA,img:ic(48,-70,feed)},tie,hb,bd,hf,bn,sc,scT,cL:cup[-1],cR:cup[1],sh,gl,nc,ph,lensL,lensR,brg,glintL,glintR}; }
 // a plugin's prop (#149): the server already sanitised it to a node list; only createElementNS + setAttribute here, no ids, no markup
 const PROP_BOX={head:[-30,-112,60,54],left:[-98,-34,40,40],right:[58,-34,40,40],base:[-36,68,72,26]}, PROP_COL={acc:'var(--acc)',text:'var(--text)',dim:'var(--dim)'};
-function drawProp(par,P){   // the anchor wrapper shifts this box; the nested svg scales and clips the prop
-  const [x,y,width,height]=PROP_BOX[P.anchor]||PROP_BOX.head, els=[sv('svg',{x,y,width,height,viewBox:P.nodes[0].a.viewBox.join(' ')},par)];
-  P.nodes.forEach((n,i)=>{ if(!i) return; const e=document.createElementNS(SVGNS,n.tag);
+function drawProp(par,P){ drawNodes(par,P.nodes,PROP_BOX[P.anchor]||PROP_BOX.head); }   // the anchor wrapper shifts this box
+function drawNodes(par,nodes,[x,y,width,height]){   // the nested svg scales and clips the art to its box
+  const els=[sv('svg',{x,y,width,height,viewBox:nodes[0].a.viewBox.join(' ')},par)]; els[0].style.overflow='hidden';   // (beats .skins button svg{overflow:visible})
+  nodes.forEach((n,i)=>{ if(!i) return; const e=document.createElementNS(SVGNS,n.tag);
     for(const a in n.a){ if((a==='fill'||a==='stroke')&&PROP_COL[n.a[a]]) e.style.setProperty(a,PROP_COL[n.a[a]]); else e.setAttribute(a,n.a[a]); }   // (WebKitGTK: var() only works as a style)
     els[n.p].appendChild(e); els[i]=e; });
 }
@@ -1254,12 +1298,19 @@ function miniNixi(svg,L,clickable){
   svg.innerHTML=''; const id='mg'+(miniN++), [b0,b1,b2]=bodyStops(L.body), character=CHARACTERS[L.character]||CHARACTERS.snowflake;
   const defs=sv('defs',{},svg), gr=sv('radialGradient',{id,cx:-24,cy:-30,r:112,gradientUnits:'userSpaceOnUse'},defs);
   [[0,b0],[.55,b1],[1,b2]].forEach(([o,c])=>sv('stop',{offset:o,'stop-color':c},gr));
-  const back=sv('g',{'data-part':clickable?'skin':''},svg), ball=sv('path',{d:character.ball,'stroke-linejoin':'round',fill:`url(#${id})`,stroke:lum(L.body)<.12?'#2a2a2a':shade(L.body,-.12),'stroke-width':1.6,'data-part':'body'},svg);
-  sv('g',{'data-part':'body'},svg).innerHTML=character.back;
+  const devil=character===CHARACTERS.devil, red=['#e0334f','#c81e3a','#7a0f24'];
+  if(devil) for(const [name,kind,attrs] of [['devBody','radialGradient',{cx:-24,cy:-30,r:118}],['devWing','linearGradient',{x1:0,y1:-16,x2:0,y2:86}]]){
+    const g=sv(kind,{id:id+name,gradientUnits:'userSpaceOnUse',...attrs},defs);
+    [[0,red[0]],[.55,red[1]],[1,red[2]]].forEach(([o,c])=>sv('stop',{offset:o,'stop-color':c},g)); }
+  const rim=devil?'#5c0a1c':lum(L.body)<.12?'#2a2a2a':shade(L.body,-.12);
+  const back=sv('g',{'data-part':clickable?'skin':''},svg), ball=sv('path',{d:character.ball,'stroke-linejoin':'round',fill:character.nodes?character.fill:`url(#${devil?id+'devBody':id})`,stroke:rim,'stroke-width':1.6,'data-part':'body'},svg);
+  const art=html=>devil?html.replaceAll('url(#devBody)',`url(#${id}devBody)`).replaceAll('url(#devWing)',`url(#${id}devWing)`).replaceAll('var(--rim)',rim):html;
+  const layer=k=>{ const g=sv('g',{'data-part':'body'},svg); if(character.nodes) drawNodes(g,character.nodes[k],PLUG_BOX); else g.innerHTML=art(character[k]); };
+  layer('back');
   for(const s of [-1,1]){ const k=s<0?'L':'R';
     sv('ellipse',{cx:s*EYE.cx,cy:EYE.cy,rx:EYE.rx,ry:EYE.ry,transform:`rotate(${-s*EYE.tilt*180/Math.PI} ${s*EYE.cx} ${EYE.cy})`,fill:L['white'+k],'data-part':'white'+k},svg);
     sv('ellipse',{cx:s*10.5,cy:-4,rx:clickable?4.2:3.2,ry:12.5,transform:`rotate(${-s*8} ${s*10.5} -4)`,fill:L['pup'+k],'data-part':'pup'+k},svg); }
-  sv('g',{'data-part':'body'},svg).innerHTML=character.front;
+  layer('front');
   const front=sv('g',{'data-part':clickable?'skin':''},svg);
   drawSkin(back,front,L,`url(#${id})`,character);
   svg.insertBefore(back,ball);
@@ -1292,10 +1343,399 @@ const CHARACTERS={snowflake:{label:'Snowflake',ball:snowPath(),back:nixLambdas()
     front:'',gloss:false,faceBox:[-72,-61,144,116],anchors:{head:[0,-20],face:[0,0],neck:[0,12],base:[0,2],left:[0,0],right:[0,0]},
     cupX:104,band:'M-103 -30C-124 -146 124 -146 103 -30',pivot:82,shadow:64,fits:new Set(['none','halo','bow','scarf','tie','headphones','shades','glasses','chat','feed','plug']),touch:'tAntenna'},
   devil:{label:'Devil',ball:'M0 -78C56 -78 86 -42 86 8C86 56 54 84 0 84C-54 84 -86 56 -86 8C-86 -42 -56 -78 0 -78Z',
-    back:'<g class="tTail"><path d="M44 48C70 56 72 18 80 8" fill="none" stroke="var(--body2)" stroke-width="6" stroke-linecap="round"/><path d="M80 8L75 -3L87 3L82 15Z" fill="url(#devWing)" stroke="var(--rim)" stroke-width="1.8" stroke-linejoin="round"/></g><path d="M-76 4C-94 -12 -96 8 -89 26C-83 19 -79 24 -74 32Z" fill="url(#devWing)" stroke="var(--rim)" stroke-width="2" stroke-linejoin="round"/><path d="M76 4C94 -12 96 8 89 26C83 19 79 24 74 32Z" fill="url(#devWing)" stroke="var(--rim)" stroke-width="2" stroke-linejoin="round"/><ellipse cx="-32" cy="82" rx="15" ry="9" fill="url(#devWing)" stroke="var(--rim)" stroke-width="1.8"/><ellipse cx="32" cy="82" rx="15" ry="9" fill="url(#devWing)" stroke="var(--rim)" stroke-width="1.8"/><path d="M0 -78C56 -78 86 -42 86 8C86 56 54 84 0 84C-54 84 -86 56 -86 8C-86 -42 -56 -78 0 -78Z" fill="url(#devBody)"/><ellipse cx="0" cy="62" rx="34" ry="14" fill="#fda4af" opacity=".16"/><path class="accent" d="M-54 -56C-68 -88 -46 -108 -28 -94C-35 -82 -35 -68 -30 -62Z" fill="#fbbf24" stroke="#451a03" stroke-width="2" stroke-linejoin="round"/><path class="accent" d="M54 -56C68 -88 46 -108 28 -94C35 -82 35 -68 30 -62Z" fill="#fbbf24" stroke="#451a03" stroke-width="2" stroke-linejoin="round"/><ellipse class="avoid" cx="-64" cy="40" rx="7" ry="4" fill="#fecdd3" opacity=".45"/><ellipse class="avoid" cx="64" cy="40" rx="7" ry="4" fill="#fecdd3" opacity=".45"/>',
+    back:'<g class="tTail"><path d="M44 48C76 62 81 29 82 8" fill="none" stroke="#7a0f24" stroke-width="6" stroke-linecap="round"/><path d="M82 8L77 -5L84 3L83 16Z" fill="url(#devWing)" stroke="#5c0a1c" stroke-width="1.8" stroke-linejoin="round"/></g>'+
+      '<g class="dFork"><path d="M-87 84V-35" fill="none" stroke="#5c0a1c" stroke-width="5" stroke-linecap="round"/><path d="M-93 -50V-69M-87 -48V-74M-81 -50V-69M-93 -50Q-87 -36 -81 -50" fill="none" stroke="#c81e3a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></g>'+
+      '<path d="M-76 4C-94 -12 -96 8 -89 26C-83 19 -79 24 -74 32Z" fill="url(#devWing)" stroke="var(--rim)" stroke-width="2" stroke-linejoin="round"/><path d="M76 4C94 -12 96 8 89 26C83 19 79 24 74 32Z" fill="url(#devWing)" stroke="var(--rim)" stroke-width="2" stroke-linejoin="round"/><ellipse cx="-32" cy="82" rx="15" ry="9" fill="url(#devWing)" stroke="var(--rim)" stroke-width="1.8"/><ellipse cx="32" cy="82" rx="15" ry="9" fill="url(#devWing)" stroke="var(--rim)" stroke-width="1.8"/><path d="M0 -78C56 -78 86 -42 86 8C86 56 54 84 0 84C-54 84 -86 56 -86 8C-86 -42 -56 -78 0 -78Z" fill="url(#devBody)"/><ellipse cx="0" cy="62" rx="34" ry="14" fill="#fda4af" opacity=".16"/><path class="accent" d="M-54 -56C-68 -88 -46 -108 -28 -94C-35 -82 -35 -68 -30 -62Z" fill="#fbbf24" stroke="#451a03" stroke-width="2" stroke-linejoin="round"/><path class="accent" d="M54 -56C68 -88 46 -108 28 -94C35 -82 35 -68 30 -62Z" fill="#fbbf24" stroke="#451a03" stroke-width="2" stroke-linejoin="round"/><ellipse class="avoid" cx="-64" cy="40" rx="7" ry="4" fill="#fecdd3" opacity=".45"/><ellipse class="avoid" cx="64" cy="40" rx="7" ry="4" fill="#fecdd3" opacity=".45"/>',
     front:'<path class="avoid" d="M-46 -64Q-26 -60 -10 -62" fill="none" stroke="#3b0714" stroke-width="3.2" stroke-linecap="round"/><path class="avoid" d="M46 -64Q26 -60 10 -62" fill="none" stroke="#3b0714" stroke-width="3.2" stroke-linecap="round"/><path class="avoid" d="M-18 55Q0 63 20 53" fill="none" stroke="#3b0714" stroke-width="3.2" stroke-linecap="round"/><polygon class="accent avoid" points="8,57 15,54 12,64" fill="#fef3c7" stroke="#3b0714" stroke-width="1.6" stroke-linejoin="round"/>',
     gloss:false,faceBox:[-74,-66,148,128],anchors:{head:[0,-20],face:[0,0],neck:[0,10],base:[0,4],left:[0,0],right:[0,0]},
     cupX:106,band:'M-105 -30C-128 -140 128 -140 105 -30',pivot:84,shadow:64,fits:new Set(['none','halo','crown','sprout','bow','nightcap','beanie','party','scarf','tie','headphones','shades','glasses','chat','feed','plug']),touch:'tTail'}};
+// a plugin's character (#213): the Devil's numbers, flat fill, art as sanitised nodes; rebuilt on every state update
+const PLUG_BOX=[-96,-120,192,220];
+let plugSeen;
+function plugChars(list){   // (unchanged list: keep the objects, so BODY stays one of them)
+  const k0=JSON.stringify(list||[]); if(k0===plugSeen) return false; plugSeen=k0;
+  for(const k in CHARACTERS) if(k.startsWith('plug:')) delete CHARACTERS[k];
+  for(const c of list||[]) CHARACTERS['plug:'+c.id]={...CHARACTERS.devil,label:c.name,back:'',front:'',nodes:{back:c.back,front:c.front},fill:c.fill,fits:new Set(c.fits),touch:null};
+  return true; }
+const REACT={
+ "defs": "<linearGradient id='fx-gold' x2='0' y2='1'><stop offset='0' stop-color='#ffe27a'/><stop offset='1' stop-color='#f5a524'/></linearGradient><linearGradient id='fx-red' x2='0' y2='1'><stop offset='0' stop-color='#ff9a94'/><stop offset='1' stop-color='#e5484d'/></linearGradient><linearGradient id='fx-green' x2='0' y2='1'><stop offset='0' stop-color='#7fe8a0'/><stop offset='1' stop-color='#22b573'/></linearGradient><linearGradient id='fx-blue' x2='0' y2='1'><stop offset='0' stop-color='#a6e0ff'/><stop offset='1' stop-color='#4a9fe8'/></linearGradient><linearGradient id='fx-pink' x2='0' y2='1'><stop offset='0' stop-color='#ffbdd7'/><stop offset='1' stop-color='#ff6fa5'/></linearGradient><linearGradient id='fx-paper' x2='0' y2='1'><stop offset='0' stop-color='#fffdf6'/><stop offset='1' stop-color='#f1e6d0'/></linearGradient><linearGradient id='fx-steel' x2='0' y2='1'><stop offset='0' stop-color='#f2f5f9'/><stop offset='1' stop-color='#9aa7ba'/></linearGradient><linearGradient id='fx-shade' x2='0' y2='1'><stop offset='0' stop-color='#4a5068'/><stop offset='1' stop-color='#12141c'/></linearGradient><radialGradient id='fx-sun'><stop offset='0' stop-color='#fff2a8'/><stop offset='1' stop-color='#ffc23d'/></radialGradient><linearGradient id='fx-hat' x2='0' y2='1'><stop offset='0' stop-color='#3b3b44'/><stop offset='1' stop-color='#111115'/></linearGradient><linearGradient id='fx-shirt' x2='0' y2='1'><stop offset='0' stop-color='#55b56d'/><stop offset='1' stop-color='#2b7a45'/></linearGradient><linearGradient id='fx-grey' x2='0' y2='1'><stop offset='0' stop-color='#cfd1d5'/><stop offset='1' stop-color='#8d9096'/></linearGradient><linearGradient id=\"fx-cap\" x1=\"0\" y1=\"-112\" x2=\"0\" y2=\"-48\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#3a3f4b\"/><stop offset=\"1\" stop-color=\"#14161d\"/></linearGradient>",
+ "props": {
+  "load": {
+   "sky": "",
+   "back": "",
+   "front": "<g transform='translate(-104 -42)'><rect x='-9' y='-38' width='18' height='66' rx='9' fill='url(#fx-paper)' stroke='#8f6b4a' stroke-width='2'/><rect class='mc' x='-4' y='-30' width='8' height='56' rx='4' fill='#e5484d'/><circle cy='32' r='14' fill='url(#fx-red)' stroke='#8f2d33' stroke-width='2'/></g><g transform='translate(100 42)'><g class='fa'><rect x='-3' y='-6' width='6' height='38' rx='3' fill='#c98a4b'/><path d='M0 -2L-30 -34A44 44 0 0 1 30 -34Z' fill='url(#fx-pink)' stroke='#c2477e' stroke-width='2' stroke-linejoin='round'/></g></g><g fill='#7cc4f5'><path class='sw' d='M60 -82C66 -74 68 -70 68 -66A8 8 0 0 1 52 -66C52 -70 54 -74 60 -82Z'/><path class='sw s2' d='M-62 -88C-56 -80 -54 -76 -54 -72A8 8 0 0 1 -70 -72C-70 -76 -68 -80 -62 -88Z'/></g>",
+   "css": ".r-load .mc,.r-load .fa{transform-box:fill-box;transform-origin:50% 100%}.r-load .mc{animation:fxLoadM 2s ease-in-out infinite}.r-load .fa{animation:fxLoadF .35s ease-in-out infinite alternate}.r-load .sw{animation:fxLoadS 1.2s ease-in infinite}.r-load .s2{animation-delay:-.6s}.r-load .whole{transform-origin:0 84px;animation:fxLoadP .6s ease-in-out infinite alternate}@keyframes fxLoadM{0%{transform:scaleY(.3)}70%,100%{transform:none}}@keyframes fxLoadF{from{transform:rotate(-20deg)}to{transform:rotate(20deg)}}@keyframes fxLoadS{0%{opacity:0}20%{opacity:1}100%{transform:translateY(34px);opacity:0}}@keyframes fxLoadP{to{transform:scale(1.025,.97)}}"
+  },
+  "memory": {
+   "sky": "",
+   "back": "",
+   "front": "<g transform='translate(72 64)'><circle cx='-10' cy='-22' r='11' fill='url(#fx-pink)'/><circle cx='11' cy='-24' r='12' fill='url(#fx-blue)'/><circle cx='26' cy='-17' r='8' fill='url(#fx-gold)'/><path d='M-30 -14H30L26 24Q26 28 22 28H-22Q-26 28 -26 24Z' fill='#e7b777' stroke='#8f6b3a' stroke-width='2' stroke-linejoin='round'/><path d='M-30 -14L-40 -4H-22L-16 -14ZM30 -14L38 -4H22L16 -14Z' fill='#d9a05f'/><path class='sk' d='M-24 -24V-6Q-24 0 -18 0H-8V-8H-14V-24Z' fill='#fff' stroke='#ff7a9c' stroke-width='3' stroke-linejoin='round'/><circle class='nub' cx='-28' cy='12' r='10' fill='#24365a' stroke='var(--rim)' stroke-width='2'/><circle class='nub' cx='28' cy='12' r='10' fill='#24365a' stroke='var(--rim)' stroke-width='2'/></g>",
+   "css": ".r-memory .whole{animation:fxMemW .16s linear infinite}.r-memory .sk{transform-box:fill-box;transform-origin:center;animation:fxMemS 1.8s ease-in infinite}@keyframes fxMemW{25%{transform:translateX(-2.5px)}75%{transform:translateX(2.5px)}}@keyframes fxMemS{0%,25%{transform:none;opacity:1}85%{opacity:1}100%{transform:translate(-26px,48px) rotate(-90deg);opacity:0}}"
+  },
+  "error": {
+   "sky": "",
+   "back": "",
+   "front": "<g transform='translate(94 -86)'><g class='wn'><path d='M0 -34Q6 -34 9 -28L36 20Q40 30 30 30H-30Q-40 30 -36 20L-9 -28Q-6 -34 0 -34Z' fill='url(#fx-gold)' stroke='#a8631a' stroke-width='2.5' stroke-linejoin='round'/><rect x='-5' y='-14' width='10' height='24' rx='5' fill='#7a3a12'/><circle cy='20' r='6' fill='#7a3a12'/></g></g><g transform='translate(-104 -66)'><g class='wr'><path d='M-8 34V-8C-18 -12 -20 -26 -12 -34V-20H12V-34C20 -26 18 -12 8 -8V34Q8 40 0 40Q-8 40 -8 34Z' fill='url(#fx-steel)' stroke='#5f6b80' stroke-width='2' stroke-linejoin='round'/></g></g>",
+   "css": ".r-error .wn,.r-error .wr{transform-box:fill-box;transform-origin:50% 90%}.r-error .wn{animation:fxErrP 2s ease-out infinite}.r-error .wr{animation:fxErrR .7s ease-in-out infinite alternate}.r-error .whole{transform-origin:0 84px;animation:fxErrW 2s ease-out infinite}@keyframes fxErrP{0%{transform:scale(0)}12%{transform:scale(1.2)}20%,100%{transform:none}}@keyframes fxErrR{from{transform:rotate(-14deg)}to{transform:rotate(14deg)}}@keyframes fxErrW{0%,6%,40%,100%{transform:none}12%{transform:translateX(-9px) rotate(-5deg) scale(.95,1.04)}}"
+  },
+  "soon": {
+   "sky": "",
+   "back": "",
+   "front": "<g transform='translate(88 -86)'><g class='ck'><path d='M-26 -28A14 14 0 0 1 -6 -36ZM26 -28A14 14 0 0 0 6 -36Z' fill='url(#fx-gold)' stroke='#a8631a' stroke-width='2'/><path d='M-16 24L-22 34M16 24L22 34' stroke='#a33a3a' stroke-width='6' stroke-linecap='round'/><circle r='30' fill='url(#fx-red)' stroke='#8f2d33' stroke-width='2'/><circle r='21' fill='url(#fx-paper)'/><path d='M0 -13V0L9 6' fill='none' stroke='#5b3a2a' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/></g><path class='rg' d='M-40 -24Q-46 -12 -42 0M40 -24Q46 -12 42 0' fill='none' stroke='#ffb347' stroke-width='4' stroke-linecap='round'/></g>",
+   "css": ".r-soon .ck{transform-box:fill-box;transform-origin:50% 100%;animation:fxSoonC .4s ease-in-out infinite}.r-soon .rg{animation:fxSoonR .2s steps(1) infinite}.r-soon .whole{transform-origin:0 84px;animation:fxSoonW 1.2s ease-in-out infinite}@keyframes fxSoonC{0%,100%{transform:rotate(-9deg)}50%{transform:translateY(-10px) rotate(9deg)}}@keyframes fxSoonR{50%{opacity:0}}@keyframes fxSoonW{50%{transform:translateY(-6px) scale(.98,1.03)}}"
+  },
+  "meeting": {
+   "sky": "",
+   "back": "",
+   "front": "<path d='M-92 -8A92 92 0 0 1 92 -8' fill='none' stroke='#5b6474' stroke-width='8' stroke-linecap='round'/><rect x='-106' y='-24' width='24' height='42' rx='12' fill='url(#fx-blue)' stroke='#2c5f9e' stroke-width='2'/><rect x='82' y='-24' width='24' height='42' rx='12' fill='url(#fx-blue)' stroke='#2c5f9e' stroke-width='2'/><path d='M-94 18Q-92 58 -52 58' fill='none' stroke='#5b6474' stroke-width='5' stroke-linecap='round'/><circle cx='-48' cy='58' r='8.5' fill='#5b6474'/><g transform='translate(100 -92)'><circle class='ha' r='20' fill='#ff7a7a' opacity='.3'/><circle r='11' fill='url(#fx-red)'/></g>",
+   "css": ".r-meeting .ha{transform-box:fill-box;transform-origin:center;animation:fxMeetH 2.4s ease-in-out infinite}.r-meeting .whole{transform-origin:0 84px;animation:fxMeetB 3s ease-in-out infinite}@keyframes fxMeetH{50%{transform:scale(1.35);opacity:.08}}@keyframes fxMeetB{50%{transform:scale(1,1.012)}}"
+  },
+  "notice": {
+   "sky": "",
+   "back": "",
+   "front": "<g transform='translate(-92 -86)'><g class='bl'><path d='M-6 -24Q0 -32 6 -24' fill='none' stroke='#a8631a' stroke-width='3'/><path d='M0 -24C-16 -24 -20 -10 -20 2C-20 10 -26 12 -26 18H26C26 12 20 10 20 2C20 -10 16 -24 0 -24Z' fill='url(#fx-gold)' stroke='#a8631a' stroke-width='2.500' stroke-linejoin='round'/><circle class='cl' cy='22' r='6' fill='#a8631a'/></g><path class='wv' d='M-34 -18Q-42 -6 -36 8M34 -18Q42 -6 36 8' fill='none' stroke='#ffc94a' stroke-width='3.500' stroke-linecap='round'/></g><circle class='nub hd' cx='92' cy='6' r='12' fill='#24365a' stroke='var(--rim)' stroke-width='2'/>",
+   "css": ".r-notice .bl{transform-box:fill-box;transform-origin:50% 0;animation:fxBell .5s ease-in-out infinite alternate}.r-notice .cl{animation:fxClap .5s ease-in-out infinite alternate}.r-notice .wv{animation:fxBellW .5s steps(1) infinite}.r-notice .hd{animation:fxHold 1.8s ease-in-out infinite}.r-notice .whole{transform-origin:0 84px;animation:fxNoticeW 1.8s ease-in-out infinite}@keyframes fxBell{from{transform:rotate(-16deg)}to{transform:rotate(16deg)}}@keyframes fxClap{from{transform:translateX(-3px)}to{transform:translateX(3px)}}@keyframes fxBellW{50%{opacity:.15}}@keyframes fxHold{50%{transform:translateY(-6px)}}@keyframes fxNoticeW{0%,100%{transform:translateY(0) scale(1,1)}12%{transform:translateY(3px) scale(1.05,.95)}30%{transform:translateY(-12px) scale(.98,1.03)}48%{transform:rotate(3deg)}}"
+  },
+  "ask": {
+   "sky": "",
+   "back": "",
+   "front": "<g transform='translate(88 46)'><g class='sg'><rect x='-4' y='-96' width='8' height='98' rx='4' fill='#c98a4b'/><rect x='-34' y='-148' width='68' height='56' rx='12' fill='url(#fx-paper)' stroke='#b99f73' stroke-width='2.5'/><path d='M-10 -132C-10 -146 12 -146 12 -130C12 -120 0 -120 0 -110' fill='none' stroke='#ff5f99' stroke-width='7' stroke-linecap='round'/><circle cy='-100' r='4.5' fill='#ff5f99'/><circle class='nub' cy='2' r='11' fill='#24365a' stroke='var(--rim)' stroke-width='2'/></g></g>",
+   "css": ".r-ask .sg{transform-box:fill-box;transform-origin:50% 100%;animation:fxAskS .5s ease-in-out infinite alternate}.r-ask .whole{transform-origin:0 84px;animation:fxAskW .5s ease-in-out infinite alternate}@keyframes fxAskS{from{transform:rotate(-6deg)}to{transform:rotate(6deg)}}@keyframes fxAskW{from{transform:scale(1.04,.95)}to{transform:translateY(-14px) scale(.98,1.03)}}"
+  },
+  "done": {
+   "sky": "<g class='cf'><rect x='-124' y='-128' width='9' height='14' rx='3' fill='#ff7a9c'/><rect x='-44' y='-132' width='9' height='14' rx='3' fill='#ffc94a'/><rect x='66' y='-126' width='9' height='14' rx='3' fill='#7cc4f5'/><rect x='118' y='-100' width='9' height='14' rx='3' fill='#7fe8a0'/></g>",
+   "back": "",
+   "front": "<g transform='translate(-96 -76)'><g class='tr'><path d='M-22 -24H-34Q-34 -2 -14 0M22 -24H34Q34 -2 14 0' fill='none' stroke='#d08a1f' stroke-width='5' stroke-linecap='round'/><path d='M-22 -30H22C22 -4 12 8 5 10V24H14Q18 24 18 30H-18Q-18 24 -14 24H-5V10C-12 8 -22 -4 -22 -30Z' fill='url(#fx-gold)' stroke='#a8631a' stroke-width='2' stroke-linejoin='round'/></g></g><g class='pS'><rect x='-58' y='-50' width='56' height='66' rx='20' fill='url(#fx-shade)'/><rect x='2' y='-50' width='56' height='66' rx='20' fill='url(#fx-shade)'/><path d='M-4 -24H4' stroke='#12141c' stroke-width='5'/><path d='M-44 -34L-26 -40M16 -34L34 -40' stroke='#fff' stroke-opacity='.6' stroke-width='5' stroke-linecap='round'/></g>",
+   "css": ".r-done .cf{animation:fxDoneC 1.6s linear infinite}.r-done .tr{transform-box:fill-box;transform-origin:50% 100%;animation:fxDoneT 1s ease-in-out infinite}.r-done .pS{animation:fxShadeIn .7s ease-out both}.r-done .whole{transform-origin:0 84px;animation:fxDoneW 2s ease-in-out infinite}@keyframes fxDoneC{10%{opacity:1}0%,100%{opacity:0}100%{transform:translateY(190px)}}@keyframes fxDoneT{50%{transform:translateY(-8px) rotate(6deg)}}@keyframes fxShadeIn{from{transform:translateY(-70px);opacity:0}}@keyframes fxDoneW{50%{transform:translateY(-5px) scale(1.04)}}"
+  },
+  "open": {
+   "sky": "",
+   "back": "",
+   "front": "<g transform='translate(92 -84)'><g class='wd'><rect x='-38' y='-30' width='76' height='60' rx='10' fill='url(#fx-paper)' stroke='#4c6a9e' stroke-width='2.5'/><path d='M-38 -14V-20Q-38 -30 -28 -30H28Q38 -30 38 -20V-14Z' fill='url(#fx-blue)'/><circle cx='-26' cy='-22' r='3.5' fill='#fff'/><circle cx='-15' cy='-22' r='3.5' fill='#fff'/><path d='M-24 0H24M-24 13H8' stroke='#b9c7dd' stroke-width='5' stroke-linecap='round'/></g></g><g transform='translate(72 -22) rotate(28)'><rect class='pt nub' x='-9' y='-30' width='18' height='38' rx='9' fill='#24365a' stroke='var(--rim)' stroke-width='2'/></g>",
+   "css": ".r-open .wd{transform-box:fill-box;transform-origin:20% 100%;animation:fxOpenW 2.4s ease-out infinite}.r-open .pt{animation:fxOpenP .5s ease-in-out infinite alternate}.r-open .whole{transform-origin:0 84px;animation:fxOpenL 2.4s ease-in-out infinite}@keyframes fxOpenW{0%{transform:scale(0)}10%{transform:scale(1.16)}18%,100%{transform:none}}@keyframes fxOpenP{to{transform:translateY(-7px)}}@keyframes fxOpenL{20%,80%{transform:rotate(4deg)}}"
+  },
+  "music": {
+   "sky": "<g fill='#ff8fbf' class='nt'><path d='M-108 -60v-26l18-5v24a8 6 0 1 1-4-5v-12l-10 3v17a8 6 0 1 1-4-5z'/></g><g fill='#7cc4f5' class='nt n2'><path d='M104 -40v-24a8 6 0 1 1 0 0z'/><path d='M108 -66v26a8 6 0 1 1-4-5v-21z'/></g><g fill='#ffc94a' class='nt n3'><path d='M-74 -96v22a7 5 0 1 1-4-4v-18z'/></g>",
+   "back": "",
+   "front": "<g transform='translate(84 62)'><g class='bx'><path d='M-26 -28Q-26 -44 -10 -44H10Q26 -44 26 -28' fill='none' stroke='#5b6474' stroke-width='6' stroke-linecap='round'/><rect x='-46' y='-30' width='92' height='60' rx='13' fill='url(#fx-pink)' stroke='#a8295f' stroke-width='2.5'/><rect x='-40' y='-25' width='80' height='7' rx='3.5' fill='#fff' opacity='.3'/><g class='sp'><circle cx='-26' cy='6' r='15' fill='#2b2f3d' stroke='#fff' stroke-width='2'/><circle cx='-26' cy='6' r='6' fill='#7c8399'/></g><g class='sp'><circle cx='26' cy='6' r='15' fill='#2b2f3d' stroke='#fff' stroke-width='2'/><circle cx='26' cy='6' r='6' fill='#7c8399'/></g><rect x='-9' y='-13' width='18' height='12' rx='2' fill='url(#fx-paper)' stroke='#a8295f' stroke-width='1.5'/><circle class='rl' cx='-3.500' cy='-7' r='2.400' fill='#5b6474'/><circle class='rl' cx='3.500' cy='-7' r='2.400' fill='#5b6474'/><path d='M-6 6l6 4-6 4zM3 6h2v8h-2zM7 6h2v8h-2z' fill='#fff'/></g></g><circle class='nub' cx='46' cy='86' r='11' fill='#24365a' stroke='var(--rim)' stroke-width='2'/>",
+   "css": ".r-music .bx{transform-box:fill-box;transform-origin:50% 100%;animation:fxBoxB .5s ease-in-out infinite alternate}.r-music .sp{transform-box:fill-box;transform-origin:center;animation:fxBoxS .25s ease-in-out infinite alternate}.r-music .rl{transform-box:fill-box;transform-origin:center;animation:fxBoxR 1.2s linear infinite}.r-music .nt{animation:fxBoxN 2.4s ease-out infinite}.r-music .n2{animation-delay:-.8s}.r-music .n3{animation-delay:-1.6s}.r-music .whole{transform-origin:0 84px;animation:fxBoxW .5s ease-in-out infinite alternate}@keyframes fxBoxB{to{transform:translateY(-4px) rotate(2deg)}}@keyframes fxBoxS{to{transform:scale(1.14)}}@keyframes fxBoxR{to{transform:rotate(360deg)}}@keyframes fxBoxN{0%{transform:translateY(16px);opacity:0}25%{opacity:1}100%{transform:translateY(-22px) rotate(10deg);opacity:0}}@keyframes fxBoxW{from{transform:rotate(-3deg)}to{transform:translateY(-4px) rotate(3deg)}}"
+  },
+  "rain": {
+   "sky": "<g fill='none' stroke='#8ec9ff' stroke-width='5' stroke-linecap='round'><path class='rn' d='M-128 -128v14M-60 -110v14M40 -132v14M118 -100v14M-104 -40v14M112 -20v14'/><path class='rn r2' d='M-96 -100v14M-20 -130v14M84 -122v14M-130 -10v14M130 -50v14'/><path class='rn r3' d='M-118 -70v14M12 -120v14M100 -80v14M-84 -4v14M124 20v14'/></g>",
+   "back": "",
+   "front": "<g transform='translate(88 46) rotate(-16)'><g class='um'><path d='M0 0V-128' stroke='#8f5e34' stroke-width='6' stroke-linecap='round'/><path d='M-72 -128C-72 -176 72 -176 72 -128Q54 -140 36 -128Q18 -140 0 -128Q-18 -140 -36 -128Q-54 -140 -72 -128Z' fill='url(#fx-pink)' stroke='#c2477e' stroke-width='2.5' stroke-linejoin='round'/><circle class='nub' r='11' fill='#24365a' stroke='var(--rim)' stroke-width='2'/></g></g>",
+   "css": ".r-rain .rn{animation:fxRainD .9s linear infinite}.r-rain .r2{animation-delay:-.3s}.r-rain .r3{animation-delay:-.6s}.r-rain .um{transform-box:fill-box;transform-origin:50% 100%;animation:fxRainU 1.6s ease-in-out infinite alternate}@keyframes fxRainD{0%{opacity:0}15%,80%{opacity:1}100%{transform:translateY(80px);opacity:0}}@keyframes fxRainU{from{transform:rotate(-3deg)}to{transform:rotate(3deg)}}"
+  },
+  "snow": {
+   "sky": "<g fill='#fff'><g class='sn'><circle cx='-124' cy='-120' r='7'/><circle cx='-60' cy='-128' r='5'/><circle cx='84' cy='-124' r='7'/><circle cx='126' cy='-60' r='5'/></g><g class='sn n2'><circle cx='-104' cy='-60' r='5'/><circle cx='30' cy='-130' r='6'/><circle cx='112' cy='-110' r='5'/><circle cx='-126' cy='-10' r='6'/></g></g>",
+   "back": "",
+   "front": "<g class='bn'><path d='M-60 -60C-60 -122 60 -122 60 -60Z' fill='url(#fx-red)' stroke='#8f2d33' stroke-width='2'/><rect x='-66' y='-70' width='132' height='20' rx='10' fill='url(#fx-paper)' stroke='#c9b890' stroke-width='2'/><circle class='pm' cy='-106' r='13' fill='url(#fx-paper)' stroke='#c9b890' stroke-width='2'/></g><g transform='translate(92 58)'><circle class='sb' r='17' fill='url(#fx-paper)' stroke='#c9d7e6' stroke-width='2'/><circle class='nub' cy='18' r='11' fill='#24365a' stroke='var(--rim)' stroke-width='2'/></g>",
+   "css": ".r-snow .sn{animation:fxSnowF 3s linear infinite}.r-snow .n2{animation-delay:-1.5s}.r-snow .pm{transform-box:fill-box;transform-origin:center;animation:fxSnowP .5s ease-in-out infinite alternate}.r-snow .sb{animation:fxSnowB 1.2s ease-in-out infinite}.r-snow .whole{transform-origin:0 84px;animation:fxSnowW .6s ease-in-out infinite alternate}@keyframes fxSnowF{0%,100%{opacity:0}15%,85%{opacity:1}100%{transform:translate(14px,90px)}}@keyframes fxSnowP{to{transform:translate(5px,-3px)}}@keyframes fxSnowB{50%{transform:translateY(-32px)}}@keyframes fxSnowW{to{transform:translateY(-8px) scale(.98,1.03)}}"
+  },
+  "wind": {
+   "sky": "<rect x='-122' y='-24' width='16' height='130' rx='8' fill='#c98a4b' stroke='#8f5e34' stroke-width='2'/><path class='ws' d='M130 -60H34Q14 -60 14 -76M130 74H40' fill='none' stroke='#cfe6f7' stroke-width='4' stroke-linecap='round'/><g transform='translate(126 -96)'><path class='lf' d='M0 -9C11 -9 15 0 13 9C4 11 -9 7 -11 0C-9 -6 -4 -9 0 -9Z' fill='#7fd16f'/></g><g transform='translate(126 -30)'><path class='lf l2' d='M0 -9C11 -9 15 0 13 9C4 11 -9 7 -11 0C-9 -6 -4 -9 0 -9Z' fill='#f5a524'/></g><g transform='translate(126 40)'><path class='lf l3' d='M0 -9C11 -9 15 0 13 9C4 11 -9 7 -11 0C-9 -6 -4 -9 0 -9Z' fill='#e5734d'/></g>",
+   "back": "",
+   "front": "<circle class='nub' cx='-92' cy='0' r='12' fill='#24365a' stroke='var(--rim)' stroke-width='2'/><circle class='nub' cx='-92' cy='26' r='12' fill='#24365a' stroke='var(--rim)' stroke-width='2'/>",
+   "css": ".r-wind .lf{transform-box:fill-box;transform-origin:center;animation:fxWindL 1.8s linear infinite}.r-wind .l2{animation-delay:-.6s}.r-wind .l3{animation-delay:-1.2s}.r-wind .ws{animation:fxWindS .8s ease-in-out infinite alternate}.r-wind .whole{transform-origin:0 84px;animation:fxWindW .9s ease-in-out infinite alternate}@keyframes fxWindL{0%,100%{opacity:0}10%,90%{opacity:1}100%{transform:translate(-252px,24px) rotate(-540deg)}}@keyframes fxWindS{to{transform:translateX(-14px);opacity:.4}}@keyframes fxWindW{from{transform:rotate(-5deg)}to{transform:translateX(-4px) rotate(-10deg)}}"
+  },
+  "workout": {
+   "sky": "",
+   "back": "",
+   "front": "<g class='hb'><path d='M-68 -72Q0 -62 68 -72V-54Q0 -46 -68 -54Z' fill='url(#fx-red)' stroke='#8f2d33' stroke-width='2' stroke-linejoin='round'/><path d='M68 -64L92 -76L90 -54Z' fill='#e5484d' stroke='#8f2d33' stroke-width='2' stroke-linejoin='round'/></g><g transform='translate(-100 36)'><g class='db'><path d='M-20 0H20' stroke='#5f6b80' stroke-width='6'/><rect x='-28' y='-14' width='12' height='28' rx='5' fill='url(#fx-steel)' stroke='#5f6b80' stroke-width='2'/><rect x='16' y='-14' width='12' height='28' rx='5' fill='url(#fx-steel)' stroke='#5f6b80' stroke-width='2'/><circle class='nub' r='10' fill='#24365a' stroke='var(--rim)' stroke-width='2'/></g></g><g transform='translate(100 36)'><g class='db'><path d='M-20 0H20' stroke='#5f6b80' stroke-width='6'/><rect x='-28' y='-14' width='12' height='28' rx='5' fill='url(#fx-steel)' stroke='#5f6b80' stroke-width='2'/><rect x='16' y='-14' width='12' height='28' rx='5' fill='url(#fx-steel)' stroke='#5f6b80' stroke-width='2'/><circle class='nub' r='10' fill='#24365a' stroke='var(--rim)' stroke-width='2'/></g></g>",
+   "css": ".r-workout .db{animation:fxGymD 1s ease-in-out infinite}.r-workout .whole{transform-origin:0 84px;animation:fxGymW 1s ease-in-out infinite}@keyframes fxGymD{30%{transform:translateY(14px)}60%{transform:translateY(-34px)}}@keyframes fxGymW{30%{transform:translateY(12px) scale(1.1,.86)}60%{transform:translateY(-18px) scale(.94,1.08)}}"
+  }
+ },
+ "touch": {
+  "snowflake": {
+   "load": {
+    "back": "",
+    "front": "",
+    "css": ".c-snowflake.r-load .base-back{transform-box:fill-box;transform-origin:center;animation:fxSpin 1s linear infinite}@keyframes fxSpin{to{transform:rotate(120deg)}}"
+   },
+   "memory": {
+    "back": "",
+    "front": "",
+    "css": ".c-snowflake.r-memory .base-back{animation:fxShk .14s linear infinite}@keyframes fxShk{25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}"
+   },
+   "error": {
+    "back": "",
+    "front": "",
+    "css": ".c-snowflake.r-error .base-back{transform-box:fill-box;transform-origin:center;animation:fxDroop 2s ease-in-out infinite}@keyframes fxDroop{50%{transform:scale(.92) rotate(10deg)}}"
+   },
+   "soon": {
+    "back": "",
+    "front": "",
+    "css": ".c-snowflake.r-soon .base-back{transform-box:fill-box;transform-origin:center;animation:fxSpin 1.2s steps(2) infinite}@keyframes fxSpin{to{transform:rotate(120deg)}}"
+   },
+   "meeting": {
+    "back": "",
+    "front": "",
+    "css": ".c-snowflake.r-meeting .base-back{animation:none;opacity:.8}"
+   },
+   "notice": {
+    "back": "",
+    "front": "",
+    "css": ".c-snowflake.r-notice .base-back{transform-box:fill-box;transform-origin:center;animation:fxSwayN 1.2s ease-in-out infinite alternate}@keyframes fxSwayN{from{transform:rotate(-6deg)}to{transform:rotate(6deg)}}"
+   },
+   "ask": {
+    "back": "",
+    "front": "",
+    "css": ".c-snowflake.r-ask .base-back{transform-box:fill-box;transform-origin:center;animation:fxPlead .5s ease-in-out infinite alternate}@keyframes fxPlead{to{transform:scale(1.08)}}"
+   },
+   "done": {
+    "back": "",
+    "front": "",
+    "css": ".c-snowflake.r-done .base-back{transform-box:fill-box;transform-origin:center;animation:fxSpin 2s linear infinite}@keyframes fxSpin{to{transform:rotate(120deg)}}"
+   },
+   "open": {
+    "back": "",
+    "front": "",
+    "css": ".c-snowflake.r-open .base-back{transform-box:fill-box;transform-origin:center;animation:fxSway 1.2s ease-in-out infinite alternate}@keyframes fxSway{from{transform:rotate(-8deg)}to{transform:rotate(8deg)}}"
+   },
+   "music": {
+    "back": "",
+    "front": "",
+    "css": ".c-snowflake.r-music .base-back{transform-box:fill-box;transform-origin:center;animation:fxSway .5s ease-in-out infinite alternate}@keyframes fxSway{from{transform:rotate(-8deg)}to{transform:rotate(8deg)}}"
+   },
+   "rain": {
+    "back": "",
+    "front": "",
+    "css": ".c-snowflake.r-rain .base-back{transform-box:fill-box;transform-origin:center;animation:fxDroop 3s ease-in-out infinite}@keyframes fxDroop{50%{transform:scale(.92) rotate(10deg)}}"
+   },
+   "snow": {
+    "back": "",
+    "front": "",
+    "css": ".c-snowflake.r-snow .base-back{transform-box:fill-box;transform-origin:center;animation:fxSpin 3s linear infinite}@keyframes fxSpin{to{transform:rotate(120deg)}}"
+   },
+   "wind": {
+    "back": "",
+    "front": "",
+    "css": ".c-snowflake.r-wind .base-back{transform-box:fill-box;transform-origin:center;animation:fxSpin .6s linear infinite}@keyframes fxSpin{to{transform:rotate(120deg)}}"
+   },
+   "workout": {
+    "back": "",
+    "front": "",
+    "css": ".c-snowflake.r-workout .base-back{transform-box:fill-box;transform-origin:center;animation:fxPump 1s ease-in-out infinite}@keyframes fxPump{30%{transform:scale(.94)}60%{transform:scale(1.08)}}"
+   }
+  },
+  "terminal": {
+   "load": {
+    "back": "",
+    "front": "<rect class='pb' x='-44' y='53' width='40' height='7' rx='3.5' fill='#fbbf24'/>",
+    "css": ".c-terminal.r-load .pb{transform-box:fill-box;transform-origin:0 50%;animation:fxBar 1.2s ease-in-out infinite}@keyframes fxBar{from{transform:scaleX(.1)}}"
+   },
+   "memory": {
+    "back": "",
+    "front": "<path d='M-44 56h6m4 0h6m4 0h6m4 0h6' stroke='#fbbf24' stroke-width='5' stroke-linecap='round'/>",
+    "css": ".c-terminal.r-memory .tCursor{animation:fxBlk .2s steps(1) infinite}@keyframes fxBlk{50%{opacity:0}}"
+   },
+   "error": {
+    "back": "",
+    "front": "<path d='M-44 52l8 8m0-8l-8 8' stroke='#ff6b6b' stroke-width='3.5' stroke-linecap='round'/>",
+    "css": ".c-terminal.r-error .tCursor{fill:#ff6b6b;animation:fxBlk .3s steps(1) infinite}@keyframes fxBlk{50%{opacity:0}}"
+   },
+   "soon": {
+    "back": "",
+    "front": "<circle class='cd' cx='-40' cy='56' r='4' fill='#fbbf24'/><circle class='cd' cx='-28' cy='56' r='4' fill='#fbbf24'/>",
+    "css": ".c-terminal.r-soon .cd,.c-terminal.r-soon .tCursor{animation:fxBlk .4s steps(1) infinite}@keyframes fxBlk{50%{opacity:0}}"
+   },
+   "meeting": {
+    "back": "",
+    "front": "",
+    "css": ".c-terminal.r-meeting .tCursor{animation:none;opacity:.3}"
+   },
+   "notice": {
+    "back": "",
+    "front": "<circle cx='-40' cy='56' r='4' fill='#fbbf24'/>",
+    "css": ".c-terminal.r-notice .tCursor{animation:fxBlkN .4s steps(1) infinite}@keyframes fxBlkN{50%{opacity:0}}"
+   },
+   "ask": {
+    "back": "",
+    "front": "<path d='M-42 53C-42 49 -35 49 -35 53C-35 56 -38.500 56 -38.500 59M-38.500 62.500v.1' fill='none' stroke='#fbbf24' stroke-width='3' stroke-linecap='round'/>",
+    "css": ".c-terminal.r-ask .tCursor{animation:fxBob .5s ease-in-out infinite}@keyframes fxBob{50%{transform:translateY(-5px)}}"
+   },
+   "done": {
+    "back": "",
+    "front": "<rect x='-44' y='53' width='40' height='7' rx='3.5' fill='#34d399'/><path class='sr' d='M0 49l2 5 5 2-5 2-2 5-2-5-5-2 5-2Z' fill='#ffe27a'/>",
+    "css": ".c-terminal.r-done .sr{animation:fxBlk .6s steps(1) infinite}@keyframes fxBlk{50%{opacity:0}}"
+   },
+   "open": {
+    "back": "",
+    "front": "<path d='M-44 56h16m-6-5l6 5-6 5' fill='none' stroke='#34d399' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/>",
+    "css": ".c-terminal.r-open .tCursor{animation:fxBlk .5s steps(1) infinite}@keyframes fxBlk{50%{opacity:0}}"
+   },
+   "music": {
+    "back": "",
+    "front": "<g class='eq'><rect x='-44' y='50' width='5' height='12' rx='1' fill='#34d399'/><rect x='-36' y='50' width='5' height='12' rx='1' fill='#34d399'/><rect x='-28' y='50' width='5' height='12' rx='1' fill='#34d399'/><rect x='-20' y='50' width='5' height='12' rx='1' fill='#34d399'/></g>",
+    "css": ".c-terminal.r-music .eq rect{transform-box:fill-box;transform-origin:50% 100%;animation:fxEq .4s ease-in-out infinite alternate}.c-terminal.r-music .eq rect:nth-child(2){animation-delay:-.15s}.c-terminal.r-music .eq rect:nth-child(3){animation-delay:-.28s}.c-terminal.r-music .eq rect:nth-child(4){animation-delay:-.08s}@keyframes fxEq{from{transform:scaleY(.3)}to{transform:scaleY(1)}}"
+   },
+   "rain": {
+    "back": "",
+    "front": "<path class='tr' d='M-42 50v5M-30 50v5M-18 50v5' stroke='#8ec9ff' stroke-width='3' stroke-linecap='round'/>",
+    "css": ".c-terminal.r-rain .tr{animation:fxDripT .8s linear infinite}@keyframes fxDripT{from{opacity:1}to{transform:translateY(7px);opacity:0}}"
+   },
+   "snow": {
+    "back": "",
+    "front": "<path d='M-42 52v.1M-30 58v.1M-18 52v.1M-6 57v.1' stroke='#fff' stroke-width='4' stroke-linecap='round'/>",
+    "css": ".c-terminal.r-snow .tCursor{fill:#fff}"
+   },
+   "wind": {
+    "back": "",
+    "front": "",
+    "css": ".c-terminal.r-wind .tCursor{animation:fxWisp .5s ease-in-out infinite alternate}@keyframes fxWisp{to{transform:translateX(-7px)}}"
+   },
+   "workout": {
+    "back": "",
+    "front": "",
+    "css": ".c-terminal.r-workout .tCursor{animation:fxGymC 1s ease-in-out infinite}@keyframes fxGymC{30%{transform:scaleY(.5)}60%{transform:translateY(-9px)}}"
+   }
+  },
+  "robot": {
+   "load": {
+    "back": "",
+    "front": "<circle class='an' cy='-102' r='7.500' fill='#ff8a4a'/>",
+    "css": ".c-robot.r-load .an,.c-robot.r-load .tAntenna{transform-box:fill-box;transform-origin:center;animation:fxPuls .4s ease-in-out infinite}@keyframes fxPuls{50%{transform:scale(1.35);opacity:.55}}"
+   },
+   "memory": {
+    "back": "",
+    "front": "<circle class='an' cy='-102' r='7.500' fill='#fbbf24'/>",
+    "css": ".c-robot.r-memory .an{animation:fxBlkR .2s steps(1) infinite}@keyframes fxBlkR{50%{opacity:.2}}"
+   },
+   "error": {
+    "back": "",
+    "front": "<circle class='an' cy='-102' r='7.500' fill='#ff6b6b'/>",
+    "css": ".c-robot.r-error .an,.c-robot.r-error .tAntenna{transform-box:fill-box;transform-origin:center;animation:fxPuls .3s ease-in-out infinite}@keyframes fxPuls{50%{transform:scale(1.35);opacity:.55}}"
+   },
+   "soon": {
+    "back": "",
+    "front": "<circle class='an' cy='-102' r='7.500' fill='#fbbf24'/>",
+    "css": ".c-robot.r-soon .an{animation:fxBlkR .4s steps(1) infinite}@keyframes fxBlkR{50%{opacity:.2}}"
+   },
+   "meeting": {
+    "back": "",
+    "front": "<circle cy='-102' r='7.500' fill='#ff8a8a'/>",
+    "css": ".c-robot.r-meeting .tAntenna{animation:none;opacity:.12}"
+   },
+   "notice": {
+    "back": "",
+    "front": "",
+    "css": ".c-robot.r-notice .tAntenna{transform-box:fill-box;transform-origin:center;animation:fxPulsN .5s ease-in-out infinite}@keyframes fxPulsN{50%{transform:scale(1.35);opacity:.55}}"
+   },
+   "ask": {
+    "back": "",
+    "front": "<circle class='an' cy='-102' r='7.500' fill='#ff9ec4'/>",
+    "css": ".c-robot.r-ask .an,.c-robot.r-ask .tAntenna{transform-box:fill-box;transform-origin:center;animation:fxPuls .5s ease-in-out infinite}@keyframes fxPuls{50%{transform:scale(1.35);opacity:.55}}"
+   },
+   "done": {
+    "back": "",
+    "front": "<circle class='an' cy='-102' r='7.500' fill='#ffe27a'/>",
+    "css": ".c-robot.r-done .tAntenna{transform-box:fill-box;transform-origin:center;animation:fxPuls .8s ease-in-out infinite}@keyframes fxPuls{50%{transform:scale(1.35);opacity:.55}}"
+   },
+   "open": {
+    "back": "",
+    "front": "<circle class='an' cy='-102' r='7.500' fill='#7fe8e0'/>",
+    "css": ".c-robot.r-open .tAntenna{transform-box:fill-box;transform-origin:center;animation:fxPuls .7s ease-in-out infinite}@keyframes fxPuls{50%{transform:scale(1.35);opacity:.55}}"
+   },
+   "music": {
+    "back": "",
+    "front": "",
+    "css": ".c-robot.r-music .tAntenna{transform-box:fill-box;transform-origin:center;animation:fxPuls .5s ease-in-out infinite}@keyframes fxPuls{50%{transform:scale(1.35);opacity:.55}}"
+   },
+   "rain": {
+    "back": "",
+    "front": "<path class='dp' d='M-74 -60C-69 -53 -68 -50 -68 -47A6 6 0 0 1 -80 -47C-80 -50 -79 -53 -74 -60Z' fill='#7cc4f5'/>",
+    "css": ".c-robot.r-rain .dp{animation:fxDrip 1s ease-in infinite}@keyframes fxDrip{from{opacity:1}to{transform:translateY(46px);opacity:0}}"
+   },
+   "snow": {
+    "back": "",
+    "front": "<circle cy='-112' r='9' fill='#fff' stroke='#c9d7e6' stroke-width='2'/>",
+    "css": ".c-robot.r-snow .pm{opacity:0;animation:none}"
+   },
+   "wind": {
+    "back": "",
+    "front": "",
+    "css": ".c-robot.r-wind .tAntenna{animation:fxWispR .4s ease-in-out infinite alternate}@keyframes fxWispR{to{transform:translateX(-8px)}}"
+   },
+   "workout": {
+    "back": "",
+    "front": "<circle class='an' cy='-102' r='7.500' fill='#ff8a4a'/>",
+    "css": ".c-robot.r-workout .tAntenna{transform-box:fill-box;transform-origin:center;animation:fxPuls 1s ease-in-out infinite}@keyframes fxPuls{50%{transform:scale(1.35);opacity:.55}}"
+   }
+  },
+  "devil": {
+   "load": {
+    "back": "",
+    "front": "",
+    "css": ".c-devil.r-load .tTail{transform-box:fill-box;transform-origin:0 100%;animation:fxTail .25s ease-in-out infinite alternate}@keyframes fxTail{from{transform:rotate(-16deg)}to{transform:rotate(16deg)}}"
+   },
+   "memory": {
+    "back": "",
+    "front": "",
+    "css": ".c-devil.r-memory .tTail{transform-box:fill-box;transform-origin:0 100%;animation:fxTailD 1s ease-in-out infinite}@keyframes fxTailD{50%{transform:rotate(34deg)}}"
+   },
+   "error": {
+    "back": "",
+    "front": "",
+    "css": ".c-devil.r-error .tTail{transform-box:fill-box;transform-origin:0 100%;transform:rotate(30deg);animation:none}"
+   },
+   "soon": {
+    "back": "",
+    "front": "",
+    "css": ".c-devil.r-soon .tTail{transform-box:fill-box;transform-origin:0 100%;animation:fxTail .4s ease-in-out infinite alternate}@keyframes fxTail{from{transform:rotate(-16deg)}to{transform:rotate(16deg)}}"
+   },
+   "meeting": {
+    "back": "",
+    "front": "",
+    "css": ".c-devil.r-meeting .tTail{animation:none}"
+   },
+   "notice": {
+    "back": "",
+    "front": "",
+    "css": ".c-devil.r-notice .tTail{transform-box:fill-box;transform-origin:0 100%;animation:fxTailN .4s ease-in-out infinite alternate}@keyframes fxTailN{from{transform:rotate(-14deg)}to{transform:rotate(14deg)}}.c-devil.r-notice .dFork{opacity:0}"
+   },
+   "ask": {
+    "back": "",
+    "front": "",
+    "css": ".c-devil.r-ask .tTail{transform-box:fill-box;transform-origin:0 100%;animation:fxTail .25s ease-in-out infinite alternate}@keyframes fxTail{from{transform:rotate(-16deg)}to{transform:rotate(16deg)}}"
+   },
+   "done": {
+    "back": "",
+    "front": "",
+    "css": ".c-devil.r-done .tTail{transform-box:fill-box;transform-origin:0 100%;animation:fxTail .5s ease-in-out infinite alternate}@keyframes fxTail{from{transform:rotate(-16deg)}to{transform:rotate(16deg)}}"
+   },
+   "open": {
+    "back": "",
+    "front": "",
+    "css": ".c-devil.r-open .tTail{transform-box:fill-box;transform-origin:0 100%;animation:fxTail .6s ease-in-out infinite alternate}@keyframes fxTail{from{transform:rotate(-16deg)}to{transform:rotate(16deg)}}"
+   },
+   "music": {
+    "back": "",
+    "front": "",
+    "css": ".c-devil.r-music .tTail{transform-box:fill-box;transform-origin:0 100%;animation:fxTail .25s ease-in-out infinite alternate}@keyframes fxTail{from{transform:rotate(-16deg)}to{transform:rotate(16deg)}}"
+   },
+   "rain": {
+    "back": "",
+    "front": "",
+    "css": ".c-devil.r-rain .tTail{transform-box:fill-box;transform-origin:0 100%;animation:fxTailD 2s ease-in-out infinite}@keyframes fxTailD{50%{transform:rotate(34deg)}}"
+   },
+   "snow": {
+    "back": "",
+    "front": "",
+    "css": ".c-devil.r-snow .bn{transform-box:fill-box;transform-origin:50% 100%;transform:scale(.6)}.c-devil.r-snow .tTail{animation:fxShk .15s linear infinite}@keyframes fxShk{25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}"
+   },
+   "wind": {
+    "back": "",
+    "front": "",
+    "css": ".c-devil.r-wind .tTail{transform-box:fill-box;transform-origin:0 100%;animation:fxTailW .4s ease-in-out infinite alternate}@keyframes fxTailW{from{transform:rotate(-44deg)}to{transform:rotate(-26deg)}}"
+   },
+   "workout": {
+    "back": "",
+    "front": "",
+    "css": ".c-devil.r-workout .tTail{transform-box:fill-box;transform-origin:0 100%;animation:fxTail .5s ease-in-out infinite alternate}@keyframes fxTail{from{transform:rotate(-16deg)}to{transform:rotate(16deg)}}"
+   }
+  }
+ }
+};
 let BODY=CHARACTERS.snowflake;
 const bodyFits=(c,f)=>c===CHARACTERS.snowflake||c.fits.has(f)||(f.startsWith('plug:')&&c.fits.has('plug'));   // 'plug': every plugin prop fits
 const wornSkin=L=>bodyFits(CHARACTERS[L.character]||CHARACTERS.snowflake,String(L.skin))?L.skin:'none';
@@ -1304,13 +1744,69 @@ function applyAnchors(character=BODY,roots=[$('#accBack'),$('#accFront'),$('#sit
     const [dx,dy]=character.anchors[e.dataset.a]||[0,0]; e.setAttribute('transform',`translate(${dx} ${dy})`);
     e.style.display=bodyFits(character,e.dataset.fit||'')?'':'none'; }
 }
+// ---- reactions (#208): a short silent animation for what he senses. The art is REACT; it goes into #rxSky / #rxBack / #rxFront.
+// RX = the one playing; RXS = sustained props that still apply (high load, low memory); RX_AT = when each last played.
+let RX=null, RXT=0, RXS=new Set(), RX_AT={}, rxKey='';
+let musKeep=false;   // after the card's own Pause: chip and card stay, with Play
+const RX_SIT={meeting:'meeting',rain:'rain',snow:'snow',windy:'wind'}, RX_DUR={music:4000},
+  RX_MOOD={load:'running',memory:'t_unsure',soon:'surprised',open:'happy',wind:'surprised'};
+// everything but the once-per-10-minutes and one-at-a-time rules: what a playing or sustained one depends on
+const rxBase=()=>{ const B=document.body.classList; return !!info.proactive&&!!info.reactions&&!document.hidden&&!hiddenNow&&!SIT.fullscreen&&!SIT.locked&&!['bar','hover','calm','peek'].some(c=>B.contains(c)); };
+const rxState=id=>rxBase()&&(id==='ask'||(id==='meeting'?!SIT.dnd:!quietNow()));   // the meeting keeps its own look, unless DND is on
+function rxOk(id){ const now=performance.now(); return rxState(id)&&(id==='ask'||id==='music'||!(RX_AT[id]&&now-RX_AT[id]<600000))&&(!RX||id==='ask'); }
+function rxPaint(){
+  if(!RX&&!RXS.size&&!rxKey) return;
+  const ids=[...RXS,...(RX&&!RXS.has(RX.id)?[RX.id]:[])].filter(rxState), ch=Object.keys(CHARACTERS).find(k=>CHARACTERS[k]===BODY)||'snowflake';
+  const key=ids.length?ids.join()+'|'+(RX?RX.id:'')+'|'+ch:''; if(key===rxKey) return; rxKey=key;
+  const g={sky:'',back:'',front:''}; let css=ids.length?'@media (prefers-reduced-motion:reduce){#stage *{animation:none!important}}':'';   // (reduced motion: the prop, still)
+  for(const id of ids) for(const o of [REACT.props[id],(REACT.touch[ch]||{})[id]]) if(o){ for(const k in g) g[k]+=o[k]||''; css+=o.css||''; }
+  $('#rxSky').innerHTML=g.sky; $('#rxBack').innerHTML=g.back; $('#rxFront').innerHTML=g.front;
+  let st=$('#rxCss'); if(!st){ st=document.createElement('style'); st.id='rxCss'; document.head.appendChild(st); } st.textContent=css;
+  const sl=$('#stage').classList; [...sl].filter(c=>/^(r|c)-/.test(c)||c==='rx').forEach(c=>sl.remove(c));
+  if(ids.length){ sl.add('rx','c-'+ch); if(RX) sl.add('r-'+RX.id); } }
+function rxEnd(){ clearTimeout(RXT); RX=null; rxPaint(); }
+function rxHide(){ musKeep=false; musSync(); }   // (a failed rxOk: the card closes and the chip goes)
+function rxCheck(){ try{ if(RX&&!rxState(RX.id)) rxEnd(); else rxPaint(); if(!rxBase()) rxHide(); else musSync(); }catch(e){} }
+function rxPlay(id,sustained){ try{ if(!REACT.props[id]||!rxOk(id)) return false;   // dropped, never queued
+    if(RX) rxEnd(); RX_AT[id]=performance.now(); if(sustained) RXS.add(id); RX={id}; RXT=setTimeout(rxEnd,RX_DUR[id]||3000); if(RX_MOOD[id]) poke(RX_MOOD[id],1500); rxPaint(); return true; }catch(e){ return false; } }
+function rxSignals(hot,low,trk){   // the situation handler: load and memory start on the turn-on, and stay while the signal does
+  if(SIT.cpu_hot&&!hot){ RXS.add('load'); rxPlay('load'); } if(!SIT.cpu_hot) RXS.delete('load');   // (the still prop stays whether or not the animation may play)
+  if(SIT.ram_low&&!low){ RXS.add('memory'); rxPlay('memory'); } if(!SIT.ram_low) RXS.delete('memory');
+  if(SIT.track!==trk&&sitOn.music) rxPlay('music');   // a new track: the boombox bops again
+  rxCheck(); }
+// the music chip and card: textContent only, the answers are shown and never spoken, nothing goes to the agent
+let musIdle=0;
+const musBox=()=>RXS.has('music')&&rxState('music');   // the boombox is showing
+function musSync(){ const chipEl=$('#musChip'); if(!chipEl) return; const show=musBox()||(musKeep&&rxState('music'));
+  const was=!chipEl.hidden; chipEl.hidden=!show; if(!show){ musClose(); musKeep=false; } else{ const b=$('#musCard .mp'); b.textContent=musKeep?'Play':'Pause'; b.dataset.p=musKeep?'play':'pause'; } if(was!==show) sendRegion(true); }
+function musClose(){ const c=$('#musCard'); if(!c||c.hidden) return; c.hidden=true; clearTimeout(musIdle); if(musKeep){ musKeep=false; musSync(); } sendRegion(true); }   // (closed by hand after its Pause: the chip goes with it)
+function musSay(t){ const e=$('#musCard .mt'); e.textContent=t; e.title=t; }
+function musTouch(){ clearTimeout(musIdle); musIdle=setTimeout(musClose,15000); }
+async function musAsk(phrase){ musTouch(); let q=null;
+  try{ q=await (await post('/api/quick',{text:phrase})).json(); }catch(e){}
+  if(!q||!q.handled){ musSay("I couldn't do that."); return; }
+  musSay(q.say||''); if(phrase==='pause'){ musKeep=true; } else if(phrase==='play'){ musKeep=false; }
+  $('#musCard .mp').dataset.p=musKeep?'play':'pause'; $('#musCard .mp').textContent=musKeep?'Play':'Pause'; }
+function musOpen(){ const c=$('#musCard'); if(!c.hidden) return musClose();
+  const roomL=layoutX/fitK, roomR=innerWidth/fitK-layoutX-340, boardL=stgState!=='closed'&&stgSide==='l', boardR=stgState!=='closed'&&stgSide!=='l';   // (the side away from a board)
+  const side=!boardL&&roomL>=220?'l':!boardR&&roomR>=220?'r':null; c.style.left=side==='l'?'-220px':side==='r'?'350px':'70px'; c.style.top=side?'150px':'300px';
+  c.hidden=false; musSay(''); musAsk("what's playing"); sendRegion(true); }
+{ const card=$('#musCard'); $('#musChip').addEventListener('click',e=>{ e.stopPropagation(); musOpen(); });
+  card.querySelector('.mx').addEventListener('click',e=>{ e.stopPropagation(); musClose(); });
+  card.querySelectorAll('.mbs button').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); musAsk(b.dataset.p); }));
+  addEventListener('keydown',e=>{ if(e.key==='Escape'&&!card.hidden){ e.preventDefault(); e.stopImmediatePropagation(); musClose(); } });   // (only the card closes: not him, a request or an approval)
+  addEventListener('pointerdown',e=>{ if(!card.hidden&&!e.target.closest('#musCard,#musChip')) musClose(); }, true); }
+document.addEventListener('visibilitychange',()=>rxCheck());
+new MutationObserver(()=>rxCheck()).observe(document.body,{attributes:true,attributeFilter:['class']});
 function setCharacter(id){
   const next=CHARACTERS[id]||CHARACTERS.snowflake, changed=BODY!==next;
-  document.querySelectorAll('#body>path.ball').forEach(e=>e.setAttribute('d',next.ball));
-  document.querySelectorAll('#body>.nix').forEach(g=>{ g.innerHTML=next.back; if(next!==CHARACTERS.snowflake) g.classList.remove('glint'); });
-  document.querySelectorAll('#body>.bfront').forEach(g=>g.innerHTML=next.front);
+  document.querySelectorAll('#body>path.ball').forEach(e=>{ e.setAttribute('d',next.ball); if(e.id!=='rim') e.setAttribute('fill',next.nodes?next.fill:next===CHARACTERS.devil?'url(#devBody)':'url(#ballG)'); });   // (#rim is a ball too, and stays unfilled)
+  const stage=$('#stage'); if(next===CHARACTERS.devil) stage.style.setProperty('--rim','#5c0a1c'); else stage.style.removeProperty('--rim');
+  const art=(g,k)=>{ g.innerHTML=next[k]; if(next.nodes) drawNodes(g,next.nodes[k],PLUG_BOX); };   // (plugin art: nodes only, never markup)
+  document.querySelectorAll('#body>.nix').forEach(g=>{ art(g,'back'); if(next!==CHARACTERS.snowflake) g.classList.remove('glint'); });
+  document.querySelectorAll('#body>.bfront').forEach(g=>art(g,'front'));
   document.querySelectorAll('#body>ellipse').forEach(e=>e.setAttribute('display',next.gloss?'':'none'));
-  BODY=next;
+  BODY=next; rxPaint();
   if(SIT_P) SIT_P.bd.querySelectorAll('path').forEach(p=>p.setAttribute('d',BODY.band));
   const [dx,dy]=BODY.anchors.base;
   $('#shadow').setAttribute('cx',dx); $('#shadow').setAttribute('cy',108+dy); $('#shadow').setAttribute('rx',BODY.shadow);
@@ -1907,7 +2403,7 @@ function frame(ts){
     const put=(el,x,ax,ay,rot)=>{ el.setAttribute('opacity',clamp(x,0,1).toFixed(2)); el.setAttribute('transform',`translate(${ax} ${ay})${rot?` rotate(${rot.toFixed(2)})`:''} scale(${(.7+.3*x).toFixed(3)}) translate(${-ax} ${-ay})`); };
     const lift=(el,x)=>{ put(el,x,0,-4); el.setAttribute('transform',`translate(0 ${(-32*L).toFixed(1)}) scale(${(1-.08*L).toFixed(3)}) `+el.getAttribute('transform')); };   // (lifted onto the forehead while he talks, so his eyes stay visible)
     const off=!(sitOn.meeting||sitOn.music||sitOn.fullscreen||sitOn.coding||tp||tn||tb||ts6)&&Math.max(a,b,c,g,pa,ni,bnn,scc,pch,pf)<.002;
-    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,b,0,-4,G.sitW.x*.25); put(SIT_P.hf,b,0,-4,G.sitW.x*.25); sitSettled=off;
+    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,musBox()?0:b,0,-4,G.sitW.x*.25); put(SIT_P.hf,musBox()?0:b,0,-4,G.sitW.x*.25); sitSettled=off;   // (the boombox stands in for the headphones while it shows)
       lift(SIT_P.sh,c); put(SIT_P.gl,g,0,-4); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3);
       put(SIT_P.bn,bnn,0,-84,ww*.5-8*wn); put(SIT_P.sc,scc,0,50); SIT_P.scT.setAttribute('transform',`rotate(${(-(ww*.6)+8*wn).toFixed(2)} 40 50)`);
       const el=propOn?ts-propOn.t0:0, prop=(Q,x,ax,ay,f)=>{ if(x>.002){ put(Q.g,x,ax,ay); Q.on=true; f(Q); } else if(Q.on){ Q.g.setAttribute('opacity','0'); Q.on=false; } };   // (a prop writes only while it shows)
@@ -1919,6 +2415,8 @@ function frame(ts){
         const k=info.look_beat&&beatAt>ts-500?beat:.25*(.5+.5*Math.sin(t*2.2)), X=Math.max(BODY.cupX,EYE_HALFW*G.sz.x+EYE.cx+22);
         for(const [s,cu] of [[-1,SIT_P.cL],[1,SIT_P.cR]]) cu.setAttribute('transform',`translate(${(s*X-s*lx*.6).toFixed(2)} -8) rotate(${(s*8+(s<0?-12*L:0)).toFixed(2)}) scale(${(1+.07*k).toFixed(3)})`);
         SIT_P.bd.setAttribute('transform',`translate(0 ${(-1.5*k).toFixed(2)})`);
+        if(RXS.has('music')&&info.reactions){ const kb=info.look_beat&&!REDUCED.matches&&beatAt>ts-500?beat:0;   // the boombox's speakers pulse to the beat (still, between bops)
+          document.querySelectorAll('#rxFront .sp').forEach(e=>{ e.style.transformBox='fill-box'; e.style.transformOrigin='center'; e.style.transform=RX&&RX.id==='music'?'':`scale(${(1+.14*kb).toFixed(3)})`; }); }
         if(k>.6&&ts-nodAt>=200){ nodAt=ts; G.jelly.kick(.015*k); } } } }   // (nothing to write while all are off)
   { wxOn=wxAside(ts); const on=wxOn&&!wxHat(), dx=REDUCED.matches?(on?WX_ASIDE:0):G.wxAside.to(on?WX_ASIDE:0,dt);   // (#187: a notification mark must never sit under the cloud)
     const [hx,hy]=BODY.anchors.head; wxEl.setAttribute('transform',`translate(${(hx+dx).toFixed(1)} ${Math.max(hy,-3)})`); }   // (the weather follows his head, as far as the window lets it: 3 px of room above the clouds)
@@ -1984,7 +2482,7 @@ function ac(){ if(!actx) actx=new (window.AudioContext||window.webkitAudioContex
 // enqueue(text, {cap:true}) also puts the words on screen, one by one, as he says them
 // When the server can play audio itself (info.voice_native), his voice doesn't go through this page at all — see
 // Speaker in server.py. We just say what to speak; the server tells us when each sentence actually starts.
-const spkMap=new Map(); let spkSeq=0, spkLv=[], spkGuard=0, sayChain=Promise.resolve(), sayEpoch=0;   // sayEpoch: bumped when you cut him off
+const spkMap=new Map(); let mailHearN=0, spkSeq=0, spkLv=[], spkGuard=0, sayChain=Promise.resolve(), sayEpoch=0;   // sayEpoch: bumped when you cut him off
 function enqueue(text,o={}){
   text=(text||'').trim();
   const reply=o.reply||curReply;
@@ -2149,7 +2647,7 @@ function spkLevel(ts){ for(const L of spkLv){ if(ts>=L.t0&&ts<L.t0+L.level.lengt
 function quietCheck(){ if(!srcs.length&&!q.length&&pumpGen!==gen&&playing){ playing=false; setSpkEngine(''); speaking(false); floorPage(false); } }
 // shush: stop talking. Anything he hadn't said yet still lands on screen (mute mid-answer, or you cut in)
 function shush(){ gen++; sayEpoch++; const rest=q.splice(0), pend=curIt; curIt=null; karaFlush();
-  if(info.voice_native&&(spkMap.size||playing)){ post('/api/say/stop',{epoch:sayEpoch}).catch(()=>{}); for(const it of spkMap.values()) if(it.cap) karaNow(it.cap,it.fresh,true); spkMap.clear(); spkLv=[]; }
+  if(info.voice_native&&(spkMap.size||playing||mailHearN)){ post('/api/say/stop',{epoch:sayEpoch}).catch(()=>{}); for(const it of spkMap.values()) if(it.cap) karaNow(it.cap,it.fresh,true); spkMap.clear(); spkLv=[]; }
   if(pend&&pend.cap) karaNow(pend.cap,pend.fresh,true); for(const it of rest) if(it.cap) karaNow(it.cap,it.fresh,true);
   for(const x of srcs) try{ x.stop(); }catch(e){} srcs=[]; nextAt=0; pumpGen=-1; if(playing) speaking(false); playing=false; setSpkEngine(''); floorPage(false); }
 const untilQuiet=async()=>{ for(let i=0;i<400 && (playing||q.length);i++) await sleep(100); };
@@ -2247,15 +2745,16 @@ async function agentTick(){
   const now=performance.now();
   if(agentCur&&agentCur.sent){
     if(sayEpoch!==agentCur.ep){ agentCur=null; return; }      // cut off by something else (a spoken question, a barge-in): not "finished"
-    if(playing){ if(now-agentCur.sent>AGENT_GUARD+agentCur.ss[agentCur.i].length*150){ agentCur=null; shush(); } return; }       // (a dropped event can't wedge him; a long sentence just takes longer: about 7 characters a second at the slowest)
+    if(playing){ if(quietNow()) agentCur.hush=true; if(now-agentCur.sent>AGENT_GUARD+agentCur.ss[agentCur.i].length*150){ agentCur=null; shush(); } return; }       // (a dropped event can't wedge him; a long sentence just takes longer: about 7 characters a second at the slowest)
+    if(agentCur.hush){ agentCur=null; return; }             // (quiet came while a sentence played: the rest is dropped)
     agentCur.sent=0; agentCur.i++; }
   if(!agentCur){
     while(agentQ.length&&now-agentQ[0].at>AGENT_STALE) agentQ.shift();
-    if(!agentQ.length||playing||agentBusy()) return;
+    if(!agentQ.length||playing||agentBusy()||quietNow()) return;
     const e=agentQ.shift(); agentCur={e,ss:agentSplit(e.text),i:0,sent:0,ep:0,reply:nextReply()}; }
   const c=agentCur;
   if(c.i>=c.ss.length){ agentCur=null; return; }
-  if(agentBusy()){ agentCur=null; return; }
+  if(agentBusy()||quietNow()){ agentCur=null; return; }
   if(muted){ if(c.i===0){ capShow(); setYou(''); himSet(c.e.text); capQuiet(); } agentCur=null; return; }     // (muted partway: he just stops, without printing it all again)
   agentCheck=true;      // held until this sentence is handed over: the 250 ms tick must not come in while we wait
   try{
@@ -2263,8 +2762,9 @@ async function agentTick(){
     try{ go=(await (await post('/api/agent-say/check',{from:c.e.from})).json()).go===true; }catch(e){}
     if(agentCur!==c) return;                                   // stopped while checking
     if(!go||muted||agentBusy()){ agentCur=null; return; }             // (call, meeting, anything but "go": the rest of this summary is dropped)
+    if(quietNow()){ agentCur=null; return; }                 // (quiet started meanwhile: dropped, as for a meeting)
     if(c.i===0){ restore(Math.min(60000,4000+c.e.text.length*80),false); if(info.hover) await comeBack(); if(agentCur!==c) return;
-      if(muted||agentBusy()){ agentCur=null; return; }
+      if(muted||agentBusy()||quietNow()){ agentCur=null; return; }
       agentMark(c.e.from,'done'); capShow(); setYou(''); himSet(''); }       // (no sfx, no tick: the finished alert already did)
     c.sent=performance.now(); c.ep=sayEpoch; enqueue(c.ss[c.i],{follow:false,cap:true,strict:true,fresh:c.i===0,reply:c.reply});
   } finally { agentCheck=false; }
@@ -2291,7 +2791,8 @@ function onEvent(ev){
   else if(ev.t==='barge'){ if(!playing) return; agentStop(); sfx('pop'); poke('surprised',600);
     if(ev.listen){ const heard=ev.path?{path:ev.path,media:ev.media}:null; if(ev.text&&ev.text.split(/\s+/).length>=2) send(ev.text,{heard}); else startRec('auto',heard); } else tick('okay, okay — shh'); }
   else if(ev.t==='remind'){ if(hiddenNow) native('show'); restore(12000,false); if(info.hover) comeBack(); sfx('remind'); poke('excited',1800); say(ev.text); tick('⏰ '+ev.text); }
-  else if(ev.t==='spk'){ const it=spkMap.get(ev.id); if(!it) return; spkMap.delete(ev.id); spkGuard=performance.now()+ev.at+ev.dur*1000;
+  // ids from 1e9 are the server's mail summaries (#210): track them so mute and a click stop them
+  else if(ev.t==='spk'){ const it=spkMap.get(ev.id)||(ev.id>=1e9?{cap:''}:null); if(!it) return; spkMap.delete(ev.id); spkGuard=performance.now()+ev.at+ev.dur*1000;
     playing=true; setSpkEngine(ev.engine||'');
     const t0=performance.now()+ev.at;
     if(ev.level) spkLv.push({t0,level:ev.level,step:ev.step||40}); if(spkLv.length>12) spkLv.shift();
@@ -2302,28 +2803,31 @@ function onEvent(ev){
   else if(ev.t==='note'){ tick(ev.text); }
   else if(ev.t==='approve'){ restore(20000,true); queueApproval(ev); }
   else if(ev.t==='agent_say') agentIn(ev);
+  else if(ev.t==='agent_result') agentResult(ev);
   else if(ev.t==='attention'){                            // an agent (claude/codex/agy…) is waiting for you: `nixi-companion attention`
+    if(ev.kind==='working'){ if(!hiddenNow) CP.agent(ev.name||ev.from,ev.from); return; }   // decoration only: no flash, no voice, no attnPend
+    if(ev.kind==='done') CP.agentEnd(ev.from);
     const ask=ev.kind!=='done', r=(ev.text||'').replace(new RegExp('^'+ev.name+'\\s+','i'),''), pj=ev.project?' · '+ev.project:'';
     const head=ask?(/^(needs|is waiting|wants)\b/i.test(r)?ev.name+' '+r:ev.name+' needs you'+(r?': '+r:'')):'✓ '+ev.name+' finished'+(r?': '+r:'');   // ("Claude needs your permission…", not "Claude needs you: Claude needs…")
     if(hiddenNow){ if(ask) post('/api/notify',{title:'Nixi',body:head+pj}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
-    if(ask||!(SIT.fullscreen||SIT.meeting)) restore(ask?20000:11000,false);
-    if(info.hover) comeBack(); wake(); agentMark(ev.from,ask?'ask':'done');
-    if(!ask&&((attnPend&&performance.now()-attnPend.at<60000)||(AM&&AM.kind==='ask'&&performance.now()<AM.until))){ sfx('done'); poke('t_beam',1400); return; }   // (a finish never takes over a question)
-    if(!ask){ sfx('done'); poke('t_beam',1400); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; sendRegion(); return; }   // (no flash, no talking)
+    if(ask||!quietNow()) restore(ask?20000:11000,false);
+    if(info.hover&&(ask||!quietNow())) comeBack(); wake(); agentMark(ev.from,ask?'ask':'done'); if(ask) rxPlay('ask');
+    if(!ask&&((attnPend&&performance.now()-attnPend.at<60000)||(AM&&AM.kind==='ask'&&performance.now()<AM.until))){ if(!quietNow()){ sfx('done'); poke('t_beam',1400); } return; }   // (a finish never takes over a question)
+    if(!ask){ rxPlay('done'); if(!quietNow()){ sfx('done'); poke('t_beam',1400); } tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; sendRegion(); return; }   // (no flash, no talking)
     sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
     if(!muted) sayAside(head+(ev.project?', in '+ev.project:'')); }
   else if(ev.t==='notify') notifyIn(ev);
-  else if(ev.t==='nudge') { if(!(SIT.fullscreen||SIT.meeting)) restore(11000,false); ev.rt=performance.now(); nudgeQ.set(ev.kind,ev); nudgeDrain(performance.now()); }
-  else if(ev.t==='situation'){ SIT.meeting=!!ev.meeting; SIT.music=!!ev.music; SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party; SIT.heavy=!!ev.heavy; SIT.windy=!!ev.windy; SIT.lean=ev.lean||0; SIT.cold=ev.cold||0; SIT.day=ev.day!==false;
-    if(ev.weather==='snow'&&SIT.weather!=='snow'&&info.look_weather) poke('excited',1800);      // he loves snow: once, when it starts
-    SIT.weather=ev.weather||null; }
-  else if(ev.t==='ambient'){ if(ev.alert) restore(12000,false); const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive) poke('confused',1500);
-    if(ev.glint&&info.proactive){ poke('t_beam',1800); burstLines('#77b6e1',8); }      // a new NixOS generation: proud
-    if(ev.glint&&BODY===CHARACTERS.snowflake){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
-    if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')) flash('#4d6fb7'); }   // (never spoken)
-    else if(more&&document.body.classList.contains('bar')) flash('#e5a50a'); }
+  else if(ev.t==='nudge') { if(!quietNow()) restore(11000,false); const now=performance.now(); ev.rt=now; ev.until=ev.wait==null?Infinity:now+ev.wait*1000; nudgeQ.set(ev.kind,ev); nudgeDrain(now); }
+  else if(ev.t==='situation'){ const hot0=SIT.cpu_hot, low0=SIT.ram_low, trk0=SIT.track; SIT.track=ev.track||0; SIT.dnd=!!ev.dnd; SIT.meeting=!!ev.meeting; if(ev.music&&!SIT.music) musKeep=false; SIT.music=!!ev.music; /* (music started again: the card's own Pause is over) */ SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party; SIT.heavy=!!ev.heavy; SIT.windy=!!ev.windy; SIT.lean=ev.lean||0; SIT.cold=ev.cold||0; SIT.day=ev.day!==false;
+    if(ev.weather==='snow'&&SIT.weather!=='snow'&&info.look_weather&&!quietNow()) poke('excited',1800);      // he loves snow: once, when it starts
+    SIT.weather=ev.weather||null; rxSignals(hot0,low0,trk0); }
+  else if(ev.t==='ambient'){ if(ev.alert&&!quietNow()) restore(12000,false); const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive&&!quietNow()) poke('confused',1500); if(more) rxPlay('error'); if(ev.alert&&ev.cal) rxPlay('soon');
+    if(ev.glint&&info.proactive&&!quietNow()){ poke('t_beam',1800); burstLines('#77b6e1',8); }      // a new NixOS generation: proud
+    if(ev.glint&&BODY===CHARACTERS.snowflake&&!quietNow()){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
+    if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')&&!quietNow()) flash('#4d6fb7'); }   // (never spoken)
+    else if(more&&document.body.classList.contains('bar')&&!quietNow()) flash('#e5a50a'); }
   else if(ev.t==='approve_done') approvalGone(ev.id);
-  else if(ev.t==='stage'){ if(stageShow(ev)===false) himSet(((himEl.textContent||'').trim()+'\n'+stageText(ev)).trim()); }
+  else if(ev.t==='stage'){ if(stageShow(ev)===false&&stageText(ev)) himSet(((himEl.textContent||'').trim()+'\n'+stageText(ev)).trim()); }
   else if(ev.t==='stage_update'){ if(stgHeld&&stgHeld.kind===ev.kind&&(ev.kind==='headlines'?ev.copy===stgHeld.copy:ev.refresh===stgHeld.refresh)) stgHeld={...stgHeld,...ev,t:'stage'};   // (a held board keeps its late updates: the server doesn't send them twice)
     if(ev.kind==='headlines') pressUpdate(ev); else gaugeUpdate(ev); }
   else if(ev.t==='stage_status') stageStatus(ev);
@@ -2395,9 +2899,10 @@ function setYou(t){ youEl.textContent=t; youEl.classList.remove('pop'); youEl.of
 // ---- unasked nudges (#133b): break, welcome back, memory, load. The newest per kind waits until he is idle.
 const nudgeQ=new Map();
 let lastSpokeAt=-1e9;
-function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts-e.rt>600000) nudgeQ.delete(k);   // stale: it waited too long
-  if(!nudgeQ.size||ts<notifyAt||!notifyIdle()) return;
+function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts>e.until) nudgeQ.delete(k);   // stale: the server's deadline passed
+  if(!nudgeQ.size||quietNow()||ts<notifyAt||!notifyIdle()) return;
   const [kind,ev]=nudgeQ.entries().next().value; nudgeQ.delete(kind); notifyAt=ts+5000; wake();
+  if(kind==='break') rxPlay('workout');
   if(kind==='break'&&!FID&&mood(ts)==='idle'){ FID={name:'stretch',t0:ts,dur:FIDGETS.stretch.dur}; FIDGETS.stretch.start&&FIDGETS.stretch.start(FID); }
   else if(kind==='welcome'){ entrance(); poke('happy',1500); }
   else if(kind==='ram') poke('t_unsure',1800);
@@ -2412,13 +2917,14 @@ function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts-e.rt>600000) nudgeQ.de
   else { karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; plateReset(); ntfDrop(); setYou('');
     const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); shownTxt=''; capShow(); sendRegion(true); dropSync();
     setTimeout(()=>{ if(sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } },6000); } }
-let SIT={meeting:false,music:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false,heavy:false,windy:false,lean:0,cold:0,day:true};   // situation signals, as the server sends them
+let SIT={track:0,dnd:false,meeting:false,music:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false,heavy:false,windy:false,lean:0,cold:0,day:true};   // situation signals, as the server sends them
+function quietNow(){ return SIT.dnd||SIT.locked||SIT.fullscreen||SIT.meeting; }
 // a look goes on after 3 s of signal and off after 8 s without it: timestamps, no timers
 const sitOn={meeting:false,music:false,fullscreen:false,coding:false,night:false,party:false,rain:false,snow:false,clear:false,partly:false,cloudy:false,windy:false,cold1:false,cold2:false}, sitSeen={...sitOn}, sitAt=Object.fromEntries(Object.keys(sitOn).map(k=>[k,0]));
 function sitStep(ts){ const weather={rain:SIT.weather==='rain',snow:SIT.weather==='snow',clear:SIT.weather==='clear',partly:SIT.weather==='partly',cloudy:SIT.weather==='cloudy',windy:SIT.windy,cold1:SIT.cold>=1,cold2:SIT.cold>=2};
   for(const k in sitOn){ const raw=k in weather?weather[k]&&!!info.look_weather:!!SIT[k]&&!!info['look_'+k]; if(raw!==sitSeen[k]){ sitSeen[k]=raw; sitAt[k]=ts; }
-  if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(['rain','snow','clear','partly','cloudy'].includes(k)) for(const other of ['rain','snow','clear','partly','cloudy']) if(other!==k) sitOn[other]=false; if(k==='meeting') G.jelly.kick(.35); if(k==='party'&&wornSkin(LOOK)==='none') confetti(18); }
-  else if(!raw&&sitOn[k]&&ts-sitAt[k]>=8000) sitOn[k]=false; } }
+  if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(RX_SIT[k]) rxPlay(RX_SIT[k]); if(k==='music'){ RXS.add('music'); rxPlay('music'); rxCheck(); } if(['rain','snow','clear','partly','cloudy'].includes(k)) for(const other of ['rain','snow','clear','partly','cloudy']) if(other!==k) sitOn[other]=false; if(k==='meeting') G.jelly.kick(.35); if(k==='party'&&wornSkin(LOOK)==='none') confetti(18); }
+  else if(!raw&&sitOn[k]&&ts-sitAt[k]>=8000){ sitOn[k]=false; if(k==='music'){ RXS.delete('music'); rxCheck(); } } } }
 const NOTE={mail:['✉','New mail','#4d6fb7','reading',2200,'pop'], chat:['💬','New message','#7fd6ae','curious',1800,'chat'],
   meeting:['📅','Meeting','#ffb02a','surprised',700,'remind'], video:['▶','New post','#e0569a','t_excited',1400,'ok'],
   download:['⬇','Download','#3ddc84','t_beam',1600,'done'], job:['✔','A long command finished','#3ddc84','t_beam',1800,'done'], other:['🔔','Notification','#7fd6ae','curious',1000,'pop']};
@@ -2435,22 +2941,45 @@ function noteIcon(row,ev){ const u=iconUrl(ev); if(row.img&&row.img.isConnected&
   if(!u||!row.span||!row.span.isConnected) return; const im=document.createElement('img'); im.className='nicon'; im.alt=''; im.src=u; im.onerror=()=>im.remove(); row.span.prepend(im); row.img=im; }   // (inside the line, so it sits before the words)
 function propIcon(P,ev){ const u=iconUrl(ev); if(!P||!P.img) return; P.img.onerror=()=>P.img.setAttribute('display','none'); if(u) P.img.setAttribute('href',u); P.img.setAttribute('display',u?'':'none'); }
 function notifyShow(row,txt,ev){ karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; plateReset(); setYou('');
-  const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); row.span=sp; noteIcon(row,ev); shownTxt=''; capShow(); cap.classList.add('ntf'); sendRegion(true); dropSync(); }
+  const sp=ev.card?cardEl(ev,row):document.createElement('span'); if(!ev.card) sp.textContent=txt; himEl.appendChild(sp); row.span=sp; if(!ev.card) noteIcon(row,ev); shownTxt=''; capShow(); cap.classList.add('ntf'); sendRegion(true); dropSync(); }
+function cardEl(ev,row){ const c=ev.card, el=(t,cls,x)=>{ const e=document.createElement(t); if(cls) e.className=cls; if(x!==undefined) e.textContent=x; return e; };
+  if(!c||!Array.isArray(c.runs)||!Array.isArray(c.buttons)) throw new Error('card');
+  const d=el('span','ncard'), h=el('div','nch'), u=iconUrl(ev);   // (a span: the plate shows only for a #him>span)
+  if(u){ const im=el('img','nicon'); im.alt=''; im.src=u; im.onerror=()=>im.remove(); h.appendChild(im); }
+  h.appendChild(el('span','',notifyWho(ev)||(NOTE[ev.category]||NOTE.other)[1]));
+  if(notifyQ.length) h.appendChild(el('span','nmore','+'+notifyQ.length));
+  d.appendChild(h); if(ev.summary) d.appendChild(el('div','ncs',ev.summary));
+  const rs=el('div','ncr');
+  for(const r of c.runs.slice(0,64)){ if(r.t==='\n'){ rs.appendChild(document.createElement('br')); continue; }
+    const s=el('span','',String(r.t)); if(r.b) s.style.fontWeight='700'; if(r.i) s.style.fontStyle='italic'; if(r.u||r.host) s.style.textDecoration='underline'; rs.appendChild(s);
+    if(r.host&&String(r.t).trim().toLowerCase()!==r.host) rs.appendChild(el('span','nh',' ('+r.host+')')); }   // (a link shows where it goes; it isn't clickable)
+  d.appendChild(rs);
+  if(/^[0-9a-f]{16}$/.test(c.image||'')){ const im=el('img','nci'); im.alt=''; im.onload=()=>sendRegion(true); im.src='/api/nimage/'+c.image; im.onerror=()=>{ im.remove(); sendRegion(true); }; d.appendChild(im); }
+  if(c.buttons.length&&typeof c.rev==='string'){ const bs=el('div','ncb');
+    c.buttons.slice(0,3).forEach((label,i)=>{ const b=el('button','',String(label)); b.type='button'; b.tabIndex=-1;   // (click only: nothing else can press one)
+      b.addEventListener('click',e=>{ e.stopPropagation(); if(notifyRow!==row) return; notifyClear();
+        post('/api/notify/act',{key:ev.key,how:'action',i,rev:c.rev}).then(r=>r.json()).then(j=>{ if(!j||j.ok!==true) tick('That notification has gone.'); }).catch(()=>tick('That notification has gone.')); });
+      bs.appendChild(b); }); d.appendChild(bs); }
+  return d; }
 function notifySeen(key){ post('/api/notify/seen',{key}).catch(()=>{}); }
 function notifyIdle(){ return !(SIT.fullscreen||busy||playing||rec||transcribing||pendingAppr||follow||hiddenNow||info.hover); }
 function notifyIn(ev){
   if(!/^[A-Za-z0-9:_-]{1,64}$/.test(ev.key||'')) return;
   const now=performance.now(); ev.rt=now;                  // (only a row that is SHOWN counts as seen: the server gives the rest back to the shell)
-  if(notifyRow&&notifyRow.key===ev.key&&notifyRow.span.isConnected){ notifyRow.span.textContent=notifyText(ev,1); noteIcon(notifyRow,ev); notifySeen(ev.key); return; }   // an update: no new arrival
+  if(!ev.card&&notifyRow&&notifyRow.key===ev.key&&notifyRow.span.isConnected){ notifyRow.span.textContent=notifyText(ev,1); noteIcon(notifyRow,ev); notifySeen(ev.key); return; }   // an update: no new arrival
   notifyBurst=notifyBurst.cat===ev.category&&now-notifyBurst.t<3000?{cat:ev.category,n:notifyBurst.n+1,t:notifyBurst.t}:{cat:ev.category,n:1,t:now};
   if(ev.category==='chat'&&propOn&&propOn.cat==='chat'&&now<propOn.until){ propOn.n=(propOn.n||1)+1; propOn.until=now+2800; G.sitChat.kick(.45); if(SIT_P) propIcon(SIT_P.chat,ev); }   // (one bubble, ×N)
-  if(notifyBurst.n>2&&notifyRow&&notifyRow.span.isConnected){ notifyRow.key=ev.key; notifyRow.span.textContent=notifyText(ev,notifyBurst.n); noteIcon(notifyRow,ev); notifySeen(ev.key); return; }   // 3+ at once: one row with a count
+  if(!ev.card&&notifyBurst.n>2&&notifyRow&&!notifyRow.card&&notifyRow.span.isConnected){ notifyRow.key=ev.key; notifyRow.span.textContent=notifyText(ev,notifyBurst.n); noteIcon(notifyRow,ev); notifySeen(ev.key); return; }   // 3+ at once: one row with a count
   if(notifyQ.length<8) notifyQ.push(ev);
   notifyDrain(now); }
 function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
   const now=performance.now(); while(notifyQ.length&&now-notifyQ[0].rt>4000) notifyQ.shift();   // too old: the server is giving it back at 5 s
-  const ev=notifyQ.shift(); if(!ev) return; notifySeen(ev.key); restore(11000,false);   // (before the mail pop-out is measured)
-  const c=ev.app==='nixi-job'?NOTE.job:NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null}; notifyRow=row; notifyAt=ts+5000;
+  const ev=notifyQ.shift(); if(!ev) return;
+  if(ev.card&&document.body.matches('.bar,.pnl,.appr')) return;   // a card isn't drawn in the notch or under a panel (#cap is hidden): not marked seen, so the shell shows it at 5 s
+  if(!ev.card) notifySeen(ev.key);
+  restore(11000,false);   // (before the mail pop-out is measured)
+  const c=ev.app==='nixi-job'?NOTE.job:NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null,card:!!ev.card}; notifyRow=row; notifyAt=ts+(ev.card?7000:5000);
+  if(ev.category==='other'&&ev.app!=='nixi-job') rxPlay('notice');
   wake(); G.jelly.kick(-.45); popPupils(); poke(c[3],c[4]); burstLines(c[2],ev.category==='meeting'?8:ev.category==='download'?10:ev.category==='other'&&ev.app!=='nixi-job'?1:3);
   if(ev.category==='chat') G.tilt.kick(-8);
   { const pt={chat:2800,video:2400}[ev.category];                      // the prop for this kind; a new one replaces the old
@@ -2462,11 +2991,12 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
   if(ev.category==='mail'){ poke('reading',2600); mailPop(ev); }
   if(ev.category==='meeting') setTimeout(()=>{ if(notifyRow===row) poke('t_serious',2000); },750);
   if(ev.category==='video') setTimeout(()=>{ if(!FID&&mood(performance.now())==='idle') { FID={name:'hum',t0:performance.now(),dur:2000}; FIDGETS.hum.start&&FIDGETS.hum.start(FID); } },1500);
-  notifyShow(row,notifyText(ev,1),ev);
+  if(ev.card){ try{ notifyShow(row,notifyText(ev,1),ev); notifySeen(ev.key); }catch(_){ notifyClear(); return; } }   // (seen only once drawn; a failed draw goes back to the shell)
+  else notifyShow(row,notifyText(ev,1),ev);
   if(!SIT.meeting){ if(info.notify_sound!==false&&!muted) sfx(c[5]); if(!muted&&(info.notify_speak||[]).includes(ev.category)&&!(ev.category==='mail'&&SIT.locked)){
     const who=notifyWho(ev); enqueue(ev.category==='mail'?(info.notify_details&&info.notify_speak_subject&&ev.summary?ev.summary:'New mail'+(who?' from '+who:'')):c[1],{follow:false});
     if(ev.category==='mail'){ talk.away=[5,1]; talk.awayUntil=now+1500; } } }   // (not say(): that would wipe the row)
-  setTimeout(()=>{ if(notifyRow===row) notifyClear(); },5000); }
+  setTimeout(()=>{ if(notifyRow===row) notifyClear(); },ev.card?7000:5000); }
 // mail (#138): the envelope pops out beside him (the side with more room), opens, and goes back in after ~5 s
 let mailT=[], popWant=[0,0];
 function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.classList.contains('bar')||info.hover) return;
@@ -2496,10 +3026,12 @@ function stageBtn(label,fn,dis){ const b=hx('button','sb',label); b.type='button
 function stageBuild(ev){
   const bd=$('#stgBd'), acts=$('#stgActs'), fn=$('#stgFn'); bd.textContent=''; acts.textContent=''; fn.textContent='';
   const board=ev.kind==='commands', map=ev.kind==='place', film=ev.kind==='video', sky=ev.kind==='weather', cal=ev.kind==='calendar', stat=ev.kind==='status', dy=ev.kind==='day', gau=ev.kind==='gauges', press=ev.kind==='headlines', tr=ev.trust, guide=tr==='guide';
-  $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':film?'Now showing':sky?'Sky':cal?'Coming up':stat?'Sessions':dy?'Your day':press?'News':''));
-  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat||dy?'desk':gau?'term':press?'press':'notebook')+(stgEl.classList.contains('l')?' l':'');
+  mailCardDrop(true);
+  $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':film?'Now showing':sky?'Sky':cal?'Coming up':stat?'Sessions':dy?'Your day':ev.kind==='mail'?'Mail':press?'News':''));
+  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat||dy||ev.kind==='mail'?'desk':gau?'term':press?'press':'notebook')+(stgEl.classList.contains('l')?' l':'');
   if(sky) stageSky(ev,bd,fn);
   else if(dy) stageDay(ev,bd,acts,fn);
+  else if(ev.kind==='mail') stageMail(ev,bd,acts,fn);
   else if(gau) stageGauges(ev,bd,acts,fn);
   else if(press) stagePress(ev,bd,acts,fn);
   else if(cal) stageCal(ev,bd,acts,fn);
@@ -2520,6 +3052,52 @@ function stageBuild(ev){
     acts.appendChild(stageBtn('Open in Nixi',()=>{ post('/api/nixi-ask',{}).then(r=>r.json()).then(j=>{ if(j.ok){ fn.textContent='Opened ✓'; setTimeout(()=>stageClose(),1500); } else fn.textContent=j.say||j.error||"Couldn't open it"; }).catch(()=>{}); }));
   }
   $('#stgBack').hidden=!ev.has_prev;
+}
+/* ---- mail (#210): the rows come from the server with two tokens each, never an id. Every mail field is drawn with textContent.
+   Reply -> Review (the server builds the draft) -> Send, which only a real pointer click can press. */
+let mailSeq=0, mailCard=null;      // mailCard: {el, ta, draft} while the reply card is open; mailSeq: the newest Review/edit, an older answer is ignored
+function mailCardDrop(cancel){ const c=mailCard; mailCard=null; mailSeq++; if(!c) return;
+  if(cancel&&(c.draft||c.flight)) post('/api/mail/cancel',{draft:c.flight?'pending':c.draft}).catch(()=>{});   // (a Review still on its way has no id yet: any cancel makes the server drop it)
+  c.el.remove(); }
+function stageMail(ev,bd,acts,fn){
+  const rows=ev.rows||[];
+  if(!rows.length) bd.appendChild(hx('div','pt1','No unread mail from the last three days'));
+  rows.forEach(r=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab'), sm=hx('div','mst');
+    tx.appendChild(hx('div','lb',r.subject)); tx.appendChild(hx('div','vm',[r.from,r.account,r.age].filter(Boolean).join(' \u00b7 '))); tx.appendChild(sm);
+    if(r.hear&&r.reply){
+      ab.appendChild(stageBtn('Hear',b=>{ b.disabled=true; mailHearN++; post('/api/mail/hear',{token:r.hear}).then(x=>x.json()).then(j=>{ sm.textContent=j.ok===false||j.error?"Couldn't read that one":(j.summary||j.subject||''); }).catch(()=>{ sm.textContent="Couldn't read that one"; }).finally(()=>{ b.disabled=false; mailHearN--; }); }));
+      ab.appendChild(stageBtn('Reply',()=>mailCardOpen(bd,r))); }
+    row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
+  fn.textContent='Nothing is sent until you click Send';
+}
+function mailCardOpen(bd,r){ mailCardDrop(true);
+  const el=hx('div','mcard'), ta=hx('textarea'), lab=hx('label','mall'), all=hx('input'), rev=hx('div','mrev'), msg=hx('div','mmsg'), card={el,ta,draft:null};
+  ta.rows=4; ta.placeholder='Your reply, in your own words'; all.type='checkbox'; lab.appendChild(all); lab.appendChild(document.createTextNode(' Reply to all'));
+  mailCard=card;
+  const edited=()=>{ mailSeq++; rev.textContent=''; msg.textContent=''; };      // an edit hides Send until Review is pressed again, and voids an answer still on its way
+  ta.addEventListener('input',()=>{ stgUse=performance.now(); edited(); }); all.addEventListener('change',edited);
+  const review=stageBtn('Review',()=>{ const text=ta.value; if(!text.trim()){ msg.textContent='Write your reply first'; return; }
+    const my=++mailSeq; card.flight=my; rev.textContent=''; msg.textContent='Preparing\u2026';
+    post('/api/mail/draft',{token:r.reply,text,all:all.checked}).then(x=>x.json()).then(d=>{ if(card.flight===my) card.flight=0;
+      if(my!==mailSeq||mailCard!==card){ if(d&&d.draft) post('/api/mail/cancel',{draft:d.draft}).catch(()=>{}); return; }       // (an answer nobody wants: drop its draft)
+      if(!d||!d.draft){ msg.textContent=(d&&d.error)||"Couldn't prepare that reply"; return; }
+      card.draft=d.draft; msg.textContent=''; mailReview(card,rev,msg,d); }).catch(()=>{ if(card.flight===my) card.flight=0; if(my===mailSeq&&mailCard===card) msg.textContent="Couldn't prepare that reply"; }); });
+  const act=hx('div','mact'); act.appendChild(review); act.appendChild(stageBtn('Close',()=>mailCardDrop(true)));
+  el.appendChild(ta); el.appendChild(lab); el.appendChild(act); el.appendChild(rev); el.appendChild(msg); bd.appendChild(el); ta.focus();
+}
+function mailReview(card,rev,msg,d){ rev.textContent='';
+  const line=(k,v)=>{ const p=hx('div','mln'); p.appendChild(hx('b',null,k+': ')); p.appendChild(document.createTextNode(v)); rev.appendChild(p); };
+  line('Account',d.account); line('To',(d.to||[]).join(', ')); if((d.cc||[]).length) line('Cc',d.cc.join(', ')); line('Subject',d.subject);
+  if(d.reply_to_differs) rev.appendChild(hx('div','mwarn','Replies go to '+(d.to||[])[0]+', not the sender '+d.from));
+  rev.appendChild(hx('pre','mbody',d.body));
+  const act=hx('div','mact'), send=hx('button','sb','Send'); send.type='button';
+  const mailSent=r=>{ act.remove(); if(r&&(r.sent||r.unknown)) card.draft=null;
+    msg.textContent=r&&r.sent?(r.other_thread?'Sent, but Gmail put it in a different thread':'Sent'):r&&r.unknown?"I don't know if it was sent, check Sent in Gmail":(r&&r.error)||'That reply is gone, review it again'; };
+  send.addEventListener('click',e=>{ e.stopPropagation();
+    if(!e.isTrusted||!['mouse','pen','touch'].includes(e.pointerType)) return;
+    send.disabled=true; stgUse=performance.now();
+    post('/api/mail/send',{draft:d.draft,text:d.body}).then(r=>r.json()).then(mailSent).catch(()=>mailSent({unknown:true})); });
+  act.appendChild(send); act.appendChild(stageBtn('Cancel',()=>mailCardDrop(true))); rev.appendChild(act);
 }
 function stageMap(ev,bd,acts,fn){
   const N='http://www.w3.org/2000/svg', sv=(t,a,p)=>{ const e=document.createElementNS(N,t); for(const k in a) e.setAttribute(k,a[k]); if(p) p.appendChild(e); return e; };
@@ -2701,7 +3279,7 @@ function stagePress(ev,bd,acts,fn){
     bd.appendChild(row); });
   pressAges(); pressWatch(ev.clips,bd,fn,false); fn.textContent=ev.source||''; if(ev.copy) acts.appendChild(stageBtn('Copy',b=>stageAct('copy',ev.copy,b))); }
 const clipLine=c=>{ const m=[c.channel,c.duration].filter(Boolean).join(', '); return c.title+(m?' \u2014 '+m:''); };
-function stageText(ev){ if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>{ const st=h.state||'up'; if(st==='down'||st==='stale') return [h.name+': '+gaugeOneText(h)]; return [...(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))), ...(h.badges||[]).map(b=>(many?h.name+' ':'')+b.k+': '+b.v), ...(h.lists||[]).map(l=>(many?h.name+' ':'')+l.title+': '+(l.items||[]).join(', '))]; })).join('\n'); } if(ev.kind==='headlines') return [ev.title||'News',...(ev.items||[]).map(it=>it.title+' \u2014 '+it.source+', '+pressAge(it.at)),...(ev.clips&&ev.clips.length?['Watch:',...ev.clips.map(clipLine)]:[]),...(ev.source?[ev.source]:[])].join('\n'); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
+function stageText(ev){ if(ev.kind==='mail') return ''; if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>{ const st=h.state||'up'; if(st==='down'||st==='stale') return [h.name+': '+gaugeOneText(h)]; return [...(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))), ...(h.badges||[]).map(b=>(many?h.name+' ':'')+b.k+': '+b.v), ...(h.lists||[]).map(l=>(many?h.name+' ':'')+l.title+': '+(l.items||[]).join(', '))]; })).join('\n'); } if(ev.kind==='headlines') return [ev.title||'News',...(ev.items||[]).map(it=>it.title+' \u2014 '+it.source+', '+pressAge(it.at)),...(ev.clips&&ev.clips.length?['Watch:',...ev.clips.map(clipLine)]:[]),...(ev.source?[ev.source]:[])].join('\n'); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
   if(document.body.classList.contains('pnl')){ stgHeld=ev; return; }
@@ -2721,7 +3299,7 @@ function stageShow(ev){
 function stageHide(toTab){
   stgTm.forEach(clearTimeout); stgTm=[]; clearInterval(stgTimer); stgTimer=null; gaugeStop(); if(!toTab){ gaugeHist={}; gaugeExp=null; }
   stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on'); popEl.classList.remove('on'); wtcEl.classList.remove('on'); stgEl.setAttribute('aria-hidden','true'); stgEl.inert=true; stgTab.inert=!toTab;
-  if(!toTab) stgPosted=false;
+  if(!toTab){ stgPosted=false; mailCardDrop(true); }
   if(toTab){ stagePost(false); stgState='tab'; stgTab.textContent=$('#stgT').textContent; stagePlace(); stgSize(300); void stgTab.offsetWidth; stgTab.classList.add('on'); }
   else { stgState='closed'; stgTab.classList.remove('on'); stgOffT=setTimeout(()=>{ if(stgState==='closed') stgSize(0); sendRegion(true); },200); }
   sendRegion(true); setTimeout(()=>sendRegion(true),260);
@@ -2872,6 +3450,7 @@ function cardPlace(){   // centred on him, below his arms (reach, as CP.geo), in
   const b=document.querySelector('#body > .ball').getBoundingClientRect(), n=document.querySelector('#body .nix'), reach=n?n.getBoundingClientRect().width/2:b.width/2;
   cardTop=Math.round(clamp(b.top+b.height/2+reach+10-layoutY,4-layoutY,Math.max(4-layoutY,innerHeight-layoutY-apEl.offsetHeight-4)));
   apEl.style.top=cardTop+'px'; apEl.style.left=clamp(170-cardW/2,4-layoutX,innerWidth-layoutX-cardW-4)+'px'; }
+const agentName=n=>({claude:'Claude',codex:'Codex',agy:'agy'}[n]||String(n||'').replace(/^./,c=>c.toUpperCase()));
 function nextApproval(){
   pendingAppr=apprQ.shift()||null;
   document.body.classList.toggle('appr',!!pendingAppr); apEl.classList.toggle('on',!!pendingAppr);
@@ -2880,7 +3459,7 @@ function nextApproval(){
   if(hiddenNow) native('show');
   const what=a.tool==='Bash'?'Can I run this?':a.tool==='WebFetch'?'Can I open this page?':a.tool==='WebSearch'?'Can I search the web?':
     /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(a.tool)?'Can I change this file?':`Can I use ${a.tool}?`;
-  $('#apHint').textContent=a.confirm==='click'?'click yes or no — voice can\'t confirm sends':'say “yes” or “no”'; $('#apQ').textContent=a.q||what; $('#apCmd').textContent=a.detail; fitCard();
+  $('#apHint').textContent=a.confirm==='click'?'click yes or no — voice can\'t confirm sends':'say “yes” or “no”'; $('#apQ').textContent=a.q||(a.agent?`${agentName(a.agent)}${a.project?' · '+a.project:''} wants to run`:what); $('#apTerm').hidden=!a.agent; $('#apCmd').textContent=a.detail; fitCard();
   { const al=apEl.querySelector('[data-ans="always"]'); if(al) al.hidden=a.always===false; }   // not for chained commands
   const spoken=a.say||what;   // the server says what it does in plain words (the card shows the real command)
   askAloud(a,spoken);
@@ -2902,16 +3481,28 @@ async function askAloud(a,spoken){
     if(said) tick(info.bridge?'say “yes” or “no” — “always” is click-only':'say “yes” or “no” (or click)');
   }
 }
-function answer(ans){ const a=pendingAppr; if(!a) return;
+async function answer(ans,trusted){ const a=pendingAppr; if(!a||a.sent) return;
   if(ans==='always'&&a.always===false) ans='yes';      // commands that run other commands: only ever this once
   if(rec&&rec.mode==='approve') stopRec(true);
-  post('/api/approve/answer',{id:a.id,ans});
+  const click=a.confirm==='click', keyed=click&&ans!=='no'&&trusted===true;   // the key goes only with a real click on yes
+  a.sent=true;
+  const r=await post('/api/approve/answer',{id:a.id,ans},keyed?{headers:hdr(Object.assign({'Content-Type':'application/json'},CLICKKEY.hdr()))}:undefined).catch(()=>null);
+  let ok=true; if(click){ try{ ok=!!(await r.json()).ok; }catch(e){ ok=false; } }
+  if(!ok&&!a.agent&&pendingAppr===a){ a.sent=false; tick('That needs a click on yes here — or say no',true); return; }   // Nixi's own card is still waiting on the server
+  if(pendingAppr===a){ pendingAppr=null; nextApproval(); }
+  if(!ok){ tick('That one had already gone',true); return; }
   tick(ans==='no'?'okay — not running that':ans==='always'?`okay — won't ask again for that this chat`:'okay!',ans==='no');
-  poke(ans==='no'?'sad':'joy',ans==='no'?1100:800);
-  pendingAppr=null; nextApproval(); }
+  poke(ans==='no'?'sad':'joy',ans==='no'?1100:800); }
 function approvalGone(id){ if(pendingAppr&&pendingAppr.id===id){ if(rec&&rec.mode==='approve') stopRec(true); pendingAppr=null; nextApproval(); }
   else { const i=apprQ.findIndex(x=>x.id===id); if(i>=0) apprQ.splice(i,1); } }
-apEl.addEventListener('click',e=>{ const b=e.target.closest('[data-ans]'); if(b) answer(b.dataset.ans); });
+apEl.addEventListener('click',e=>{ const b=e.target.closest('[data-ans]'); if(b) answer(b.dataset.ans,e.isTrusted);
+  if(e.target.closest('[data-term]')&&pendingAppr&&pendingAppr.agent){ const a=pendingAppr; a.sent=true; post('/api/approve/release',{id:a.id}).catch(()=>{}); pendingAppr=null; nextApproval(); tick('okay — answer it in the terminal'); } });
+function agentResult(ev){ const n=agentName(ev.agent), st=ev.state;
+  if(st==='ran'){ tick(ev.ok===false?`${n} ran it ✗`+(Number.isInteger(ev.exit)?` (exit ${ev.exit})`:''):`${n} ran it`+(ev.ok?' ✓':''),ev.ok===false); if(ev.ok) poke('joy',1100); }
+  else if(st==='denied'){ tick('denied in Nixi'); poke('sad',1100); }
+  else if(st==='ran-after-deny') tick('⚠ a matching command ran after you denied',true);
+  else if(st==='unclear') tick(`${n}: two matching requests, result unclear`);
+  else if(st==='unknown') tick('approved, result unknown'); }
 
 /* ================= talk to claude code ================= */
 const MEM_ADD=/^(?:hey\s+nixi[,\s]+)?(?:please\s+)?(?:remember|don'?t forget|note down|make a note)\s*(?:that|this|:)?\s+(.{3,})$/i;
@@ -2941,7 +3532,7 @@ async function send(text,opts={}){
   let asked=text;                            // what goes to the agent (a session summary asks with the session's text)
   if(!atts.length && text && !opts.claude){
     try{ const q=await (await post('/api/quick',{text})).json(); if(q.ask) asked=q.ask;
-      if(q.handled){ capShow(); setYou(text); say(q.say); poke(q.mood||'happy',1300); if(q.sfx) sfx(q.sfx); if(q.monitor) native('monitor:'+q.monitor); if(q.state){ info=q.state; showInfo(); } return; } }catch(e){} }
+      if(q.handled){ if(q.opened) rxPlay('open'); capShow(); setYou(text); say(q.say); poke(q.mood||'happy',1300); if(q.sfx) sfx(q.sfx); if(q.monitor) native('monitor:'+q.monitor); if(q.state){ info=q.state; showInfo(); } return; } }catch(e){} }
   if(busy){ tick("one sec — I'm still on the last thing"); return; }
   if(!opts.stage && !atts.length && SCREEN_RE.test(text)) await shoot(WHOLE_RE.test(text)?'screen':'window');
   if(!opts.stage && liveOn() && !atts.some(a=>['window','screen','region'].includes(a.kind))){ const j=await shoot('window',true); if(j) j.live=true; }
@@ -2976,7 +3567,8 @@ async function send(text,opts={}){
     await readSSE(res,handle);
   }catch(e){ failed=true; himSet(e.message,true); }
   busy=false; idleHoldUntil=performance.now()+15000; $('#wk').textContent=''; toolMood=null; wake(); capQuiet(); document.body.classList.remove('busy'); workChip(); CP.done();
-  while(apprQ.length) apprQ.pop(); if(pendingAppr){ pendingAppr=null; nextApproval(); }
+  for(let i=apprQ.length-1;i>=0;i--) if(!apprQ[i].agent) apprQ.splice(i,1);   // an agent's card outlives Nixi's turn (#211, Codex)
+  if(pendingAppr&&!pendingAppr.agent){ pendingAppr=null; nextApproval(); }
   if(ignored){ setYou(''); himSet(''); cap.classList.add('off'); capOn=false; return; }   // you weren't talking to him: say and show nothing
   const answerText=untag(buf||all).trim();
   lastAnswer=answerText; moreEl.classList.toggle('on',answerText.length>220||/```/.test(answerText)); nixiEl.classList.toggle('on',!!answerText);
@@ -3127,10 +3719,11 @@ const ICON={
   hide:'<path d="M6 6l12 12M18 6 6 18"/>',
   notme:'<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
   mirror:'<circle cx="12" cy="12" r="9"/><path d="M9 9h6v6H9z"/>',
+  mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
 };
 // (no top bar / blob button: you dock him by dragging him into a screen edge, and pull him out to get the blob back)
 const NX_MENU=['cd','history','look','plugins'];
-const MENU=[['talk','talk'],['cd','folder'],['history','history'],['look','show my screen'],['hover','hover mode'],['plugins','Claude Code plug-ins'],['mirror','take control back'],['notme',"that wasn't me"],['set','settings'],['hide','hide']];
+const MENU=[['talk','talk'],['cd','folder'],['history','history'],['mail','mail'],['look','show my screen'],['hover','hover mode'],['plugins','Claude Code plug-ins'],['mirror','take control back'],['notme',"that wasn't me"],['set','settings'],['hide','hide']];
 const MENU_XY=[];
 menuEl.innerHTML=MENU.map(([a,l],i)=>{ const ang=(-168+i*(156/(MENU.length-1)))*Math.PI/180, r=122;
   MENU_XY[i]=[Math.cos(ang)*r/1.1, Math.sin(ang)*r/1.1];                 // same spot in the face's SVG units (330px = 300 units)
@@ -3141,7 +3734,7 @@ async function heardGet(){ try{ await tokenReady; return await (await fetch('/ap
 const NOTCH_MENU={top:[170,26,15,165], bottom:[170,434,-165,-15], left:[34,230,-75,75], right:[306,230,105,255]};   // eye centre x,y + arc from/to (deg)
 function layoutMenu(){
   const edge=barEdge(), all=$$('#menu .mb');
-  all.forEach(b=>b.classList.toggle('off',(b.dataset.a==='mirror'&&!(MIR.owner==='pending'||MIR.owner==='agent'))||(b.dataset.a==='notme'&&!markOpen)));     // (only while it applies)
+  all.forEach(b=>b.classList.toggle('off',(b.dataset.a==='mirror'&&!(MIR.owner==='pending'||MIR.owner==='agent'))||(b.dataset.a==='notme'&&!markOpen)||(b.dataset.a==='mail'&&!(info.mail_on&&info.bridge))));     // (only while it applies)
   const bs=all.filter(b=>getComputedStyle(b).display!=='none'), n=bs.length;
   MENU_XY.length=0;
   if(!edge){ menuEl.style.left=''; menuEl.style.top='';
@@ -3159,9 +3752,10 @@ let menuShutAt=0;
 function menu(on){ if(on){ layoutMenu(); heardGet().then(j=>{ if(!!j.mark_open!==markOpen){ markOpen=!!j.mark_open; if(menuOn) layoutMenu(); } }); } if(!on&&menuOn) menuShutAt=performance.now(); if(on!==menuOn) sfx(on?'menu':'close'); menuOn=on; menuEl.classList.toggle('on',on); document.body.classList.toggle('menu',on); if(on){ closePanels(); hideAsk(); } $('[data-a="hover"]').classList.toggle('on',!!info.hover); sendRegion(true); }
 menuEl.addEventListener('click',e=>{ const b=e.target.closest('.mb'); if(!b) return; menu(false);
   ({talk:()=>startRec('auto'), bar:()=>toggleBar(), cd:()=>showAsk('/cd '), history:()=>openPanel('history'), plugins:()=>openPanel('plugins'),
+    mail:()=>post('/api/mail/open').then(r=>r.json()).then(j=>{ if(j&&j.say) say(j.say); }).catch(()=>{}),
     look:()=>{ endListening(); return shoot('screen').then(j=>{ if(j) showAsk(''); }); }, hover:toggleHover, mirror:mirRevoke, notme:notMe, hide:dismiss, set:()=>settings(true)})[b.dataset.a](); });
 async function notMe(){ try{ const j=await (await post('/api/heard/not-me')).json(); markOpen=false; tick(j.ok?"noted — that one wasn't for me":"too late to mark that one"); }catch(e){} }
-function dismiss(){ menu(false); hideAsk(); const held=stgHeld; stgHeld=null; closePanels(); if(held){ if(stgState!=='closed') stageHide(false); himSet(((himEl.textContent||'').trim()+'\n'+stageText(held)).trim()); }   // (he's going away: a held board follows the rule for a board arriving while hidden)
+function dismiss(){ menu(false); hideAsk(); const held=stgHeld; stgHeld=null; closePanels(); if(held){ if(stgState!=='closed') stageHide(false); if(stageText(held)) himSet(((himEl.textContent||'').trim()+'\n'+stageText(held)).trim()); }   // (he's going away: a held board follows the rule for a board arriving while hidden)
   endListening(); if(!native('hide')) poke('sleepy',1200); }
 // Esc / hiding him: he stops listening — a recording in progress is dropped and the "just keep talking" window closes
 function endListening(){ if(rec&&rec.mode!=='approve') stopRec(true); post('/api/follow',{act:'cancel'}).catch(()=>{}); follow=false; hearRaw=0; }
@@ -3416,7 +4010,7 @@ function editKeys(L,p){ if(L.link&&(p==='pupL'||p==='pupR')) return ['pupL','pup
   return [p==='skin'?'skinColor':p]; }
 function setPart(hex,{save=true,fromPicker=false}={}){
   const L=curLook(); for(const k of editKeys(L,pkPart)) L[k]=hex; L.random=false; L.follow_theme=false;   // by hand: stop following the theme
-  info.look=L; applyLook(L); lookShown=JSON.stringify([L,info.theme]);
+  info.look=L; applyLook(L); lookShown=JSON.stringify([L,info.theme,info.plugin_characters]);
   if(!fromPicker&&hex){ pkHSV=hex2hsv(hex); }
   drawPicker(); drawPreview();
   if(save){ clearTimeout(saveT); saveT=setTimeout(()=>{ post('/api/settings',{look:curLook()}).then(r=>r.json()).then(j=>{ info=j; }).catch(()=>{}); addRecent(hex); },450); }
@@ -3438,7 +4032,7 @@ function renderParts(){ const L=curLook();
     :[['body','Body'],['pupL','Left pupil'],['pupR','Right pupil'],['whiteL','Left eye white'],['whiteR','Right eye white']];
   if(wornSkin(L)!=='none') list.push(['skin','Skin']);
   $('#partChips').innerHTML=list.map(([p,l])=>`<button data-part="${p}" class="${pkPart===p?'on':''}"><i style="--c:${partColour(L,p)}"></i>${l}</button>`).join(''); }
-function drawPreview(){ const L=curLook(), svg=$('#lookPrev'); miniNixi(svg,L,true);
+function drawPreview(){ const L=curLook(), svg=$('#lookPrev'); miniNixi(svg,L,true); miniNixi($('#set .hd .logo'),L,false);
   const sel=L.link&&pkPart==='pupL'?['pupL','pupR']:L.link&&pkPart==='whiteL'?['whiteL','whiteR']:[pkPart];
   svg.querySelectorAll('[data-part]').forEach(e=>{ if(sel.includes(e.dataset.part)&&e.tagName!=='g') e.classList.add('sel'); }); }
 function drawPicker(){
@@ -3462,6 +4056,19 @@ $('#pkRnd').addEventListener('click',()=>{ const kind=pkPart.startsWith('white')
 $('#pkAll').addEventListener('click',()=>{ const L=curLook(), R=randomLook(L); Object.assign(L,R); L.random=false; info.look=L; applyLook(L);
   post('/api/settings',{look:L}).then(r=>r.json()).then(j=>{ info=j; }); selectPart(pkPart); poke('excited',900); });
 
+let mailOpt={accounts:[],models:[]}, mailOptT=0;
+function renderMail(){ const sw=$('#mailSw'); if(!sw) return; sw.checked=!!info.mail_on; $('#mailOpts').hidden=!info.mail_on;
+  if(!info.mail_on) return;
+  if(!mailOptT||performance.now()-mailOptT>15000){ mailOptT=performance.now();
+    tokenReady.then(()=>fetch('/api/mail/options',{headers:hdr()})).then(r=>r.json()).then(j=>{ mailOpt={accounts:j.accounts||[],models:j.models||[]}; mailDraw(); }).catch(()=>{}); }
+  mailDraw(); }
+function mailDraw(){ const box=$('#mailAccts'), sel=$('#mailModel'); if(!box||!info.mail_on) return;
+  if(box.contains(document.activeElement)||document.activeElement===sel) return;           // (don't redraw under a click)
+  const have=info.mail_accounts||[], names=[...new Set([...mailOpt.accounts,...have])];
+  box.textContent=''; if(!names.length) box.appendChild(hx('div','h','No address found. Sign in with gog first.'));
+  names.forEach(a=>{ const l=hx('label','tg'), i=hx('input'), sp=hx('span','sw'), t=hx('span','l',a); i.type='checkbox'; i.checked=have.includes(a); i.dataset.mailAcct=a; l.appendChild(i); l.appendChild(sp); l.appendChild(t); box.appendChild(l); });
+  const cur=info.mail_model||'', ms=[...new Set([...mailOpt.models,...(cur?[cur]:[])])]; sel.textContent='';
+  [['','None'],...ms.map(m=>[m,m])].forEach(([v,l])=>{ const o=hx('option',null,l); o.value=v; sel.appendChild(o); }); sel.value=cur; }
 function renderSettings(){
   { const rr=$('#rootSw').closest('.row'); if(rr) rr.style.display=info.root_ok===false?'none':''; }
   { const pr=$('#peersRow'); if(pr) pr.hidden=!info.peers_configured; }
@@ -3524,11 +4131,15 @@ function renderSettings(){
   }
   const am=info.agent_voice_mute||[];
   const sw={rootSw:info.root,speakSw:!muted&&info.tts_choice!=='off',wakeSw:info.wake_word,agentClaudeSw:!am.includes('claude'),agentCodexSw:!am.includes('codex'),agentAgySw:!am.includes('agy'),autoSw:info.autostart,listenShowSw:info.listen_on_show,hoverSw:info.hover,
-    followSw:!!info.follow_focus,asideSw:info.step_aside!==false,stagesSw:info.answer_stages!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,proactiveSw:!!info.proactive,takeoverSw:!!info.notifications_takeover,detailsSw:!!info.notify_details,nsoundSw:info.notify_sound!==false,lookMeetSw:!!info.look_meeting,lookMusicSw:!!info.look_music,lookBeatSw:!!info.look_beat,speakSubjSw:!!info.notify_speak_subject,lookFsSw:!!info.look_fullscreen,reactLoadSw:!!info.react_load,reactBreakSw:!!info.react_break,reactWelcomeSw:!!info.react_welcome,lookCodingSw:!!info.look_coding,lookNightSw:!!info.look_night,lookWeatherSw:!!info.look_weather,lookPartySw:!!info.look_party,reactQuipsSw:!!info.react_quips,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
-    updSw:info.update_check!==false,peersSw:!!info.peers_on,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
+    followSw:!!info.follow_focus,asideSw:info.step_aside!==false,stagesSw:info.answer_stages!==false,ambSysSw:info.ambient_system!==false,ambCalSw:!!info.ambient_calendar,ambWxSw:!!info.ambient_weather,proactiveSw:!!info.proactive,reactSw:!!info.reactions,takeoverSw:!!info.notifications_takeover,detailsSw:!!info.notify_details,nsoundSw:info.notify_sound!==false,lookMeetSw:!!info.look_meeting,lookMusicSw:!!info.look_music,lookBeatSw:!!info.look_beat,speakSubjSw:!!info.notify_speak_subject,lookFsSw:!!info.look_fullscreen,reactLoadSw:!!info.react_load,reactBreakSw:!!info.react_break,reactWelcomeSw:!!info.react_welcome,lookCodingSw:!!info.look_coding,lookNightSw:!!info.look_night,lookWeatherSw:!!info.look_weather,lookPartySw:!!info.look_party,reactQuipsSw:!!info.react_quips,clickSw:info.click_through,notifySw:info.notify_done,popupSw:info.popup_done,codeSw:info.code_panel!==false,bargeSw:info.barge_in,sfxSw:info.sfx,linkSw:curLook().link,themeSw:curLook().follow_theme!==false,rndSw:curLook().random,
+    updSw:info.update_check!==false,peersSw:!!info.peers_on,agentApproveSw:!!info.agent_approvals,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
   renderAgents(); renderUpdate(); renderPtt();
+  renderMail();
   for(const k in sw){ const e=document.getElementById(k); if(e) e.checked=!!sw[k]; }
+  { const e=$('#reactSw'); e.disabled=!info.proactive; e.closest('.row').style.opacity=info.proactive?'':'.5';   // (needs Proactive)
+    const off=[['look_music','Headphones for music'],['look_meeting','Tie in meetings'],['look_weather','Dress for the weather'],['react_load','Notice a busy machine'],['react_break','Remind me to move']].filter(([k])=>!info[k]).map(x=>x[1]);
+    $('#reactHelp').textContent='Short animations for what he notices. Silent.'+(off.length?' Off, so no reaction for: '+off.join(', ')+'.':''); }
   for(const [k,on] of [['lookBeatSw',info.look_music],['speakSubjSw',info.notify_details]]){ const e=$('#'+k); e.disabled=!on; e.closest('.row').style.opacity=on?'':'.5'; }   // (each needs its parent switch)
   const ps=restPu();
   $('#pupChips').innerHTML=[['slit','▮ slits'],['circle','● circles'],['dot','• dots']].map(([id,l])=>`<button data-ps="${id}" class="${ps===id?'on':''}">${l}</button>`).join('');
@@ -3544,7 +4155,8 @@ function renderSettings(){
     :'<div class="h" style="margin:0">none yet</div>';
   // look
   const L=curLook();
-  $('#characterGrid').innerHTML=Object.entries(CHARACTERS).map(([id,c])=>`<button type="button" data-character="${id}" class="${(L.character||'snowflake')===id?'on':''}" aria-pressed="${(L.character||'snowflake')===id}"><svg viewBox="-125 -150 250 250" aria-hidden="true"></svg>${c.label}</button>`).join('');
+  miniNixi($('#set .hd .logo'),L,false);
+  $('#characterGrid').innerHTML=Object.entries(CHARACTERS).map(([id,c])=>`<button type="button" data-character="${id}" class="${(L.character||'snowflake')===id?'on':''}" aria-pressed="${(L.character||'snowflake')===id}"><svg viewBox="-125 -150 250 250" aria-hidden="true"></svg>${esc(c.label)}</button>`).join('');
   $$('#characterGrid button').forEach(b=>miniNixi(b.querySelector('svg'),{...L,character:b.dataset.character,skin:'none'},false));
   const worn=wornSkin(L), bodyL=CHARACTERS[L.character]||CHARACTERS.snowflake;
   { const ch=L.character||'snowflake', sel=$('#charVoice'); $('#charVoiceLabel').textContent=`Voice for the ${bodyL.label}`;
@@ -3744,7 +4356,7 @@ async function setSetting(b,errSel){
     return true;
   }catch(e){ if(errEl) errEl.textContent=e.message; else tick('settings: '+e.message,true); return false; }
 }
-function setLook(patch){ clearTimeout(saveT); const L={...curLook(),...patch}; info.look=L; applyLook(L); lookShown=JSON.stringify([L,info.theme]); return setSetting({look:L}); }
+function setLook(patch){ clearTimeout(saveT); const L={...curLook(),...patch}; info.look=L; applyLook(L); lookShown=JSON.stringify([L,info.theme,info.plugin_characters]); return setSetting({look:L}); }
 setEl.addEventListener('click',e=>{
   if(e.target.closest('[data-close]')) return settings(false);
   const g=k=>e.target.closest(`[data-${k}]`);
@@ -3812,12 +4424,16 @@ setEl.addEventListener('change',e=>{
   if(id==='ambSysSw') setSetting({ambient_system:on});
   if(id==='ambCalSw') setSetting({ambient_calendar:on});
   if(id==='ambWxSw') setSetting({ambient_weather:on});
-  { const k={proactiveSw:'proactive',takeoverSw:'notifications_takeover',detailsSw:'notify_details',nsoundSw:'notify_sound',lookMeetSw:'look_meeting',lookMusicSw:'look_music',lookBeatSw:'look_beat',speakSubjSw:'notify_speak_subject',lookFsSw:'look_fullscreen',reactLoadSw:'react_load',reactBreakSw:'react_break',reactWelcomeSw:'react_welcome',lookCodingSw:'look_coding',lookNightSw:'look_night',lookWeatherSw:'look_weather',lookPartySw:'look_party',reactQuipsSw:'react_quips'}[id]; if(k) setSetting({[k]:on}); }
+  { const k={proactiveSw:'proactive',reactSw:'reactions',takeoverSw:'notifications_takeover',detailsSw:'notify_details',nsoundSw:'notify_sound',lookMeetSw:'look_meeting',lookMusicSw:'look_music',lookBeatSw:'look_beat',speakSubjSw:'notify_speak_subject',lookFsSw:'look_fullscreen',reactLoadSw:'react_load',reactBreakSw:'react_break',reactWelcomeSw:'react_welcome',lookCodingSw:'look_coding',lookNightSw:'look_night',lookWeatherSw:'look_weather',lookPartySw:'look_party',reactQuipsSw:'react_quips'}[id]; if(k) setSetting({[k]:on}); }
   if(id==='clickSw') setSetting({click_through:on}).then(()=>sendRegion(true));
   if(id==='notifySw') setSetting({notify_done:on});
+  if(id==='mailSw') setSetting({mail_on:on}).then(()=>{ mailOptT=0; renderMail(); });
+  if(id==='mailModel') setSetting({mail_model:e.target.value});
+  if(e.target.dataset&&e.target.dataset.mailAcct) setSetting({mail_accounts:$$('#mailAccts input:checked').map(c=>c.dataset.mailAcct)});
   if(id==='popupSw') setSetting({popup_done:on});
   if(id==='updSw') setSetting({update_check:on}).then(renderUpdate);
   if(id==='peersSw') setSetting({peers_on:on});
+  if(id==='agentApproveSw') setSetting({agent_approvals:on});
   if(id==='fullSw') setSetting({full_text:on}).then(showInfo);
   if(id==='compactSw') setSetting({auto_compact:on});
   if(id==='costIn') setSetting({max_cost_usd:+e.target.value||0}).then(()=>tick(+e.target.value?'a request stops at $'+e.target.value:'no usage limit'));
@@ -3872,7 +4488,7 @@ async function slash(cmd){
 }
 
 /* ================= wiring ================= */
-function showInfo(){ document.documentElement.lang=info.lang_active||'en'; syncLangUI(); if('mirror' in info) mirSet(info.mirror); if(info.ambient){ AMB=info.ambient; renderCue(); } syncEye(); document.body.classList.toggle('fulltext',!!info.full_text); ctxRender(); input.placeholder=`ask in ${info.cwd_display||'~'}…`; const l=$('#cwdLbl'); if(l) l.textContent=info.cwd_display||'folder';
+function showInfo(){ rxCheck(); document.documentElement.lang=info.lang_active||'en'; syncLangUI(); if('mirror' in info) mirSet(info.mirror); if(info.ambient){ AMB=info.ambient; renderCue(); } syncEye(); document.body.classList.toggle('fulltext',!!info.full_text); ctxRender(); input.placeholder=`ask in ${info.cwd_display||'~'}…`; const l=$('#cwdLbl'); if(l) l.textContent=info.cwd_display||'folder';
   const ve=$('#voiceEng'); if(ve) ve.textContent=voiceEngText();
   document.body.classList.toggle('root',!!info.root); document.body.classList.toggle('nixi',!!info.bridge); }
 async function refresh(){ try{ await tokenReady; const r=await fetch('/api/state',{headers:hdr()}); const j=await r.json();
@@ -3883,8 +4499,8 @@ function toggleMute(){ muted=!muted; try{localStorage.setItem('nixi.muted',muted
 
 // hidden (Esc, hide, closing him) = fully off: he stops talking and the server closes the mic — no "hey Nixi" until
 // he's shown again (Start menu, your hotkey, or `nixi-companion`)
-window.nixiHidden=()=>{ hiddenNow=true; endListening(); menu(false); hideAsk(); agentStop(); post('/api/sleep',{on:true}).catch(()=>{}); };
-window.nixiShown=()=>{ hiddenNow=false; dozing=false; restore(15000);   // (the host showed him: leave doze without another native message)
+window.nixiHidden=()=>{ hiddenNow=true; rxCheck(); endListening(); menu(false); hideAsk(); agentStop(); post('/api/sleep',{on:true}).catch(()=>{}); };
+window.nixiShown=()=>{ hiddenNow=false; rxCheck(); dozing=false; restore(15000);   // (the host showed him: leave doze without another native message)
   post('/api/sleep',{on:false}).catch(()=>{}); entrance(); wake(); refresh().then(()=>{ syncEye(true); if(pendingAppr||busy) return;
   if(info.listen_on_show&&!info.hover) setTimeout(()=>startRec('auto'),450); else setTimeout(()=>poke('wink',900),350); }); };
 async function comeBack(){ if(!info.hover) return; await toggleHover(false); await sleep(700); }
@@ -3937,6 +4553,7 @@ function sendRegion(force){
   if(document.body.classList.contains('calm')&&MIR.owner==='agent') add($('#mirBar'),2);
   if(ask.classList.contains('on')) add(ask,4);
   if(chip.classList.contains('act')&&chip.classList.contains('on')) add(chip,4);
+  add($('#musChip'),4); add($('#musCard'),4);
   if(cap.classList.contains('ntf')) add(plate,4);
   if(SIT_P&&notifyRow&&notifyRow.span&&notifyRow.span.isConnected&&propOn&&propOn.cat==='chat'&&performance.now()<propOn.until) add(SIT_P.chat.g,4);
   if($('#mailPop').classList.contains('on')){ add($('#mailPop'),4); add($('#mailPop .lt'),2); }
@@ -4034,6 +4651,7 @@ addEventListener('mousedown',e=>{ if(!e.target.closest('#body,#barPill,#menu,#as
 
 addEventListener('keydown',e=>{ wake(); lastUser=performance.now();
   const askOn=ask.classList.contains('on'), k=e.key.toLowerCase(), typing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&document.activeElement!==input;
+  if(mailCard&&mailCard.el.isConnected&&(e.key==='Enter'||k==='y')&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){ e.preventDefault(); return; }   // (the mail reply card is up: Enter and y never reach the ask box or an approval)
   if(pendingAppr && !askOn && !typing){ if((e.key==='Enter'||k==='y')&&pendingAppr.confirm==='click'){ e.preventDefault(); return; } if(e.key==='Enter'||k==='y'){ e.preventDefault(); return answer('yes'); } if(e.key==='Escape'||k==='n'){ e.preventDefault(); return answer('no'); } }
   if(e.key==='Escape'){ e.preventDefault();
     if(menuOn) return menu(false);
@@ -4114,7 +4732,7 @@ const CP=(()=>{
     H=el.offsetHeight; const want=[2*Math.max(0,Math.ceil(geo().reach*.92+18+W+16-170)),Math.max(0,H+16-460)];
     if(want[0]!==sheetWant[0]||want[1]!==sheetWant[1]){ sheetWant=want; sizeWindow(); } }
   new MutationObserver(()=>{ if(on&&!barEdge()) fitSheet(); }).observe(out,{childList:true,subtree:true,characterData:true});
-  function hide(){ sheetWant=[0,0]; sizeWindow(); on=false; el.classList.remove('on'); document.body.classList.remove('term'); clearTimeout(offT); offT=setTimeout(()=>{ if(!on&&wide){ wide=false; native('code:off'); } },400); }
+  function hide(){ agStop(); sheetWant=[0,0]; sizeWindow(); on=false; el.classList.remove('on'); document.body.classList.remove('term'); clearTimeout(offT); offT=setTimeout(()=>{ if(!on&&wide){ wide=false; native('code:off'); } },400); }
 
   // ---- writing to it
   const KW=/\b(def|return|if|elif|else|for|while|in|not|and|or|import|from|try|except|with|as|const|let|var|function|async|await|new|null|None|True|False|true|false|fn|pub|use|match|export|raise|throw)\b/g;
@@ -4130,7 +4748,7 @@ const CP=(()=>{
     for(let i=1;i<=text.length;i++){ d.innerHTML=pre+hl(text.slice(0,i))+'<i class="cur"></i>'; await wait(1000/cps); if(hurry()) break; }
     d.innerHTML=pre+hl(text);
   }
-  function open(title,root){ titleEl.textContent=title; stEl.textContent='…'; stEl.className=''; el.classList.toggle('root',!!root); el.classList.toggle('rootmode',!!info.root); out.innerHTML=''; show(); }
+  function open(title,root){ agStop(); el.classList.remove('mini'); titleEl.textContent=title; stEl.textContent='…'; stEl.className=''; el.classList.toggle('root',!!root); el.classList.toggle('rootmode',!!info.root); out.innerHTML=''; show(); }
   function done(ok){ stEl.textContent=ok?'✓':'✕'; stEl.className=ok?'ok':'bad'; }
   async function result(id){ for(let i=0;i<1200&&!RES[id]&&busy;i++){ if(q.length&&i>20) break; await wait(50); } return RES[id]; }
   const rows=(t,n)=>String(t||'').replace(/\r/g,'').split('\n').filter(x=>x.trim()).slice(0,n);
@@ -4177,7 +4795,23 @@ const CP=(()=>{
   async function run(){ running=true;
     while(q.length){ const ev=q.shift(); try{ await (VIEWS[ev.name]||VIEWS.other)(ev); }catch(e){ console.log('[nixi] terminal',e); } }
     running=false; if(!busy||answering) hide(); }
+  // ---- another agent is working (Claude Code, Codex, agy): a fixed decorative loop, no real text; smaller after a minute,
+  // gone on that agent's "finished" or after 15 minutes without a `working`. Never while his own turn uses the sheet.
+  let ag=null; const SKEL=['<i class="pr">$</i> ▒▒▒▒▒ ▒▒▒▒▒▒▒▒ ▒▒▒','▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒','▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒▒▒▒▒▒','<i class="pr">$</i> ▒▒▒▒ ▒▒▒▒▒▒▒▒','▒▒▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒▒▒','▒▒▒▒ ▒▒▒▒▒▒▒']; 
+  const ownTurn=()=>busy||running||q.length>0||answering;
+  function agStop(){ if(ag){ clearInterval(ag.timer); ag=null; } el.classList.remove('mini'); }
+  function agent(name,from){ if(ownTurn()||info.code_panel===false) return;
+    if(ag){ ag.last=Date.now(); ag.from=from; titleEl.textContent=name; return; }
+    titleEl.textContent=name; stEl.textContent='…'; stEl.className=''; el.classList.remove('root','rootmode'); out.innerHTML=''; show();
+    if(!on) return;
+    ag={from,t0:Date.now(),last:Date.now(),i:0,timer:0};
+    ag.timer=setInterval(()=>{ if(!ag) return; if(ownTurn()){ agStop(); return; }
+      if(Date.now()-ag.last>15*60000){ hide(); return; }
+      if(Date.now()-ag.t0>60000) el.classList.add('mini');
+      line(SKEL[ag.i++%SKEL.length],'out'); },900); }
+  function agentEnd(from){ if(ag&&ag.from===from&&!ownTurn()) hide(); }
   return {
+    agent, agentEnd,
     tool(ev){ if(info.code_panel===false||info.bridge) return; answering=false; q.push(ev); if(!running) run(); },
     result(ev){ RES[ev.id]={text:ev.text||'',is_error:!!ev.is_error}; },
     answer(){ answering=true; if(!running) hide(); },

@@ -80,6 +80,73 @@ except Exception:
     pass' "$FROM" "$HOOK" "$@" >/dev/null 2>&1
   exit 0
 fi
+# agent permission and result hooks: no server start, no output unless a decision was returned
+case "${1:-}" in approve|result)
+  MODE="$1"; shift
+  FROM=""; [ "${1:-}" = --from ] && FROM="${2:-}"
+  "${NIXI_COMPANION_PYTHON:-python3}" -c 'import hashlib,json,os,sys,urllib.request as u
+ALLOW_JSON = {                                  # set from probe P6 (#211 step 1)
+    "claude": {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "allow"}}},
+    "codex": {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "allow"}}},
+}
+DENY_JSON = {                                   # set from probe P6 (#211 step 1)
+    "claude": {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "deny", "message": "The user said no in Nixi."}}},
+    "codex": {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "deny", "message": "The user said no in Nixi."}}},
+}
+RESULT_FIELDS = ("session_id", "turn_id", "tool_name")   # set from probe P9 (#211 step 1): the key when there is no tool_use_id
+RESULT_BY_TOOL_USE_ID = ()                              # set from probe P9 (#211 step 1): agents giving tool_use_id at both ends; as in server.py
+EXIT_PATHS = {"claude": {}, "codex": {}}     # set from probe P9 (#211 step 1)
+try:
+    mode, frm = sys.argv[1:3]
+    if frm not in ("claude", "codex"):
+        sys.exit(0)
+    h = json.load(sys.stdin)
+    if not isinstance(h, dict):
+        sys.exit(0)
+    e, pids, pid = os.environ, [], os.getppid()
+    try:
+        while pid > 1 and len(pids) < 32:
+            pids.append(pid)
+            pid = int(open("/proc/%d/stat" % pid).read().rsplit(")", 1)[1].split()[1])
+    except (OSError, ValueError, IndexError):
+        pass
+    tgt = {"pids": pids, "herdr": {"pane": e.get("HERDR_PANE_ID"), "session": e.get("HERDR_SESSION")} if e.get("HERDR_ENV") == "1" else None}
+    rt = json.load(open(os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "nixi-companion", "runtime.json")))
+    if mode == "approve":
+        body = {"from": frm, "session_id": h.get("session_id"), "turn_id": h.get("turn_id"),
+                "cwd": h.get("cwd"), "tool_name": h.get("tool_name"), "tool_input": h.get("tool_input"), "target": tgt}
+        if h.get("tool_use_id"):
+            body["tool_use_id"] = h["tool_use_id"]
+        path, timeout = "/api/agent-approve", 70
+    else:
+        tool_id = h.get("tool_use_id") if frm in RESULT_BY_TOOL_USE_ID else None
+        if tool_id:
+            key = str(tool_id)
+        else:
+            inp = h.get("tool_input") or {}
+            digest = hashlib.sha256(json.dumps(inp, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            key = [frm, *(h.get(k) for k in RESULT_FIELDS), digest]
+        event = h.get("hook_event_name")
+        code = h
+        for part in EXIT_PATHS[frm].get(event, ()):
+            code = code[part]
+        if not EXIT_PATHS[frm].get(event):
+            code = None
+        ok = event == "PostToolUse" and (code is None or code == 0)
+        body = {"from": frm, "key": key, "ok": ok}
+        if code is not None:
+            body["exit"] = code
+        path, timeout = "/api/agent-result", 2
+    response = u.urlopen(u.Request("http://127.0.0.1:%s%s" % (rt["port"], path),
+                                   json.dumps(body).encode(), {"Content-Type": "application/json", "X-Nixi-Token": rt["token"]}), timeout=timeout).read()
+    if mode == "approve":
+        decision = json.loads(response).get("decision")
+        if decision in ("allow", "deny"):
+            sys.stdout.write(json.dumps((ALLOW_JSON if decision == "allow" else DENY_JSON)[frm], separators=(",", ":")) + "\n")
+except Exception:
+    pass' "$MODE" "$FROM" 2>/dev/null || true
+  exit 0 ;;
+esac
 # move him to another screen from a key bind: nixi-companion monitor next|prev|focused|<name> (e.g. DP-1)
 if [ "${1:-}" = monitor ]; then
   PSOCK="${XDG_RUNTIME_DIR:-/tmp}/nixi-companion-$(id -u).sock"

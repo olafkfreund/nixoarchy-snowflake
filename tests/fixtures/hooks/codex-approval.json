@@ -1,0 +1,1 @@
+{"_note":"Synthetic until probe P9 records a real payload.","hook_event_name":"PermissionRequest","session_id":"codex-session","turn_id":"codex-turn","cwd":"/tmp/project","tool_name":"shell_command","tool_input":{"command":"printf hello","workdir":"/tmp/project"}}
