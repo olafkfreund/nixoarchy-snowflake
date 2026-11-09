@@ -9,6 +9,7 @@ import time
 import unittest
 from pathlib import Path
 from unittest import mock
+from test_speakable import _ServerEnv
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 import peers  # noqa: E402
@@ -100,6 +101,16 @@ class PeerTests(unittest.TestCase):
         self.assertIsNotNone(rows[0]["last_ok"])
         self.assertEqual(rows[2]["note"], "gave an answer Nixi can't read")
 
+    def test_current_is_independent_and_does_not_start_a_round(self):
+        with mock.patch.object(peers, "_results", [{"name": "peer0", "state": "asking"}]), \
+                mock.patch.object(peers, "_peers", [{"name": "peer0"}]), \
+                mock.patch.object(peers, "_round") as round_run:
+            rows = peers.current()
+            rows[0]["state"] = "up"
+            self.assertEqual(peers.current()[0]["state"], "asking")
+            round_run.assert_not_called()
+            self.assertFalse(peers._running)
+
     def test_a_dripping_peer_is_cut_off_at_the_deadline(self):
         server = self.server()
         server.drip = True
@@ -165,6 +176,77 @@ class PeerTests(unittest.TestCase):
         self.assertTrue(done.wait(2))
         self.assertEqual(peers.snapshot()[0]["note"], "no token")
         self.assertEqual(server.requests, [])
+
+
+class HostRoundIntegration(_ServerEnv):
+    def test_machine_and_board_round_counts(self):
+        S, A = self.server, self.server.Ambient
+        stub = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        stub.daemon_threads = True
+        stub.requests, stub.body, stub.code, stub.delay = [], json.dumps(STATUS).encode(), 503, 0
+        threading.Thread(target=stub.serve_forever, daemon=True).start()
+        self.addCleanup(stub.server_close)
+        self.addCleanup(stub.shutdown)
+        path, token = Path(self.tmp, "host-round-peers.json"), Path(self.tmp, "host-round-token")
+        token.write_text("test-token")
+        path.write_text(json.dumps({"peers": [{"name": "oak", "address": "127.0.0.1", "port": stub.server_port}],
+                                    "token_file": str(token)}))
+        old_cfg = dict(S.CFG)
+        self.addCleanup(lambda: (S.CFG.clear(), S.CFG.update(old_cfg)))
+        S.CFG.update(proactive=True, react_load=True, peers_on=True)
+        A.peer_last, A.peer_due, A.machine_due, A.later = {}, 0, float("inf"), []
+        S._peer_followup_round = False
+        self.addCleanup(setattr, S, "_peer_followup_round", False)
+        completed = []
+        original_edges = A.peer_edges
+
+        def record_edges():
+            original_edges()
+            completed.append(None)
+
+        with mock.patch.object(peers, "_RANGES", (ipaddress.ip_network("127.0.0.0/8"),)), \
+                mock.patch.object(S, "PEERS", [{"name": "oak"}]), \
+                mock.patch.object(A, "route_up", return_value=True), \
+                mock.patch.object(peers, "_round", wraps=peers._round) as rounds, \
+                mock.patch.object(A, "peer_edges", side_effect=record_edges):
+            peers.load(path)
+            peers.on_round(S.peer_round_done)
+            self.addCleanup(lambda: peers.on_round(None))
+            self.addCleanup(peers.stop)
+
+            def wait_for(count):
+                deadline = time.monotonic() + 2
+                while len(completed) < count and time.monotonic() < deadline:
+                    time.sleep(.01)
+                self.assertEqual(len(completed), count)
+
+            with mock.patch.object(S.STAGES, "current", return_value=None), \
+                    mock.patch.object(S, "quip", side_effect=lambda kind, **slots: S.QUIP_FALLBACK[kind][0].format(**slots)):
+                A.machine(100)
+                wait_for(1)
+                self.assertEqual(rounds.call_count, 1)
+                self.assertEqual(A.peer_last, {"oak": "down"})
+                stub.code = 200
+                A.machine(400)
+                wait_for(2)
+                self.assertEqual(rounds.call_count, 2)
+                self.assertEqual([item[:2] for item in A.later], [("host", "oak is back.")])
+
+            peers.stop()
+            A.peer_last, A.peer_due, A.later = {}, 0, []
+            stub.code = 503
+            page = {"kind": "gauges", "live": True, "refresh": "board"}
+            plugin = mock.Mock(manifest={"stage": {"reads": ["peer-status"]}})
+            with mock.patch.object(S.STAGES, "current", return_value=page), \
+                    mock.patch.object(S.STAGES, "visible", return_value=True), \
+                    mock.patch.object(S.STAGES, "get", return_value=("refresh", {"pid": "x"})), \
+                    mock.patch.object(S.Plug, "stage", {"x": plugin}), \
+                    mock.patch.object(S, "refresh_stage", side_effect=lambda _: (peers.snapshot(), {"ok": True})[1]):
+                A.machine(700)
+                wait_for(4)
+                self.assertEqual(rounds.call_count, 4)
+                self.assertEqual(A.peer_last, {"oak": "down"})
+                self.assertEqual(A.later, [])
 
 
 if __name__ == "__main__":

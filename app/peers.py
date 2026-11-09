@@ -181,6 +181,12 @@ def snapshot():
     return result
 
 
+def current():
+    """Return cached states without starting a round."""
+    with _lock:
+        return copy.deepcopy(_results)
+
+
 def stop():
     """Discard any running round and all cached readings."""
     global _round_id, _running, _results

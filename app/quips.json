@@ -38,5 +38,11 @@
     "{n} hours in. Stretch your hands?",
     "A long coding stretch: {n} hours. Rest your eyes a moment?"
   ],
-  "done": ["All done!", "Finished!", "That's done."]
+  "done": ["All done!", "Finished!", "That's done."],
+  "error": ["{unit} failed.", "Looks like {unit} failed.", "A service needs attention: {unit} failed."],
+  "disk": ["Disk {path} is {n}% full.", "Disk {path} is {n}% full. Could use some room.", "Running out of room on {path}: {n}% full."],
+  "offline": ["No network connection.", "The network connection has dropped.", "Looks like we're offline for now."],
+  "host": ["{name} is back.", "{name} is online again.", "Good news: {name} is back."],
+  "storm": ["Thunder outside. Stay in!", "A storm is passing through. Stay cosy inside.", "Thunder in the sky. Take care out there."],
+  "hot": ["Hot and sunny out there.", "It's a hot, sunny day. Keep some water nearby.", "Sunshine and heat outside. Find some shade when you can."]
 }
