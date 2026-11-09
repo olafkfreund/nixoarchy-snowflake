@@ -155,6 +155,8 @@ if [ "${1:-}" = size ]; then
   case "${2:-}" in up|down|reset) ;; *) exit 2 ;; esac
   PSOCK="${XDG_RUNTIME_DIR:-/tmp}/nixi-companion-$(id -u).sock"
   [ -S "$PSOCK" ] || exit 0
+  # one step at a time: two quick presses would each read the same size and collapse into one step
+  command -v flock >/dev/null 2>&1 && { exec 9>"$ROOT/size.lock"; flock -w 5 9 || true; }
   "${NIXI_COMPANION_PYTHON:-python3}" -c 'import json,os,socket,sys,urllib.request as u
 sys.path.insert(0, sys.argv[1])
 from size import step
