@@ -42,7 +42,7 @@ import zlib
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlsplit
 
 APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
@@ -1759,6 +1759,25 @@ def location_suggest(q, urlopen=None):
     return out
 
 
+def media_kind(lines):
+    """Classify playing MPRIS rows without retaining their URLs or titles."""
+    domains = ("youtube.com", "youtu.be", "twitch.tv", "vimeo.com", "netflix.com")
+    music = video = False
+    for line in lines:
+        name, status, url, _ = (line.split("\t", 3) + [""] * 4)[:4]
+        if status != "Playing":
+            continue
+        try:
+            host = (urlsplit(url).hostname or "").lower()
+        except ValueError:
+            host = ""
+        if name.lower() in ("freetube", "grayjay") or any(host == d or host.endswith("." + d) for d in domains):
+            video = True
+        else:
+            music = True
+    return music and not video, video
+
+
 class Ambient:
     """Small cues for the lambda tips: failed user units / a new NixOS generation (local), the next calendar item (gog) and
     the weather (omarchy weather). Its own thread, a TTL per source, paused while he is hidden; never run from state_info()."""
@@ -1772,7 +1791,7 @@ class Ambient:
     cal_at = None                                              # monotonic time of that fetch
     alerted = set()                                            # calendar items already announced
     thread = None
-    meeting = music = False                                    # what the look layer wears, and what quiets him (#133)
+    meeting = music = video = False                            # what the look layer wears, and what quiets him (#133)
     music_due = 0.0
     dnd = False
     dnd_due = 0.0
@@ -2114,7 +2133,7 @@ class Ambient:
 
     @classmethod
     def situation(cls):
-        return {k: getattr(cls, k) for k in ("meeting", "music", "track", "cpu_hot", "ram_low", "fullscreen", "locked", "dnd", "coding", "weather", "day", "cold", "windy", "lean", "heavy", "storm", "hot", "night", "party")}
+        return {k: getattr(cls, k) for k in ("meeting", "music", "video", "track", "cpu_hot", "ram_low", "fullscreen", "locked", "dnd", "coding", "weather", "day", "cold", "windy", "lean", "heavy", "storm", "hot", "night", "party")}
 
     @classmethod
     def sense(cls, now=None, proc="/proc", mono=None):
@@ -2199,22 +2218,21 @@ class Ambient:
         cls.night = bool(on and CFG.get("look_night") and (now.hour >= 23 or now.hour < 5))
         cls.party = bool(on and CFG.get("look_party") and ((now.month, now.day) in ((1, 1), (12, 24), (12, 25), (12, 31))
                                                            or now.date().isoformat() in cls.birthdays))
-        music = cls.music
+        music, video = cls.music, cls.video
         if not CFG.get("look_music") or Wake.asleep:
-            music = False
+            music = video = False
             cls.followed = None
         elif t >= cls.music_due:
             cls.music_due = t + 5
+            lines = (cls.run(["playerctl", "-a", "metadata", "--format", "{{playerName}}\t{{status}}\t{{xesam:url}}\t{{mpris:trackid}}{{title}}"]) or "").splitlines()
+            music, video = media_kind(lines)
             if CFG.get("reactions"):                          # (#208) follow the first Playing player and count its track changes
-                rows = [ln.split("\t", 2) for ln in (cls.run(["playerctl", "-a", "metadata", "--format", "{{playerName}}\t{{status}}\t{{mpris:trackid}}{{title}}"]) or "").splitlines()]
-                cur = next((r for r in rows if len(r) == 3 and r[1].strip() == "Playing"), None)
-                music = cur is not None
-                if cur and cls.followed and cls.followed[0] == cur[0] and cls.followed[1] != hash(cur[2]):
+                rows = [ln.split("\t", 3) for ln in lines]
+                cur = next((r for r in rows if len(r) == 4 and r[1].strip() == "Playing"), None)
+                if cur and cls.followed and cls.followed[0] == cur[0] and cls.followed[1] != hash(cur[3]):
                     cls.track += 1
-                cls.followed = (cur[0], hash(cur[2])) if cur else None
-            else:
-                music = any(x.strip() == "Playing" for x in (cls.run(["playerctl", "-a", "status"]) or "").splitlines())
-        cls.meeting, cls.music = meeting, music
+                cls.followed = (cur[0], hash(cur[3])) if cur else None
+        cls.meeting, cls.music, cls.video = meeting, music, video
         if cls.situation() != before:
             BUS.pub(t="situation", **cls.situation())
         Beat.sync()
