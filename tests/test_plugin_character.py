@@ -13,7 +13,7 @@ from unittest import mock
 from test_speakable import _ServerEnv
 
 DOTS = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 -10 20 20"><circle cx="0" cy="0" r="9" fill="#778899"/><circle cx="-3" cy="-2" r="1"/><circle cx="3" cy="-2" r="1"/></svg>'
-D_MARK = "M7 7L91919 3"                      # (a distinctive path value to look for)
+D_MARK = "M7 7L919 3"                      # (a distinctive path value to look for)
 MARK = "private-marker-213"
 
 
@@ -63,6 +63,14 @@ class PluginCharacterTest(CharEnv):
         self.assertNotIn("Private: keep this folder out of Nix and out of any repo.", s.plugin_caps({"character": {}}))
         self.assertIn("Private: keep this folder out of Nix and out of any repo.", s.plugin_caps({"character": {"private": True}}))
 
+    def test_switched_off_plugin_keeps_its_voice(self):
+        s = self.server
+        v = sorted(s.VOICES)[0]
+        with mock.patch.dict(s.CFG, {"voice_by_character": {"plug:gone": v, "robot": v}}):
+            upd = {}
+            self.assertFalse(s.voice_settings({"voice_by_character": {"robot": v}}, upd))
+        self.assertEqual(upd["voice_by_character"], {"plug:gone": v, "robot": v})
+
     def test_json_routes_are_no_store(self):
         s = self.server
         for patcher in (mock.patch.object(s.eleven, "voices", return_value=[]), mock.patch.object(s.quick, "projects", return_value={})):
@@ -97,6 +105,9 @@ class PluginCharacterTest(CharEnv):
             self.assertNotIn(D_MARK, text)
             self.assertNotIn(MARK, text)
         self.assertIn(s.plugins.PRIVATE_ART_ERROR, rows)
+        self.assertTrue(s.Plug.has_character("good"))          # (a loaded private character: its art travels, yet stays out of the logs)
+        with mock.patch.object(s.eleven, "voices", return_value=[]), mock.patch.object(s.quick, "projects", return_value={}):
+            self.assertIn(D_MARK.split()[1], json.dumps(s.state_info()["plugin_characters"]))
         self.assertFalse(s.Plug.has_character("bad"))
         self.assertEqual(s.Plug.prop_errors.get("propbad"), s.plugins.PRIVATE_ART_ERROR)
 

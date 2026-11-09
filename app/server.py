@@ -7037,7 +7037,8 @@ def voice_settings(b, upd):
         m = b["voice_by_character"]
         if not isinstance(m, dict) or any(not character_ok(k) or not isinstance(v, str) or v not in VOICES for k, v in m.items()):
             return "A character's voice must be one of the voices listed."
-        upd["voice_by_character"] = m
+        old = CFG.get("voice_by_character") if isinstance(CFG.get("voice_by_character"), dict) else {}
+        upd["voice_by_character"] = {**{k: v for k, v in old.items() if str(k).startswith("plug:") and not character_ok(k)}, **m}   # (a switched-off plugin keeps its voice)
     if "tts_fallback" in b:
         if b["tts_fallback"] not in ("auto", "kokoro", "piper", "espeak"):
             return "The fallback voice must be auto, kokoro, piper or espeak."

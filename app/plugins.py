@@ -342,9 +342,7 @@ def scan(dirs):
         nix = [p for p in g if p.source == "nix"]
         if len(g) > 1:                             # a Nix plugin beats a Folder one; otherwise every one of them is marked
             dup.update(id(p) for p in (g if len(nix) != 1 else [p for p in g if p.source != "nix"]))
-    return [p._replace(error=p.error or (PRIVATE_ART_ERROR if isinstance(p.manifest, dict)
-            and isinstance(p.manifest.get("character"), dict) and p.manifest["character"].get("private") is True
-            else "duplicate id")) if id(p) in dup else p for p in out]
+    return [p._replace(error=p.error or "duplicate id") if id(p) in dup else p for p in out]   # (a fixed string: it names nothing)
 
 
 SNAP_MAX = 64 * 1024 * 1024                          # a plugin folder bigger than this is refused (hashing never holds it in memory)

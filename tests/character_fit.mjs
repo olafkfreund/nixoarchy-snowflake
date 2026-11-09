@@ -84,12 +84,15 @@ if (mode === "plugpage") {
     applyLook({...LOOK, character:'plug:fixture'}); await new Promise(r=>setTimeout(r,400));
     if(BODY!==c) bad.push('BODY'); if(document.querySelector('#body>path.ball').getAttribute('fill')!=='#778899') bad.push('flat fill');
     if(document.getElementById('rim').getAttribute('fill')!=='none') bad.push('rim filled');
-    const inner=document.querySelector('#body>.nix>svg'), out=inner&&sv('circle',{cx:-140,cy:0,r:30,fill:'#ff00ff'},inner);   // (art past x -96)
-    if(!out) bad.push('no nested svg'); else { const r=out.getBoundingClientRect(), hitE=document.elementFromPoint(r.x+r.width*.3,r.y+r.height/2);
-      if(hitE===out) bad.push('outside dot not clipped'); }
+    const clipped=(inner,where)=>{ if(!inner) return bad.push('no nested svg '+where);   // dots past each edge of x ±96, y -120…+100
+      for(const [cx,cy] of [[-130,0],[130,0],[0,-150],[0,130]]){ const d=sv('circle',{cx,cy,r:20,fill:'#ff00ff'},inner), r=d.getBoundingClientRect();
+        if(r.width&&document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===d) bad.push(where+' dot '+cx+','+cy+' not clipped'); d.remove(); } };
+    clipped(document.querySelector('#body>.nix>svg'),'stage');
     renderSettings();
     const b=document.querySelector('#characterGrid [data-character="plug:fixture"]');
-    if(!b) bad.push('not in the grid'); else { if(!b.textContent.includes('<b>x</b>')) bad.push('label not text'); if(b.querySelector('b')) bad.push('label is markup'); }
+    if(!b) bad.push('not in the grid'); else { settings(true,'look'); await new Promise(r=>setTimeout(r,300));
+      const g=document.querySelector('#characterGrid [data-character="plug:fixture"]'); g.scrollIntoView({block:'center'}); await new Promise(r=>setTimeout(r,100));
+      if(!g.getBoundingClientRect().width) bad.push('grid not shown'); clipped(g.querySelector('g[data-part="body"]>svg'),'grid'); if(!b.textContent.includes('<b>x</b>')) bad.push('label not text'); if(b.querySelector('b')) bad.push('label is markup'); }
     info.look={...(info.look||{}),character:'plug:fixture',random:true}; syncLook(true);   // random colours: a changed plugin is still redrawn
     info.plugin_characters=info.plugin_characters.map(p=>({...p,fill:'#112233'})); syncLook();
     if(BODY!==CHARACTERS['plug:fixture']||document.querySelector('#body>path.ball').getAttribute('fill')!=='#112233') bad.push('random mode kept the old art');

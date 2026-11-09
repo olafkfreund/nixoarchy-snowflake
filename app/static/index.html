@@ -1262,7 +1262,7 @@ function drawSit(L){ const bk=$('#sitBack'), fr=$('#sitFront'); if(!bk||!fr) ret
 const PROP_BOX={head:[-30,-112,60,54],left:[-98,-34,40,40],right:[58,-34,40,40],base:[-36,68,72,26]}, PROP_COL={acc:'var(--acc)',text:'var(--text)',dim:'var(--dim)'};
 function drawProp(par,P){ drawNodes(par,P.nodes,PROP_BOX[P.anchor]||PROP_BOX.head); }   // the anchor wrapper shifts this box
 function drawNodes(par,nodes,[x,y,width,height]){   // the nested svg scales and clips the art to its box
-  const els=[sv('svg',{x,y,width,height,viewBox:nodes[0].a.viewBox.join(' ')},par)];
+  const els=[sv('svg',{x,y,width,height,viewBox:nodes[0].a.viewBox.join(' ')},par)]; els[0].style.overflow='hidden';   // (beats .skins button svg{overflow:visible})
   nodes.forEach((n,i)=>{ if(!i) return; const e=document.createElementNS(SVGNS,n.tag);
     for(const a in n.a){ if((a==='fill'||a==='stroke')&&PROP_COL[n.a[a]]) e.style.setProperty(a,PROP_COL[n.a[a]]); else e.setAttribute(a,n.a[a]); }   // (WebKitGTK: var() only works as a style)
     els[n.p].appendChild(e); els[i]=e; });

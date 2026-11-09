@@ -400,7 +400,9 @@ five parts. `mkCompanionPlugin` checks the manifest when it builds, so a bad one
 - **`character`:** a whole body you pick in Settings → Look → Character as `plug:<id>`. It has a `label` (at most 20
   characters), `template` (only `"round"`, which supplies every size and position), `fill` (one `#rrggbb`), `back` and
   `front` (SVG files in the folder, drawn behind and in front of the face), `fits` (the skins it can wear, a subset of
-  the template's) and an optional `private`. The art follows the same limits as a prop (flat colours only). A tiny
+  the template's) and an optional `private`. The art follows the same limits as a prop (flat colours only). Each file's
+  `viewBox` is fitted to the body box, so draw with `viewBox="-96 -120 192 220"` (the face sits near 0,0); anything
+  outside it is cut off. A tiny
   example: a plain circle with two dots for eyes. Turning the plugin on is allowed to add it; choosing it in Look is
   your consent.
   - A `private` character is for art that must stay yours. It loads only from `~/.local/share/nixi-companion/plugins/`,
