@@ -288,6 +288,34 @@ class SituationTest(_ServerEnv):
         self.assertTrue(A.music)
         self.assertEqual(A.track, 0)
 
+    def test_chrome_youtube_window_classifies_url_less_player(self):
+        S, A = self.server, self.server.Ambient
+        S.CFG.update(look_music=True, reactions=False)
+        track = "A small video"
+        row = f"chromium.instance\tPlaying\t\t/track/{track}\n"
+        cases = (
+            (f"{track} - YouTube - Google Chrome", True),
+            (f"{track} - Google Chrome", False),
+            ("Another video - YouTube - Google Chrome", False),
+            (None, False),
+        )
+        for window, want_video in cases:
+            with self.subTest(window=window):
+                A.music_due = 0
+                def run(argv, timeout=3):
+                    if argv[:3] == ["playerctl", "-a", "metadata"]:
+                        return row
+                    if argv == ["hyprctl", "clients", "-j"]:
+                        return json.dumps([{"class": "google-chrome", "title": window}]) if window else None
+                    if argv == ["playerctl", "-p", "chromium.instance", "metadata", "title"]:
+                        return track
+                    self.fail(f"unexpected command: {argv}")
+                with mock.patch.object(A, "run", side_effect=run) as calls:
+                    A.sense()
+                self.assertEqual((A.music, A.video), (not want_video, want_video))
+                self.assertEqual(sum(c.args[0] == ["hyprctl", "clients", "-j"] for c in calls.call_args_list), 1)
+                self.assertNotIn(track, json.dumps(A.situation()))
+
     def test_media_kind_player_rows(self):
         S = self.server
         cases = (
@@ -359,7 +387,7 @@ class SituationTest(_ServerEnv):
                 A.music_due = 0.0
                 with mock.patch.object(A, "run", return_value=out) as run:
                     A.sense()
-                run.assert_called_once()
+                self.assertEqual(run.call_count, 2 if out == chromium else 1)
                 self.assertEqual((A.music, A.video), want)
 
 if __name__ == "__main__":
