@@ -2754,7 +2754,6 @@ class Inbox:
                 x["category"] = "mail" if cls.MAIL.search(who) else "chat" if cls.CHAT.search(who) else "video" if cls.FEED.search(who) else Plug.category(str(x.get("app") or ""), str(x.get("source") or ""))
             if not isinstance(x, dict) or not isinstance(x.get("key"), str) or not cls.KEY.fullmatch(x["key"]) or x.get("category") not in cls.CATS:
                 continue
-            x.pop("reaction", None)                              # (only a plugin's rule may set it, in tick)
             summary, body = str(x.get("summary") or "")[:120], str(x.get("body") or "")[:120]
             if not CFG.get("notify_details") or SECRET_LINE.search(summary + "\n" + body) or cls.OTP.search(summary + "\n" + body):
                 summary = body = ""
@@ -2817,8 +2816,11 @@ class Inbox:
             cls.wanted = out is not None
             for row in cls.rows(out):
                 cls.unseen[row["key"]] = now
-                if row["key"] not in cls.rxkeys and (hit := Plug.reaction(row["app"], row["source"])):
+                if (row["key"] not in cls.rxkeys and row["app"] != "nixi-job" and len(row["source"]) < 80   # (a cut source has no trustworthy host; long commands stay silent, #208)
+                        and (hit := Plug.reaction(row["app"], row["source"]))):
                     cls.rxkeys[row["key"]] = now
+                    if len(cls.rxkeys) > 64:
+                        cls.rxkeys.pop(min(cls.rxkeys, key=cls.rxkeys.get))
                     if now - cls.rxat.get(hit[0], -300) >= 300:
                         cls.rxat[hit[0]] = now
                         row["reaction"] = hit[1]

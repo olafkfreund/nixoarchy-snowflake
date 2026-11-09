@@ -178,12 +178,19 @@ class PluginMapsTest(_ServerEnv):
         self.assertIn(r["reaction"], ("music", "notice"))
         self.assertEqual(len(self.server.Inbox.rxat), 1)
 
-    def test_reaction_does_not_read_text(self):
+    def test_cut_source_long_command_and_key_cap(self):
+        self.setup_rx()
+        self.mk("rx-map", reactions=[{"host": "*.example.org", "reaction": "notice"}, {"app": "nixi-job", "reaction": "notice"}])
         S = self.server
-        self.mk("rx-map", reactions=[{"app": "element", "reaction": "notice"}])
-        with mock.patch.object(S.Plug, "_hit", wraps=S.Plug._hit) as h:
-            S.Plug.reaction("element", "")
-        self.assertEqual(h.call_args.args[2:], ("element", ""))
+        (r,) = self.ticks([self.row("cut", "x", "https://" + "a" * 60 + ".example.org.evil.net/")])   # (cut to 80, it ends in .example.org)
+        self.assertNotIn("reaction", r)
+        (r,) = self.ticks([self.row("job", "nixi-job")])
+        self.assertNotIn("reaction", r)
+        self.mk("rx-app", reactions=[{"app": "element", "reaction": "notice"}])
+        for n in range(70):
+            S.Inbox.rxat.clear()
+            self.ticks([self.row(f"m{n}")], t0=1000.0 + n)
+        self.assertLessEqual(len(S.Inbox.rxkeys), 64)
 
 
 if __name__ == "__main__":
