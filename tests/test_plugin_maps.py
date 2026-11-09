@@ -137,7 +137,9 @@ class PluginMapsTest(_ServerEnv):
         S = self.server
         S.Inbox.rxkeys.clear()
         S.Inbox.rxat.clear()
-        S.CFG["proactive"] = True
+        p = mock.patch.dict(S.CFG, {"proactive": True, "notify_details": False})   # (another test may leave notify_details on)
+        p.start()
+        self.addCleanup(p.stop)
         self.addCleanup(lambda: (S.Inbox.rxkeys.clear(), S.Inbox.rxat.clear(), S.Inbox.unseen.clear()))
 
     def test_reaction_matches_app_and_host_only(self):
