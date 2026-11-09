@@ -32,11 +32,15 @@ class CharEnv(_ServerEnv):
         self.addCleanup(mock.patch.stopall)
         self.addCleanup(s.Plug.reload)
 
-    def make(self, pid="dots", private=False, art=DOTS, front=None):
+    def make(self, pid="dots", private=False, art=DOTS, front=None, prop=None):
         d = self.user / pid
         d.mkdir(mode=0o700)
         c = {"label": "Dots", "template": "round", "fill": "#778899", "back": "back.svg", "front": "front.svg", "fits": ["none", "halo"], "private": private}
-        (d / "plugin.json").write_text(json.dumps({"api": 1, "id": pid, "name": "Dots", "version": "1", "character": c}))
+        m = {"api": 1, "id": pid, "name": "Dots", "version": "1", "character": c}
+        if prop is not None:
+            m["prop"] = {"file": "prop.svg", "anchor": "head"}
+            (d / "prop.svg").write_text(prop)
+        (d / "plugin.json").write_text(json.dumps(m))
         (d / "back.svg").write_text(art)
         (d / "front.svg").write_text(front if front is not None else art)
         for p in d.iterdir():
@@ -81,6 +85,7 @@ class PluginCharacterTest(CharEnv):
         self.make("good", private=True, art=DOTS.replace("</svg>", f'<path d="{D_MARK}"/></svg>'))
         bad = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><{MARK}-tag {MARK}-attr="{D_MARK}"/></svg>'
         self.make("bad", private=True, art=bad)
+        self.make("propbad", private=True, prop=bad)            # (a good private character with a bad prop: the prop error is fixed text too)
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             s.Plug.reload()
@@ -93,6 +98,7 @@ class PluginCharacterTest(CharEnv):
             self.assertNotIn(MARK, text)
         self.assertIn(s.plugins.PRIVATE_ART_ERROR, rows)
         self.assertFalse(s.Plug.has_character("bad"))
+        self.assertEqual(s.Plug.prop_errors.get("propbad"), s.plugins.PRIVATE_ART_ERROR)
 
 
 if __name__ == "__main__":

@@ -1177,9 +1177,9 @@ function randomLook(L){
 }
 let lookShown='', lookRolled=false;
 function syncLook(reroll){
-  plugChars(info.plugin_characters);
+  const plugNew=plugChars(info.plugin_characters);
   const L=themed({...LOOK_DEFAULT,...(info.look||{})});
-  if(L.random){ if(reroll||!lookRolled){ applyLook({...L,...randomLook(L)}); lookRolled=true; lookShown=''; } else if(L.skin!==LOOK.skin||L.character!==LOOK.character) applyLook({...LOOK,skin:L.skin,character:L.character}); return; }
+  if(L.random){ if(reroll||!lookRolled){ applyLook({...L,...randomLook(L)}); lookRolled=true; lookShown=''; } else if(plugNew||L.skin!==LOOK.skin||L.character!==LOOK.character) applyLook({...LOOK,skin:L.skin,character:L.character}); return; }
   lookRolled=false; const k=JSON.stringify([L,info.theme,info.plugin_characters]); if(k!==lookShown){ applyLook(L); lookShown=k; }
 }
 const syncEye=syncLook;
@@ -1353,9 +1353,10 @@ const CHARACTERS={snowflake:{label:'Snowflake',ball:snowPath(),back:nixLambdas()
 const PLUG_BOX=[-96,-120,192,220];
 let plugSeen;
 function plugChars(list){   // (unchanged list: keep the objects, so BODY stays one of them)
-  const k0=JSON.stringify(list||[]); if(k0===plugSeen) return; plugSeen=k0;
+  const k0=JSON.stringify(list||[]); if(k0===plugSeen) return false; plugSeen=k0;
   for(const k in CHARACTERS) if(k.startsWith('plug:')) delete CHARACTERS[k];
-  for(const c of list||[]) CHARACTERS['plug:'+c.id]={...CHARACTERS.devil,label:c.name,back:'',front:'',nodes:{back:c.back,front:c.front},fill:c.fill,fits:new Set(c.fits),touch:null}; }
+  for(const c of list||[]) CHARACTERS['plug:'+c.id]={...CHARACTERS.devil,label:c.name,back:'',front:'',nodes:{back:c.back,front:c.front},fill:c.fill,fits:new Set(c.fits),touch:null};
+  return true; }
 const REACT={
  "defs": "<linearGradient id='fx-gold' x2='0' y2='1'><stop offset='0' stop-color='#ffe27a'/><stop offset='1' stop-color='#f5a524'/></linearGradient><linearGradient id='fx-red' x2='0' y2='1'><stop offset='0' stop-color='#ff9a94'/><stop offset='1' stop-color='#e5484d'/></linearGradient><linearGradient id='fx-green' x2='0' y2='1'><stop offset='0' stop-color='#7fe8a0'/><stop offset='1' stop-color='#22b573'/></linearGradient><linearGradient id='fx-blue' x2='0' y2='1'><stop offset='0' stop-color='#a6e0ff'/><stop offset='1' stop-color='#4a9fe8'/></linearGradient><linearGradient id='fx-pink' x2='0' y2='1'><stop offset='0' stop-color='#ffbdd7'/><stop offset='1' stop-color='#ff6fa5'/></linearGradient><linearGradient id='fx-paper' x2='0' y2='1'><stop offset='0' stop-color='#fffdf6'/><stop offset='1' stop-color='#f1e6d0'/></linearGradient><linearGradient id='fx-steel' x2='0' y2='1'><stop offset='0' stop-color='#f2f5f9'/><stop offset='1' stop-color='#9aa7ba'/></linearGradient><linearGradient id='fx-shade' x2='0' y2='1'><stop offset='0' stop-color='#4a5068'/><stop offset='1' stop-color='#12141c'/></linearGradient><radialGradient id='fx-sun'><stop offset='0' stop-color='#fff2a8'/><stop offset='1' stop-color='#ffc23d'/></radialGradient><linearGradient id='fx-hat' x2='0' y2='1'><stop offset='0' stop-color='#3b3b44'/><stop offset='1' stop-color='#111115'/></linearGradient><linearGradient id='fx-shirt' x2='0' y2='1'><stop offset='0' stop-color='#55b56d'/><stop offset='1' stop-color='#2b7a45'/></linearGradient><linearGradient id='fx-grey' x2='0' y2='1'><stop offset='0' stop-color='#cfd1d5'/><stop offset='1' stop-color='#8d9096'/></linearGradient><linearGradient id=\"fx-cap\" x1=\"0\" y1=\"-112\" x2=\"0\" y2=\"-48\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#3a3f4b\"/><stop offset=\"1\" stop-color=\"#14161d\"/></linearGradient>",
  "props": {

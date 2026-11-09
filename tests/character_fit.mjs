@@ -90,6 +90,9 @@ if (mode === "plugpage") {
     renderSettings();
     const b=document.querySelector('#characterGrid [data-character="plug:fixture"]');
     if(!b) bad.push('not in the grid'); else { if(!b.textContent.includes('<b>x</b>')) bad.push('label not text'); if(b.querySelector('b')) bad.push('label is markup'); }
+    info.look={...(info.look||{}),character:'plug:fixture',random:true}; syncLook(true);   // random colours: a changed plugin is still redrawn
+    info.plugin_characters=info.plugin_characters.map(p=>({...p,fill:'#112233'})); syncLook();
+    if(BODY!==CHARACTERS['plug:fixture']||document.querySelector('#body>path.ball').getAttribute('fill')!=='#112233') bad.push('random mode kept the old art');
     info.plugin_characters=[]; syncLook(); renderSettings();
     if(Object.keys(CHARACTERS).some(k=>k.startsWith('plug:'))) bad.push('plug: left in CHARACTERS');
     if(document.querySelector('#characterGrid [data-character^="plug:"]')) bad.push('plug: left in the grid');

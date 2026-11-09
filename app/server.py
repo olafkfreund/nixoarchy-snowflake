@@ -2146,8 +2146,8 @@ class Plug:
                 try:
                     nodes = plugins.sanitize_svg((p.dir / m["prop"]["file"]).read_bytes())
                     props.append({"id": p.id, "name": m["name"], "anchor": m["prop"]["anchor"], "layer": m["prop"].get("layer", "front"), "nodes": nodes})
-                except (OSError, ValueError) as e:
-                    errors[p.id] = str(e)                       # the whole prop is dropped; the plugin's other parts stay
+                except (OSError, ValueError) as e:            # the whole prop is dropped; the plugin's other parts stay
+                    errors[p.id] = plugins.PRIVATE_ART_ERROR if (m.get("character") or {}).get("private") is True else str(e)
             if "character" in m:
                 c = m["character"]
                 try:
