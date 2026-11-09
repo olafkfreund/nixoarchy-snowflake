@@ -85,17 +85,17 @@ case "${1:-}" in approve|result)
   MODE="$1"; shift
   FROM=""; [ "${1:-}" = --from ] && FROM="${2:-}"
   "${NIXI_COMPANION_PYTHON:-python3}" -c 'import hashlib,json,os,sys,urllib.request as u
-ALLOW_JSON = {                                  # set from probe P6 (#211 step 1)
+ALLOW_JSON = {                                  # probe P6 (#211): both agents accept this allow response
     "claude": {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "allow"}}},
     "codex": {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "allow"}}},
 }
-DENY_JSON = {                                   # set from probe P6 (#211 step 1)
+DENY_JSON = {                                   # probe P6 (#211): both agents accept this deny response
     "claude": {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "deny", "message": "The user said no in Nixi."}}},
     "codex": {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "deny", "message": "The user said no in Nixi."}}},
 }
-RESULT_FIELDS = ("session_id", "turn_id", "tool_name")   # set from probe P9 (#211 step 1): the key when there is no tool_use_id
-RESULT_BY_TOOL_USE_ID = ()                              # set from probe P9 (#211 step 1): agents giving tool_use_id at both ends; as in server.py
-EXIT_PATHS = {"claude": {}, "codex": {}}     # set from probe P9 (#211 step 1)
+RESULT_FIELDS = ("session_id", "turn_id", "tool_name")   # probe P9 (#211): Codex shares these fields across both hooks
+RESULT_BY_TOOL_USE_ID = ()                              # probe P9 (#211): Codex has no tool_use_id at PermissionRequest; as in server.py
+EXIT_PATHS = {"claude": {}, "codex": {}}     # probe P9 (#211): Codex PostToolUse has no exit code
 try:
     mode, frm = sys.argv[1:3]
     if frm not in ("claude", "codex"):
@@ -124,6 +124,8 @@ try:
             key = str(tool_id)
         else:
             inp = h.get("tool_input") or {}
+            if isinstance(inp, dict) and isinstance(inp.get("command"), str):
+                inp = {"command": inp["command"]}  # as in server.py
             digest = hashlib.sha256(json.dumps(inp, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
             key = [frm, *(h.get(k) for k in RESULT_FIELDS), digest]
         event = h.get("hook_event_name")

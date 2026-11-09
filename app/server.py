@@ -73,8 +73,8 @@ CLICK_KEY = secrets.token_urlsafe(24)
 CLICK = {"claimed": False, "spoiled": False}
 CLICK_LOCK = threading.Lock()
 AGENT_APPROVE_WAIT = 60
-AGENT_APPROVE_FROM = frozenset()  # set from probe P6/P9 (#211 step 1)
-RESULT_BY_TOOL_USE_ID = frozenset()  # set from probe P9 (#211 step 1): agents giving tool_use_id at both ends; as in bin/nixi-companion
+AGENT_APPROVE_FROM = frozenset({"codex"})  # probes P6/P7 (#211): Codex honors deny; Claude can take another hook's allow
+RESULT_BY_TOOL_USE_ID = frozenset()  # probe P9 (#211): Codex gives no tool_use_id at PermissionRequest; as in bin/nixi-companion
 
 
 def click_ok(header):
@@ -1085,6 +1085,8 @@ class AgentApprovals:
         if req.get("from") in RESULT_BY_TOOL_USE_ID and req.get("tool_use_id"):
             return str(req["tool_use_id"])
         inp = req.get("tool_input") or {}
+        if isinstance(inp, dict) and isinstance(inp.get("command"), str):
+            inp = {"command": inp["command"]}
         digest = hashlib.sha256(json.dumps(inp, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         return (req.get("from"), req.get("session_id"), req.get("turn_id"), req.get("tool_name"), digest)
 
