@@ -72,6 +72,8 @@ for (const [name, js] of Object.entries(blockers)) {
 }
 eq(await ev(`rxReset(); sit({meeting:true}); await new Promise(r=>setTimeout(r,60)); return ['load','rain','notice','error','done','meeting','ask'].map(i=>{ RX=null; RX_AT={}; return rxPlay(i); });`),
   [false, false, false, false, false, true, true], "in a meeting only meeting and ask play");
+eq(await ev(`rxReset(); sit({dnd:true}); const held=rxOk('rain'), meeting=rxOk('meeting'), ask=rxOk('ask'); sit({dnd:false}); const allowed=rxOk('rain'); rxReset(); return [held,meeting,ask,allowed];`),
+  [false,false,true,true], "DND refuses unasked reactions and lets them play after it ends");
 
 // 3. a blocker arriving mid-reaction (with a sustained prop under it) empties the groups; all but the playing one returns when it clears
 const arrive = { ...blockers,

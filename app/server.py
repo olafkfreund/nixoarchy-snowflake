@@ -1534,6 +1534,17 @@ def agent_say_ready(frm):
         return {"speak": False, "reason": "hidden"}
     if Ambient.meeting:
         return {"speak": False, "reason": "meeting"}
+    if Ambient.dnd:
+        return {"speak": False, "reason": "dnd"}
+    if CFG.get("proactive"):
+        locked, full = Ambient.locked, Ambient.fullscreen
+    else:                                                     # Ambient reads the desk only with proactive on: ask Hyprland once
+        w = Desk.ask("j/activewindow")
+        locked, full = Desk.locked(), isinstance(w, dict) and Desk.is_full(w)
+    if locked:
+        return {"speak": False, "reason": "locked"}
+    if full:
+        return {"speak": False, "reason": "fullscreen"}
     return {"speak": True}
 
 
@@ -1759,6 +1770,8 @@ class Ambient:
     thread = None
     meeting = music = False                                    # what the look layer wears, and what quiets him (#133)
     music_due = 0.0
+    dnd = False
+    dnd_due = 0.0
     track = 0                                                  # goes up when the followed player's track changes (#208); the title is never kept
     followed = None                                            # (player name, hash of its trackid+title) of the player being followed
     cpu_hot = ram_low = fullscreen = locked = False
@@ -1972,7 +1985,7 @@ class Ambient:
 
     @classmethod
     def situation(cls):
-        return {k: getattr(cls, k) for k in ("meeting", "music", "track", "cpu_hot", "ram_low", "fullscreen", "locked", "coding", "weather", "day", "cold", "windy", "lean", "heavy", "night", "party")}
+        return {k: getattr(cls, k) for k in ("meeting", "music", "track", "cpu_hot", "ram_low", "fullscreen", "locked", "dnd", "coding", "weather", "day", "cold", "windy", "lean", "heavy", "night", "party")}
 
     @classmethod
     def sense(cls, now=None, proc="/proc", mono=None):
@@ -1985,6 +1998,11 @@ class Ambient:
         soon = bool(CFG.get("ambient_calendar")) and any(0 < (st - now).total_seconds() <= 60 for st, _, _ in cls.events)
         meeting = bool(CFG.get("proactive")) and ((state / "meeting-mode" / "active").exists() or soon)   # (only for those who opted in)
         t = time.monotonic() if mono is None else mono
+        if t >= cls.dnd_due:
+            cls.dnd_due = t + 10
+            dnd = Inbox.call("isDnd")
+            if dnd in ("on", "off"):
+                cls.dnd = dnd == "on"
         on = bool(CFG.get("proactive"))
         load, frac = cls.readings(proc) if on and CFG.get("react_load") else (None, None)
         cores = os.cpu_count() or 1
@@ -2382,7 +2400,7 @@ class Nudge:
     """Unasked nudges (#133b): break, welcome back, memory, load. They wait for a breakpoint (an unlock, a workspace switch, or
     20 s without window events), and a budget keeps them rare: one visual per 5 minutes, one spoken per 10, a cooldown per kind."""
     COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "welcome": 0, "rain": 72000, "snow": 72000, "night": 72000, "party": 72000, "coding": 7200}
-    pending = {}                                              # kind -> (text, spoken, offered at); oldest first
+    pending = {}                                              # kind -> (text, spoken, deadline); oldest first
     last_visual = last_speech = None
     last_kind = {}
     active_since = None                                       # the break counter's zero
@@ -2392,9 +2410,11 @@ class Nudge:
     coding_offered = 0.0                                      # the coding_since a coding quip was offered for
 
     @classmethod
-    def offer(cls, kind, text, spoken, t=None):
+    def offer(cls, kind, text, spoken, t=None, until="default"):
+        t = time.monotonic() if t is None else t
+        deadline = (None if kind in ("break", "water") else t + 600) if until == "default" else until
         cls.pending.pop(kind, None)                           # newest wins
-        cls.pending[kind] = (text, spoken, time.monotonic() if t is None else t)
+        cls.pending[kind] = (text, spoken, deadline)
 
     @staticmethod
     def missed(path, since, until):
@@ -2463,16 +2483,16 @@ class Nudge:
             return
         cls.watch(t, time.time() if wall is None else wall,
                   hist or Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "omarchy" / "notifications" / "history.json", now)
-        for k in [k for k, v in cls.pending.items() if t - v[2] > 600]:
+        for k in [k for k, v in cls.pending.items() if v[2] is not None and t > v[2]]:
             del cls.pending[k]                                      # gone stale while it waited
-        if not cls.pending or Ambient.locked:
+        if not cls.pending or Ambient.locked or Ambient.dnd or Ambient.fullscreen or Ambient.meeting:
             return
         at_break = (Ambient.unlocked_at and t - Ambient.unlocked_at <= 10) or (Desk.last_switch and t - Desk.last_switch <= 10) \
             or (Desk.last_event > 0 and t - Desk.last_event >= 20)
         if not at_break or (cls.last_visual is not None and t - cls.last_visual < 300):
             return
         kind = next(iter(cls.pending))
-        text, spoken, _ = cls.pending.pop(kind)
+        text, spoken, deadline = cls.pending.pop(kind)
         if kind in cls.last_kind and t - cls.last_kind[kind] < cls.COOL[kind]:
             if kind in ("ram", "cpu"):                                 # dropped; re-arm the edge so it is offered again
                 setattr(cls, "was_low" if kind == "ram" else "was_hot", False)   # once the cooldown has passed, if it still holds
@@ -2483,7 +2503,7 @@ class Nudge:
         speak = bool(spoken) and not Ambient.meeting and (cls.last_speech is None or t - cls.last_speech >= 600)
         if speak:
             cls.last_speech = t
-        BUS.pub(t="nudge", kind=kind, text=text, speak=speak)
+        BUS.pub(t="nudge", kind=kind, text=text, speak=speak, wait=None if deadline is None else max(0, deadline - t))
 
 
 def _focused_addr():

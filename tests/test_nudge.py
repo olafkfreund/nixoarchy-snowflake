@@ -21,6 +21,13 @@ class NudgeTest(_ServerEnv):
             setattr(N, k, v)
         for k, v in dict(locked=False, unlocked_at=0.0, last_lock_len=0.0, lock_since=0.0, meeting=False, ram_low=False, cpu_hot=False, events=[]).items():
             setattr(A, k, v)
+        A.dnd, A.dnd_due, A.fullscreen = False, 0.0, False
+        ipc = mock.patch.object(S.Inbox, "call", return_value=None)
+        self.ipc = ipc.start()
+        self.addCleanup(ipc.stop)
+        run = mock.patch.object(A, "run", return_value=None)
+        run.start()
+        self.addCleanup(run.stop)
         D.last_switch, D.last_event = 0.0, 1.0           # (quiet since long ago)
         qp = mock.patch.object(S, "quip", side_effect=lambda e, **k: "Welcome back!" if e == "welcome" else "q-" + e)   # (the wording is test_quips')
         qp.start()
@@ -106,7 +113,104 @@ class NudgeTest(_ServerEnv):
         A.meeting = True
         N.offer("welcome", "hi", True, 5000)
         self.tick(5000)
+        self.assertEqual(self.sent(), [])
+        self.assertIn("welcome", N.pending)
+        A.meeting = False
+        N.last_speech = 4900                              # a fresh speech budget still makes the held nudge silent
+        self.tick(5001)
         self.assertFalse(self.sent()[0]["speak"])
+
+    def test_dnd_poll_keeps_last_answer_and_runs_with_proactive_off(self):
+        S, A = self.server, self.server.Ambient
+        S.CFG["proactive"] = False
+        self.ipc.side_effect = ["on", "unknown", None, "off"]
+        for t in (100, 101, 109, 110, 120, 130):
+            A.sense(mono=t)
+            self.assertEqual(A.dnd, t < 130)
+            self.assertEqual(A.situation()["dnd"], A.dnd)
+        self.assertEqual(self.ipc.call_count, 4)
+        self.ipc.assert_has_calls([mock.call("isDnd")] * 4)
+
+    def test_quiet_cues_hold_until_next_breakpoint(self):
+        N, A = self.server.Nudge, self.server.Ambient
+        for cue in ("dnd", "fullscreen", "meeting", "locked"):
+            with self.subTest(cue=cue):
+                N.pending.clear()
+                N.last_visual = None
+                N.last_kind.clear()
+                N.offer("break", "stretch", True, 100)
+                setattr(A, cue, True)
+                self.tick(100)
+                self.assertEqual(self.sent(), [])
+                self.assertIn("break", N.pending)
+                setattr(A, cue, False)
+                self.busy(101)
+                self.tick(101)
+                self.assertEqual(self.sent(), [])
+                self.server.Desk.last_switch = 102
+                self.tick(102)
+                self.assertEqual(self.sent()[0]["kind"], "break")
+                self.server.Desk.last_switch = 0
+
+    def test_break_waits_thirty_minutes_without_deadline(self):
+        N, A = self.server.Nudge, self.server.Ambient
+        N.offer("break", "stretch", True, 100)
+        A.dnd = True
+        self.tick(1901)
+        self.assertIn("break", N.pending)
+        self.assertEqual(self.sent(), [])
+        A.dnd = False
+        self.tick(1902)
+        self.assertEqual(self.sent()[0]["wait"], None)
+
+    def test_default_and_numeric_deadlines(self):
+        N = self.server.Nudge
+        N.offer("cpu", "hot", False, 100)
+        self.tick(701)
+        self.assertNotIn("cpu", N.pending)
+        self.assertEqual(self.sent(), [])
+        N.offer("water", "drink", False, 702)
+        self.assertIsNone(N.pending["water"][2])
+        N.pending.clear()
+        N.offer("cpu", "move", False, 800, until=900)
+        self.tick(901)
+        self.assertNotIn("cpu", N.pending)
+        self.assertEqual(self.sent(), [])
+        N.offer("cpu", "move", False, 902, until=1000)
+        self.tick(903)
+        self.assertEqual(self.sent()[0]["wait"], 97)
+
+    def test_agent_say_quiet_reasons_keep_priority(self):
+        S, A = self.server, self.server.Ambient
+        with mock.patch.object(S.Wake, "asleep", False), mock.patch.dict(S.CFG, {"agent_voice_mute": []}):
+            A.meeting = A.dnd = A.locked = A.fullscreen = True
+            for cue, reason in (("meeting", "meeting"), ("dnd", "dnd"), ("locked", "locked"), ("fullscreen", "fullscreen")):
+                self.assertEqual(S.agent_say_ready("claude"), {"speak": False, "reason": reason})
+                setattr(A, cue, False)
+            self.assertEqual(S.agent_say_ready("claude"), {"speak": True})
+
+    def test_agent_say_asks_the_desk_with_proactive_off(self):
+        S = self.server
+        S.CFG["proactive"] = False                           # Ambient.locked/fullscreen stay False: the desk is asked
+        with mock.patch.object(S.Wake, "asleep", False), mock.patch.dict(S.CFG, {"agent_voice_mute": []}):
+            for locked, w, want in ((True, {}, "locked"), (False, {"fullscreen": 2}, "fullscreen"), (None, None, None)):
+                with mock.patch.object(S.Desk, "locked", return_value=locked), mock.patch.object(S.Desk, "ask", return_value=w):
+                    r = S.agent_say_ready("claude")
+                self.assertEqual(r, {"speak": True} if want is None else {"speak": False, "reason": want})
+
+    def test_approval_route_is_unaffected_by_dnd(self):
+        S = self.server
+        S.Ambient.dnd = True
+        h = object.__new__(S.Handler)
+        h.path = "/api/approve"
+        h.headers = {"X-Nixi-Token": S.TOOL_TOKEN}
+        h._host_ok = lambda: True
+        h._body = lambda: b'{"tool":"Bash","input":{"command":"touch /tmp/nixi-test"}}'
+        h._json = mock.Mock()
+        with mock.patch.object(S.APPROVALS, "ask", return_value={"ok": False, "why": "asked"}) as ask:
+            h.do_POST()
+        ask.assert_called_once()
+        self.assertEqual(h._json.call_args.args[0], {"ok": False, "why": "asked"})
 
     def test_nothing_while_locked_or_off(self):
         N, A, S = self.server.Nudge, self.server.Ambient, self.server

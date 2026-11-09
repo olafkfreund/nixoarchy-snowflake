@@ -1752,7 +1752,7 @@ const RX_SIT={meeting:'meeting',rain:'rain',snow:'snow',windy:'wind'}, RX_DUR={m
   RX_MOOD={load:'running',memory:'t_unsure',soon:'surprised',open:'happy',wind:'surprised'};
 // everything but the once-per-10-minutes and one-at-a-time rules: what a playing or sustained one depends on
 const rxBase=()=>{ const B=document.body.classList; return !!info.proactive&&!!info.reactions&&!document.hidden&&!hiddenNow&&!SIT.fullscreen&&!SIT.locked&&!['bar','hover','calm','peek'].some(c=>B.contains(c)); };
-const rxState=id=>rxBase()&&(!SIT.meeting||id==='meeting'||id==='ask');   // (SIT.meeting as it arrives, not sitOn.meeting)
+const rxState=id=>rxBase()&&(id==='ask'||(id==='meeting'?!SIT.dnd:!quietNow()));   // the meeting keeps its own look, unless DND is on
 function rxOk(id){ const now=performance.now(); return rxState(id)&&(id==='ask'||id==='music'||!(RX_AT[id]&&now-RX_AT[id]<600000))&&(!RX||id==='ask'); }
 function rxPaint(){
   if(!RX&&!RXS.size&&!rxKey) return;
@@ -2745,15 +2745,16 @@ async function agentTick(){
   const now=performance.now();
   if(agentCur&&agentCur.sent){
     if(sayEpoch!==agentCur.ep){ agentCur=null; return; }      // cut off by something else (a spoken question, a barge-in): not "finished"
-    if(playing){ if(now-agentCur.sent>AGENT_GUARD+agentCur.ss[agentCur.i].length*150){ agentCur=null; shush(); } return; }       // (a dropped event can't wedge him; a long sentence just takes longer: about 7 characters a second at the slowest)
+    if(playing){ if(quietNow()) agentCur.hush=true; if(now-agentCur.sent>AGENT_GUARD+agentCur.ss[agentCur.i].length*150){ agentCur=null; shush(); } return; }       // (a dropped event can't wedge him; a long sentence just takes longer: about 7 characters a second at the slowest)
+    if(agentCur.hush){ agentCur=null; return; }             // (quiet came while a sentence played: the rest is dropped)
     agentCur.sent=0; agentCur.i++; }
   if(!agentCur){
     while(agentQ.length&&now-agentQ[0].at>AGENT_STALE) agentQ.shift();
-    if(!agentQ.length||playing||agentBusy()) return;
+    if(!agentQ.length||playing||agentBusy()||quietNow()) return;
     const e=agentQ.shift(); agentCur={e,ss:agentSplit(e.text),i:0,sent:0,ep:0,reply:nextReply()}; }
   const c=agentCur;
   if(c.i>=c.ss.length){ agentCur=null; return; }
-  if(agentBusy()){ agentCur=null; return; }
+  if(agentBusy()||quietNow()){ agentCur=null; return; }
   if(muted){ if(c.i===0){ capShow(); setYou(''); himSet(c.e.text); capQuiet(); } agentCur=null; return; }     // (muted partway: he just stops, without printing it all again)
   agentCheck=true;      // held until this sentence is handed over: the 250 ms tick must not come in while we wait
   try{
@@ -2761,8 +2762,9 @@ async function agentTick(){
     try{ go=(await (await post('/api/agent-say/check',{from:c.e.from})).json()).go===true; }catch(e){}
     if(agentCur!==c) return;                                   // stopped while checking
     if(!go||muted||agentBusy()){ agentCur=null; return; }             // (call, meeting, anything but "go": the rest of this summary is dropped)
+    if(quietNow()){ agentCur=null; return; }                 // (quiet started meanwhile: dropped, as for a meeting)
     if(c.i===0){ restore(Math.min(60000,4000+c.e.text.length*80),false); if(info.hover) await comeBack(); if(agentCur!==c) return;
-      if(muted||agentBusy()){ agentCur=null; return; }
+      if(muted||agentBusy()||quietNow()){ agentCur=null; return; }
       agentMark(c.e.from,'done'); capShow(); setYou(''); himSet(''); }       // (no sfx, no tick: the finished alert already did)
     c.sent=performance.now(); c.ep=sayEpoch; enqueue(c.ss[c.i],{follow:false,cap:true,strict:true,fresh:c.i===0,reply:c.reply});
   } finally { agentCheck=false; }
@@ -2808,22 +2810,22 @@ function onEvent(ev){
     const ask=ev.kind!=='done', r=(ev.text||'').replace(new RegExp('^'+ev.name+'\\s+','i'),''), pj=ev.project?' · '+ev.project:'';
     const head=ask?(/^(needs|is waiting|wants)\b/i.test(r)?ev.name+' '+r:ev.name+' needs you'+(r?': '+r:'')):'✓ '+ev.name+' finished'+(r?': '+r:'');   // ("Claude needs your permission…", not "Claude needs you: Claude needs…")
     if(hiddenNow){ if(ask) post('/api/notify',{title:'Nixi',body:head+pj}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
-    if(ask||!(SIT.fullscreen||SIT.meeting)) restore(ask?20000:11000,false);
-    if(info.hover) comeBack(); wake(); agentMark(ev.from,ask?'ask':'done'); if(ask) rxPlay('ask');
-    if(!ask&&((attnPend&&performance.now()-attnPend.at<60000)||(AM&&AM.kind==='ask'&&performance.now()<AM.until))){ sfx('done'); poke('t_beam',1400); return; }   // (a finish never takes over a question)
-    if(!ask){ rxPlay('done'); sfx('done'); poke('t_beam',1400); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; sendRegion(); return; }   // (no flash, no talking)
+    if(ask||!quietNow()) restore(ask?20000:11000,false);
+    if(info.hover&&(ask||!quietNow())) comeBack(); wake(); agentMark(ev.from,ask?'ask':'done'); if(ask) rxPlay('ask');
+    if(!ask&&((attnPend&&performance.now()-attnPend.at<60000)||(AM&&AM.kind==='ask'&&performance.now()<AM.until))){ if(!quietNow()){ sfx('done'); poke('t_beam',1400); } return; }   // (a finish never takes over a question)
+    if(!ask){ rxPlay('done'); if(!quietNow()){ sfx('done'); poke('t_beam',1400); } tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; sendRegion(); return; }   // (no flash, no talking)
     sfx('remind'); poke('pleading',4000); flash('#ffb02a'); tick(head+pj); chip.classList.add('act'); chip.dataset.from=ev.from; attnPend={from:ev.from,at:performance.now()}; renderCue(); setTimeout(renderCue,60500); sendRegion();
     if(!muted) sayAside(head+(ev.project?', in '+ev.project:'')); }
   else if(ev.t==='notify') notifyIn(ev);
-  else if(ev.t==='nudge') { if(!(SIT.fullscreen||SIT.meeting)) restore(11000,false); ev.rt=performance.now(); nudgeQ.set(ev.kind,ev); nudgeDrain(performance.now()); }
-  else if(ev.t==='situation'){ const hot0=SIT.cpu_hot, low0=SIT.ram_low, trk0=SIT.track; SIT.track=ev.track||0; SIT.meeting=!!ev.meeting; if(ev.music&&!SIT.music) musKeep=false; SIT.music=!!ev.music; /* (music started again: the card's own Pause is over) */ SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party; SIT.heavy=!!ev.heavy; SIT.windy=!!ev.windy; SIT.lean=ev.lean||0; SIT.cold=ev.cold||0; SIT.day=ev.day!==false;
-    if(ev.weather==='snow'&&SIT.weather!=='snow'&&info.look_weather) poke('excited',1800);      // he loves snow: once, when it starts
+  else if(ev.t==='nudge') { if(!quietNow()) restore(11000,false); const now=performance.now(); ev.rt=now; ev.until=ev.wait==null?Infinity:now+ev.wait*1000; nudgeQ.set(ev.kind,ev); nudgeDrain(now); }
+  else if(ev.t==='situation'){ const hot0=SIT.cpu_hot, low0=SIT.ram_low, trk0=SIT.track; SIT.track=ev.track||0; SIT.dnd=!!ev.dnd; SIT.meeting=!!ev.meeting; if(ev.music&&!SIT.music) musKeep=false; SIT.music=!!ev.music; /* (music started again: the card's own Pause is over) */ SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party; SIT.heavy=!!ev.heavy; SIT.windy=!!ev.windy; SIT.lean=ev.lean||0; SIT.cold=ev.cold||0; SIT.day=ev.day!==false;
+    if(ev.weather==='snow'&&SIT.weather!=='snow'&&info.look_weather&&!quietNow()) poke('excited',1800);      // he loves snow: once, when it starts
     SIT.weather=ev.weather||null; rxSignals(hot0,low0,trk0); }
-  else if(ev.t==='ambient'){ if(ev.alert) restore(12000,false); const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive) poke('confused',1500); if(more) rxPlay('error'); if(ev.alert&&ev.cal) rxPlay('soon');
-    if(ev.glint&&info.proactive){ poke('t_beam',1800); burstLines('#77b6e1',8); }      // a new NixOS generation: proud
-    if(ev.glint&&BODY===CHARACTERS.snowflake){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
-    if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')) flash('#4d6fb7'); }   // (never spoken)
-    else if(more&&document.body.classList.contains('bar')) flash('#e5a50a'); }
+  else if(ev.t==='ambient'){ if(ev.alert&&!quietNow()) restore(12000,false); const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive&&!quietNow()) poke('confused',1500); if(more) rxPlay('error'); if(ev.alert&&ev.cal) rxPlay('soon');
+    if(ev.glint&&info.proactive&&!quietNow()){ poke('t_beam',1800); burstLines('#77b6e1',8); }      // a new NixOS generation: proud
+    if(ev.glint&&BODY===CHARACTERS.snowflake&&!quietNow()){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
+    if(ev.alert&&ev.cal){ tick('📅 '+ev.cal.time+' '+ev.cal.title); if(document.body.classList.contains('bar')&&!quietNow()) flash('#4d6fb7'); }   // (never spoken)
+    else if(more&&document.body.classList.contains('bar')&&!quietNow()) flash('#e5a50a'); }
   else if(ev.t==='approve_done') approvalGone(ev.id);
   else if(ev.t==='stage'){ if(stageShow(ev)===false&&stageText(ev)) himSet(((himEl.textContent||'').trim()+'\n'+stageText(ev)).trim()); }
   else if(ev.t==='stage_update'){ if(stgHeld&&stgHeld.kind===ev.kind&&(ev.kind==='headlines'?ev.copy===stgHeld.copy:ev.refresh===stgHeld.refresh)) stgHeld={...stgHeld,...ev,t:'stage'};   // (a held board keeps its late updates: the server doesn't send them twice)
@@ -2897,8 +2899,8 @@ function setYou(t){ youEl.textContent=t; youEl.classList.remove('pop'); youEl.of
 // ---- unasked nudges (#133b): break, welcome back, memory, load. The newest per kind waits until he is idle.
 const nudgeQ=new Map();
 let lastSpokeAt=-1e9;
-function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts-e.rt>600000) nudgeQ.delete(k);   // stale: it waited too long
-  if(!nudgeQ.size||ts<notifyAt||!notifyIdle()) return;
+function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts>e.until) nudgeQ.delete(k);   // stale: the server's deadline passed
+  if(!nudgeQ.size||quietNow()||ts<notifyAt||!notifyIdle()) return;
   const [kind,ev]=nudgeQ.entries().next().value; nudgeQ.delete(kind); notifyAt=ts+5000; wake();
   if(kind==='break') rxPlay('workout');
   if(kind==='break'&&!FID&&mood(ts)==='idle'){ FID={name:'stretch',t0:ts,dur:FIDGETS.stretch.dur}; FIDGETS.stretch.start&&FIDGETS.stretch.start(FID); }
@@ -2915,7 +2917,8 @@ function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts-e.rt>600000) nudgeQ.de
   else { karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; plateReset(); ntfDrop(); setYou('');
     const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); shownTxt=''; capShow(); sendRegion(true); dropSync();
     setTimeout(()=>{ if(sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } },6000); } }
-let SIT={track:0,meeting:false,music:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false,heavy:false,windy:false,lean:0,cold:0,day:true};   // situation signals, as the server sends them
+let SIT={track:0,dnd:false,meeting:false,music:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false,heavy:false,windy:false,lean:0,cold:0,day:true};   // situation signals, as the server sends them
+function quietNow(){ return SIT.dnd||SIT.locked||SIT.fullscreen||SIT.meeting; }
 // a look goes on after 3 s of signal and off after 8 s without it: timestamps, no timers
 const sitOn={meeting:false,music:false,fullscreen:false,coding:false,night:false,party:false,rain:false,snow:false,clear:false,partly:false,cloudy:false,windy:false,cold1:false,cold2:false}, sitSeen={...sitOn}, sitAt=Object.fromEntries(Object.keys(sitOn).map(k=>[k,0]));
 function sitStep(ts){ const weather={rain:SIT.weather==='rain',snow:SIT.weather==='snow',clear:SIT.weather==='clear',partly:SIT.weather==='partly',cloudy:SIT.weather==='cloudy',windy:SIT.windy,cold1:SIT.cold>=1,cold2:SIT.cold>=2};
