@@ -210,7 +210,8 @@ const cardUp = async (look = "return 1;") => ev(`reset(); __seenLog.length=0; co
 const cd = await cardUp(`const d=document.querySelector('#him .ncard'); if(!d) return null; const t=sel=>[...d.querySelectorAll(sel)];   // (read at once: the 404 for the fake id removes the image a moment later)
   return {imgs:t('img').map(i=>i.getAttribute('src')), btns:t('button').map(b=>b.textContent), more:(t('.nmore')[0]||{}).textContent, who:t('.nch span')[0].textContent, summary:(t('.ncs')[0]||{}).textContent,
     runs:t('.ncr span:not(.nh)').map(s=>[s.textContent,s.style.fontWeight,s.style.fontStyle,s.style.textDecoration]), br:t('.ncr br').length, hosts:t('.nh').map(s=>s.textContent),
-    pwn:window.__pwn===undefined, seen:seenOf('cd1'), ntf:cap.classList.contains('ntf')};`);
+    pwn:window.__pwn===undefined, seen:seenOf('cd1'), ntf:cap.classList.contains('ntf'),
+    cut:[...d.children].filter(c=>{ const r=c.getBoundingClientRect(), h=himEl.getBoundingClientRect(); return r.top<h.top-0.5||r.bottom>h.bottom+0.5||r.top<0; }).map(c=>c.className)};`);
 check(cd !== null, "a row with a card is drawn as a card");
 if (cd) {
   eq(cd.imgs, ["/api/nimage/0123456789abcdef"], "the card has one preview, from /api/nimage/<id>");
@@ -218,6 +219,7 @@ if (cd) {
   eq(cd.runs, [["<img src=x onerror=window.__pwn=1>", "700", "", ""], ["a link", "", "italic", "underline"], ["ex.com", "", "", "underline"]], "card: runs are text with their styles; a link is underlined");
   eq([cd.br, cd.hosts, cd.pwn], [1, [" (ex.com)"], true], "card: a line break, the host only when the label differs, no sender markup becomes an element");
   eq(cd.seen, [true], "card: marked seen once, only after it was drawn");
+  eq(cd.cut, [], "card: header, text, picture and buttons all show, none clipped by the caption (#214 by-hand check)");
 }
 await sleep(5800);
 check(await ev(`return !!document.querySelector('#him .ncard');`), "a card is still up at 6.2 s");
