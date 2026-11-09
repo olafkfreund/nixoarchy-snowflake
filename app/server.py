@@ -238,7 +238,7 @@ DEFAULTS = {
     "idle_mode": "shrink",                  # when idle: off (stay) | shrink (peek at the edge) | doze
     "ambient_system": True, "ambient_calendar": False, "ambient_weather": False,
     # desktop awareness (#133): all off but the per-category sound and the spoken categories
-    "proactive": False, "reactions": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"], "agent_voice_mute": [],
+    "proactive": False, "reactions": False, "news_watch": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"], "agent_voice_mute": [],
     "mail_on": False, "mail_accounts": [], "mail_model": "",       # hear and answer mail (#210): off, no address, no summaries
     "notify_sound": True, "look_meeting": False, "look_music": False,
     "look_beat": False, "notify_speak_subject": False,
@@ -1821,11 +1821,72 @@ class Ambient:
     peer_due = 0.0
     later = []
     later_lock = threading.Lock()
+    news_due = 0.0
+    news_thread = None
+    news_seen = None
+    news_conf = None
 
     @classmethod
     def hand(cls, kind, text, ok, peer=None):
         with cls.later_lock:
             cls.later.append((kind, text, ok, peer))
+
+    @classmethod
+    def news_ok(cls):
+        if not (CFG.get("proactive") and CFG.get("news_watch") and not Wake.asleep and Plug.stage.get("news")):
+            return False
+        try:
+            config, _ = plugins.read_user_config("news")
+            return isinstance(config, dict) and isinstance(config.get("feeds"), list) and bool(config["feeds"])
+        except Exception:  # a bad saved config must never enable the default feeds
+            return False
+
+    @staticmethod
+    def news_conf_hash():
+        config, _ = plugins.read_user_config("news")
+        return hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()
+
+    @classmethod
+    def news_tick(cls, t):
+        if not cls.news_ok() or t < cls.news_due or (cls.news_thread and cls.news_thread.is_alive()):
+            return
+        cls.news_due = t + 1800
+        p = Plug.stage["news"]
+        cls.news_thread = threading.Thread(target=cls.news_run, args=(p,), daemon=True)
+        cls.news_thread.start()
+
+    @classmethod
+    def news_run(cls, p):
+        try:
+            before = cls.news_conf_hash()
+            st = plugins.run_stage(p, "news", locale=lang.LANGS[lang.active]["locale"])
+            after = cls.news_conf_hash()
+            if before != after:
+                cls.news_seen = None
+                return
+            if not cls.news_ok() or Plug.stage.get("news") is not p:
+                return
+            plugins._consented(p)
+            if st.get("kind") != "headlines" or any(word in str(st.get("source", ""))
+                                                          for word in ("couldn't be reached", "couldn't refresh")):
+                return
+            seen = {hashlib.sha256((item["source"] + "\0" + item["title"]).encode()).hexdigest()
+                    for item in st.get("items", [])[:5]}
+            if cls.news_seen is not None and after == cls.news_conf:
+                n = len(seen - cls.news_seen)
+                if n:
+                    def still_ok():
+                        try:
+                            if not cls.news_ok() or Plug.stage.get("news") is not p:
+                                return False
+                            plugins._consented(p)
+                            return True
+                        except Exception:
+                            return False
+                    cls.hand("news", quip("news", n=n), still_ok)
+            cls.news_seen, cls.news_conf = seen, after
+        except Exception as exc:  # feed names, URLs and titles can appear in exception text
+            print(f"[nixi] news watch: {type(exc).__name__}", file=sys.stderr)
 
     @classmethod
     def peer_edges(cls):
@@ -2248,6 +2309,7 @@ class Ambient:
                     print(f"[nixi] ambient: {e}", file=sys.stderr)
             try:
                 cls.sense()
+                cls.news_tick(time.monotonic())
                 with cls.later_lock:
                     later, cls.later = cls.later, []
                 for kind, caption, ok, peer in later:
@@ -2267,6 +2329,7 @@ class Ambient:
 
 # Short friendly lines, in app/quips.json (editable without code); these are what is used when that file is broken or missing.
 QUIP_FALLBACK = {
+    "news": ("{n} new headlines.",),
     "break": ("An hour already! Stand up and stretch?", "Time for a stretch. Your back will thank you.", "That's a good long stretch of work. Water and a walk?"),
     "workout": ("Workout time!", "Ready to move for a bit?",),
     "water": ("Time for some water.", "A drink of water sounds good.",),
@@ -2575,7 +2638,7 @@ def workout_cfg():
 class Nudge:
     """Unasked nudges (#133b): break, welcome back, memory, load. They wait for a breakpoint (an unlock, a workspace switch, or
     20 s without window events), and a budget keeps them rare: one visual per 5 minutes, one spoken per 10, a cooldown per kind."""
-    COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "workout": 0, "water": 0, "welcome": 0, "rain": 72000, "snow": 72000, "night": 72000, "party": 72000, "coding": 7200,
+    COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "workout": 0, "water": 0, "welcome": 0, "rain": 72000, "snow": 72000, "night": 72000, "party": 72000, "coding": 7200, "news": 1800,
             "error": 1800, "disk": 21600, "offline": 1800, "host": 1800, "storm": 72000, "hot": 72000}
     lock = threading.Lock()
     pending = {}                                              # kind -> (text, spoken, deadline, peer); oldest first
@@ -5673,7 +5736,7 @@ def clamp01(x):
 
 
 MEDIA_PHRASES = {"pause", "play", "next song", "quieter", "louder", "what's playing"}
-NOTIFY_FLAGS = ("proactive", "reactions", "notifications_takeover", "notify_details", "notify_sound", "look_meeting", "look_music",
+NOTIFY_FLAGS = ("proactive", "reactions", "news_watch", "notifications_takeover", "notify_details", "notify_sound", "look_meeting", "look_music",
                 "look_fullscreen", "react_load", "react_break", "react_welcome",
                 "look_coding", "look_night", "look_weather", "look_party", "react_quips", "look_beat", "notify_speak_subject")
 NOTIFY_CATS = ("mail", "chat", "meeting", "video", "download", "other")

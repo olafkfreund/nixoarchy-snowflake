@@ -5,7 +5,7 @@ import io
 import json
 import sys
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, redirect_stderr
 from pathlib import Path
 from unittest import mock
 
@@ -109,6 +109,18 @@ class NewsTest(unittest.TestCase):
         card = json.loads(output.getvalue())
         self.assertEqual((card["kind"], card["points"]), ("facts", ["No news feeds could be reached."]))
         self.assertEqual(card["source"], "2 couldn't be reached")
+
+    def test_failed_feed_stderr_has_no_title_or_url(self):
+        config = {"config": {"feeds": [{"name": "Private headline", "url": "https://example.com/secret-feed"}]}}
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with mock.patch.object(news.sys, "stdin", io.StringIO(json.dumps(config))), \
+             mock.patch.object(news.urllib.request, "build_opener") as opener, \
+             redirect_stdout(stdout), redirect_stderr(stderr):
+            opener.return_value.open.side_effect = OSError("https://example.com/secret-feed")
+            news.main()
+        self.assertEqual(json.loads(stdout.getvalue())["kind"], "facts")
+        self.assertNotIn("Private headline", stderr.getvalue())
+        self.assertNotIn("secret-feed", stderr.getvalue())
 
     def card(self, query, config, feeds_ok=True):
         stdin = json.dumps({"query": query, "config": config})

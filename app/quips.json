@@ -1,4 +1,5 @@
 {
+  "news": ["{n} new headlines.", "{n} new stories in your feeds.", "The news moved: {n} new."],
   "break": [
     "An hour already! Stand up and stretch?",
     "Time for a stretch. Your back will thank you.",

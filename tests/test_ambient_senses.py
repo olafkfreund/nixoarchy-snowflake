@@ -1,10 +1,163 @@
-"""#209 step 1: local machine edges and the ambient-thread handoff."""
+"""#209 ambient machine edges, news watch and the ambient-thread handoff."""
+import io
 import tempfile
 import threading
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest import mock
 
 from test_speakable import _ServerEnv
+
+
+class NewsWatchTest(_ServerEnv):
+    def setUp(self):
+        S = self.server
+        self.A = S.Ambient
+        old = dict(S.CFG)
+        self.addCleanup(lambda: (S.CFG.clear(), S.CFG.update(old)))
+        S.CFG.update(proactive=True, news_watch=True)
+        self.A.news_due = 0
+        self.A.news_thread = self.A.news_seen = self.A.news_conf = None
+        self.A.later = []
+        self.plugin = mock.Mock()
+        prior = S.Plug.stage
+        S.Plug.stage = {"news": self.plugin}
+        self.addCleanup(lambda: setattr(S.Plug, "stage", prior))
+        self.config = {"feeds": [{"name": "Private", "url": "https://example.com/feed"}]}
+        self.items = [self.item("Old")]
+        self.calls = []
+        self.consent = mock.Mock()
+        def run(p, query, locale):
+            self.calls.append((threading.current_thread(), p, query, locale))
+            return {"kind": "headlines", "source": "Private", "items": list(self.items)}
+        for obj, name, kwargs in ((S.plugins, "run_stage", {"side_effect": run}),
+                                  (S.plugins, "read_user_config", {"side_effect": lambda pid: (self.config, None)}),
+                                  (S.plugins, "config_path", {"return_value": mock.Mock()}),
+                                  (S.plugins, "_consented", {"side_effect": self.consent}),
+                                  (S, "quip", {"side_effect": lambda kind, **slots: S.QUIP_FALLBACK[kind][0].format(**slots)})):
+            patch = mock.patch.object(obj, name, **kwargs)
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    @staticmethod
+    def item(title):
+        return {"source": "Private", "title": title, "url": "https://example.com/story"}
+
+    def tick(self, t):
+        self.A.news_tick(t)
+        thread = self.A.news_thread
+        if thread:
+            thread.join(2)
+            self.assertFalse(thread.is_alive())
+
+    def test_baseline_new_and_repeat_are_private_and_off_thread(self):
+        self.tick(100)
+        self.assertEqual(self.A.later, [])
+        self.items = [self.item("New secret title"), self.item("Old")]
+        self.tick(1900)
+        self.assertEqual(len(self.A.later), 1)
+        kind, caption, ok, _ = self.A.later.pop()
+        self.assertEqual((kind, caption), ("news", "1 new headlines."))
+        self.assertTrue(ok())
+        self.assertNotIn("secret", caption)
+        self.assertNotIn("Private", caption)
+        self.tick(3700)
+        self.assertEqual(self.A.later, [])
+        self.assertEqual([c[2] for c in self.calls], ["news"] * 3)
+        self.assertTrue(all(c[0] is not threading.current_thread() for c in self.calls))
+
+    def test_no_run_without_all_gates(self):
+        S = self.server
+        for config in (None, {}, {"other": 1}, {"feeds": []}):
+            self.config = config
+            self.A.news_tick(100)
+        self.assertEqual(self.calls, [])
+        self.config = {"feeds": [{"url": "https://example.com/feed"}]}
+        for key in ("news_watch", "proactive"):
+            S.CFG[key] = False
+            self.A.news_tick(100)
+            S.CFG[key] = True
+        S.Wake.asleep = True
+        try:
+            self.A.news_tick(100)
+        finally:
+            S.Wake.asleep = False
+        S.Plug.stage.clear()
+        self.A.news_tick(100)
+        self.assertEqual(self.calls, [])
+        S.Plug.stage["news"] = self.plugin
+        with mock.patch.object(S.plugins, "read_user_config", side_effect=OSError("secret feed")):
+            self.A.news_tick(100)
+        self.assertEqual(self.calls, [])
+
+    def test_config_change_and_degraded_results_do_not_move_baseline(self):
+        self.tick(100)
+        self.items = [self.item("New")]
+        self.config = {"feeds": [{"url": "https://other.example/feed"}]}
+        self.tick(1900)
+        self.assertEqual(self.A.later, [])
+        self.items = [self.item("Newer")]
+        self.tick(3700)
+        self.assertEqual(len(self.A.later), 1)
+        self.A.later.clear()
+        for source in ("1 couldn't be reached", "couldn't refresh, 5 minutes ago"):
+            with mock.patch.object(self.server.plugins, "run_stage", return_value={"kind": "headlines", "source": source,
+                                                                                     "items": [self.item("Newer"), self.item("Bad")]}):
+                self.tick(self.A.news_due)
+            self.assertEqual(self.A.later, [])
+        self.items = [self.item("Newer")]
+        self.tick(self.A.news_due)
+        self.assertEqual(self.A.later, [])
+
+    def test_edit_during_run_and_late_switch_or_consent_drop(self):
+        self.tick(100)
+        self.items = [self.item("Secret")]
+        start, release = threading.Event(), threading.Event()
+        def slow(*args, **kwargs):
+            start.set()
+            release.wait(2)
+            return {"kind": "headlines", "source": "Private", "items": list(self.items)}
+        with mock.patch.object(self.server.plugins, "run_stage", side_effect=slow):
+            self.A.news_tick(1900)
+            self.assertTrue(start.wait(2))
+            self.A.news_tick(3700)
+            self.assertEqual(self.A.news_due, 3700)
+            self.config = {"feeds": [{"url": "https://changed.example/feed"}]}
+            release.set()
+            self.A.news_thread.join(2)
+        self.assertIsNone(self.A.news_seen)
+        self.tick(3700)
+        self.assertEqual(self.A.later, [])
+        self.server.CFG["news_watch"] = False
+        self.A.news_run(self.plugin)
+        self.assertEqual(self.A.later, [])
+        self.server.CFG["news_watch"] = True
+        self.consent.side_effect = self.server.plugins.StageError("Secret title in error")
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            self.A.news_run(self.plugin)
+        self.assertEqual(self.A.later, [])
+        self.assertNotIn("Secret", stderr.getvalue())
+        self.assertNotIn("Private", stderr.getvalue())
+
+    def test_late_switch_and_no_video_search(self):
+        self.tick(100)
+        self.items = [self.item("New")]
+        started, release = threading.Event(), threading.Event()
+        def slow(*args, **kwargs):
+            started.set()
+            release.wait(2)
+            return {"kind": "headlines", "source": "Private", "items": list(self.items),
+                    "video_query": "world news"}
+        with mock.patch.object(self.server.plugins, "run_stage", side_effect=slow), \
+             mock.patch.object(self.server, "news_clips") as clips:
+            self.A.news_tick(1900)
+            self.assertTrue(started.wait(2))
+            self.server.CFG["news_watch"] = False
+            release.set()
+            self.A.news_thread.join(2)
+            self.assertEqual(self.A.later, [])
+            clips.assert_not_called()
 
 
 class MachineSensesTest(_ServerEnv):

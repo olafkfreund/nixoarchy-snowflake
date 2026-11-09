@@ -666,6 +666,20 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   check(c[0] === true && c[1] === true, "Reactions: the switch saves", JSON.stringify(c));
   await ev("await post('/api/settings',{proactive:false,reactions:false}); settings(false); return 1"); }
 
+// #209: news watch fills from info, needs Proactive, and saves its switch.
+{ const r=await ev(`const original=setSetting, saves=[];
+    setSetting=async b=>{ saves.push(structuredClone(b)); Object.assign(info,b); renderSettings(); return true; };
+    try{
+      info.proactive=false; info.news_watch=true; renderSettings();
+      const e=$('#newsWatchSw'), filled=e.checked, disabled=e.disabled, faded=e.closest('.row').style.opacity;
+      info.proactive=true; info.news_watch=false; renderSettings();
+      const enabled=!e.disabled;
+      e.click(); await new Promise(r=>setTimeout(r,0));
+      return {filled,disabled,faded,enabled,saves};
+    }finally{setSetting=original;}`);
+  check(r.filled&&r.disabled&&Number(r.faded)===.5&&r.enabled&&r.saves.some(s=>s.news_watch===true),
+    "news watch fills from info, needs Proactive, and saves as news_watch",JSON.stringify(r)); }
+
 // #209: schedule and water controls render from info and save their values.
 { const r=await ev(`const original=setSetting; window.__breakSaves=[];
     setSetting=async b=>{ __breakSaves.push(structuredClone(b)); Object.assign(info,b); renderSettings(); return true; };
