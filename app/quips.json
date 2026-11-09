@@ -5,6 +5,8 @@
     "That's a good long stretch of work. Water and a walk?",
     "Eyes up for a moment? Look at something far away."
   ],
+  "workout": ["Workout time!", "Ready to move for a bit?", "Your workout hour is here."],
+  "water": ["Time for some water.", "A drink of water sounds good.", "Have a sip of water?"],
   "welcome": ["Welcome back!", "Good to see you again!", "There you are!"],
   "ram": [
     "Memory's getting tight. Maybe close something heavy?",
