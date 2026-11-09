@@ -1,4 +1,4 @@
-"""Reaction art in index.html (#208): safe markup/CSS, fx- ids, only the 14 in-scope ids, under 40 KB."""
+"""Reaction art in index.html (#208): safe markup/CSS, fx- ids, the in-scope ids (14, plus #226's video prop), under 40 KB."""
 import json
 import re
 import unittest
@@ -8,6 +8,7 @@ HTML = Path(__file__).resolve().parent.parent / "app/static/index.html"
 # Copied verbatim from mockups/206/build.py in nixi-nixarchy:
 BAD = re.compile(r"<\s*(script|image|foreignObject|iframe|use|a|style)\b|\son\w+\s*=|https?:|javascript:|@import|expression\(|\bfilter\s*[=:]|</style", re.I)
 IDS = ("load", "memory", "error", "soon", "meeting", "notice", "ask", "done", "open", "music", "rain", "snow", "wind", "workout")
+PROP_IDS = IDS[:10] + ("video",) + IDS[10:]                                 # (#226: the TV has no per-character touch)
 CHARS = ("snowflake", "terminal", "robot", "devil")
 
 
@@ -42,7 +43,7 @@ class ReactArtTest(unittest.TestCase):
 
     def test_only_in_scope_ids(self):
         self.assertEqual(set(self.react.keys()), {"defs", "props", "touch"})
-        self.assertEqual(tuple(self.react["props"].keys()), IDS)
+        self.assertEqual(tuple(self.react["props"].keys()), PROP_IDS)
         for rid, prop in self.react["props"].items():
             self.assertEqual(set(prop.keys()), {"sky", "back", "front", "css"}, rid)
         self.assertEqual(tuple(self.react["touch"].keys()), CHARS)
