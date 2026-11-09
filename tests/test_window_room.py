@@ -10,6 +10,7 @@ from unittest.mock import Mock
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 import room  # noqa: E402
+from size import step  # noqa: E402
 
 
 def window_methods(*names):
@@ -32,6 +33,11 @@ def window_methods(*names):
 
 
 class RoomTest(unittest.TestCase):
+    def test_keyboard_size_steps_and_limits(self):
+        self.assertEqual(step(1.2, "up"), 1.25)
+        self.assertEqual(step(0.55, "down"), 0.5)
+        self.assertEqual(step(0.6, "reset"), 0.75)
+
     def test_layer_size_growth_clamps_base_before_room(self):
         ns = window_methods("set_wide")
         w = ns["Window"]()

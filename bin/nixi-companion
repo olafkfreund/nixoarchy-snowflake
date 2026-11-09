@@ -8,6 +8,7 @@
 #   nixi-companion hover      toggle hover mode (he floats next to your mouse)
 #   nixi-companion ptt-down / nixi-companion ptt-up   push-to-talk: bind to a key's press and release (Hyprland: bind / bindr)
 #   nixi-companion show|hide|quit
+#   nixi-companion size up|down|reset   change the companion zoom from a key bind
 #   nixi-companion doctor     check mic, voice and Claude Code
 #   nixi-companion diagnostics  a report to paste when asking for help (nothing is sent)
 #   nixi-companion stress     test his voice for stutters under heavy load
@@ -149,6 +150,36 @@ except Exception:
     pass' "$MODE" "$FROM" 2>/dev/null || true
   exit 0 ;;
 esac
+# resize from a key bind: save through Settings' API, then apply to the running window
+if [ "${1:-}" = size ]; then
+  case "${2:-}" in up|down|reset) ;; *) exit 2 ;; esac
+  PSOCK="${XDG_RUNTIME_DIR:-/tmp}/nixi-companion-$(id -u).sock"
+  [ -S "$PSOCK" ] || exit 0
+  # one step at a time: two quick presses would each read the same size and collapse into one step
+  command -v flock >/dev/null 2>&1 && { exec 9>"$ROOT/size.lock"; flock -w 5 9 || true; }
+  "${NIXI_COMPANION_PYTHON:-python3}" -c 'import json,os,socket,sys,urllib.request as u
+sys.path.insert(0, sys.argv[1])
+from size import step
+try:
+    data = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    config = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    rt = json.load(open(os.path.join(data, "nixi-companion", "runtime.json")))
+    try:
+        current = json.load(open(os.path.join(config, "nixi-companion", "config.json"))).get("size", 0.75)
+    except (OSError, ValueError, AttributeError):
+        current = 0.75
+    value = step(current, sys.argv[2])
+    req = u.Request("http://127.0.0.1:%s/api/settings" % rt["port"], json.dumps({"size": value}).encode(),
+                    {"Content-Type": "application/json", "X-Nixi-Token": rt["token"]})
+    u.urlopen(req, timeout=2).read()
+    with socket.socket(socket.AF_UNIX) as s:
+        s.settimeout(1)
+        s.connect(sys.argv[3])
+        s.sendall(("zoom:" + str(value)).encode())
+except Exception:
+    pass' "$APP" "$2" "$PSOCK" >/dev/null 2>&1 || true
+  exit 0
+fi
 # move him to another screen from a key bind: nixi-companion monitor next|prev|focused|<name> (e.g. DP-1)
 if [ "${1:-}" = monitor ]; then
   PSOCK="${XDG_RUNTIME_DIR:-/tmp}/nixi-companion-$(id -u).sock"
@@ -214,7 +245,7 @@ fi
 
 CMD="${1:-toggle}"
 case "$CMD" in toggle|show|hide|quit|restart|listen|look|live|hover|hover-on|hover-off) ;;
-  *) echo "usage: nixi-companion [listen|look|live|hover|show|hide|quit|doctor|diagnostics|stress|render|stop|restart|log|server]" >&2; exit 2 ;; esac
+  *) echo "usage: nixi-companion [listen|look|live|hover|show|hide|quit|size up|down|reset|monitor next|prev|focused|stop|doctor|diagnostics|stress|render|restart|log|server]" >&2; exit 2 ;; esac
 [ "$CMD" = restart ] && CMD=show
 FIRST="$CMD"; [ "$FIRST" = toggle ] && FIRST=show
 

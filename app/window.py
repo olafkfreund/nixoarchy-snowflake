@@ -131,16 +131,16 @@ CONF_FILE = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser
 def window_size(raw):
     try:
         z = float(raw)
-        return max(0.5, min(1.0, z)) if math.isfinite(z) else 0.6
+        return max(0.5, min(1.25, z)) if math.isfinite(z) else 0.75
     except (TypeError, ValueError):
-        return 0.6
+        return 0.75
 
 
 def saved_size():
     try:
-        return window_size(json.load(open(CONF_FILE)).get("size", 0.6))
+        return window_size(json.load(open(CONF_FILE)).get("size", 0.75))
     except (OSError, ValueError):
-        return 0.6
+        return 0.75
 
 POS_FILE = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "nixi-companion", "pos.json")
 
@@ -466,6 +466,11 @@ class NixiWindow:
         if self.bar:
             self.set_bar(self.bar, glide=False)
         self._apply_region()
+
+    def socket_zoom(self, value):
+        z = window_size(value)
+        self.set_zoom(z)
+        self._js(f"info.size={z}; if(setEl.classList.contains('on')) renderSettings()")
 
     # ---- where he is (layer mode: margins from the top-left of a monitor)
     @staticmethod
@@ -1404,7 +1409,7 @@ class NixiWindow:
                 cmd = c.recv(64).decode().strip()
             finally:
                 c.close()
-            fn = (lambda: (self.go_monitor(cmd[8:]), False)[1]) if cmd.startswith("monitor:") else {"toggle": self.toggle, "show": self.show, "hide": self.hide, "quit": self.quit,
+            fn = (lambda: (self.go_monitor(cmd[8:]), False)[1]) if cmd.startswith("monitor:") else (lambda: self.socket_zoom(cmd[5:])) if cmd.startswith("zoom:") else {"toggle": self.toggle, "show": self.show, "hide": self.hide, "quit": self.quit,
                   "aside:on": self.aside_on, "aside:off": self.aside_off, "listen": lambda: self.cmd("listen"), "look": lambda: self.cmd("look"), "live": lambda: self.cmd("live"),
                   "hover": lambda: self.cmd("hover"), "hover-on": lambda: self.cmd("hover-on"),
                   "hover-off": lambda: self.cmd("hover-off"),

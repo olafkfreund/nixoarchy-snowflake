@@ -4209,7 +4209,7 @@ function renderSettings(){
   $('#projList').innerHTML=Object.keys(pr).length?Object.entries(pr).map(([n,p])=>`<div class="proj"><b>${esc(n)}</b><span title="${esc(p)}">${esc(p.replace(/^\/home\/[^/]+/,'~'))}</span><button data-pdel="${esc(n)}" title="remove">✕</button></div>`).join('')
     :'<div class="h" style="margin:0">none yet</div>';
   // look
-  $('#sizeChips').innerHTML=[60,75,85,100].map(n=>`<button type="button" data-size="${n}" class="${Math.round((info.size||0.6)*100)===n?'on':''}" aria-pressed="${Math.round((info.size||0.6)*100)===n}">${n}%</button>`).join('');
+  $('#sizeChips').innerHTML=[60,75,85,100,125].map(n=>`<button type="button" data-size="${n}" class="${Math.round((info.size??0.75)*100)===n?'on':''}" aria-pressed="${Math.round((info.size??0.75)*100)===n}">${n}%</button>`).join('');
   const L=curLook();
   miniNixi($('#set .hd .logo'),L,false);
   $('#characterGrid').innerHTML=Object.entries(CHARACTERS).map(([id,c])=>`<button type="button" data-character="${id}" class="${(L.character||'snowflake')===id?'on':''}" aria-pressed="${(L.character||'snowflake')===id}"><svg viewBox="-125 -150 250 250" aria-hidden="true"></svg>${esc(c.label)}</button>`).join('');

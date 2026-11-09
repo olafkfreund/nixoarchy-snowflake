@@ -227,7 +227,7 @@ DEFAULTS = {
     "sfx": True,
     # how he looks: body + each eye + each eye white, a skin (accessory), and whether to roll random colours each time
     "look": {},
-    "size": 0.6,
+    "size": 0.75,
     # lambda-tip cues: failed user units + new generation (local); next calendar item (gog) and weather look (network): off
     "follow_focus": False,                  # move to the screen you focus (Hyprland)
     "answer_stages": True,                  # a board/notebook beside him for commands and facts (#144); off = captions only
@@ -5763,9 +5763,9 @@ NOTIFY_CATS = ("mail", "chat", "meeting", "video", "download", "other")
 def size_value(raw):
     try:
         value = float(raw)
-        return max(0.5, min(1.0, value)) if math.isfinite(value) else 0.6
+        return max(0.5, min(1.25, value)) if math.isfinite(value) else 0.75
     except (TypeError, ValueError):
-        return 0.6
+        return 0.75
 
 
 def save_config(**kw):
