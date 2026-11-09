@@ -2105,6 +2105,7 @@ class Plug:
     loaded = None
     quips = {}                                                  # event -> lines from enabled packs
     rules = []                                                  # (kind "app"|"host", value, category)
+    rx_rules = []                                               # (plugin id, kind, value, reaction)
     props = []                                                  # [{id, name, anchor, layer, nodes}] of enabled, sanitised props
     characters = []                                             # [{id, name, template, fill, fits, back, front}] of enabled, sanitised characters
     prop_errors = {}                                            # id -> why a prop was dropped (A4 shows it)
@@ -2133,7 +2134,7 @@ class Plug:
         cls.review(found, st)                                   # (a changed Folder plugin is switched off here)
         plugins.forget()                                        # (a result from before a reload or a switch-off is never shown again)
         loaded = [p for p in found if not p.error and st.get(p.id)["enabled"]]
-        quips, rules, props, chars, errors = {}, [], [], [], {}               # built aside, then swapped in at once: no half-loaded state
+        quips, rules, rx, props, chars, errors = {}, [], [], [], [], {}               # built aside, then swapped in at once: no half-loaded state
         for p in loaded:
             m = p.manifest
             if "quips" in m:
@@ -2156,6 +2157,8 @@ class Plug:
                 except (OSError, ValueError) as e:
                     errors[p.id] = plugins.PRIVATE_ART_ERROR if c.get("private") is True else str(e)   # (a private plugin's reason is never sanitiser text)
             rules += [(k, n[k], n["category"]) for n in m.get("notifications", []) for k in ("app", "host") if k in n]
+            rx += [(p.id, k, n[k], n["reaction"]) for n in m.get("reactions", []) for k in ("app", "host") if k in n]
+        cls.rx_rules = rx
         cls.loaded, cls.quips, cls.rules, cls.props, cls.characters, cls.prop_errors = loaded, quips, rules, props, chars, errors
         if any("system-status" in p.manifest.get("stage", {}).get("reads", []) for p in loaded):
             plugins.prime()
@@ -2201,14 +2204,24 @@ class Plug:
         if cls.loaded is None:
             cls.reload()
 
+    @staticmethod
+    def _hit(kind, v, app, source):
+        app = app.strip().lower()
+        host = re.sub(r"^[a-z][a-z0-9+.-]*://", "", source.strip().lower()).split("/")[0].split(":")[0]
+        return (kind == "app" and v == app) or (kind == "host" and host and (host == v or (v.startswith("*.") and host.endswith(v[1:]))))
+
+    @classmethod
+    def reaction(cls, app, source):
+        """(plugin id, reaction) of the first enabled plugin whose app or host rule matches; only app and source are read."""
+        cls.ensure()
+        return next(((pid, r) for pid, kind, v, r in cls.rx_rules if cls._hit(kind, v, app, source)), None)
+
     @classmethod
     def category(cls, app, source):
         """The plugin map's category for a notification the built-in rules left in "other", or "other"."""
         cls.ensure()
-        app = app.strip().lower()
-        host = re.sub(r"^[a-z][a-z0-9+.-]*://", "", source.strip().lower()).split("/")[0].split(":")[0]
         for kind, v, cat in cls.rules:
-            if (kind == "app" and v == app) or (kind == "host" and host and (host == v or (v.startswith("*.") and host.endswith(v[1:])))):
+            if cls._hit(kind, v, app, source):
                 return "video" if cat == "feed" else cat
         return "other"
 
@@ -2226,6 +2239,8 @@ def plugin_caps(m):
             out.append("Private: keep this folder out of Nix and out of any repo.")
     if m.get("notifications"):
         out.append("Sorts notifications from some apps or sites into mail, chat or feed")
+    if m.get("reactions"):
+        out.append("Reacts to notifications from some apps or sites")
     if "stage" in m:
         out.append("Runs a program when you ask for it" + (" and uses the network" if m["stage"].get("network") else ""))
         if "system-status" in m["stage"].get("reads", []):
@@ -2620,6 +2635,8 @@ class Inbox:
     wanted = False                                            # a lease is out
     unseen = {}                                               # key -> when it was sent to the page; 5 s unseen and the shell shows it
     origin = {}                                               # key -> (app, source, time), never row text
+    rxkeys = {}                                               # key -> when a plugin reaction was set on it (once per key)
+    rxat = {}                                                 # plugin id -> when its reaction was last sent (once per 5 minutes)
     acts = {}                                                 # key -> (rev, action ids, time), never row text; 64, 30 s
     alock = threading.Lock()                                  # acts: the tick thread writes, handler threads compare-and-pop
     legacy = 0.0                                              # until then the shell had no delegateRich: use delegate, then ask again
@@ -2782,6 +2799,9 @@ class Inbox:
             for key, (_, _, t) in list(cls.acts.items()):
                 if now - t > 30:
                     cls.acts.pop(key, None)
+        for key, t in list(cls.rxkeys.items()):
+            if now - t > 600:
+                cls.rxkeys.pop(key, None)
         for key, t in list(cls.unseen.items()):               # (handler threads pop from it)
             if now - t > 5:                                   # the page never drew it: the shell shows it as a popup
                 cls.unseen.pop(key, None)
@@ -2796,6 +2816,14 @@ class Inbox:
             cls.wanted = out is not None
             for row in cls.rows(out):
                 cls.unseen[row["key"]] = now
+                if (row["key"] not in cls.rxkeys and row["app"] != "nixi-job" and len(row["source"]) < 80   # (a cut source has no trustworthy host; long commands stay silent, #208)
+                        and (hit := Plug.reaction(row["app"], row["source"]))):
+                    cls.rxkeys[row["key"]] = now
+                    if len(cls.rxkeys) > 64:
+                        cls.rxkeys.pop(min(cls.rxkeys, key=cls.rxkeys.get))
+                    if now - cls.rxat.get(hit[0], -300) >= 300:
+                        cls.rxat[hit[0]] = now
+                        row["reaction"] = hit[1]
                 if (row["category"] in ("mail", "chat") and
                         row["app"].strip().lower().replace("-", " ") not in Icons.BROWSERS and
                         (row["source"].strip().lower() == row["app"].strip().lower() or   # (a native app's source is its own name, even a dotted one)

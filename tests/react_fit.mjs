@@ -124,12 +124,15 @@ const trig = await ev(`const o={}; const T=async(k,f)=>{ rxReset(); f(); await n
   await T('ask',()=>onEvent({t:'attention',kind:'ask',name:'Claude',text:'needs you',from:'x'}));
   await T('done',()=>{ attnPend=null; onEvent({t:'attention',kind:'done',name:'Claude',text:'',from:'x'}); });
   await T('notice',()=>onEvent({t:'notify',key:'n1',category:'other',app:'x',source:'',summary:'s',body:'',icon:'',rt:performance.now()}));
+  await T('plug_music',()=>onEvent({t:'notify',key:'n3',category:'other',app:'x',source:'',summary:'s',body:'',icon:'',reaction:'music',rt:performance.now()}));
+  await T('plug_chat',()=>onEvent({t:'notify',key:'n4',category:'chat',app:'x',source:'',summary:'s',body:'',icon:'',reaction:'notice',rt:performance.now()}));
+  rxReset(); sit({fullscreen:true}); notifyAt=0; onEvent({t:'notify',key:'n5',category:'other',app:'x',source:'',summary:'s',body:'',icon:'',reaction:'music',rt:performance.now()}); await new Promise(r=>setTimeout(r,60)); o.plug_full=RX&&RX.id; sit({fullscreen:false});
   await T('workout',()=>onEvent({t:'nudge',kind:'break',text:'stretch'}));
   const f0=window.fetch.bind(window); window.fetch=(u,x)=>/api\\/quick/.test(String(u))?Promise.resolve(new Response(JSON.stringify({handled:true,say:'Opening Firefox.',opened:true}))):f0(u,x);
   rxReset(); await send('open firefox'); await new Promise(r=>setTimeout(r,60)); o.open=RX&&RX.id; window.fetch=f0;
   await T('notice_job',()=>onEvent({t:'notify',key:'n2',category:'other',app:'nixi-job',summary:'s',body:'',icon:'',rt:performance.now()}));
   rxReset(); return o;`);
-eq(trig, { error: "error", soon: "soon", ask: "ask", done: "done", notice: "notice", workout: "workout", open: "open", notice_job: null }, "each real signal plays its reaction (a long-command row does not)");
+eq(trig, { error: "error", soon: "soon", ask: "ask", done: "done", notice: "notice", plug_music: "music", plug_chat: "notice", plug_full: null, workout: "workout", open: "open", notice_job: null }, "each real signal plays its reaction (a long-command row does not)");
 
 // 7. an approval is never held up: ask preempts a playing reaction, and plays even when the same ask came just before
 eq(await ev(`rxReset(); rxPlay('rain'); const a=rxPlay('ask'); rxEnd(); const b=rxPlay('ask'); return [a,b];`), [true, true], "ask preempts and repeats");
@@ -145,6 +148,16 @@ check(normal[0] > 0 && normal[1], "without reduced motion the reaction animates"
 await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }); await sleep(200);
 const reduced = await anims();
 check(reduced[0] === 0 && reduced[1], "reduced motion: the prop shows and no animation runs", reduced);
+await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "no-preference" }] });
+
+// 9b. a plugin's reaction on an `other` row obeys the same gate: not in a meeting, under the lock, or with reduced motion
+const plugRow = (on = "") => `rxReset(); notifyAt=0; notifyBurst={cat:'',n:0,t:0}; ${on}; onEvent({t:'notify',key:'p'+String(Math.random()).slice(2,10),category:'other',app:'x',source:'',summary:'s',body:'',icon:'',reaction:'music',rt:performance.now()}); await new Promise(r=>setTimeout(r,200));`;
+eq(await ev(`${plugRow()} const o=RX&&RX.id; rxReset(); return o;`), "music", "control: the same plugin row plays with no gate");
+for (const [name, on, off] of [["a meeting", "sit({meeting:true})", "sit({meeting:false})"], ["the lock", "sit({locked:true})", "sit({locked:false})"]]) {
+  eq(await ev(`${plugRow(on)} const o=[RX&&RX.id, empty()]; ${off}; rxReset(); return o;`), [null, true], `a plugin reaction does not play under ${name}`);
+}
+await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }); await sleep(200);
+eq(await ev(`${plugRow()} const o=[RX&&RX.id, document.getAnimations().filter(a=>a.animationName&&/^fx/.test(a.animationName)).length]; rxReset(); return o;`), ["music", 0], "a plugin reaction shows still, with no animation, under reduced motion");
 await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "no-preference" }] });
 
 // 10. setCharacter to each character and back, and the notch, still work
