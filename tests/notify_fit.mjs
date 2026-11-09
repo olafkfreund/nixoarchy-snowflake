@@ -322,10 +322,15 @@ eq(quiet.approval, {shown:true,id:'quiet-a1'}, "an approval card still shows und
 eq(quiet.expiry, {none:{q:0,said:true},short:{q:0,said:false}}, "null wait survives ten minutes; a 60 second wait expires");
 
 // #209: reminder controls use the id last displayed and yield to quiet and approvals.
+await send("Emulation.setDeviceMetricsOverride", { width: 340, height: 460, deviceScaleFactor: 1, mobile: false });
+await sleep(100);
 const rem=await ev(`const seen={}; const show=(kind,id,speak=false)=>{ reset(); SIT.dnd=false; notifyAt=0; onEvent({t:'nudge',kind,id,text:'stretch',speak,wait:null}); return !remEl.hidden; };
   const settle=()=>new Promise(r=>setTimeout(r,0));   // (post() waits for the token first)
   setEl.classList.remove('on'); panelEl.classList.remove('on'); calmCheck();   // (a panel left open by an earlier case makes him calm, which hides the chip)
-  seen.break=show('break',11); remEl.querySelector('[data-rem="10"]').click(); await settle();
+  seen.break=show('break',11);
+  seen.fit={viewport:[innerWidth,innerHeight],buttons:[...remEl.querySelectorAll('button')].map(b=>{ const r=b.getBoundingClientRect(), x=r.left+r.width/2, y=r.top+r.height/2;
+    return {name:b.dataset.rem,inside:r.left>=0&&r.top>=0&&r.right<=340&&r.bottom<=460,hit:document.elementFromPoint(x,y)===b}; })};
+  remEl.querySelector('[data-rem="10"]').click(); await settle();
   seen.snooze=__posts.filter(p=>p.u==='/api/nudge').map(p=>p.b); seen.closed=remEl.hidden;
   seen.doneShown=show('water',12); remEl.querySelector('[data-rem="done"]').click(); await settle(); seen.done=__posts.filter(p=>p.u==='/api/nudge').map(p=>p.b);
   seen.cpu=show('cpu',13);
@@ -341,6 +346,8 @@ const rem=await ev(`const seen={}; const show=(kind,id,speak=false)=>{ reset(); 
   show('break',23); remEl.querySelector('[data-rem="30"]').click(); await settle(); seen.thirty=__posts.filter(p=>p.u==='/api/nudge').at(-1).b;
   reset(); return seen;`);
 check(rem.break&&rem.closed&&JSON.stringify(rem.snooze)==='[{"id":11,"act":"snooze","minutes":10}]',"break chip posts 10 minute snooze and closes",rem);
+check(JSON.stringify(rem.fit.viewport)==='[340,460]'&&rem.fit.buttons.length===3&&rem.fit.buttons.every(b=>b.inside&&b.hit),
+  "every reminder button fits the native 340x460 viewport and receives hits at its centre",rem.fit);
 check(rem.doneShown&&JSON.stringify(rem.done)==='[{"id":12,"act":"dismiss"}]',"Done posts dismiss without minutes",rem);
 check(!rem.cpu&&rem.held&&rem.released&&rem.spoken,"CPU has no chip; DND holds a reminder; spoken break has a chip",rem);
 check(rem.outlives&&rem.approval&&rem.bar&&rem.newer&&rem.quiet,"chip outlives caption and closes for approval, bar, newer reminder and quiet",rem);
