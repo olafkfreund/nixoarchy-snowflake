@@ -2287,6 +2287,22 @@ class Ambient:
             cls.music_due = t + 5
             lines = (cls.run(["playerctl", "-a", "metadata", "--format", "{{playerName}}\t{{status}}\t{{xesam:url}}\t{{mpris:trackid}}{{title}}"]) or "").splitlines()
             music, video = media_kind(lines)
+            if not video:
+                players = [r[0] for ln in lines if len(r := ln.split("\t", 3)) == 4
+                           and r[1] == "Playing" and not r[2] and r[0].lower().startswith(("chrome", "chromium"))]
+                if players:
+                    try:
+                        windows = json.loads(cls.run(["hyprctl", "clients", "-j"]) or "[]")
+                        titles = [w.get("title", "") for w in windows if isinstance(w, dict)
+                                  and any(browser in str(w.get("class", "")).lower() for browser in ("chrome", "chromium"))]
+                        for player in players:
+                            title = cls.run(["playerctl", "-p", player, "metadata", "title"])
+                            if title and title.strip() and any("youtube" in window.lower() and title.strip().lower() in window.lower()
+                                             for window in titles):
+                                video, music = True, False
+                                break
+                    except (TypeError, ValueError, AttributeError):
+                        pass
             if CFG.get("reactions"):                          # (#208) follow the first Playing player and count its track changes
                 rows = [ln.split("\t", 3) for ln in lines]
                 cur = next((r for r in rows if len(r) == 4 and r[1].strip() == "Playing"), None)

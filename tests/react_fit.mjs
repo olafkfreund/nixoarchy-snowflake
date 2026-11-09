@@ -208,6 +208,21 @@ const forks = await ev(`rxReset(); setCharacter('devil'); const stage=$('#stage'
 check(forks.every(([,opacity])=>+opacity===0),"Devil fork hides for all five left props, including sustained load and memory",forks);
 
 // 11. music: the boombox stands in for the headphones, bops on start and on a track change, and the chip and card follow it
+// video uses the same look switch and quiet rules, with its own sustained TV.
+for (const ch of ["snowflake", "terminal", "robot", "devil"]) {
+  const v = await ev(`rxReset(); setCharacter('${ch}'); sit({video:true,music:true}); const t=performance.now(); sitStep(t); sitStep(t+3100);
+    const tv=document.querySelector('#rxFront .tv'), box=document.querySelector('#guy').getBoundingClientRect(), b=tv&&tv.getBoundingClientRect();
+    const eyes=[E.eL,E.eR].map(e=>e.getBoundingClientRect());
+    const hits=eyes.flatMap(e=>[[.5,.5],[.5,.25],[.5,.75],[.25,.5],[.75,.5]].filter(([x,y])=>document.elementsFromPoint(e.left+e.width*x,e.top+e.height*y).some(el=>el.closest('#rxFront .tv'))));
+    return {on:sitOn.video,has:RXS.has('video'),tv:!!tv,boombox:!!document.querySelector('#rxFront .bx'),inside:!!b&&b.left>=box.left-1&&b.right<=box.right+1&&b.top>=box.top-1&&b.bottom<=box.bottom+1,hits:hits.length};`);
+  check(v.on&&v.has&&v.tv&&!v.boombox&&v.inside&&v.hits===0, `video TV on ${ch} stays in the box and off the eyes`, v);
+}
+const videoQuiet = await ev(`const out=[]; for(const [name,signal] of [['meeting',{meeting:true}],['fullscreen',{fullscreen:true}]]){
+  sit({video:true,music:false,meeting:false,fullscreen:false}); rxCheck();
+  sit(signal); out.push([name,!document.querySelector('#rxFront .tv')]); sit({meeting:false,fullscreen:false}); rxCheck(); }
+  sit({video:false}); const t=performance.now(); sitStep(t); sitStep(t+8100); out.push(['off',!RXS.has('video'),!document.querySelector('#rxFront .tv')]); rxReset(); return out;`);
+check(videoQuiet.every(row=>row.slice(1).every(Boolean)), 'video TV hides in meetings, fullscreen, and when video ends', videoQuiet);
+
 await click(5, 5);                                   // (a real pointer on the page first)
 await ev(`rxReset(); window.__q=[]; window.__qr={}; window.fetch0=window.fetch; const f1=window.fetch;
   window.fetch=async(u,o)=>{ if(!/\\/api\\/quick/.test(String(u))) return f1(u,o); const t=JSON.parse(o.body).text; window.__q.push(t);

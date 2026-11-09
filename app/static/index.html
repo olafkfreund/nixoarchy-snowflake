@@ -1434,6 +1434,12 @@ const REACT={
    "front": "<g transform='translate(84 62)'><g class='bx'><path d='M-26 -28Q-26 -44 -10 -44H10Q26 -44 26 -28' fill='none' stroke='#5b6474' stroke-width='6' stroke-linecap='round'/><rect x='-46' y='-30' width='92' height='60' rx='13' fill='url(#fx-pink)' stroke='#a8295f' stroke-width='2.5'/><rect x='-40' y='-25' width='80' height='7' rx='3.5' fill='#fff' opacity='.3'/><g class='sp'><circle cx='-26' cy='6' r='15' fill='#2b2f3d' stroke='#fff' stroke-width='2'/><circle cx='-26' cy='6' r='6' fill='#7c8399'/></g><g class='sp'><circle cx='26' cy='6' r='15' fill='#2b2f3d' stroke='#fff' stroke-width='2'/><circle cx='26' cy='6' r='6' fill='#7c8399'/></g><rect x='-9' y='-13' width='18' height='12' rx='2' fill='url(#fx-paper)' stroke='#a8295f' stroke-width='1.5'/><circle class='rl' cx='-3.500' cy='-7' r='2.400' fill='#5b6474'/><circle class='rl' cx='3.500' cy='-7' r='2.400' fill='#5b6474'/><path d='M-6 6l6 4-6 4zM3 6h2v8h-2zM7 6h2v8h-2z' fill='#fff'/></g></g><circle class='nub' cx='46' cy='86' r='11' fill='#24365a' stroke='var(--rim)' stroke-width='2'/>",
    "css": ".r-music .bx{transform-box:fill-box;transform-origin:50% 100%;animation:fxBoxB .5s ease-in-out infinite alternate}.r-music .sp{transform-box:fill-box;transform-origin:center;animation:fxBoxS .25s ease-in-out infinite alternate}.r-music .rl{transform-box:fill-box;transform-origin:center;animation:fxBoxR 1.2s linear infinite}.r-music .nt{animation:fxBoxN 2.4s ease-out infinite}.r-music .n2{animation-delay:-.8s}.r-music .n3{animation-delay:-1.6s}.r-music .whole{transform-origin:0 84px;animation:fxBoxW .5s ease-in-out infinite alternate}@keyframes fxBoxB{to{transform:translateY(-4px) rotate(2deg)}}@keyframes fxBoxS{to{transform:scale(1.14)}}@keyframes fxBoxR{to{transform:rotate(360deg)}}@keyframes fxBoxN{0%{transform:translateY(16px);opacity:0}25%{opacity:1}100%{transform:translateY(-22px) rotate(10deg);opacity:0}}@keyframes fxBoxW{from{transform:rotate(-3deg)}to{transform:translateY(-4px) rotate(3deg)}}"
   },
+  "video": {
+   "sky": "",
+   "back": "",
+   "front": "<g class='tv' transform='translate(84 62)'><path d='M-19-34l-10-11m48 11 10-11' fill='none' stroke='#5b6474' stroke-width='3' stroke-linecap='round'/><rect x='-43' y='-33' width='86' height='65' rx='10' fill='#ff8fbf' stroke='#a8295f' stroke-width='2.5'/><rect x='-35' y='-25' width='70' height='45' rx='5' fill='#2b2f3d' stroke='#fff' stroke-width='2'/><path d='M-8-16L12-2-8 12Z' fill='#fffdf6'/><circle cx='-26' cy='26' r='2.5' fill='#fffdf6'/><path d='M-23 34v7m46-7v7' stroke='#5b6474' stroke-width='5' stroke-linecap='round'/></g>",
+   "css": ""
+  },
   "rain": {
    "sky": "<g fill='none' stroke='#8ec9ff' stroke-width='5' stroke-linecap='round'><path class='rn' d='M-128 -128v14M-60 -110v14M40 -132v14M118 -100v14M-104 -40v14M112 -20v14'/><path class='rn r2' d='M-96 -100v14M-20 -130v14M84 -122v14M-130 -10v14M130 -50v14'/><path class='rn r3' d='M-118 -70v14M12 -120v14M100 -80v14M-84 -4v14M124 20v14'/></g>",
    "back": "",
@@ -1766,8 +1772,8 @@ const RX_SIT={meeting:'meeting',rain:'rain',snow:'snow',windy:'wind'}, RX_DUR={m
   RX_MOOD={load:'running',memory:'t_unsure',soon:'surprised',open:'happy',wind:'surprised'};
 // everything but the once-per-10-minutes and one-at-a-time rules: what a playing or sustained one depends on
 const rxBase=()=>{ const B=document.body.classList; return !!info.proactive&&!!info.reactions&&!document.hidden&&!hiddenNow&&!SIT.fullscreen&&!SIT.locked&&!['bar','hover','calm','peek'].some(c=>B.contains(c)); };
-const rxState=id=>rxBase()&&(id==='ask'||(id==='meeting'?!SIT.dnd:!quietNow()));   // the meeting keeps its own look, unless DND is on
-function rxOk(id){ const now=performance.now(); return rxState(id)&&(id==='ask'||id==='music'||!(RX_AT[id]&&now-RX_AT[id]<600000))&&(!RX||id==='ask'); }
+const rxState=id=>rxBase()&&(id!=='music'||!SIT.video)&&(id!=='video'||SIT.video)&&(id==='ask'||(id==='meeting'?!SIT.dnd:!quietNow()));   // the meeting keeps its own look, unless DND is on
+function rxOk(id){ const now=performance.now(); return rxState(id)&&(id==='ask'||id==='music'||id==='video'||!(RX_AT[id]&&now-RX_AT[id]<600000))&&(!RX||id==='ask'); }
 function rxPaint(){
   if(!RX&&!RXS.size&&!rxKey) return;
   const ids=[...RXS,...(RX&&!RXS.has(RX.id)?[RX.id]:[])].filter(rxState), ch=Object.keys(CHARACTERS).find(k=>CHARACTERS[k]===BODY)||'snowflake';
@@ -2834,7 +2840,7 @@ function onEvent(ev){
   else if(ev.t==='nudge') { if(['break','water','workout'].includes(ev.kind)&&Number.isInteger(ev.id)) remClose(); if(!quietNow()) restore(11000,false); const now=performance.now(); ev.rt=now; ev.until=ev.wait==null?Infinity:now+ev.wait*1000; nudgeQ.set(ev.kind,ev); nudgeDrain(now); }
   else if(ev.t==='situation'){ const hot0=SIT.cpu_hot, low0=SIT.ram_low, trk0=SIT.track; SIT.track=ev.track||0; SIT.dnd=!!ev.dnd; SIT.meeting=!!ev.meeting; if(ev.music&&!SIT.music) musKeep=false; SIT.music=!!ev.music; /* (music started again: the card's own Pause is over) */ SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party; SIT.heavy=!!ev.heavy; SIT.windy=!!ev.windy; SIT.lean=ev.lean||0; SIT.cold=ev.cold||0; SIT.day=ev.day!==false;
     if(ev.weather==='snow'&&SIT.weather!=='snow'&&info.look_weather&&!quietNow()) poke('excited',1800);      // he loves snow: once, when it starts
-    SIT.weather=ev.weather||null; remSync(); rxSignals(hot0,low0,trk0); }
+    SIT.video=!!ev.video; SIT.weather=ev.weather||null; remSync(); rxSignals(hot0,low0,trk0); }
   else if(ev.t==='ambient'){ if(ev.alert&&!quietNow()) restore(12000,false); const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive&&!quietNow()) poke('confused',1500); if(more) rxPlay('error'); if(ev.alert&&ev.cal) rxPlay('soon');
     if(ev.glint&&info.proactive&&!quietNow()){ poke('t_beam',1800); burstLines('#77b6e1',8); }      // a new NixOS generation: proud
     if(ev.glint&&BODY===CHARACTERS.snowflake&&!quietNow()){ document.querySelectorAll('#body .nix').forEach(n=>{ n.classList.remove('glint'); void n.getBBox(); n.classList.add('glint'); }); setTimeout(()=>document.querySelectorAll('#body .nix').forEach(n=>n.classList.remove('glint')),1700); }
@@ -2943,14 +2949,14 @@ function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts>e.until) nudgeQ.delete
   else { karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; plateReset(); ntfDrop(); setYou('');
     const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); shownTxt=''; capShow(); sendRegion(true); dropSync();
     setTimeout(()=>{ if(sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } },6000); } }
-let SIT={track:0,dnd:false,meeting:false,music:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false,heavy:false,windy:false,lean:0,cold:0,day:true};   // situation signals, as the server sends them
+let SIT={track:0,dnd:false,meeting:false,music:false,video:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false,heavy:false,windy:false,lean:0,cold:0,day:true};   // situation signals, as the server sends them
 function quietNow(){ return SIT.dnd||SIT.locked||SIT.fullscreen||SIT.meeting; }
 // a look goes on after 3 s of signal and off after 8 s without it: timestamps, no timers
-const sitOn={meeting:false,music:false,fullscreen:false,coding:false,night:false,party:false,rain:false,snow:false,clear:false,partly:false,cloudy:false,windy:false,cold1:false,cold2:false}, sitSeen={...sitOn}, sitAt=Object.fromEntries(Object.keys(sitOn).map(k=>[k,0]));
+const sitOn={meeting:false,music:false,video:false,fullscreen:false,coding:false,night:false,party:false,rain:false,snow:false,clear:false,partly:false,cloudy:false,windy:false,cold1:false,cold2:false}, sitSeen={...sitOn}, sitAt=Object.fromEntries(Object.keys(sitOn).map(k=>[k,0]));
 function sitStep(ts){ const weather={rain:SIT.weather==='rain',snow:SIT.weather==='snow',clear:SIT.weather==='clear',partly:SIT.weather==='partly',cloudy:SIT.weather==='cloudy',windy:SIT.windy,cold1:SIT.cold>=1,cold2:SIT.cold>=2};
-  for(const k in sitOn){ const raw=k in weather?weather[k]&&!!info.look_weather:!!SIT[k]&&!!info['look_'+k]; if(raw!==sitSeen[k]){ sitSeen[k]=raw; sitAt[k]=ts; }
-  if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(RX_SIT[k]) rxPlay(RX_SIT[k]); if(k==='music'){ RXS.add('music'); rxPlay('music'); rxCheck(); } if(['rain','snow','clear','partly','cloudy'].includes(k)) for(const other of ['rain','snow','clear','partly','cloudy']) if(other!==k) sitOn[other]=false; if(k==='meeting') G.jelly.kick(.35); if(k==='party'&&wornSkin(LOOK)==='none') confetti(18); }
-  else if(!raw&&sitOn[k]&&ts-sitAt[k]>=8000){ sitOn[k]=false; if(k==='music'){ RXS.delete('music'); rxCheck(); } } } }
+  for(const k in sitOn){ const raw=k in weather?weather[k]&&!!info.look_weather:!!SIT[k]&&!!info['look_'+(k==='video'?'music':k)]; if(raw!==sitSeen[k]){ sitSeen[k]=raw; sitAt[k]=ts; }
+  if(raw&&!sitOn[k]&&ts-sitAt[k]>=3000){ sitOn[k]=true; if(RX_SIT[k]) rxPlay(RX_SIT[k]); if(k==='music'||k==='video'){ RXS.add(k); rxPlay(k); rxCheck(); } if(['rain','snow','clear','partly','cloudy'].includes(k)) for(const other of ['rain','snow','clear','partly','cloudy']) if(other!==k) sitOn[other]=false; if(k==='meeting') G.jelly.kick(.35); if(k==='party'&&wornSkin(LOOK)==='none') confetti(18); }
+  else if(!raw&&sitOn[k]&&ts-sitAt[k]>=8000){ sitOn[k]=false; if(k==='music'||k==='video'){ RXS.delete(k); rxCheck(); } } } }
 const NOTE={mail:['✉','New mail','#4d6fb7','reading',2200,'pop'], chat:['💬','New message','#7fd6ae','curious',1800,'chat'],
   meeting:['📅','Meeting','#ffb02a','surprised',700,'remind'], video:['▶','New post','#e0569a','t_excited',1400,'ok'],
   download:['⬇','Download','#3ddc84','t_beam',1600,'done'], job:['✔','A long command finished','#3ddc84','t_beam',1800,'done'], other:['🔔','Notification','#7fd6ae','curious',1000,'pop']};
