@@ -32,6 +32,24 @@ def window_methods(*names):
 
 
 class RoomTest(unittest.TestCase):
+    def test_layer_size_growth_clamps_base_before_room(self):
+        ns = window_methods("set_wide")
+        w = ns["Window"]()
+        w.z = 1.0
+        w.layer, w.mx, w.my = True, 1706, 794
+        w.wide_shift = w.top_shift = 0
+        w.cur_w, w.cur_h = 204, 276  # 60% size before growing to 100%
+        w.want_panel = w.want_code = w.want_bar = w.hover = False
+        w.want_xw = w.want_h = 0
+        w._geom = lambda: (None, SimpleNamespace(width=1920, height=1080))
+        w.win = SimpleNamespace(set_size_request=Mock(), resize=Mock(), queue_draw=Mock())
+        w._place, w._js = Mock(), Mock()
+
+        w.set_wide((0, 0), "size")
+
+        self.assertEqual((w.cur_w, w.cur_h), (340, 460))
+        w._place.assert_called_once_with(1580, 620)
+
     def test_zoom_converts_regions_and_room_requests(self):
         ns = window_methods("set_wide")
         w = ns["Window"]()

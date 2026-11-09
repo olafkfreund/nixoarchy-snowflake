@@ -616,6 +616,8 @@ class NixiWindow:
         else:
             g = Gdk.Display.get_default().get_monitor_at_point(base, basey).get_geometry()
             mon = (g.x, g.y, g.width, g.height)
+        if self.layer:
+            base, basey = screens.clamp_on(mon, base, basey, self._px(W), self._px(H))
         L, R, T, extra_h = split_room(base, basey, self._px(W), self._px(H), xw, eh, (L, R), mon)
         if self.hover:
             L = R = 0
