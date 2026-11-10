@@ -8,7 +8,7 @@ await new Promise(r => ws.addEventListener("open", r, { once: true }));
 let id = 0; const pend = new Map();
 const errors = [];
 ws.addEventListener("message", e => { const m = JSON.parse(e.data); if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); }
-  if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.text);
+  if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text);
   if (m.method === "Runtime.consoleAPICalled" && m.params.type === "error") errors.push(m.params.args.map(a => a.value || a.description).join(" ")); });
 const send = (method, params = {}) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -19,6 +19,7 @@ await send("Runtime.enable");
 await send("Emulation.setDeviceMetricsOverride", { width: 820, height: 620, deviceScaleFactor: 1, mobile: false });
 await send("Page.navigate", { url }); await sleep(4000);
 
+process.on("exit", () => errors.length && console.log("PAGE ERRORS", errors));
 const fails = [];
 const check = (ok, what, got) => { if (!ok) { fails.push(what); console.log(`CUT  ${what}${got === undefined ? "" : "  → " + JSON.stringify(got)}`); } };
 const eq = (got, want, what) => check(JSON.stringify(got) === JSON.stringify(want), what, got);
@@ -81,11 +82,24 @@ const look = await ev(`const c=$('#code'), B=document.body.classList, d=e=>getCo
   B.add('calm'); r.calm=getComputedStyle(c).display; B.remove('calm'); B.add('bar'); r.barDeco=d('.deco'); r.barIcons=d('.icons'); B.remove('bar'); return r;`);
 check(look.st===3&&look.icons===3&&look.ini==='Z'&&look.deco!=='none'&&look.bg==='rgb(13, 17, 23)'&&look.pe==='none', "terminal: three status lines, three icons (unknown = initial), dark window", look);
 check(look.calm==='none'&&look.barDeco==='none'&&look.barIcons==='none', "calm hides the terminal; the notch hides deco and icons", look);
+for (const c of ["snowflake", "terminal", "robot", "devil"]) {   // Nixi at work: his eyes become the code screen, the keyboard shows
+  await ev(`setCharacter('${c}'); return 1;`); await settle();
+  const w = await ev(`const B=document.body.classList, d=e=>getComputedStyle($(e)).display, v=e=>getComputedStyle($(e)).visibility;
+    transient=null; const r={focus:B.contains('bar')?'bar':document.body.dataset.focus,eL:d('#eL'),ce:d('#codeEyes'),kbd:d('#kbd'),mood:mood(performance.now())};
+    B.add('bar'); r.barCe=d('#codeEyes'); r.barKbd=d('#kbd'); B.remove('bar'); return r;`);
+  check(w.focus === "work" && w.eL === "none" && w.ce !== "none" && w.kbd !== "none" && w.mood === "working" && w.barCe === "none" && w.barKbd === "none", `work look on ${c}`, w);
+}
+await ev(`setCharacter('snowflake'); return 1;`);
+await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }); await settle();
+eq(await ev(`return document.getAnimations().filter(a=>a.playState==='running'&&a.effect&&a.effect.target&&a.effect.target.closest&&a.effect.target.closest('#code,#codeEyes,#kbd')).length;`), 0, "reduced motion: no running animation in the terminal, his screen or the keyboard");
+await send("Emulation.setEmulatedMedia", { features: [] });
 if (process.env.NIXI_SHOTS) {   // screenshots for the PR: the sheet with two agents, dark and light theme
   const { writeFileSync, mkdirSync } = await import("node:fs"); mkdirSync(process.env.NIXI_SHOTS, { recursive: true });
   const shot = async n => { await sleep(3500); await settle(); const r = await send("Page.captureScreenshot", { format: "png" }); writeFileSync(`${process.env.NIXI_SHOTS}/${n}.png`, Buffer.from(r.result.data, "base64")); };
   await ev(`onEvent({t:'attention',kind:'done',from:'zed',name:'Zed',project:'p3',text:''}); document.body.style.background='#1b1e24'; return 1;`); await shot("terminal-dark");
   await ev(`applyThemeVars({mode:'light',background:'#f5f5f5',darker_background:'#e5e5e5',lighter_background:'#fafafa',foreground:'#222',accent:'#2060d0',red:'#c00',green:'#080',yellow:'#a80',selection:'#ccc'}); document.body.style.background='#f0f0f0'; return 1;`); await shot("terminal-light");
+  for (const c of ["snowflake", "terminal", "robot", "devil"]) for (const z of [60, 100]) {   // work look at the 60% and 100% size (page zoom stands in for the window zoom)
+    await ev(`setCharacter('${c}'); document.documentElement.style.zoom=${z / 100}; return 1;`); await shot(`work-${c}-${z}`); }
 }
 eq(errors, [], "no console errors");
 
