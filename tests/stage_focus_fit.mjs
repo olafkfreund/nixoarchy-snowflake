@@ -107,15 +107,15 @@ await ev(`approvalGone('work-a1'); return 1;`); await sleep(500); await settle()
 for (const c of ["snowflake", "terminal", "robot", "devil"]) {   // Nixi at work: his eyes become the code screen, the keyboard shows
   await ev(`setCharacter('${c}'); return 1;`); await settle();
   const w = await ev(`const B=document.body.classList, d=e=>getComputedStyle($(e)).display, v=e=>getComputedStyle($(e)).visibility;
-    transient=null; const r={focus:B.contains('bar')?'bar':document.body.dataset.focus,eL:d('#eL'),ce:d('#codeEyes'),kbd:d('#kbd'),mood:mood(performance.now())};
-    B.add('bar'); r.barCe=d('#codeEyes'); r.barKbd=d('#kbd'); B.remove('bar'); return r;`);
-  check(w.focus === "work" && w.eL === "none" && w.ce !== "none" && w.kbd !== "none" && w.mood === "working" && w.barCe === "none" && w.barKbd === "none", `work look on ${c}`, w);
+    transient=null; const r={focus:B.contains('bar')?'bar':document.body.dataset.focus,eL:d('#eL'),ce:d('#eL .ce'),flow:document.querySelectorAll('#eR .ce rect').length,mood:mood(performance.now())};
+    B.add('bar'); r.barCe=d('#eL .ce'); B.remove('bar'); return r;`);
+  check(w.focus === "work" && w.eL !== "none" && w.ce !== "none" && w.flow > 20 && w.mood === "working" && w.barCe === "none", `work look on ${c}: his own eyes with code scrolling inside them`, w);
 }
 await ev(`setCharacter('snowflake'); return 1;`);
-const runAnims = `return document.getAnimations().filter(a=>a.playState==='running'&&a.effect&&a.effect.target&&a.effect.target.closest&&a.effect.target.closest('#code,#codeEyes,#kbd')).length;`;
-check(await ev(runAnims) > 0, "without reduced motion the terminal, his screen and the keyboard animate (baseline)");
+const runAnims = `return document.getAnimations().filter(a=>a.playState==='running'&&a.effect&&a.effect.target&&a.effect.target.closest&&a.effect.target.closest('#code,.ce')).length;`;
+check(await ev(runAnims) > 0, "without reduced motion the terminal and the code in his eyes animate (baseline)");
 await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }); await settle();
-eq(await ev(`return document.getAnimations().filter(a=>a.playState==='running'&&a.effect&&a.effect.target&&a.effect.target.closest&&a.effect.target.closest('#code,#codeEyes,#kbd')).length;`), 0, "reduced motion: no running animation in the terminal, his screen or the keyboard");
+eq(await ev(`return document.getAnimations().filter(a=>a.playState==='running'&&a.effect&&a.effect.target&&a.effect.target.closest&&a.effect.target.closest('#code,.ce')).length;`), 0, "reduced motion: no running animation in the terminal or the code in his eyes");
 await send("Emulation.setEmulatedMedia", { features: [] });
 if (process.env.NIXI_SHOTS) {   // screenshots for the PR: the sheet with two agents, dark and light theme
   const { writeFileSync, mkdirSync } = await import("node:fs"); mkdirSync(process.env.NIXI_SHOTS, { recursive: true });

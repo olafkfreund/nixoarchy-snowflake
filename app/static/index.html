@@ -20,7 +20,7 @@ body{background:radial-gradient(70% 52% at 50% 36%,var(--panel2) 0%,#090909 78%)
   font:14px/1.45 "Inter",system-ui,sans-serif;user-select:none;-webkit-user-select:none}
 body.still .tCursor,body.still .tAntenna,body.still .tTail{animation-play-state:paused}
 @media (prefers-reduced-motion:reduce){.tCursor,.tAntenna,.tTail{animation:none!important}}
-@media (prefers-reduced-motion:reduce){#code *,#code *::before,#codeEyes *,#kbd *{animation:none!important}}
+@media (prefers-reduced-motion:reduce){#code *,#code *::before,.ce *{animation:none!important}}
 @keyframes cursor-blink{0%,49%{opacity:1}50%,100%{opacity:.12}}
 @keyframes antenna-pulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.18);opacity:1}}
 @keyframes tail-swish{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(9deg)}}
@@ -754,13 +754,10 @@ body.hover #nixiB,body.pnl #nixiB,body.appr #nixiB{display:none!important}
 @keyframes cpScroll{to{transform:translateY(-144px)}}
 body.bar #code .dots,body.bar #code .icons,body.bar #code .deco{display:none}
 body.hover #code,body.calm #code{display:none}
-/* Nixi at work: code on his eyes' screen, paws on a keyboard (only in `work`, and not in the notch, hover, calm, hidden or with the terminal off) */
-#codeEyes,#kbd{display:none;pointer-events:none}
-body[data-focus=work]:not(.bar):not(.hover):not(.calm):not(.goohide):not(.nocode) :is(#eL,#eR){display:none}
-body[data-focus=work]:not(.bar):not(.hover):not(.calm):not(.goohide):not(.nocode) :is(#codeEyes,#kbd){display:inline}
-#codeEyes .ceRows{animation:ceScroll 1.5s steps(5) infinite} @keyframes ceScroll{to{transform:translateY(calc(-1*var(--d)))}}
-#codeEyes .ceCur{fill:#7ee787;animation:cursor-blink .9s steps(1) infinite}
-#kbd .nub{animation:kbTap .34s steps(2) infinite alternate} #kbd .nub.r{animation-delay:.17s} @keyframes kbTap{to{transform:translateY(-3px)}}
+/* Nixi at work: code scrolls inside his eyeballs, clipped to each eye's own shape, so blinks, pupils and gaze stay (not in the notch, hover, calm or hidden) */
+.ce{display:none;pointer-events:none}
+body[data-focus=work]:not(.bar):not(.hover):not(.calm):not(.goohide) .ce{display:inline}
+.ce .ceFlow{animation:ceScroll 1.8s steps(6) infinite} @keyframes ceScroll{to{transform:translateY(-54px)}}   /* (6 rows of 9: one pattern period) */
 body.term #chip.work{opacity:0}          /* the terminal already says what he's doing */
 
 </style>
@@ -821,9 +818,8 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <path class="ball" fill="url(#ballG)"/>
         <g class="ball nix"></g>
         <g id="face">
-          <g id="eL"><path class="eye" id="pL"/><g clip-path="url(#clipL)"><path class="slit" id="hlL"/></g></g>
-          <g id="eR"><path class="eye" id="pR"/><g clip-path="url(#clipR)"><path class="slit" id="hlR"/></g></g>
-          <g id="codeEyes" display="none"><clipPath id="ceClip"><rect id="ceClipR"/></clipPath><rect id="ceScr" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/><g clip-path="url(#ceClip)"><g class="ceRows" id="ceRows"></g><rect class="ceCur" id="ceCur"/></g></g>
+          <g id="eL"><path class="eye" id="pL"/><g class="ce" clip-path="url(#clipL)"></g><g clip-path="url(#clipL)"><path class="slit" id="hlL"/></g></g>
+          <g id="eR"><path class="eye" id="pR"/><g class="ce" clip-path="url(#clipR)"></g><g clip-path="url(#clipR)"><path class="slit" id="hlR"/></g></g>
         </g>
         <g class="ball bfront"></g>
         <g id="tears"></g>
@@ -834,7 +830,6 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <g id="accFront"></g>
         <g id="sitFront"></g>
         <g id="rxFront"></g>
-        <g id="kbd" display="none"><rect id="kbBase" fill="#161b22" stroke="#30363d" stroke-width="1.5"/><path id="kbKeys" fill="none" stroke="#30363d" stroke-width="1.5" stroke-dasharray="3 3"/><ellipse class="nub l" rx="6.5" ry="5" fill="#cfd8e3" stroke="#0007" stroke-width="1"/><ellipse class="nub r" rx="6.5" ry="5" fill="#cfd8e3" stroke="#0007" stroke-width="1"/></g>
         <g id="frost" display="none" pointer-events="none"></g>
         <g id="cue" display="none" transform="translate(8 -110)" style="cursor:pointer"><circle id="cueD" r="10" stroke="#0008" stroke-width="1"/><text id="cueT" text-anchor="middle" y="4.5" font-size="12" pointer-events="none"></text></g>
         <g id="agentMark" opacity="0" transform="translate(8 -90)" pointer-events="none">   <!-- who is calling: original marks, not logos -->
@@ -1848,18 +1843,13 @@ function setCharacter(id){
   if(SIT_P) SIT_P.bd.querySelectorAll('path').forEach(p=>p.setAttribute('d',BODY.band));
   const [dx,dy]=BODY.anchors.base;
   $('#shadow').setAttribute('cx',dx); $('#shadow').setAttribute('cy',108+dy); $('#shadow').setAttribute('rx',BODY.shadow);
-  applyAnchors(); workFit();
+  applyAnchors();
   if(changed) renderCue();
 }
 // Nixi at work: the code screen sits in his face (sized from faceBox), the keyboard under his body (pivot + base anchor)
-const CE={x:0,y:0};
-function workFit(){ const [fx,fy,fw,fh]=BODY.faceBox||[-76,-76,152,152], w=Math.round(fw*.66), h=Math.round(fh*.5), sp=Math.round(h/6*10)/10, [bx,by]=BODY.anchors.base, ky=BODY.pivot+by;
-  CE.x=fx+fw/2; CE.y=fy+fh/2-4;
-  for(const [id,a] of [['ceScr',{x:-w/2,y:-h/2,width:w,height:h,rx:7}],['ceClipR',{x:-w/2,y:-h/2,width:w,height:h,rx:7}],['ceCur',{x:-w/2+8,y:h/2-sp-1,width:5,height:Math.round(sp*.8)}],
-    ['kbBase',{x:bx-40,y:ky-1,width:80,height:11,rx:3}]]) for(const k in a) $('#'+id).setAttribute(k,a[k]);
-  $('#kbKeys').setAttribute('d',`M${bx-33} ${ky+5}H${bx+33}`);
-  const rows=$('#ceRows'); rows.style.setProperty('--d',5*sp+'px'); rows.innerHTML=Array.from({length:10},(_,i)=>`<rect x="${-w/2+8+[0,6,0,12,6][i%5]}" y="${-h/2+4+i*sp}" width="${Math.round((w-24)*[.5,.7,.35,.6,.45][i%5])}" height="${Math.round(sp*.5)}" rx="1" fill="${['#7ee787','#58a6ff','#d2a8ff','#e3b341','#ff7b72'][i%5]}"/>`).join('');
-  for(const [c,dx] of [['l',-17],['r',17]]){ const n=$('#kbd .nub.'+c); n.setAttribute('cx',bx+dx); n.setAttribute('cy',ky+3); } }
+{ const C=['#7ee787','#79c0ff','#d2a8ff','#ffa657','#ff7b72','#e3b341']; let rows='';   // the code inside his eyes while agents work: stamped once, scrolled by CSS
+  for(let i=0;i<30;i++) for(let k=0;k<4;k++) rows+=`<rect x="${-100+[0,8,0,16,8,4][i%6]+k*52}" y="${-110+i*9}" width="${14+((i%6)*7+k*5)%22}" height="4" rx="2" fill="${C[(i+k)%6]}"/>`;
+  document.querySelectorAll('.ce').forEach(g=>{ g.innerHTML='<rect x="-130" y="-130" width="260" height="290" fill="#0d1117"/><g class="ceFlow">'+rows+'</g>'; }); }
 setCharacter(LOOK.character || 'snowflake');
 const EYE={rx:23.5, ry:40.5, cx:27.5, cy:-4.5, tilt:0.157};
 const EYE_HALFW=Math.hypot(EYE.rx*Math.cos(EYE.tilt),EYE.ry*Math.sin(EYE.tilt));   // half the width of one leaning eye
@@ -2345,7 +2335,6 @@ function frame(ts){
   const P=(x,y)=>sph(x,y,cY,sY,cP,sP);
   const voice=1+(isTalk(m)?lvl*.05:0)+(m==='listening'?micLvl*.05:0);      // eyes swell a touch with the voice
   const gOn=SIT_P&&G.sitGl.x>.002, inner=[];          // glasses: only drawn while they are on (nothing written otherwise)
-  if(document.body.dataset.focus==='work') $('#codeEyes').setAttribute('transform',`translate(${(CE.x+lx*.6).toFixed(2)} ${(CE.y+ly*.8).toFixed(2)}) scale(${G.sz.x.toFixed(3)})`);   // (the screen follows his gaze and size like the pupils; #face stays put)
   for(const [side,c,pc,p,cp,hl] of [[-1,S.L,SP.L,E.pL,E.cpL,E.hlL],[1,S.R,SP.R,E.pR,E.cpR,E.hlR]]){
     const top=c.top.x+(1-c.top.x)*Math.max(blink*.97,1-openC), z=G.sz.x*openPop*c.es.x*voice;
     const cx=side*Math.max(EYE.cx,EYE_HALFW*z+2.6), cy=EYE.cy;      // bigger eyes move apart: always a gap, never merged
@@ -4540,7 +4529,7 @@ setEl.addEventListener('change',e=>{
   if(id==='compactSw') setSetting({auto_compact:on});
   if(id==='costIn') setSetting({max_cost_usd:+e.target.value||0}).then(()=>tick(+e.target.value?'a request stops at $'+e.target.value:'no usage limit'));
   if(id==='leanSw') setSetting({lean:on}).then(()=>tick(on?'light mode: fewer tools, less usage':'all your tools on'));
-  if(id==='codeSw'){ setSetting({code_panel:on}); document.body.classList.toggle('nocode',!on); if(!on) CP.hide(); else CP.sync(); }
+  if(id==='codeSw'){ setSetting({code_panel:on}); if(!on) CP.hide(); else CP.sync(); }
   if(id==='micSel') setSetting({mic_device:e.target.value}).then(()=>tick('microphone changed'));
   if(id==='linkSw'){ const L=curLook(); const patch={link:on}; if(on){ patch.pupR=L.pupL; patch.whiteR=L.whiteL; } setLook(patch).then(()=>selectPart(pkPart.replace('R','L'))); }
   if(id==='themeSw') return setLook({follow_theme:on}).then(()=>{ lookShown=''; syncLook(); renderSettings(); });
@@ -4592,7 +4581,7 @@ async function slash(cmd){
 /* ================= wiring ================= */
 function showInfo(){ rxCheck(); document.documentElement.lang=info.lang_active||'en'; syncLangUI(); if('mirror' in info) mirSet(info.mirror); if(info.ambient){ AMB=info.ambient; renderCue(); } syncEye(); document.body.classList.toggle('fulltext',!!info.full_text); ctxRender(); input.placeholder=`ask in ${info.cwd_display||'~'}…`; const l=$('#cwdLbl'); if(l) l.textContent=info.cwd_display||'folder';
   const ve=$('#voiceEng'); if(ve) ve.textContent=voiceEngText();
-  document.body.classList.toggle('root',!!info.root); document.body.classList.toggle('nixi',!!info.bridge); document.body.classList.toggle('nocode',info.code_panel===false); }
+  document.body.classList.toggle('root',!!info.root); document.body.classList.toggle('nixi',!!info.bridge); }
 async function refresh(){ try{ await tokenReady; const r=await fetch('/api/state',{headers:hdr()}); const j=await r.json();
   if(!('cwd' in j)) return staleToken();      // no (or an old) token: the server only said it's running
   if(typeof j.gen==='number'&&j.gen>ttsGen) cutTtsGen(j.gen);
