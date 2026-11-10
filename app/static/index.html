@@ -1766,33 +1766,35 @@ function applyAnchors(character=BODY,roots=[$('#accBack'),$('#accFront'),$('#sit
 }
 // ---- reactions (#208): a short silent animation for what he senses. The art is REACT; it goes into #rxSky / #rxBack / #rxFront.
 // RX = the one playing; RXS = sustained props that still apply (high load, low memory); RX_AT = when each last played.
-let RX=null, RXT=0, RXS=new Set(), RX_AT={}, rxKey='';
+let RX=null, RXT=0, RXS=new Set(), RX_AT={}, rxKey='', rxShown='';
 let evUntil=0;
 const evHold=ms=>{ evUntil=Math.max(evUntil,performance.now()+ms); };
 const stageFocus=now=>pendingAppr||pwEl.classList.contains('on')||apEl.classList.contains('on')||MIR.owner==='pending'||notifyRow&&notifyRow.card&&notifyRow.span.isConnected||stgOpen()||!$('#musCard').hidden?'answer':now<evUntil?'event':CP.working()?'work':sitOn.music||sitOn.video?'media':'ambient';
 function focusSync(now){ const f=stageFocus(now); if(document.body.dataset.focus===f) return; document.body.dataset.focus=f; rxCheck(); CP.sync(); musSync(); }
 let musKeep=false;   // after the card's own Pause: chip and card stay, with Play
 const RX_SIT={meeting:'meeting',rain:'rain',snow:'snow',windy:'wind'}, RX_DUR={music:4000},
-  RX_MOOD={load:'running',memory:'t_unsure',soon:'surprised',open:'happy',wind:'surprised'};
+  RX_MOOD={load:'running',memory:'t_unsure',soon:'surprised',open:'happy',wind:'surprised'},
+  RX_FOCUS={music:'media',video:'media',load:'ambient',memory:'ambient',rain:'ambient',snow:'ambient',wind:'ambient',meeting:'ambient'};
 // everything but the once-per-10-minutes and one-at-a-time rules: what a playing or sustained one depends on
 const rxBase=()=>{ const B=document.body.classList; return !!info.proactive&&!!info.reactions&&!document.hidden&&!hiddenNow&&!SIT.fullscreen&&!SIT.locked&&!['bar','hover','calm','peek'].some(c=>B.contains(c)); };
 const rxState=id=>rxBase()&&(id!=='music'||!SIT.video)&&(id!=='video'||SIT.video)&&(id==='ask'||(id==='meeting'?!SIT.dnd:!quietNow()));   // the meeting keeps its own look, unless DND is on
 function rxOk(id){ const now=performance.now(); return rxState(id)&&(id==='ask'||id==='music'||id==='video'||!(RX_AT[id]&&now-RX_AT[id]<600000))&&(!RX||id==='ask'); }
 function rxPaint(){
   if(!RX&&!RXS.size&&!rxKey) return;
-  const ids=[...RXS,...(RX&&!RXS.has(RX.id)?[RX.id]:[])].filter(rxState), ch=Object.keys(CHARACTERS).find(k=>CHARACTERS[k]===BODY)||'snowflake';
-  const key=ids.length?ids.join()+'|'+(RX?RX.id:'')+'|'+ch:''; if(key===rxKey) return; rxKey=key;
-  const g={sky:'',back:'',front:''}; let css=ids.length?'@media (prefers-reduced-motion:reduce){#stage *{animation:none!important}}':'';   // (reduced motion: the prop, still)
-  for(const id of ids) for(const o of [REACT.props[id],(REACT.touch[ch]||{})[id]]) if(o){ for(const k in g) g[k]+=o[k]||''; css+=o.css||''; }
+  const focus=stageFocus(performance.now()), id=RX&&rxState(RX.id)&&(RX_FOCUS[RX.id]||'event')===focus?RX.id:
+    (focus==='media'?['video','music']:focus==='ambient'?['load','memory']:[]).find(k=>RXS.has(k)&&rxState(k));
+  const ch=Object.keys(CHARACTERS).find(k=>CHARACTERS[k]===BODY)||'snowflake', key=focus+'|'+(id||'')+'|'+(RX?RX.id:'')+'|'+ch; if(key===rxKey) return; rxKey=key; rxShown=id||'';
+  const g={sky:'',back:'',front:''}; let css=id?'@media (prefers-reduced-motion:reduce){#stage *{animation:none!important}}':'';   // (reduced motion: the prop, still)
+  if(id) for(const o of [REACT.props[id],(REACT.touch[ch]||{})[id]]) if(o){ for(const k in g) g[k]+=o[k]||''; css+=o.css||''; }
   $('#rxSky').innerHTML=g.sky; $('#rxBack').innerHTML=g.back; $('#rxFront').innerHTML=g.front;
   let st=$('#rxCss'); if(!st){ st=document.createElement('style'); st.id='rxCss'; document.head.appendChild(st); } st.textContent=css;
   const sl=$('#stage').classList; [...sl].filter(c=>/^(r|c)-/.test(c)||c==='rx').forEach(c=>sl.remove(c));
-  if(ids.length){ sl.add('rx','c-'+ch); if(RX) sl.add('r-'+RX.id); } }
+  if(id){ sl.add('rx','c-'+ch); if(RX&&RX.id===id) sl.add('r-'+id); } }   // (r-: only while it plays; a sustained prop stands still)
 function rxEnd(){ clearTimeout(RXT); RX=null; rxPaint(); }
 function rxHide(){ musKeep=false; musSync(); }   // (a failed rxOk: the card closes and the chip goes)
 function rxCheck(){ try{ if(RX&&!rxState(RX.id)) rxEnd(); else rxPaint(); if(!rxBase()) rxHide(); else musSync(); }catch(e){} }
 function rxPlay(id,sustained){ try{ if(!REACT.props[id]||!rxOk(id)) return false;   // dropped, never queued
-    if(RX) rxEnd(); RX_AT[id]=performance.now(); if(sustained) RXS.add(id); RX={id}; RXT=setTimeout(rxEnd,RX_DUR[id]||3000); if(RX_MOOD[id]) poke(RX_MOOD[id],1500); rxPaint(); return true; }catch(e){ return false; } }
+    if(RX) rxEnd(); RX_AT[id]=performance.now(); if(sustained) RXS.add(id); RX={id}; RXT=setTimeout(rxEnd,RX_DUR[id]||3000); if((RX_FOCUS[id]||'event')==='event') evHold(RX_DUR[id]||3000); if(RX_MOOD[id]) poke(RX_MOOD[id],1500); rxPaint(); return true; }catch(e){ return false; } }
 function rxSignals(hot,low,trk){   // the situation handler: load and memory start on the turn-on, and stay while the signal does
   if(SIT.cpu_hot&&!hot){ RXS.add('load'); rxPlay('load'); } if(!SIT.cpu_hot) RXS.delete('load');   // (the still prop stays whether or not the animation may play)
   if(SIT.ram_low&&!low){ RXS.add('memory'); rxPlay('memory'); } if(!SIT.ram_low) RXS.delete('memory');
@@ -1800,9 +1802,10 @@ function rxSignals(hot,low,trk){   // the situation handler: load and memory sta
   rxCheck(); }
 // the music chip and card: textContent only, the answers are shown and never spoken, nothing goes to the agent
 let musIdle=0;
-const musBox=()=>RXS.has('music')&&rxState('music');   // the boombox is showing
-function musSync(){ const chipEl=$('#musChip'); if(!chipEl) return; const show=musBox()||(musKeep&&rxState('music'));
-  const was=!chipEl.hidden; chipEl.hidden=!show; if(!show){ musClose(); musKeep=false; } else{ const b=$('#musCard .mp'); b.textContent=musKeep?'Play':'Pause'; b.dataset.p=musKeep?'play':'pause'; } if(was!==show) sendRegion(true); }
+const musBox=()=>RXS.has('music')&&rxState('music');   // music is still on
+const boomPainted=()=>rxShown==='music';
+function musSync(){ const chipEl=$('#musChip'); if(!chipEl) return; const ans=stageFocus(performance.now())==='answer'&&$('#musCard').hidden, show=!ans&&(musBox()||(musKeep&&rxState('music')));
+  const was=!chipEl.hidden; chipEl.hidden=!show; if(!show){ if(!ans||!rxState('music')||!musBox()&&!musKeep){ musClose(); musKeep=false; } } else{ const b=$('#musCard .mp'); b.textContent=musKeep?'Play':'Pause'; b.dataset.p=musKeep?'play':'pause'; } if(was!==show) sendRegion(true); }
 function musClose(){ const c=$('#musCard'); if(!c||c.hidden) return; c.hidden=true; clearTimeout(musIdle); if(musKeep){ musKeep=false; musSync(); } sendRegion(true); }   // (closed by hand after its Pause: the chip goes with it)
 function musSay(t){ const e=$('#musCard .mt'); e.textContent=t; e.title=t; }
 function musTouch(){ clearTimeout(musIdle); musIdle=setTimeout(musClose,15000); }
@@ -2165,12 +2168,12 @@ const wxGroups=[WX.rain.g,WX.snow.g,WX.sun.g,WX.moon.g,WX.partly.g,WX.cloudy.g,W
 const wxOpacity=new Map(wxGroups.map(g=>[g,0]));
 function wxStep(t,dt){
   if(document.body.classList.contains('bar')||document.body.classList.contains('hover')||document.body.classList.contains('calm')||document.body.classList.contains('goohide')) return;
-  const kind=['snow','rain','clear','partly','cloudy'].find(k=>sitOn[k])||'', still=REDUCED.matches;
+  const ambient=document.body.dataset.focus==='ambient', kind=ambient?['snow','rain','clear','partly','cloudy'].find(k=>sitOn[k])||'':'', still=REDUCED.matches;
   const hat=wxHat(), slot=hat?'hat':'head', night=!SIT.day;
-  const key=[kind,slot,SIT.day,SIT.heavy,lowFx,sitOn.windy,SIT.lean,wxOn].join(':');
+  const key=[ambient,kind,slot,SIT.day,SIT.heavy,lowFx,sitOn.windy,SIT.lean,wxOn].join(':');
   if(still&&wxWasReduced&&key===wxReducedKey) return;
   wxWasReduced=still; wxReducedKey=key; t=typeof WXT==='number'?WXT:t;
-  const windy=sitOn.windy, dir=windy&&SIT.lean?-SIT.lean:1, extra=kind==='rain'&&SIT.heavy&&!lowFx&&!wxOn;   // (a mark is up: the small extra clouds would land on it, with or without a hat)
+  const windy=ambient&&sitOn.windy, dir=windy&&SIT.lean?-SIT.lean:1, extra=kind==='rain'&&SIT.heavy&&!lowFx&&!wxOn;   // (a mark is up: the small extra clouds would land on it, with or without a hat)
   const scale=hat?.95:.92, cloudY=hat?-106:-108;
   const cloudX=(phase=0,speed=1,L=63.5,R=56.5,s=scale)=>{
     if(still) return {x:hat?-76:0,fade:1};
@@ -2421,14 +2424,14 @@ function frame(ts){
   if(SP2.halo) SP2.halo.setAttribute('transform',`translate(0,${(Math.sin(t*1.6)*2.2).toFixed(2)})`);
   if(SIT_P){ sitStep(ts);       // looks: spring in/out about their anchors; the tie sways like the other hanging skins
     const w=G.sitW.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)*.6, sp=(S_,on)=>S_.to(on?1:0,dt), skinless=wornSkin(LOOK)==='none';
-    const tp=skinless&&sitOn.party, tb=skinless&&!tp&&sitOn.cold2, tn=skinless&&!tp&&!tb&&sitOn.night, ts6=sitOn.cold1&&!sitOn.meeting&&!SKIN_PARTS.baseProp;     // top zone: party hat > beanie > nightcap, only with no skin; the scarf yields to the tie and a base prop
+    const F=document.body.dataset.focus, ambient=F==='ambient', tp=ambient&&skinless&&sitOn.party, tb=ambient&&skinless&&!tp&&sitOn.cold2, tn=ambient&&skinless&&!tp&&!tb&&sitOn.night, ts6=ambient&&sitOn.cold1&&!sitOn.meeting&&!SKIN_PARTS.baseProp;     // top zone: party hat > beanie > nightcap, only with no skin; the scarf yields to the tie and a base prop
     const ww=REDUCED.matches?0:w;
-    const a=sp(G.sit,sitOn.meeting), b=sp(G.sitMusic,sitOn.music), c=sp(G.sitShade,sitOn.fullscreen), g=sp(G.sitGl,sitOn.coding&&!sitOn.fullscreen),   // eyes: shades > glasses
+    const a=sp(G.sit,ambient&&sitOn.meeting), b=sp(G.sitMusic,F==='media'&&sitOn.music), c=sp(G.sitShade,ambient&&sitOn.fullscreen), g=sp(G.sitGl,ambient&&sitOn.coding&&!sitOn.fullscreen),   // eyes: shades > glasses
       pa=sp(G.sitP,tp), ni=sp(G.sitN,tn), bnn=sp(G.sitBn,tb), scc=sp(G.sitSc,ts6), pch=sp(G.sitChat,propOn&&propOn.cat==='chat'&&ts<propOn.until), pf=sp(G.sitFeed,propOn&&propOn.cat==='video'&&ts<propOn.until), L=G.sitLift.to(isTalk(m)||m==='listening'||['reading','editing','running','searching','looking','thinking'].includes(m)?1:0,dt);
     const put=(el,x,ax,ay,rot)=>{ el.setAttribute('opacity',clamp(x,0,1).toFixed(2)); el.setAttribute('transform',`translate(${ax} ${ay})${rot?` rotate(${rot.toFixed(2)})`:''} scale(${(.7+.3*x).toFixed(3)}) translate(${-ax} ${-ay})`); };
     const lift=(el,x)=>{ put(el,x,0,-4); el.setAttribute('transform',`translate(0 ${(-32*L).toFixed(1)}) scale(${(1-.08*L).toFixed(3)}) `+el.getAttribute('transform')); };   // (lifted onto the forehead while he talks, so his eyes stay visible)
     const off=!(sitOn.meeting||sitOn.music||sitOn.fullscreen||sitOn.coding||tp||tn||tb||ts6)&&Math.max(a,b,c,g,pa,ni,bnn,scc,pch,pf)<.002;
-    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,musBox()?0:b,0,-4,G.sitW.x*.25); put(SIT_P.hf,musBox()?0:b,0,-4,G.sitW.x*.25); sitSettled=off;   // (the boombox stands in for the headphones while it shows)
+    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,boomPainted()?0:b,0,-4,G.sitW.x*.25); put(SIT_P.hf,boomPainted()?0:b,0,-4,G.sitW.x*.25); sitSettled=off;   // (the boombox stands in for the headphones while it shows)
       lift(SIT_P.sh,c); put(SIT_P.gl,g,0,-4); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3);
       put(SIT_P.bn,bnn,0,-84,ww*.5-8*wn); put(SIT_P.sc,scc,0,50); SIT_P.scT.setAttribute('transform',`rotate(${(-(ww*.6)+8*wn).toFixed(2)} 40 50)`);
       const el=propOn?ts-propOn.t0:0, prop=(Q,x,ax,ay,f)=>{ if(x>.002){ put(Q.g,x,ax,ay); Q.on=true; f(Q); } else if(Q.on){ Q.g.setAttribute('opacity','0'); Q.on=false; } };   // (a prop writes only while it shows)
@@ -3026,7 +3029,7 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
       else { if(same&&ev.category==='video'){ G.sitFeed.x=0; G.sitFeed.v=0; } propOn={cat:ev.category,t0:now,until:now+pt,n:1}; }
       if(ev.category==='video') G.jelly.kick(-.4); }
     if(pt&&SIT_P) propIcon(SIT_P[ev.category==='chat'?'chat':'feed'],ev); }
-  if(ev.category==='mail'){ poke('reading',2600); mailPop(ev); }
+  if(ev.category==='mail'){ poke('reading',2600); if(!ev.card) mailPop(ev); }
   if(ev.category==='meeting') setTimeout(()=>{ if(notifyRow===row) poke('t_serious',2000); },750);
   if(ev.category==='video') setTimeout(()=>{ if(!FID&&mood(performance.now())==='idle') { FID={name:'hum',t0:performance.now(),dur:2000}; FIDGETS.hum.start&&FIDGETS.hum.start(FID); } },1500);
   if(ev.card){ try{ notifyShow(row,notifyText(ev,1),ev); notifySeen(ev.key); }catch(_){ notifyClear(); return; } }   // (seen only once drawn; a failed draw goes back to the shell)
@@ -3044,7 +3047,8 @@ function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.c
   if(u){ const im=document.createElement('img'); im.alt=''; im.src=u; im.onerror=()=>im.remove(); b.prepend(im); } el.querySelector('span').textContent=ev.summary||'New mail';
   popWant=[260,0]; sizeWindow();
   const at=(ms,f)=>mailT.push(setTimeout(f,ms));
-  at(60,()=>{ const right=innerWidth/fitK-layoutX-340, left=layoutX/fitK; el.classList.toggle('l',left>right); void el.offsetWidth; el.classList.add('on'); sendRegion(true); });
+  at(60,()=>{ if(stageFocus(performance.now())==='answer'){ mailT.forEach(clearTimeout); mailT=[]; popWant=[0,0]; sizeWindow(); return; }
+    const right=innerWidth/fitK-layoutX-340, left=layoutX/fitK; el.classList.toggle('l',left>right); void el.offsetWidth; el.classList.add('on'); sendRegion(true); });
   at(420,()=>el.classList.add('open')); at(720,()=>el.classList.add('up')); at(1200,()=>sendRegion(true));   // (the raised letter is clickable too)
   at(4300,()=>el.classList.remove('up')); at(4650,()=>el.classList.remove('open'));
   at(5000,()=>{ el.classList.remove('on'); sendRegion(true); }); at(5400,()=>{ popWant=[0,0]; sizeWindow(); }); }

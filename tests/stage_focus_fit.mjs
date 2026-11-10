@@ -28,6 +28,7 @@ await ev(`
   nixiIdleScale(1000); const f0=window.fetch.bind(window); window.fetch0=f0;   // keep the flags the test turned on across /api/state re-reads
   window.fetch=async(u,o)=>{ if(/\\/api\\/notify\\/seen/.test(String(u))) return new Response('{}'); const r=await f0(u,o); if(!/\\/api\\/state/.test(String(u))) return r; const j=await r.json(); return new Response(JSON.stringify({...j,proactive:true,reactions:true,look_meeting:true,look_weather:true,look_music:true,look_coding:true,click_through:true})); };
   window.sit=o=>onEvent({t:'situation',...Object.fromEntries(Object.entries(SIT).filter(([k])=>k!=='weather')),weather:SIT.weather,...o});
+  Object.assign(info,{proactive:true,reactions:true,look_music:true,look_weather:true,look_coding:true});
   return 1;`);
 await sleep(300);
 const settle = () => ev(`await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))); await new Promise(r=>setTimeout(r,60)); return 1;`);
@@ -45,6 +46,25 @@ await settle();
 eq(await ev(`return [apEl.classList.contains('on'),document.body.dataset.focus];`), [true,"answer"], "approval card takes answer focus");
 await ev(`approvalGone('focus-a1'); return 1;`); await settle();
 eq(await ev(`return document.body.dataset.focus;`), "ambient", "focus returns after approval closes");
+
+await ev(`sit({music:true}); return 1;`); await sleep(3600); await settle();
+const music = await ev(`return {focus:document.body.dataset.focus, art:!!$('#rxFront .bx'), other:!!$('#rxFront .tv'), classes:[...$('#stage').classList].filter(c=>c.startsWith('r-')), chip:!$('#musChip').hidden};`);
+check(music.focus==='media'&&music.art&&!music.other&&JSON.stringify(music.classes)==='["r-music"]'&&music.chip, "media focus paints only music art", music);
+
+const workRain = await ev(`window.__oldWorking=CP.working; CP.working=()=>true; rxEnd(); focusSync(performance.now()); RX_AT.rain=0;
+  const played=rxPlay('rain'); return {played,focus:document.body.dataset.focus,rain:!!$('#rxFront .rain'),classes:[...$('#stage').classList].filter(c=>c.startsWith('r-'))};`);
+check(workRain.played&&workRain.focus==='work'&&!workRain.rain&&!workRain.classes.includes('r-rain'), "rain reaction stays unpainted during work", workRain);
+await ev(`sit({coding:true}); sitOn.rain=true; return 1;`); await sleep(3600); await settle();
+const workLook = await ev(`return {focus:document.body.dataset.focus, glasses:+SIT_P.gl.getAttribute('opacity'), rain:WX.rain.g.getAttribute('display')};`);
+check(workLook.focus==='work'&&workLook.glasses<.01&&workLook.rain==='none', "work focus fades glasses and weather marks", workLook);
+await ev(`CP.working=window.__oldWorking; sitOn.rain=false; sitOn.music=false; sitOn.coding=false; RXS.delete('music'); rxEnd(); focusSync(performance.now());
+  notifyAt=0; if(notifyRow) notifyClear(); onEvent({t:'notify',key:'focus-mail',category:'mail',app:'thunderbird',summary:'Mail card',card:{runs:[],buttons:[]}}); return 1;`);
+await settle();
+const mail = await ev(`return {card:!!(notifyRow&&notifyRow.card&&notifyRow.span.isConnected),focus:document.body.dataset.focus,pop:$('#mailPop').classList.contains('on')};`);
+check(mail.card&&mail.focus==='answer'&&!mail.pop, "mail card does not open the mail pop-out", mail);
+const delayedMail = await ev(`mailPop({key:'focus-delayed',category:'mail',app:'thunderbird',summary:'Delayed mail'});
+  await new Promise(r=>setTimeout(r,100)); return {pop:$('#mailPop').classList.contains('on'),want:popWant};`);
+check(!delayedMail.pop&&JSON.stringify(delayedMail.want)==='[0,0]', "delayed mail pop-out yields to answer focus", delayedMail);
 eq(errors, [], "no console errors");
 
 await ev(`window.fetch=window.fetch0; return 1;`);
