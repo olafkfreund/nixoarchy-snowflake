@@ -815,12 +815,12 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
           <g id="eL"><path class="eye" id="pL"/><g class="ce" clip-path="url(#clipL)"></g><g clip-path="url(#clipL)"><path class="slit" id="hlL"/></g></g>
           <g id="eR"><path class="eye" id="pR"/><g class="ce" clip-path="url(#clipR)"></g><g clip-path="url(#clipR)"><path class="slit" id="hlR"/></g></g>
         </g>
-        <path id="rim" class="ball" fill="none" stroke-width="1.6" stroke-linejoin="round" pointer-events="none"/>   <!-- (under the front art: a plugin character's cap or beard covers the outline, not the other way round) -->
-        <g class="ball bfront"></g>
         <g id="tears"></g>
         <!-- the glass dome: soft reflection + rim -->
         <ellipse cx="-30" cy="-46" rx="38" ry="15" transform="rotate(-30 -30 -46)" fill="url(#glossG)" pointer-events="none"/>
         <ellipse cx="34" cy="50" rx="18" ry="6" transform="rotate(-40 34 50)" fill="url(#glossG)" opacity=".45" pointer-events="none"/>
+        <path id="rim" class="ball" fill="none" stroke-width="1.6" stroke-linejoin="round" pointer-events="none"/>
+        <g class="ball bfront"></g>   <!-- (after the rim: a plugin character's cap or beard covers the ball outline, not the other way round) -->
         <g id="accFront"></g>
         <g id="sitFront"></g>
         <g id="rxFront"></g>
