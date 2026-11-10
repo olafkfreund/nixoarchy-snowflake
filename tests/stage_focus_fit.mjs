@@ -67,27 +67,24 @@ check(ambLook.focus==='ambient'&&ambLook.glasses>.5&&ambLook.rain!=='none', "amb
 await ev(`CP.working=window.__oldWorking; sit({weather:null}); sitOn.rain=false; sitOn.music=false; sitOn.coding=false; RXS.delete('music'); rxEnd(); focusSync(performance.now());
   notifyAt=0; if(notifyRow) notifyClear(); onEvent({t:'notify',key:'focus-mail',category:'mail',app:'thunderbird',summary:'Mail card',card:{runs:[],buttons:[]}}); return 1;`);
 await settle();
-const mail = await ev(`return {card:!!(notifyRow&&notifyRow.card&&notifyRow.span.isConnected),focus:document.body.dataset.focus,pop:$('#mailPop').classList.contains('on')};`);
-check(mail.card&&mail.focus==='answer'&&!mail.pop, "mail card does not open the mail pop-out", mail);
+const mail = await ev(`return {row:!!notifyRow,cap:$('#cap').classList.contains('ntf'),pop:$('#mailPop').classList.contains('on')};`);
+check(!mail.row&&!mail.cap&&mail.pop, "mail (even with a card): the envelope alone, no notification row or card beside it", mail);
+await ev(`approvalGone&&0; onEvent({t:'approve',id:'focus-mx',agent:'codex',tool:'Bash',detail:'true',confirm:'click',always:false}); return 1;`); await settle();
 const delayedMail = await ev(`mailPop({key:'focus-delayed',category:'mail',app:'thunderbird',summary:'Delayed mail'});
   await new Promise(r=>setTimeout(r,100)); return {pop:$('#mailPop').classList.contains('on'),want:popWant};`);
 check(!delayedMail.pop&&JSON.stringify(delayedMail.want)==='[0,0]', "delayed mail pop-out yields to answer focus", delayedMail);
+await ev(`approvalGone('focus-mx'); return 1;`); await settle();
 const wk = (from, name, project) => `onEvent({t:'attention',kind:'working',from:'${from}',name:'${name}',project:'${project}'});`;
 await ev(`if(notifyRow) notifyClear(); $('#mailPop').classList.remove('on'); return 1;`); await settle();
 await sleep(8000); await settle();   // (the mail card's event hold runs out)
 await ev(wk("claude","Claude","p1") + wk("codex","Codex","p2") + "return 1;"); await settle();
-const two = await ev(`return {n:CP.n(),focus:document.body.dataset.focus,on:$('#code').classList.contains('on'),rows:document.querySelectorAll('#code .lines .st').length};`);
-check(two.n===2&&two.focus==='work'&&two.on&&two.rows===2, "two working agents: two entries, work focus, sheet on", two);
+const two = await ev(`return {n:CP.n(),focus:document.body.dataset.focus,on:$('#code').classList.contains('on'),ce:getComputedStyle(document.querySelector('#eL .ce')).display};`);
+check(two.n===2&&two.focus==='work'&&!two.on&&two.ce!=='none', "two working agents: work focus, code in his eyes, no side sheet", two);
 await ev(`onEvent({t:'attention',kind:'done',from:'codex',name:'Codex',project:'p2',text:''}); return 1;`); await settle();
 eq(await ev(`return CP.n();`), 1, "done ends only that agent's entry");
 await ev(`onEvent({t:'attention',kind:'ask',from:'claude',name:'Claude',project:'p1',text:'needs you'}); return 1;`); await settle();
 eq(await ev(`return [CP.n(),$('#code').classList.contains('on'),sheetWant,AM&&AM.kind];`), [0,false,[0,0],'ask'], "ask ends the last entry: sheet off, window room released, the ask mark still shows");
-await ev(wk("claude","Claude","p1") + wk("codex","Codex","p2") + wk("zed","Zed","p3") + "return 1;"); await sleep(3000); await settle();   // (the ask above holds the event focus for 2.5 s)
-const look = await ev(`const c=$('#code'), B=document.body.classList, d=e=>getComputedStyle(c.querySelector(e)).display;
-  const r={st:c.querySelectorAll('.lines .st').length,icons:c.querySelectorAll('.icons > *').length,ini:c.querySelector('.icons .ini')&&c.querySelector('.icons .ini').textContent,deco:d('.deco'),bg:getComputedStyle(c).backgroundColor,pe:getComputedStyle(c).pointerEvents};
-  B.add('calm'); r.calm=getComputedStyle(c).display; B.remove('calm'); B.add('bar'); r.barDeco=d('.deco'); r.barIcons=d('.icons'); B.remove('bar'); return r;`);
-check(look.st===3&&look.icons===3&&look.ini==='Z'&&look.deco!=='none'&&look.bg==='rgb(13, 17, 23)'&&look.pe==='none', "terminal: three status lines, three icons (unknown = initial), dark window", look);
-check(look.calm==='none'&&look.barDeco==='none'&&look.barIcons==='none', "calm hides the terminal; the notch hides deco and icons", look);
+await ev(wk("claude","Claude","p1") + "return 1;"); await sleep(3000); await settle();   // (the ask above holds the event focus for 2.5 s)
 // music + work: only the work reaction shows, the chip stays, the glasses fade even with coding on
 await ev(`sit({music:true,coding:true}); return 1;`); await sleep(3600); await settle();
 const mw = await ev(`return {focus:document.body.dataset.focus,sky:$('#rxSky').children.length,front:$('#rxFront').children.length,chip:!$('#musChip').hidden,glasses:+SIT_P.gl.getAttribute('opacity')};`);
@@ -96,10 +93,10 @@ await ev(`sit({music:false,coding:false}); return 1;`);
 // a mail notification during work: the terminal steps aside, then comes back
 await ev(`onEvent({t:'notify',key:'work-mail',category:'mail',app:'thunderbird',summary:'Mail in work'}); return 1;`); await sleep(400); await settle();
 const mailDuring = await ev(`return {focus:document.body.dataset.focus,on:$('#code').classList.contains('on'),want:sheetWant};`);
-check(mailDuring.focus==='event'&&!mailDuring.on&&JSON.stringify(mailDuring.want)==='[0,0]', "mail during work: event focus, the terminal steps aside", mailDuring);
+check(mailDuring.focus==='event'&&!mailDuring.on&&JSON.stringify(mailDuring.want)==='[0,0]', "mail during work: event focus, no sheet", mailDuring);
 await sleep(6500); await settle();
 const mailAfter = await ev(`return {focus:document.body.dataset.focus,on:$('#code').classList.contains('on')};`);
-check(mailAfter.focus==='work'&&mailAfter.on, "after the mail the terminal comes back", mailAfter);
+check(mailAfter.focus==='work'&&!mailAfter.on, "after the mail: back to work (code in his eyes, still no sheet)", mailAfter);
 // an approval card during work: answer focus, no sheet
 await ev(`onEvent({t:'approve',id:'work-a1',agent:'codex',tool:'Bash',detail:'true',confirm:'click',always:false}); return 1;`); await settle();
 eq(await ev(`return [document.body.dataset.focus,$('#code').classList.contains('on')];`), ["answer",false], "approval card during work: answer focus, no sheet");
@@ -115,7 +112,8 @@ await ev(`setCharacter('snowflake'); return 1;`);
 const runAnims = `return document.getAnimations().filter(a=>a.playState==='running'&&a.effect&&a.effect.target&&a.effect.target.closest&&a.effect.target.closest('#code,.ce')).length;`;
 check(await ev(runAnims) > 0, "without reduced motion the terminal and the code in his eyes animate (baseline)");
 await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }); await settle();
-eq(await ev(`return document.getAnimations().filter(a=>a.playState==='running'&&a.effect&&a.effect.target&&a.effect.target.closest&&a.effect.target.closest('#code,.ce')).length;`), 0, "reduced motion: no running animation in the terminal or the code in his eyes");
+eq(await ev(`return document.getAnimations().filter(a=>a.playState==='running'&&a.effect&&a.effect.target&&a.effect.target.closest&&a.effect.target.closest('#code')).length;`), 0, "reduced motion: no running animation in the terminal");
+check(await ev(`return document.getAnimations().filter(a=>a.playState==='running'&&a.effect&&a.effect.target&&a.effect.target.closest&&a.effect.target.closest('.ce')).length;`) > 0, "reduced motion: the code in his eyes still moves (GTK animations off reports reduce on the owner's desktop)");
 await send("Emulation.setEmulatedMedia", { features: [] });
 if (process.env.NIXI_SHOTS) {   // screenshots for the PR: the sheet with two agents, dark and light theme
   const { writeFileSync, mkdirSync } = await import("node:fs"); mkdirSync(process.env.NIXI_SHOTS, { recursive: true });
@@ -129,18 +127,13 @@ if (process.env.NIXI_SHOTS) {   // screenshots for the PR: the sheet with two ag
 await ev(`for(const f of ['claude','codex','zed']) CP.agentEnd(f,''); evUntil=0; return 1;`); await sleep(2800); await settle();
 eq(await ev(`busy=true; focusSync(performance.now()); const f0=document.body.dataset.focus; CP.answer(); focusSync(performance.now());
   const r=[CP.n(),f0,document.body.dataset.focus,$('#code').classList.contains('on')]; busy=false; CP.done(); return r;`), [0,"ambient","ambient",false], "his spoken reply (busy, a delta, no tool): not work, no sheet");
-// (Opus review) an agent finishing while he is still thinking: the agents' sheet follows at once, not after his reply
-eq(await ev(`const fr=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-  onEvent({t:'attention',kind:'working',from:'codex',name:'Codex',project:'pq'}); await fr(); focusSync(performance.now()); await fr();
-  const on0=$('#code').classList.contains('on'); busy=true; answering=false; CP.agentEnd('codex','pq'); await fr();
-  const on1=$('#code').classList.contains('on'); busy=false; CP.done(); evUntil=0; return [on0,on1];`), [true,false], "an agent ending while he thinks takes its sheet away at once");
 await ev(`CP.done(); `+wk("codex","Codex","p2")+` return 1;`); await settle();
 const run = await ev(`CP.tool({t:'tool',id:'own1',name:'Bash',input:{command:'true',description:'own run'}}); await new Promise(r=>setTimeout(r,80)); focusSync(performance.now());
-  return {focus:document.body.dataset.focus,title:$('#code .tb b').textContent,on:$('#code').classList.contains('on')};`);
-check(run.focus==='work'&&run.title==='own run'&&run.on, "his own tool run shows on the sheet (work focus)", run);
+  return {focus:document.body.dataset.focus,title:$('#code .tb b').textContent,on:$('#code').classList.contains('on'),ce:getComputedStyle(document.querySelector('#eL .ce')).display};`);
+check(run.focus==='work'&&run.title==='own run'&&run.on&&run.ce==='none', "his own tool run: the sheet shows it and his eyes stay plain", run);
 await sleep(2500); await settle();
-const back = await ev(`return {title:$('#code .tb b').textContent,rows:document.querySelectorAll('#code .lines .st').length,on:$('#code').classList.contains('on')};`);
-check(back.title==='Codex'&&back.rows===1&&back.on, "after his run the sheet returns to codex's line", back);
+const back = await ev(`return {on:$('#code').classList.contains('on'),ce:getComputedStyle(document.querySelector('#eL .ce')).display};`);
+check(!back.on&&back.ce!=='none', "after his run: the sheet goes, codex's work shows as code in his eyes again", back);
 // (Codex review) an approval during his own tool run: the sheet steps aside and comes back for the rest of the run
 const yi = await ev(`const fr=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
   CP.tool({t:'tool',id:'own2',name:'Bash',input:{command:'true',description:'own run 2'}}); await new Promise(r=>setTimeout(r,80)); await fr();
@@ -162,7 +155,7 @@ const spam = await ev(`const fr=()=>new Promise(r=>requestAnimationFrame(()=>req
   const s0=window.sizeWindow; let n=0; window.sizeWindow=(...a)=>{ n++; return s0(...a); };
   for(let i=0;i<5;i++) CP.answer(); await fr(); window.sizeWindow=s0;
   const on=$('#code').classList.contains('on'); CP.done(); CP.agentEnd('codex',''); return [n,on];`);
-eq(spam, [0, true], "five streamed deltas while an agent works: no window resize, the sheet stays");
+eq(spam, [0, false], "five streamed deltas while an agent works: no window resize, no sheet");
 eq(errors, [], "no console errors");
 
 await ev(`window.fetch=window.fetch0; return 1;`);

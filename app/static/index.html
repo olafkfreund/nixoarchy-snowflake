@@ -20,7 +20,7 @@ body{background:radial-gradient(70% 52% at 50% 36%,var(--panel2) 0%,#090909 78%)
   font:14px/1.45 "Inter",system-ui,sans-serif;user-select:none;-webkit-user-select:none}
 body.still .tCursor,body.still .tAntenna,body.still .tTail{animation-play-state:paused}
 @media (prefers-reduced-motion:reduce){.tCursor,.tAntenna,.tTail{animation:none!important}}
-@media (prefers-reduced-motion:reduce){#code *,#code *::before,.ce *{animation:none!important}}
+@media (prefers-reduced-motion:reduce){#code *{animation:none!important}}
 @keyframes cursor-blink{0%,49%{opacity:1}50%,100%{opacity:.12}}
 @keyframes antenna-pulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.18);opacity:1}}
 @keyframes tail-swish{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(9deg)}}
@@ -729,7 +729,6 @@ body.hover #nixiB,body.pnl #nixiB,body.appr #nixiB{display:none!important}
 #code.on{opacity:1;scale:1}
 #code .tb{display:flex;align-items:center;gap:8px;height:28px;padding:0 12px;border-radius:6px 6px 0 0;font-size:12px;border-bottom:1px solid #30363d;color:#8b949e;font-weight:600}
 #code .dots{display:flex;gap:5px} #code .dots i{width:9px;height:9px;border-radius:50%;background:#ff5f57} #code .dots i:nth-child(2){background:#febc2e} #code .dots i:nth-child(3){background:#28c840}
-#code .icons{display:flex;gap:4px;align-items:center} #code .icons svg{width:14px;height:14px} #code .ini{width:14px;height:14px;border-radius:4px;background:#30363d;color:#c9d1d9;font:700 9px/14px system-ui,sans-serif;text-align:center}
 #code .tb b{flex:1;min-width:0;color:#c9d1d9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 #code .tb span{color:var(--dim)} #code .tb span.ok{color:var(--tgreen,var(--hot))} #code .tb span.bad{color:var(--tred,#ff6b6b)}
 #code.root{border-color:#7a1414} #code.root .tb b::before{content:"root · ";color:#ff5a5a}
@@ -747,16 +746,11 @@ body.hover #nixiB,body.pnl #nixiB,body.appr #nixiB{display:none!important}
 #code .pr,#code .ok{color:var(--tacc,var(--hot))} #code .rt{color:#ff5a5a}
 #code .cur{display:inline-block;width:7px;height:13px;margin-left:1px;vertical-align:-1px;background:var(--hot);animation:cpBlink .9s steps(1) infinite}
 @keyframes cpBlink{50%{opacity:0}}
-#code .st.more{color:#8b949e}
-#code .deco{position:relative;height:54px;margin-top:8px;overflow:hidden;-webkit-mask-image:linear-gradient(#0000,#000 25%,#000 75%,#0000);mask-image:linear-gradient(#0000,#000 25%,#000 75%,#0000)}   /* dim bars, no characters */
-#code .deco::before{content:"";position:absolute;left:0;right:0;top:0;height:calc(100% + 144px);animation:cpScroll 5s linear infinite;   /* (periods 24/48/72 all divide 144: a seamless loop) */
-  background:linear-gradient(#8b949e38 0 5px,#0000 5px) 0 0/62% 24px repeat-y,linear-gradient(#8b949e38 0 5px,#0000 5px) 18px 9px/40% 48px repeat-y,linear-gradient(#8b949e2a 0 5px,#0000 5px) 8px 3px/28% 72px repeat-y}
-@keyframes cpScroll{to{transform:translateY(-144px)}}
-body.bar #code .dots,body.bar #code .icons,body.bar #code .deco{display:none}
+body.bar #code .dots{display:none}
 body.hover #code,body.calm #code{display:none}
 /* Nixi at work: code scrolls inside his eyeballs, clipped to each eye's own shape, so blinks, pupils and gaze stay (not in the notch, hover, calm or hidden) */
 .ce{display:none;pointer-events:none}
-body[data-focus=work]:not(.bar):not(.hover):not(.calm):not(.goohide) .ce{display:inline}
+body[data-focus=work]:not(.bar):not(.hover):not(.calm):not(.goohide):not(.term) .ce{display:inline}   /* (his own run's sheet out: normal eyes, they read it) */
 .ce .ceFlow{animation:ceScroll 1.8s steps(6) infinite} @keyframes ceScroll{to{transform:translateY(-54px)}}   /* (6 rows of 9: one pattern period) */
 body.term #chip.work{opacity:0}          /* the terminal already says what he's doing */
 
@@ -821,12 +815,12 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
           <g id="eL"><path class="eye" id="pL"/><g class="ce" clip-path="url(#clipL)"></g><g clip-path="url(#clipL)"><path class="slit" id="hlL"/></g></g>
           <g id="eR"><path class="eye" id="pR"/><g class="ce" clip-path="url(#clipR)"></g><g clip-path="url(#clipR)"><path class="slit" id="hlR"/></g></g>
         </g>
+        <path id="rim" class="ball" fill="none" stroke-width="1.6" stroke-linejoin="round" pointer-events="none"/>   <!-- (under the front art: a plugin character's cap or beard covers the outline, not the other way round) -->
         <g class="ball bfront"></g>
         <g id="tears"></g>
         <!-- the glass dome: soft reflection + rim -->
         <ellipse cx="-30" cy="-46" rx="38" ry="15" transform="rotate(-30 -30 -46)" fill="url(#glossG)" pointer-events="none"/>
         <ellipse cx="34" cy="50" rx="18" ry="6" transform="rotate(-40 34 50)" fill="url(#glossG)" opacity=".45" pointer-events="none"/>
-        <path id="rim" class="ball" fill="none" stroke-width="1.6" stroke-linejoin="round" pointer-events="none"/>
         <g id="accFront"></g>
         <g id="sitFront"></g>
         <g id="rxFront"></g>
@@ -860,7 +854,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
   </svg>
 </div>
 
-<div id="code"><div class="tb"><div class="dots"><i></i><i></i><i></i></div><b></b><span></span><div class="icons"></div></div><div class="lines"></div><i class="rootb" title="Root mode: Claude can run anything, incl. sudo">ROOT</i></div>
+<div id="code"><div class="tb"><div class="dots"><i></i><i></i><i></i></div><b></b><span></span></div><div class="lines"></div><i class="rootb" title="Root mode: Claude can run anything, incl. sudo">ROOT</i></div>
 <div id="chip"></div>
 <button id="musChip" type="button" aria-label="Music controls" hidden>♪</button>
 <div id="musCard" role="dialog" aria-label="Music controls" hidden><div class="mh"><span class="mt"></span><button class="mx" type="button" aria-label="Close">×</button></div>
@@ -3041,10 +3035,12 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
       else { if(same&&ev.category==='video'){ G.sitFeed.x=0; G.sitFeed.v=0; } propOn={cat:ev.category,t0:now,until:now+pt,n:1}; }
       if(ev.category==='video') G.jelly.kick(-.4); }
     if(pt&&SIT_P) propIcon(SIT_P[ev.category==='chat'?'chat':'feed'],ev); }
-  if(ev.category==='mail'){ poke('reading',2600); if(!ev.card) mailPop(ev); }
+  const env=ev.category==='mail'&&mailPop(ev);   // mail: the envelope alone (no row or card beside it); the row only where it can't pop out
+  if(ev.category==='mail') poke('reading',2600);
   if(ev.category==='meeting') setTimeout(()=>{ if(notifyRow===row) poke('t_serious',2000); },750);
   if(ev.category==='video') setTimeout(()=>{ if(!FID&&mood(performance.now())==='idle') { FID={name:'hum',t0:performance.now(),dur:2000}; FIDGETS.hum.start&&FIDGETS.hum.start(FID); } },1500);
-  if(ev.card){ try{ notifyShow(row,notifyText(ev,1),ev); notifySeen(ev.key); }catch(_){ notifyClear(); return; } }   // (seen only once drawn; a failed draw goes back to the shell)
+  if(env){ notifySeen(ev.key); notifyRow=null; }
+  else if(ev.card){ try{ notifyShow(row,notifyText(ev,1),ev); notifySeen(ev.key); }catch(_){ notifyClear(); return; } }   // (seen only once drawn; a failed draw goes back to the shell)
   else notifyShow(row,notifyText(ev,1),ev);
   if(!SIT.meeting){ if(info.notify_sound!==false&&!muted) sfx(c[5]); if(!muted&&(info.notify_speak||[]).includes(ev.category)&&!(ev.category==='mail'&&SIT.locked)){
     const who=notifyWho(ev); enqueue(ev.category==='mail'?(info.notify_details&&info.notify_speak_subject&&ev.summary?ev.summary:'New mail'+(who?' from '+who:'')):c[1],{follow:false});
@@ -3052,7 +3048,7 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
   setTimeout(()=>{ if(notifyRow===row) notifyClear(); },ev.card?7000:5000); }
 // mail (#138): the envelope pops out beside him (the side with more room), opens, and goes back in after ~5 s
 let mailT=[], popWant=[0,0];
-function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.classList.contains('bar')||info.hover) return;
+function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.classList.contains('bar')||info.hover) return false;
   mailT.forEach(clearTimeout); mailT=[]; el.classList.remove('on','open','up');
   el.dataset.key=ev.key; const b=el.querySelector('b'), u=iconUrl(ev); b.textContent=notifyWho(ev)||'Mail';
   if(u){ const im=document.createElement('img'); im.alt=''; im.src=u; im.onerror=()=>im.remove(); b.prepend(im); } el.querySelector('span').textContent=ev.summary||'New mail';
@@ -3062,7 +3058,7 @@ function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.c
     evHold(5000); const right=innerWidth/fitK-layoutX-340, left=layoutX/fitK; el.classList.toggle('l',left>right); void el.offsetWidth; el.classList.add('on'); sendRegion(true); });
   at(420,()=>el.classList.add('open')); at(720,()=>el.classList.add('up')); at(1200,()=>sendRegion(true));   // (the raised letter is clickable too)
   at(4300,()=>el.classList.remove('up')); at(4650,()=>el.classList.remove('open'));
-  at(5000,()=>{ el.classList.remove('on'); sendRegion(true); }); at(5400,()=>{ popWant=[0,0]; sizeWindow(); }); }
+  at(5000,()=>{ el.classList.remove('on'); sendRegion(true); }); at(5400,()=>{ popWant=[0,0]; sizeWindow(); }); return true; }
 /* ================= answer stages (#144): the page only draws what the server sends, every field via textContent; Run, Copy and the rest go back as a token ================= */
 const stgEl=$('#stg'), stgTab=$('#stgTab'), chalkEl=$('#chalk'), hatEl=$('#hat'), popEl=$('#pop'), wtcEl=$('#wtc');
 let gaugeRef=null, gaugeHist={}, GAUGE_MS=5000;   // the live board's refresh loop and the last 24 readings per host+meter
@@ -4838,7 +4834,7 @@ const CP=(()=>{
     for(let i=1;i<=text.length;i++){ d.innerHTML=pre+hl(text.slice(0,i))+'<i class="cur"></i>'; await wait(1000/cps); if(hurry()) break; }
     d.innerHTML=pre+hl(text);
   }
-  function open(title,root){ agView=false; titleEl.textContent=title; stEl.textContent='…'; stEl.className=''; el.classList.toggle('root',!!root); el.classList.toggle('rootmode',!!info.root); out.innerHTML=''; show(); }
+  function open(title,root){ titleEl.textContent=title; stEl.textContent='…'; stEl.className=''; el.classList.toggle('root',!!root); el.classList.toggle('rootmode',!!info.root); out.innerHTML=''; show(); }
   function done(ok){ stEl.textContent=ok?'✓':'✕'; stEl.className=ok?'ok':'bad'; }
   async function result(id){ for(let i=0;i<1200&&!RES[id]&&busy;i++){ if(q.length&&i>20) break; await wait(50); } return RES[id]; }
   const rows=(t,n)=>String(t||'').replace(/\r/g,'').split('\n').filter(x=>x.trim()).slice(0,n);
@@ -4886,30 +4882,15 @@ const CP=(()=>{
     while(q.length){ const ev=q.shift(); try{ await (VIEWS[ev.name]||VIEWS.other)(ev); }catch(e){ console.log('[nixi] terminal',e); } }
     running=false; sync(); }
   // ---- other agents are working (Claude Code, Codex, agy): one entry per agent+project, kept until that agent's
-  // "finished"/"needs you" or 15 minutes without a `working`. The map lives on while the sheet is away; the sheet shows only in `work`.
-  const icons=el.querySelector('.icons'), ICON={};   // the agents' marks, cloned once from the ask-mark art (no ids, no display)
-  for(const [f,i] of [['claude','amC'],['codex','amX'],['agy','amA']]){ const g=$('#'+i).cloneNode(true); for(const n of [g,...g.querySelectorAll('*')]){ n.removeAttribute('id'); n.removeAttribute('display'); n.style.removeProperty('display'); } ICON[f]=g; }
+  // "finished"/"needs you" or 15 minutes without a `working`. They show as code in his eyes; the sheet is only for his own runs.
   const ags=new Map(), ownRun=()=>running||q.length>0;
-  const stTxt=a=>'$ '+[a.name,a.project].filter(Boolean).join(' · ')+' · '+Math.floor((Date.now()-a.t0)/60000)+'m';
-  function paint(){ const nm=new Set([...ags.values()].map(a=>a.name)); titleEl.textContent=nm.size===1?[...nm][0]:'agents';   // (one agent: its name)
-    stEl.textContent=''; stEl.className=''; el.classList.remove('root','rootmode'); out.textContent=''; icons.textContent='';
-    for(const a of [...ags.values()].slice(0,4)){ const d=document.createElement('div'); d.className='l st'; d.textContent=stTxt(a); out.appendChild(d); a.row=d; }
-    if(ags.size>4){ const d=document.createElement('div'); d.className='l st more'; d.textContent='+'+(ags.size-4)+' more'; out.appendChild(d); }
-    const dc=document.createElement('div'); dc.className='deco'; out.appendChild(dc);
-    for(const f of new Set([...ags.values()].map(a=>a.from))){ if(ICON[f]){ const v=document.createElementNS('http://www.w3.org/2000/svg','svg'); v.setAttribute('viewBox','-17 -17 34 34'); v.appendChild(ICON[f].cloneNode(true)); icons.appendChild(v); }
-      else { const i=document.createElement('span'); i.className='ini'; i.textContent=(f||'?')[0].toUpperCase(); icons.appendChild(i); } } }
-  let yielded=false, agView=false, dirty=true;   // agView: the sheet shows the agents (not his run); dirty: the list changed   // his own run's sheet stepped aside for something that needs your answer
+  let yielded=false;   // his own run's sheet stepped aside for something that needs your answer
   function sync(){ const f=document.body.dataset.focus;
-    if(ownRun()||busy&&!answering&&!agView){ if(f==='answer'||f==='event'){ if(on){ hide(); yielded=true; } } else if(yielded){ yielded=false; show(); } return; }   // (his own turn owns the sheet until he answers: no flicker between two tools)
-    yielded=false;
-    if(ags.size&&info.code_panel!==false&&f==='work'){ if(!on||!agView||dirty){ paint(); agView=true; dirty=false; } show(); }
-    else if(on||el.classList.contains('on')) hide(); }      // (hide() keeps the content and the map)
-  function agent(ev){ const k=ev.from+'|'+(ev.project||''), a=ags.get(k)||{t0:Date.now()}; if(!ags.has(k)) dirty=true;
-    ags.set(k,Object.assign(a,{from:ev.from,name:ev.name||ev.from,project:ev.project||'',last:Date.now()})); sync(); }
-  function agentEnd(from,project){ dirty=true; if(project) ags.delete(from+'|'+project); else for(const [k,a] of ags) if(a.from===from) ags.delete(k); sync(); }
-  setInterval(()=>{ const n=ags.size; for(const [k,a] of ags) if(Date.now()-a.last>15*60000) ags.delete(k);
-    for(const a of ags.values()) if(a.row&&a.row.textContent!==stTxt(a)) a.row.textContent=stTxt(a);   // (only a changed minute touches the DOM)
-    if(ags.size!==n){ dirty=true; sync(); } },15000);
+    if(ownRun()||busy&&!answering){ if(f==='answer'||f==='event'){ if(on){ hide(); yielded=true; } } else if(yielded){ yielded=false; show(); } return; }   // (his own turn owns the sheet until he answers: no flicker between two tools)
+    yielded=false; if(on||el.classList.contains('on')) hide(); }
+  function agent(ev){ ags.set(ev.from+'|'+(ev.project||''),{from:ev.from,last:Date.now()}); sync(); }
+  function agentEnd(from,project){ if(project) ags.delete(from+'|'+project); else for(const [k,a] of ags) if(a.from===from) ags.delete(k); sync(); }
+  setInterval(()=>{ for(const [k,a] of ags) if(Date.now()-a.last>15*60000) ags.delete(k); },15000);
   return {
     agent, agentEnd,
     working:()=>ags.size>0||ownRun(), sync, n:()=>ags.size,
