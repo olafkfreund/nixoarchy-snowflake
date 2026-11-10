@@ -127,6 +127,14 @@ check(run.focus==='work'&&run.title==='own run'&&run.on, "his own tool run shows
 await sleep(2500); await settle();
 const back = await ev(`return {title:$('#code .tb b').textContent,rows:document.querySelectorAll('#code .lines .st').length,on:$('#code').classList.contains('on')};`);
 check(back.title==='Codex'&&back.rows===1&&back.on, "after his run the sheet returns to codex's line", back);
+// (Codex review) an approval during his own tool run: the sheet steps aside and comes back for the rest of the run
+const yi = await ev(`const fr=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  CP.tool({t:'tool',id:'own2',name:'Bash',input:{command:'true',description:'own run 2'}}); await new Promise(r=>setTimeout(r,80)); await fr();
+  onEvent({t:'approve',id:'focus-a2',agent:'codex',tool:'Bash',detail:'true',confirm:'click',always:false}); await fr();
+  const during=[document.body.dataset.focus,$('#code').classList.contains('on')]; approvalGone('focus-a2'); await fr();
+  return [...during,$('#code').classList.contains('on')];`);
+eq(yi, ["answer", false, true], "his own run's sheet yields to an approval card and comes back");
+await sleep(2500); await settle();
 // peek: after a long idle he shrinks; a working agent brings him back to full size
 await ev(`CP.agentEnd('codex',''); chip.classList.remove('act'); AM=null; attnPend=null; propOn=null; if(notifyRow) notifyClear(); $('#mailPop').classList.remove('on'); idleHoldUntil=0; lastUser=0; nixiIdleScale(.001); return 1;`);   // (clear what keeps him up: the cues earlier checks left)
 let peeked = false; for (let i = 0; i < 40 && !peeked; i++) { await sleep(250); peeked = await ev(`return document.body.classList.contains('peek');`); }
