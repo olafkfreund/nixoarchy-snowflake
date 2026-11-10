@@ -65,6 +65,16 @@ check(mail.card&&mail.focus==='answer'&&!mail.pop, "mail card does not open the 
 const delayedMail = await ev(`mailPop({key:'focus-delayed',category:'mail',app:'thunderbird',summary:'Delayed mail'});
   await new Promise(r=>setTimeout(r,100)); return {pop:$('#mailPop').classList.contains('on'),want:popWant};`);
 check(!delayedMail.pop&&JSON.stringify(delayedMail.want)==='[0,0]', "delayed mail pop-out yields to answer focus", delayedMail);
+const wk = (from, name, project) => `onEvent({t:'attention',kind:'working',from:'${from}',name:'${name}',project:'${project}'});`;
+await ev(`if(notifyRow) notifyClear(); $('#mailPop').classList.remove('on'); return 1;`); await settle();
+await sleep(8000); await settle();   // (the mail card's event hold runs out)
+await ev(wk("claude","Claude","p1") + wk("codex","Codex","p2") + "return 1;"); await settle();
+const two = await ev(`return {n:CP.n(),focus:document.body.dataset.focus,on:$('#code').classList.contains('on'),rows:$('#code .lines').children.length};`);
+check(two.n===2&&two.focus==='work'&&two.on&&two.rows===2, "two working agents: two entries, work focus, sheet on", two);
+await ev(`onEvent({t:'attention',kind:'done',from:'codex',name:'Codex',project:'p2',text:''}); return 1;`); await settle();
+eq(await ev(`return CP.n();`), 1, "done ends only that agent's entry");
+await ev(`onEvent({t:'attention',kind:'ask',from:'claude',name:'Claude',project:'p1',text:'needs you'}); return 1;`); await settle();
+eq(await ev(`return [CP.n(),$('#code').classList.contains('on'),sheetWant];`), [0,false,[0,0]], "ask ends the last entry: sheet off, window room released");
 eq(errors, [], "no console errors");
 
 await ev(`window.fetch=window.fetch0; return 1;`);

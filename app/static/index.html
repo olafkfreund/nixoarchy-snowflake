@@ -2833,8 +2833,8 @@ function onEvent(ev){
   else if(ev.t==='agent_say') agentIn(ev);
   else if(ev.t==='agent_result') agentResult(ev);
   else if(ev.t==='attention'){                            // an agent (claude/codex/agy…) is waiting for you: `nixi-companion attention`
-    if(ev.kind==='working'){ if(!hiddenNow) CP.agent(ev.name||ev.from,ev.from); return; }   // decoration only: no flash, no voice, no attnPend
-    if(ev.kind==='done') CP.agentEnd(ev.from);
+    if(ev.kind==='working'){ if(!hiddenNow) CP.agent(ev); return; }   // decoration only: no flash, no voice, no attnPend
+    CP.agentEnd(ev.from,ev.project);   // (done or ask: that agent's entry is over)
     const ask=ev.kind!=='done', r=(ev.text||'').replace(new RegExp('^'+ev.name+'\\s+','i'),''), pj=ev.project?' · '+ev.project:'';
     const head=ask?(/^(needs|is waiting|wants)\b/i.test(r)?ev.name+' '+r:ev.name+' needs you'+(r?': '+r:'')):'✓ '+ev.name+' finished'+(r?': '+r:'');   // ("Claude needs your permission…", not "Claude needs you: Claude needs…")
     if(hiddenNow){ if(ask) post('/api/notify',{title:'Nixi',body:head+pj}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
@@ -4663,7 +4663,7 @@ window.nixiCorner=c=>{ corner=c; const x=c[1]==='l'?-102:102, y=c[0]==='t'?-99:9
 // idleActive: your own action, or something that needs you: he stays (or comes back) up. idleShowing: a passive indicator: he just doesn't shrink further.
 function idleActive(){ const on=el=>el.classList.contains('on'), B=document.body.classList;
   return busy||!!rec||transcribing||follow||menuOn||!!pendingAppr||on(pwEl)||on(apEl)||on(ask)||on(setEl)||on(panelEl)
-    ||B.contains('hover')||B.contains('bar')||!!downAt||hiddenNow||MIR.owner==='pending'||MIR.owner==='agent'; }
+    ||B.contains('hover')||B.contains('bar')||!!downAt||hiddenNow||MIR.owner==='pending'||MIR.owner==='agent'||CP.working(); }
 function idleShowing(){ const now=performance.now();
   return playing||capOn||!!notifyRow||chip.classList.contains('act')||!!AM||(!!attnPend&&now-attnPend.at<60000)
     ||$('#mailPop').classList.contains('on')||(!!propOn&&now<propOn.until)||(!!gaugeRef&&stgOpen()); }
@@ -4787,7 +4787,7 @@ const CP=(()=>{
     const edge=barEdge();
     if(edge){ pos={x:170,y:230,cx:170,cy:230}; return; }  // the notch: CSS puts it inside the notch (see body.bar #code)
     const {cx,cy,reach}=geo(), st=new DOMMatrix(getComputedStyle($('#stage')).transform).a||1;
-    const k=SHEET_K*clamp(st,.4,1)*(el.classList.contains('mini')?.6:1), w2=W*k/2, h2=H*k/2, half=w2+14, rr=innerWidth-cx;   // (it shrinks and grows with him: peek, hover)
+    const k=SHEET_K*clamp(st,.4,1), w2=W*k/2, h2=H*k/2, half=w2+14, rr=innerWidth-cx;   // (it shrinks and grows with him: peek, hover)
     if(side>0?cx>rr+40:rr>cx+40) side=-side;                 // (a margin, so it doesn't flip back and forth)
     const tx=clamp(cx+side*(reach*.92+18*k+w2),half,innerWidth-half);
     const ty=clamp(cy+Math.sin(ts/1400)*2,h2+4,innerHeight-h2-4);
@@ -4814,7 +4814,7 @@ const CP=(()=>{
     H=el.offsetHeight; const want=[2*Math.max(0,Math.ceil(geo().reach*.92+18+W+16-170)),Math.max(0,H+16-460)];
     if(want[0]!==sheetWant[0]||want[1]!==sheetWant[1]){ sheetWant=want; sizeWindow(); } }
   new MutationObserver(()=>{ if(on&&!barEdge()) fitSheet(); }).observe(out,{childList:true,subtree:true,characterData:true});
-  function hide(){ agStop(); sheetWant=[0,0]; sizeWindow(); on=false; el.classList.remove('on'); document.body.classList.remove('term'); clearTimeout(offT); offT=setTimeout(()=>{ if(!on&&wide){ wide=false; native('code:off'); } },400); }
+  function hide(){ sheetWant=[0,0]; sizeWindow(); on=false; el.classList.remove('on'); document.body.classList.remove('term'); clearTimeout(offT); offT=setTimeout(()=>{ if(!on&&wide){ wide=false; native('code:off'); } },400); }
 
   // ---- writing to it
   const KW=/\b(def|return|if|elif|else|for|while|in|not|and|or|import|from|try|except|with|as|const|let|var|function|async|await|new|null|None|True|False|true|false|fn|pub|use|match|export|raise|throw)\b/g;
@@ -4830,7 +4830,7 @@ const CP=(()=>{
     for(let i=1;i<=text.length;i++){ d.innerHTML=pre+hl(text.slice(0,i))+'<i class="cur"></i>'; await wait(1000/cps); if(hurry()) break; }
     d.innerHTML=pre+hl(text);
   }
-  function open(title,root){ agStop(); el.classList.remove('mini'); titleEl.textContent=title; stEl.textContent='…'; stEl.className=''; el.classList.toggle('root',!!root); el.classList.toggle('rootmode',!!info.root); out.innerHTML=''; show(); }
+  function open(title,root){ titleEl.textContent=title; stEl.textContent='…'; stEl.className=''; el.classList.toggle('root',!!root); el.classList.toggle('rootmode',!!info.root); out.innerHTML=''; show(); }
   function done(ok){ stEl.textContent=ok?'✓':'✕'; stEl.className=ok?'ok':'bad'; }
   async function result(id){ for(let i=0;i<1200&&!RES[id]&&busy;i++){ if(q.length&&i>20) break; await wait(50); } return RES[id]; }
   const rows=(t,n)=>String(t||'').replace(/\r/g,'').split('\n').filter(x=>x.trim()).slice(0,n);
@@ -4876,29 +4876,30 @@ const CP=(()=>{
 
   async function run(){ running=true;
     while(q.length){ const ev=q.shift(); try{ await (VIEWS[ev.name]||VIEWS.other)(ev); }catch(e){ console.log('[nixi] terminal',e); } }
-    running=false; if(!busy||answering) hide(); }
-  // ---- another agent is working (Claude Code, Codex, agy): a fixed decorative loop, no real text; smaller after a minute,
-  // gone on that agent's "finished" or after 15 minutes without a `working`. Never while his own turn uses the sheet.
-  let ag=null; const SKEL=['<i class="pr">$</i> ▒▒▒▒▒ ▒▒▒▒▒▒▒▒ ▒▒▒','▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒','▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒▒▒▒▒▒','<i class="pr">$</i> ▒▒▒▒ ▒▒▒▒▒▒▒▒','▒▒▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒▒▒','▒▒▒▒ ▒▒▒▒▒▒▒']; 
-  const ownTurn=()=>busy||running||q.length>0||answering;
-  function agStop(){ if(ag){ clearInterval(ag.timer); ag=null; } el.classList.remove('mini'); }
-  function agent(name,from){ if(ownTurn()||info.code_panel===false) return;
-    if(ag){ ag.last=Date.now(); ag.from=from; titleEl.textContent=name; return; }
-    titleEl.textContent=name; stEl.textContent='…'; stEl.className=''; el.classList.remove('root','rootmode'); out.innerHTML=''; show();
-    if(!on) return;
-    ag={from,t0:Date.now(),last:Date.now(),i:0,timer:0};
-    ag.timer=setInterval(()=>{ if(!ag) return; if(ownTurn()){ agStop(); return; }
-      if(Date.now()-ag.last>15*60000){ hide(); return; }
-      if(Date.now()-ag.t0>60000) el.classList.add('mini');
-      line(SKEL[ag.i++%SKEL.length],'out'); },900); }
-  function agentEnd(from){ if(ag&&ag.from===from&&!ownTurn()) hide(); }
+    running=false; if(!busy||answering) hide(); sync(); }
+  // ---- other agents are working (Claude Code, Codex, agy): one entry per agent+project, kept until that agent's
+  // "finished"/"needs you" or 15 minutes without a `working`. The map lives on while the sheet is away; the sheet shows only in `work`.
+  const ags=new Map(), ownRun=()=>running||q.length>0;
+  const stTxt=a=>'$ '+[a.name,a.project].filter(Boolean).join(' · ')+' · '+Math.floor((Date.now()-a.t0)/60000)+'m';
+  function paint(){ const nm=new Set([...ags.values()].map(a=>a.name)); titleEl.textContent=nm.size===1?[...nm][0]:'agents';   // (one agent: its name)
+    stEl.textContent=''; stEl.className=''; el.classList.remove('root','rootmode'); out.textContent='';
+    for(const a of ags.values()){ const d=document.createElement('div'); d.className='l out'; d.textContent=stTxt(a); out.appendChild(d); a.row=d; } }
+  function sync(){ if(ownRun()||busy&&!answering) return;   // (his own turn owns the sheet until he answers: no flicker between two tools)
+    if(ags.size&&info.code_panel!==false&&document.body.dataset.focus==='work'){ paint(); show(); }
+    else if(on||el.classList.contains('on')) hide(); }      // (hide() keeps the content and the map)
+  function agent(ev){ const k=ev.from+'|'+(ev.project||''), a=ags.get(k)||{t0:Date.now()};
+    ags.set(k,Object.assign(a,{from:ev.from,name:ev.name||ev.from,project:ev.project||'',last:Date.now()})); sync(); }
+  function agentEnd(from,project){ if(project) ags.delete(from+'|'+project); else for(const [k,a] of ags) if(a.from===from) ags.delete(k); sync(); }
+  setInterval(()=>{ const n=ags.size; for(const [k,a] of ags) if(Date.now()-a.last>15*60000) ags.delete(k);
+    for(const a of ags.values()) if(a.row&&a.row.textContent!==stTxt(a)) a.row.textContent=stTxt(a);   // (only a changed minute touches the DOM)
+    if(ags.size!==n) sync(); },15000);
   return {
     agent, agentEnd,
-    working:()=>false, sync(){},
+    working:()=>ags.size>0||ownRun(), sync, n:()=>ags.size,
     tool(ev){ if(info.code_panel===false||info.bridge) return; answering=false; q.push(ev); if(!running) run(); },
     result(ev){ RES[ev.id]={text:ev.text||'',is_error:!!ev.is_error}; },
-    answer(){ answering=true; if(!running) hide(); },
-    done(){ answering=false; if(!running) hide(); },
+    answer(){ answering=true; if(!running) hide(); sync(); },
+    done(){ answering=false; if(!running) hide(); sync(); },
     hide,
   };
 })();
