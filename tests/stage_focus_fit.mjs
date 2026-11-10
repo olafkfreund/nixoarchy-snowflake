@@ -69,12 +69,24 @@ const wk = (from, name, project) => `onEvent({t:'attention',kind:'working',from:
 await ev(`if(notifyRow) notifyClear(); $('#mailPop').classList.remove('on'); return 1;`); await settle();
 await sleep(8000); await settle();   // (the mail card's event hold runs out)
 await ev(wk("claude","Claude","p1") + wk("codex","Codex","p2") + "return 1;"); await settle();
-const two = await ev(`return {n:CP.n(),focus:document.body.dataset.focus,on:$('#code').classList.contains('on'),rows:$('#code .lines').children.length};`);
+const two = await ev(`return {n:CP.n(),focus:document.body.dataset.focus,on:$('#code').classList.contains('on'),rows:document.querySelectorAll('#code .lines .st').length};`);
 check(two.n===2&&two.focus==='work'&&two.on&&two.rows===2, "two working agents: two entries, work focus, sheet on", two);
 await ev(`onEvent({t:'attention',kind:'done',from:'codex',name:'Codex',project:'p2',text:''}); return 1;`); await settle();
 eq(await ev(`return CP.n();`), 1, "done ends only that agent's entry");
 await ev(`onEvent({t:'attention',kind:'ask',from:'claude',name:'Claude',project:'p1',text:'needs you'}); return 1;`); await settle();
 eq(await ev(`return [CP.n(),$('#code').classList.contains('on'),sheetWant];`), [0,false,[0,0]], "ask ends the last entry: sheet off, window room released");
+await ev(wk("claude","Claude","p1") + wk("codex","Codex","p2") + wk("zed","Zed","p3") + "return 1;"); await sleep(3000); await settle();   // (the ask above holds the event focus for 2.5 s)
+const look = await ev(`const c=$('#code'), B=document.body.classList, d=e=>getComputedStyle(c.querySelector(e)).display;
+  const r={st:c.querySelectorAll('.lines .st').length,icons:c.querySelectorAll('.icons > *').length,ini:c.querySelector('.icons .ini')&&c.querySelector('.icons .ini').textContent,deco:d('.deco'),bg:getComputedStyle(c).backgroundColor,pe:getComputedStyle(c).pointerEvents};
+  B.add('calm'); r.calm=getComputedStyle(c).display; B.remove('calm'); B.add('bar'); r.barDeco=d('.deco'); r.barIcons=d('.icons'); B.remove('bar'); return r;`);
+check(look.st===3&&look.icons===3&&look.ini==='Z'&&look.deco!=='none'&&look.bg==='rgb(13, 17, 23)'&&look.pe==='none', "terminal: three status lines, three icons (unknown = initial), dark window", look);
+check(look.calm==='none'&&look.barDeco==='none'&&look.barIcons==='none', "calm hides the terminal; the notch hides deco and icons", look);
+if (process.env.NIXI_SHOTS) {   // screenshots for the PR: the sheet with two agents, dark and light theme
+  const { writeFileSync, mkdirSync } = await import("node:fs"); mkdirSync(process.env.NIXI_SHOTS, { recursive: true });
+  const shot = async n => { await sleep(3500); await settle(); const r = await send("Page.captureScreenshot", { format: "png" }); writeFileSync(`${process.env.NIXI_SHOTS}/${n}.png`, Buffer.from(r.result.data, "base64")); };
+  await ev(`onEvent({t:'attention',kind:'done',from:'zed',name:'Zed',project:'p3',text:''}); document.body.style.background='#1b1e24'; return 1;`); await shot("terminal-dark");
+  await ev(`applyThemeVars({mode:'light',background:'#f5f5f5',darker_background:'#e5e5e5',lighter_background:'#fafafa',foreground:'#222',accent:'#2060d0',red:'#c00',green:'#080',yellow:'#a80',selection:'#ccc'}); document.body.style.background='#f0f0f0'; return 1;`); await shot("terminal-light");
+}
 eq(errors, [], "no console errors");
 
 await ev(`window.fetch=window.fetch0; return 1;`);

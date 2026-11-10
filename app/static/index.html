@@ -721,23 +721,18 @@ body.hover #nixiB,body.pnl #nixiB,body.appr #nixiB{display:none!important}
 .md h1,.md h2,.md h3{font-size:13.5px;margin:10px 0 6px}
 /* ===== the terminal: a small flat sheet he holds under his eyes while he works ===== */
 #stage{z-index:2}
-#code{position:fixed;left:0;top:0;width:380px;height:auto;z-index:3;pointer-events:none;border-radius:22px;
-  background:var(--tbg,var(--panel));border:2.5px solid var(--ink,var(--edge2));box-shadow:5px 6px 0 var(--inksh,#000c);font:15px/21px var(--mono);color:var(--text);
+#code{position:fixed;left:0;top:0;width:380px;height:auto;z-index:3;pointer-events:none;border-radius:6px;overflow:hidden;   /* a Linux terminal: fixed dark colours, whatever the theme */
+  --text:#c9d1d9;--dim:#8b949e;--line:#30363d;--tacc:#7ee787;--tgreen:#7ee787;--tred:#ff7b72;--tyellow:#e3b341;--hot:#7ee787;--acc:#58a6ff;   /* (--acc: the codex mark's outline, readable on the dark bar) */
+  background:#0d1117;border:1px solid #30363d;box-shadow:0 8px 24px #0009,0 2px 6px #0006;font:15px/21px var(--mono);color:#c9d1d9;
   opacity:0;scale:.5;transition:opacity .3s,scale .4s cubic-bezier(.3,1.5,.5,1)}
 #code.on{opacity:1;scale:1}
-#code.on.mini{scale:1}   /* (mini is in the sheet's transform, with his size) */
-#code .tb{display:flex;align-items:center;gap:6px;height:30px;padding:0 16px;font-size:13px;border-bottom:2px dashed var(--line);color:var(--tacc,var(--hot));font-weight:600}
-#code .tb b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+#code .tb{display:flex;align-items:center;gap:8px;height:28px;padding:0 12px;font-size:12px;border-bottom:1px solid #30363d;color:#8b949e;font-weight:600}
+#code .dots{display:flex;gap:5px} #code .dots i{width:9px;height:9px;border-radius:50%;background:#ff5f57} #code .dots i:nth-child(2){background:#febc2e} #code .dots i:nth-child(3){background:#28c840}
+#code .icons{display:flex;gap:4px;align-items:center} #code .icons svg{width:14px;height:14px} #code .ini{width:14px;height:14px;border-radius:4px;background:#30363d;color:#c9d1d9;font:700 9px/14px system-ui,sans-serif;text-align:center}
+#code .tb b{flex:1;min-width:0;color:#c9d1d9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 #code .tb span{color:var(--dim)} #code .tb span.ok{color:var(--tgreen,var(--hot))} #code .tb span.bad{color:var(--tred,#ff6b6b)}
 #code.root{border-color:#7a1414} #code.root .tb b::before{content:"root · ";color:#ff5a5a}
-#code .lines{padding:6px 16px 10px;min-height:42px;overflow:hidden}
-/* the tail, on the side facing him, pointing at his face (--ty); the fill overlaps the outline so there's no seam */
-#code::before,#code::after{content:"";position:absolute;top:var(--ty,50%);border-style:solid;border-color:transparent}
-#code::before{left:-24px;margin-top:-13px;border-width:13px 24px 13px 0;border-right-color:var(--ink,var(--edge2))}
-#code::after{left:-17px;margin-top:-9px;border-width:9px 20px 9px 0;border-right-color:var(--tbg,var(--panel))}
-#code.tr::before{left:auto;right:-24px;border-width:13px 0 13px 24px;border-right-color:transparent;border-left-color:var(--ink,var(--edge2))}
-#code.tr::after{left:auto;right:-17px;border-width:9px 0 9px 20px;border-right-color:transparent;border-left-color:var(--tbg,var(--panel))}
-body.bar #code::before,body.bar #code::after{display:none}
+#code .lines{padding:6px 12px 10px;min-height:42px;overflow:hidden}
 /* root mode: a red sticker on the side of the paper you see — so it reads the right way round even though the page is
    turned toward him */
 #liveDot{animation:liveBeat 1.6s ease-in-out infinite} @keyframes liveBeat{50%{opacity:.25}} body.hover #liveTag{display:none}
@@ -751,7 +746,13 @@ body.bar #code::before,body.bar #code::after{display:none}
 #code .pr,#code .ok{color:var(--tacc,var(--hot))} #code .rt{color:#ff5a5a}
 #code .cur{display:inline-block;width:7px;height:13px;margin-left:1px;vertical-align:-1px;background:var(--hot);animation:cpBlink .9s steps(1) infinite}
 @keyframes cpBlink{50%{opacity:0}}
-body.hover #code{display:none}
+#code .st.more{color:#8b949e}
+#code .deco{position:relative;height:54px;margin-top:8px;overflow:hidden;-webkit-mask-image:linear-gradient(#0000,#000 25%,#000 75%,#0000);mask-image:linear-gradient(#0000,#000 25%,#000 75%,#0000)}   /* dim bars, no characters */
+#code .deco::before{content:"";position:absolute;left:0;right:0;top:0;height:calc(100% + 144px);animation:cpScroll 5s linear infinite;   /* (periods 24/48/72 all divide 144: a seamless loop) */
+  background:linear-gradient(#8b949e38 0 5px,#0000 5px) 0 0/62% 24px repeat-y,linear-gradient(#8b949e38 0 5px,#0000 5px) 18px 9px/40% 48px repeat-y,linear-gradient(#8b949e2a 0 5px,#0000 5px) 8px 3px/28% 72px repeat-y}
+@keyframes cpScroll{to{transform:translateY(-144px)}}
+body.bar #code .dots,body.bar #code .icons,body.bar #code .deco{display:none}
+body.hover #code,body.calm #code{display:none}
 body.term #chip.work{opacity:0}          /* the terminal already says what he's doing */
 
 </style>
@@ -854,7 +855,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
   </svg>
 </div>
 
-<div id="code"><div class="tb"><b></b><span></span></div><div class="lines"></div><i class="rootb" title="Root mode: Claude can run anything, incl. sudo">ROOT</i></div>
+<div id="code"><div class="tb"><div class="dots"><i></i><i></i><i></i></div><b></b><span></span><div class="icons"></div></div><div class="lines"></div><i class="rootb" title="Root mode: Claude can run anything, incl. sudo">ROOT</i></div>
 <div id="chip"></div>
 <button id="musChip" type="button" aria-label="Music controls" hidden>♪</button>
 <div id="musCard" role="dialog" aria-label="Music controls" hidden><div class="mh"><span class="mt"></span><button class="mx" type="button" aria-label="Close">×</button></div>
@@ -4771,7 +4772,7 @@ const CP=(()=>{
   const el=$('#code'), out=el.querySelector('.lines'), titleEl=el.querySelector('.tb b'), stEl=el.querySelector('.tb span');
   let W=380, H=120; const ROWS=24, MAXH=442, SHEET_K=.7;           // (drawn at 70%: it sits beside him, it mustn't fill the screen)                       // size, visible lines
   let on=false, last=0, wide=false, offT=null, pos=null;
-  const sp={x:0,y:0,vx:0,vy:0,r:0};                // held in a "hand": follows where he looks, with a little lag and tilt
+  const sp={x:0,y:0,vx:0,vy:0};                // held in a "hand": follows where he looks, with a little lag and tilt
   const ball=()=>document.querySelector('#body > .ball').getBoundingClientRect();
 
   // ---- a cartoon speech bubble beside him (S22): on the side with more room (the window grows away from a screen
@@ -4794,11 +4795,10 @@ const CP=(()=>{
     if(!pos){ sp.x=cx; sp.y=cy; sp.vx=sp.vy=0; }            // pops out of him
     sp.vx+=((tx-sp.x)*45-sp.vx*9.5)*dt; sp.vy+=((ty-sp.y)*45-sp.vy*9.5)*dt; sp.x+=sp.vx*dt; sp.y+=sp.vy*dt;
     sp.x=clamp(sp.x,half-6,innerWidth-half+6);              // a springy overshoot mustn't poke out of the window
-    sp.r+=(clamp(sp.vx*.02,-6,6)-sp.r)*Math.min(1,dt*8);   // tips a little only while it's moving
     pos={x:sp.x,y:sp.y,cx,cy};
     el.classList.toggle('tr',side<0);
     el.style.setProperty('--ty',clamp((cy-(sp.y-h2))/k,24,H-24).toFixed(0)+'px');   // (in the sheet's own unscaled px)
-    el.style.transform=`translate(${(sp.x-W/2).toFixed(1)}px,${(sp.y-H/2).toFixed(1)}px) rotate(${(sp.r-1).toFixed(2)}deg) scale(${k.toFixed(3)})`;   // (scale last: the move stays in window px)
+    el.style.transform=`translate(${(sp.x-W/2).toFixed(1)}px,${(sp.y-H/2).toFixed(1)}px) scale(${k.toFixed(3)})`;   // (scale last: the move stays in window px)
   }
   requestAnimationFrame(tick);
 
@@ -4879,11 +4879,17 @@ const CP=(()=>{
     running=false; if(!busy||answering) hide(); sync(); }
   // ---- other agents are working (Claude Code, Codex, agy): one entry per agent+project, kept until that agent's
   // "finished"/"needs you" or 15 minutes without a `working`. The map lives on while the sheet is away; the sheet shows only in `work`.
+  const icons=el.querySelector('.icons'), ICON={};   // the agents' marks, cloned once from the ask-mark art (no ids, no display)
+  for(const [f,i] of [['claude','amC'],['codex','amX'],['agy','amA']]){ const g=$('#'+i).cloneNode(true); for(const n of [g,...g.querySelectorAll('*')]){ n.removeAttribute('id'); n.removeAttribute('display'); n.style.removeProperty('display'); } ICON[f]=g; }
   const ags=new Map(), ownRun=()=>running||q.length>0;
   const stTxt=a=>'$ '+[a.name,a.project].filter(Boolean).join(' · ')+' · '+Math.floor((Date.now()-a.t0)/60000)+'m';
   function paint(){ const nm=new Set([...ags.values()].map(a=>a.name)); titleEl.textContent=nm.size===1?[...nm][0]:'agents';   // (one agent: its name)
-    stEl.textContent=''; stEl.className=''; el.classList.remove('root','rootmode'); out.textContent='';
-    for(const a of ags.values()){ const d=document.createElement('div'); d.className='l out'; d.textContent=stTxt(a); out.appendChild(d); a.row=d; } }
+    stEl.textContent=''; stEl.className=''; el.classList.remove('root','rootmode'); out.textContent=''; icons.textContent='';
+    for(const a of [...ags.values()].slice(0,4)){ const d=document.createElement('div'); d.className='l st'; d.textContent=stTxt(a); out.appendChild(d); a.row=d; }
+    if(ags.size>4){ const d=document.createElement('div'); d.className='l st more'; d.textContent='+'+(ags.size-4)+' more'; out.appendChild(d); }
+    const dc=document.createElement('div'); dc.className='deco'; out.appendChild(dc);
+    for(const f of new Set([...ags.values()].map(a=>a.from))){ if(ICON[f]){ const v=document.createElementNS('http://www.w3.org/2000/svg','svg'); v.setAttribute('viewBox','-17 -17 34 34'); v.appendChild(ICON[f].cloneNode(true)); icons.appendChild(v); }
+      else { const i=document.createElement('span'); i.className='ini'; i.textContent=(f||'?')[0].toUpperCase(); icons.appendChild(i); } } }
   function sync(){ if(ownRun()||busy&&!answering) return;   // (his own turn owns the sheet until he answers: no flicker between two tools)
     if(ags.size&&info.code_panel!==false&&document.body.dataset.focus==='work'){ paint(); show(); }
     else if(on||el.classList.contains('on')) hide(); }      // (hide() keeps the content and the map)
