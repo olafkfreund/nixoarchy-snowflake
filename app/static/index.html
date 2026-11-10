@@ -4525,7 +4525,7 @@ setEl.addEventListener('change',e=>{
   if(id==='compactSw') setSetting({auto_compact:on});
   if(id==='costIn') setSetting({max_cost_usd:+e.target.value||0}).then(()=>tick(+e.target.value?'a request stops at $'+e.target.value:'no usage limit'));
   if(id==='leanSw') setSetting({lean:on}).then(()=>tick(on?'light mode: fewer tools, less usage':'all your tools on'));
-  if(id==='codeSw'){ setSetting({code_panel:on}); if(!on) CP.hide(); else CP.sync(); }
+  if(id==='codeSw'){ setSetting({code_panel:on}); if(!on) CP.hide(); }
   if(id==='micSel') setSetting({mic_device:e.target.value}).then(()=>tick('microphone changed'));
   if(id==='linkSw'){ const L=curLook(); const patch={link:on}; if(on){ patch.pupR=L.pupL; patch.whiteR=L.whiteL; } setLook(patch).then(()=>selectPart(pkPart.replace('R','L'))); }
   if(id==='themeSw') return setLook({follow_theme:on}).then(()=>{ lookShown=''; syncLook(); renderSettings(); });
@@ -4834,7 +4834,7 @@ const CP=(()=>{
     for(let i=1;i<=text.length;i++){ d.innerHTML=pre+hl(text.slice(0,i))+'<i class="cur"></i>'; await wait(1000/cps); if(hurry()) break; }
     d.innerHTML=pre+hl(text);
   }
-  function open(title,root){ titleEl.textContent=title; stEl.textContent='…'; stEl.className=''; el.classList.toggle('root',!!root); el.classList.toggle('rootmode',!!info.root); out.innerHTML=''; show(); }
+  function open(title,root){ titleEl.textContent=title; stEl.textContent='…'; stEl.className=''; el.classList.toggle('root',!!root); el.classList.toggle('rootmode',!!info.root); out.innerHTML=''; const f=document.body.dataset.focus; if(f==='answer'||f==='event') yielded=true; else show(); }   // (a card already holds the stage: wait for it, like sync())
   function done(ok){ stEl.textContent=ok?'✓':'✕'; stEl.className=ok?'ok':'bad'; }
   async function result(id){ for(let i=0;i<1200&&!RES[id]&&busy;i++){ if(q.length&&i>20) break; await wait(50); } return RES[id]; }
   const rows=(t,n)=>String(t||'').replace(/\r/g,'').split('\n').filter(x=>x.trim()).slice(0,n);

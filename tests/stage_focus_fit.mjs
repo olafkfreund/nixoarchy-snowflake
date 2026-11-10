@@ -142,6 +142,13 @@ const yi = await ev(`const fr=()=>new Promise(r=>requestAnimationFrame(()=>reque
   return [...during,$('#code').classList.contains('on')];`);
 eq(yi, ["answer", false, true], "his own run's sheet yields to an approval card and comes back");
 await sleep(2500); await settle();
+// (Codex PR review) a tool that starts while a card already holds the stage waits for it, then shows
+eq(await ev(`const fr=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  onEvent({t:'approve',id:'focus-a3',agent:'codex',tool:'Bash',detail:'true',confirm:'click',always:false}); await fr();
+  CP.tool({t:'tool',id:'own3',name:'Bash',input:{command:'true',description:'own run 3'}}); await new Promise(r=>setTimeout(r,80)); await fr();
+  const during=$('#code').classList.contains('on'); approvalGone('focus-a3'); await fr(); await fr();
+  return [during,$('#code').classList.contains('on')];`), [false, true], "a tool started under an approval card waits for it, then shows");
+await sleep(2500); await settle();
 // peek: after a long idle he shrinks; a working agent brings him back to full size
 await ev(`CP.agentEnd('codex',''); chip.classList.remove('act'); AM=null; attnPend=null; propOn=null; if(notifyRow) notifyClear(); $('#mailPop').classList.remove('on'); idleHoldUntil=0; lastUser=0; nixiIdleScale(.001); return 1;`);   // (clear what keeps him up: the cues earlier checks left)
 let peeked = false; for (let i = 0; i < 40 && !peeked; i++) { await sleep(250); peeked = await ev(`return document.body.classList.contains('peek');`); }
