@@ -20,6 +20,7 @@ body{background:radial-gradient(70% 52% at 50% 36%,var(--panel2) 0%,#090909 78%)
   font:14px/1.45 "Inter",system-ui,sans-serif;user-select:none;-webkit-user-select:none}
 body.still .tCursor,body.still .tAntenna,body.still .tTail{animation-play-state:paused}
 @media (prefers-reduced-motion:reduce){.tCursor,.tAntenna,.tTail{animation:none!important}}
+@media (prefers-reduced-motion:reduce){#code *{animation:none!important}}
 @keyframes cursor-blink{0%,49%{opacity:1}50%,100%{opacity:.12}}
 @keyframes antenna-pulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.18);opacity:1}}
 @keyframes tail-swish{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(9deg)}}
@@ -721,23 +722,17 @@ body.hover #nixiB,body.pnl #nixiB,body.appr #nixiB{display:none!important}
 .md h1,.md h2,.md h3{font-size:13.5px;margin:10px 0 6px}
 /* ===== the terminal: a small flat sheet he holds under his eyes while he works ===== */
 #stage{z-index:2}
-#code{position:fixed;left:0;top:0;width:380px;height:auto;z-index:3;pointer-events:none;border-radius:22px;
-  background:var(--tbg,var(--panel));border:2.5px solid var(--ink,var(--edge2));box-shadow:5px 6px 0 var(--inksh,#000c);font:15px/21px var(--mono);color:var(--text);
+#code{position:fixed;left:0;top:0;width:380px;height:auto;z-index:3;pointer-events:none;border-radius:6px;   /* (no overflow clip: the ROOT badge sits on the corner) a Linux terminal: fixed dark colours, whatever the theme */
+  --text:#c9d1d9;--dim:#8b949e;--line:#30363d;--tacc:#7ee787;--tgreen:#7ee787;--tred:#ff7b72;--tyellow:#e3b341;--hot:#7ee787;--acc:#58a6ff;   /* (--acc: the codex mark's outline, readable on the dark bar) */
+  background:#0d1117;border:1px solid #30363d;box-shadow:0 8px 24px #0009,0 2px 6px #0006;font:15px/21px var(--mono);color:#c9d1d9;
   opacity:0;scale:.5;transition:opacity .3s,scale .4s cubic-bezier(.3,1.5,.5,1)}
 #code.on{opacity:1;scale:1}
-#code.on.mini{scale:1}   /* (mini is in the sheet's transform, with his size) */
-#code .tb{display:flex;align-items:center;gap:6px;height:30px;padding:0 16px;font-size:13px;border-bottom:2px dashed var(--line);color:var(--tacc,var(--hot));font-weight:600}
-#code .tb b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+#code .tb{display:flex;align-items:center;gap:8px;height:28px;padding:0 12px;border-radius:6px 6px 0 0;font-size:12px;border-bottom:1px solid #30363d;color:#8b949e;font-weight:600}
+#code .dots{display:flex;gap:5px} #code .dots i{width:9px;height:9px;border-radius:50%;background:#ff5f57} #code .dots i:nth-child(2){background:#febc2e} #code .dots i:nth-child(3){background:#28c840}
+#code .tb b{flex:1;min-width:0;color:#c9d1d9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 #code .tb span{color:var(--dim)} #code .tb span.ok{color:var(--tgreen,var(--hot))} #code .tb span.bad{color:var(--tred,#ff6b6b)}
 #code.root{border-color:#7a1414} #code.root .tb b::before{content:"root · ";color:#ff5a5a}
-#code .lines{padding:6px 16px 10px;min-height:42px;overflow:hidden}
-/* the tail, on the side facing him, pointing at his face (--ty); the fill overlaps the outline so there's no seam */
-#code::before,#code::after{content:"";position:absolute;top:var(--ty,50%);border-style:solid;border-color:transparent}
-#code::before{left:-24px;margin-top:-13px;border-width:13px 24px 13px 0;border-right-color:var(--ink,var(--edge2))}
-#code::after{left:-17px;margin-top:-9px;border-width:9px 20px 9px 0;border-right-color:var(--tbg,var(--panel))}
-#code.tr::before{left:auto;right:-24px;border-width:13px 0 13px 24px;border-right-color:transparent;border-left-color:var(--ink,var(--edge2))}
-#code.tr::after{left:auto;right:-17px;border-width:9px 0 9px 20px;border-right-color:transparent;border-left-color:var(--tbg,var(--panel))}
-body.bar #code::before,body.bar #code::after{display:none}
+#code .lines{padding:6px 12px 10px;min-height:42px;overflow:hidden}
 /* root mode: a red sticker on the side of the paper you see — so it reads the right way round even though the page is
    turned toward him */
 #liveDot{animation:liveBeat 1.6s ease-in-out infinite} @keyframes liveBeat{50%{opacity:.25}} body.hover #liveTag{display:none}
@@ -751,7 +746,12 @@ body.bar #code::before,body.bar #code::after{display:none}
 #code .pr,#code .ok{color:var(--tacc,var(--hot))} #code .rt{color:#ff5a5a}
 #code .cur{display:inline-block;width:7px;height:13px;margin-left:1px;vertical-align:-1px;background:var(--hot);animation:cpBlink .9s steps(1) infinite}
 @keyframes cpBlink{50%{opacity:0}}
-body.hover #code{display:none}
+body.bar #code .dots{display:none}
+body.hover #code,body.calm #code{display:none}
+/* Nixi at work: code scrolls inside his eyeballs, clipped to each eye's own shape, so blinks, pupils and gaze stay (not in the notch, hover, calm or hidden) */
+.ce{display:none;pointer-events:none}
+body[data-focus=work]:not(.bar):not(.hover):not(.calm):not(.goohide):not(.term) .ce{display:inline}   /* (his own run's sheet out: normal eyes, they read it) */
+.ce .ceFlow{animation:ceScroll 1.8s steps(6) infinite} @keyframes ceScroll{to{transform:translateY(-54px)}}   /* (6 rows of 9: one pattern period) */
 body.term #chip.work{opacity:0}          /* the terminal already says what he's doing */
 
 </style>
@@ -812,15 +812,15 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <path class="ball" fill="url(#ballG)"/>
         <g class="ball nix"></g>
         <g id="face">
-          <g id="eL"><path class="eye" id="pL"/><g clip-path="url(#clipL)"><path class="slit" id="hlL"/></g></g>
-          <g id="eR"><path class="eye" id="pR"/><g clip-path="url(#clipR)"><path class="slit" id="hlR"/></g></g>
+          <g id="eL"><path class="eye" id="pL"/><g class="ce" clip-path="url(#clipL)"></g><g clip-path="url(#clipL)"><path class="slit" id="hlL"/></g></g>
+          <g id="eR"><path class="eye" id="pR"/><g class="ce" clip-path="url(#clipR)"></g><g clip-path="url(#clipR)"><path class="slit" id="hlR"/></g></g>
         </g>
-        <g class="ball bfront"></g>
         <g id="tears"></g>
         <!-- the glass dome: soft reflection + rim -->
         <ellipse cx="-30" cy="-46" rx="38" ry="15" transform="rotate(-30 -30 -46)" fill="url(#glossG)" pointer-events="none"/>
         <ellipse cx="34" cy="50" rx="18" ry="6" transform="rotate(-40 34 50)" fill="url(#glossG)" opacity=".45" pointer-events="none"/>
         <path id="rim" class="ball" fill="none" stroke-width="1.6" stroke-linejoin="round" pointer-events="none"/>
+        <g class="ball bfront"></g>   <!-- (after the rim: a plugin character's cap or beard covers the ball outline, not the other way round) -->
         <g id="accFront"></g>
         <g id="sitFront"></g>
         <g id="rxFront"></g>
@@ -854,7 +854,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
   </svg>
 </div>
 
-<div id="code"><div class="tb"><b></b><span></span></div><div class="lines"></div><i class="rootb" title="Root mode: Claude can run anything, incl. sudo">ROOT</i></div>
+<div id="code"><div class="tb"><div class="dots"><i></i><i></i><i></i></div><b></b><span></span></div><div class="lines"></div><i class="rootb" title="Root mode: Claude can run anything, incl. sudo">ROOT</i></div>
 <div id="chip"></div>
 <button id="musChip" type="button" aria-label="Music controls" hidden>♪</button>
 <div id="musCard" role="dialog" aria-label="Music controls" hidden><div class="mh"><span class="mt"></span><button class="mx" type="button" aria-label="Close">×</button></div>
@@ -1766,29 +1766,35 @@ function applyAnchors(character=BODY,roots=[$('#accBack'),$('#accFront'),$('#sit
 }
 // ---- reactions (#208): a short silent animation for what he senses. The art is REACT; it goes into #rxSky / #rxBack / #rxFront.
 // RX = the one playing; RXS = sustained props that still apply (high load, low memory); RX_AT = when each last played.
-let RX=null, RXT=0, RXS=new Set(), RX_AT={}, rxKey='';
+let RX=null, RXT=0, RXS=new Set(), RX_AT={}, rxKey='', rxShown='';
+let evUntil=0;
+const evHold=ms=>{ evUntil=Math.max(evUntil,performance.now()+ms); };
+const stageFocus=now=>pendingAppr||pwEl.classList.contains('on')||apEl.classList.contains('on')||MIR.owner==='pending'||notifyRow&&notifyRow.card&&notifyRow.span&&notifyRow.span.isConnected||stgOpen()||!$('#musCard').hidden?'answer':now<evUntil?'event':CP.working()?'work':sitOn.music||sitOn.video?'media':'ambient';
+function focusSync(now){ const f=stageFocus(now); if(document.body.dataset.focus===f) return; document.body.dataset.focus=f; rxCheck(); CP.sync(); musSync(); }
 let musKeep=false;   // after the card's own Pause: chip and card stay, with Play
 const RX_SIT={meeting:'meeting',rain:'rain',snow:'snow',windy:'wind'}, RX_DUR={music:4000},
-  RX_MOOD={load:'running',memory:'t_unsure',soon:'surprised',open:'happy',wind:'surprised'};
+  RX_MOOD={load:'running',memory:'t_unsure',soon:'surprised',open:'happy',wind:'surprised'},
+  RX_FOCUS={music:'media',video:'media',load:'ambient',memory:'ambient',rain:'ambient',snow:'ambient',wind:'ambient',meeting:'ambient'};
 // everything but the once-per-10-minutes and one-at-a-time rules: what a playing or sustained one depends on
 const rxBase=()=>{ const B=document.body.classList; return !!info.proactive&&!!info.reactions&&!document.hidden&&!hiddenNow&&!SIT.fullscreen&&!SIT.locked&&!['bar','hover','calm','peek'].some(c=>B.contains(c)); };
 const rxState=id=>rxBase()&&(id!=='music'||!SIT.video)&&(id!=='video'||SIT.video)&&(id==='ask'||(id==='meeting'?!SIT.dnd:!quietNow()));   // the meeting keeps its own look, unless DND is on
 function rxOk(id){ const now=performance.now(); return rxState(id)&&(id==='ask'||id==='music'||id==='video'||!(RX_AT[id]&&now-RX_AT[id]<600000))&&(!RX||id==='ask'); }
 function rxPaint(){
   if(!RX&&!RXS.size&&!rxKey) return;
-  const ids=[...RXS,...(RX&&!RXS.has(RX.id)?[RX.id]:[])].filter(rxState), ch=Object.keys(CHARACTERS).find(k=>CHARACTERS[k]===BODY)||'snowflake';
-  const key=ids.length?ids.join()+'|'+(RX?RX.id:'')+'|'+ch:''; if(key===rxKey) return; rxKey=key;
-  const g={sky:'',back:'',front:''}; let css=ids.length?'@media (prefers-reduced-motion:reduce){#stage *{animation:none!important}}':'';   // (reduced motion: the prop, still)
-  for(const id of ids) for(const o of [REACT.props[id],(REACT.touch[ch]||{})[id]]) if(o){ for(const k in g) g[k]+=o[k]||''; css+=o.css||''; }
+  const focus=stageFocus(performance.now()), id=RX&&rxState(RX.id)&&(RX_FOCUS[RX.id]||'event')===focus?RX.id:
+    (focus==='media'?['video','music']:focus==='ambient'?['load','memory']:[]).find(k=>RXS.has(k)&&rxState(k));
+  const ch=Object.keys(CHARACTERS).find(k=>CHARACTERS[k]===BODY)||'snowflake', key=focus+'|'+(id||'')+'|'+(RX?RX.id:'')+'|'+ch; if(key===rxKey) return; rxKey=key; rxShown=id||'';
+  const g={sky:'',back:'',front:''}; let css=id?'@media (prefers-reduced-motion:reduce){#stage *{animation:none!important}}':'';   // (reduced motion: the prop, still)
+  if(id) for(const o of [REACT.props[id],(REACT.touch[ch]||{})[id]]) if(o){ for(const k in g) g[k]+=o[k]||''; css+=o.css||''; }
   $('#rxSky').innerHTML=g.sky; $('#rxBack').innerHTML=g.back; $('#rxFront').innerHTML=g.front;
   let st=$('#rxCss'); if(!st){ st=document.createElement('style'); st.id='rxCss'; document.head.appendChild(st); } st.textContent=css;
   const sl=$('#stage').classList; [...sl].filter(c=>/^(r|c)-/.test(c)||c==='rx').forEach(c=>sl.remove(c));
-  if(ids.length){ sl.add('rx','c-'+ch); if(RX) sl.add('r-'+RX.id); } }
+  if(id){ sl.add('rx','c-'+ch); if(RX&&RX.id===id) sl.add('r-'+id); } }   // (r-: only while it plays; a sustained prop stands still)
 function rxEnd(){ clearTimeout(RXT); RX=null; rxPaint(); }
 function rxHide(){ musKeep=false; musSync(); }   // (a failed rxOk: the card closes and the chip goes)
 function rxCheck(){ try{ if(RX&&!rxState(RX.id)) rxEnd(); else rxPaint(); if(!rxBase()) rxHide(); else musSync(); }catch(e){} }
 function rxPlay(id,sustained){ try{ if(!REACT.props[id]||!rxOk(id)) return false;   // dropped, never queued
-    if(RX) rxEnd(); RX_AT[id]=performance.now(); if(sustained) RXS.add(id); RX={id}; RXT=setTimeout(rxEnd,RX_DUR[id]||3000); if(RX_MOOD[id]) poke(RX_MOOD[id],1500); rxPaint(); return true; }catch(e){ return false; } }
+    if(RX) rxEnd(); RX_AT[id]=performance.now(); if(sustained) RXS.add(id); RX={id}; RXT=setTimeout(rxEnd,RX_DUR[id]||3000); if((RX_FOCUS[id]||'event')==='event') evHold(RX_DUR[id]||3000); if(RX_MOOD[id]) poke(RX_MOOD[id],1500); rxPaint(); return true; }catch(e){ return false; } }
 function rxSignals(hot,low,trk){   // the situation handler: load and memory start on the turn-on, and stay while the signal does
   if(SIT.cpu_hot&&!hot){ RXS.add('load'); rxPlay('load'); } if(!SIT.cpu_hot) RXS.delete('load');   // (the still prop stays whether or not the animation may play)
   if(SIT.ram_low&&!low){ RXS.add('memory'); rxPlay('memory'); } if(!SIT.ram_low) RXS.delete('memory');
@@ -1796,9 +1802,10 @@ function rxSignals(hot,low,trk){   // the situation handler: load and memory sta
   rxCheck(); }
 // the music chip and card: textContent only, the answers are shown and never spoken, nothing goes to the agent
 let musIdle=0;
-const musBox=()=>RXS.has('music')&&rxState('music');   // the boombox is showing
-function musSync(){ const chipEl=$('#musChip'); if(!chipEl) return; const show=musBox()||(musKeep&&rxState('music'));
-  const was=!chipEl.hidden; chipEl.hidden=!show; if(!show){ musClose(); musKeep=false; } else{ const b=$('#musCard .mp'); b.textContent=musKeep?'Play':'Pause'; b.dataset.p=musKeep?'play':'pause'; } if(was!==show) sendRegion(true); }
+const musBox=()=>RXS.has('music')&&rxState('music');   // music is still on
+const boomPainted=()=>rxShown==='music';
+function musSync(){ const chipEl=$('#musChip'); if(!chipEl) return; const ans=stageFocus(performance.now())==='answer'&&$('#musCard').hidden, show=!ans&&(musBox()||(musKeep&&rxState('music')));
+  const was=!chipEl.hidden; chipEl.hidden=!show; if(!show){ if(!ans||!rxState('music')||!musBox()&&!musKeep){ musClose(); musKeep=false; } } else{ const b=$('#musCard .mp'); b.textContent=musKeep?'Play':'Pause'; b.dataset.p=musKeep?'play':'pause'; } if(was!==show) sendRegion(true); }
 function musClose(){ const c=$('#musCard'); if(!c||c.hidden) return; c.hidden=true; clearTimeout(musIdle); if(musKeep){ musKeep=false; musSync(); } sendRegion(true); }   // (closed by hand after its Pause: the chip goes with it)
 function musSay(t){ const e=$('#musCard .mt'); e.textContent=t; e.title=t; }
 function musTouch(){ clearTimeout(musIdle); musIdle=setTimeout(musClose,15000); }
@@ -1833,6 +1840,10 @@ function setCharacter(id){
   applyAnchors();
   if(changed) renderCue();
 }
+// Nixi at work: the code screen sits in his face (sized from faceBox), the keyboard under his body (pivot + base anchor)
+{ const C=['#7ee787','#79c0ff','#d2a8ff','#ffa657','#ff7b72','#e3b341']; let rows='';   // the code inside his eyes while agents work: stamped once, scrolled by CSS
+  for(let i=0;i<30;i++) for(let k=0;k<4;k++) rows+=`<rect x="${-100+[0,8,0,16,8,4][i%6]+k*52}" y="${-110+i*9}" width="${14+((i%6)*7+k*5)%22}" height="4" rx="2" fill="${C[(i+k)%6]}"/>`;
+  document.querySelectorAll('.ce').forEach(g=>{ g.innerHTML='<rect x="-130" y="-130" width="260" height="290" fill="#0d1117"/><g class="ceFlow">'+rows+'</g>'; }); }
 setCharacter(LOOK.character || 'snowflake');
 const EYE={rx:23.5, ry:40.5, cx:27.5, cy:-4.5, tilt:0.157};
 const EYE_HALFW=Math.hypot(EYE.rx*Math.cos(EYE.tilt),EYE.ry*Math.sin(EYE.tilt));   // half the width of one leaning eye
@@ -1862,6 +1873,7 @@ const MOODS={
   thinking:  {top:[.1,.04], sl:[-.1,.1], tilt:4, pu:'small'},
   reading:   {top:.16, bot:.06, pu:'circle'},                          // eyes sweeping along lines
   editing:   {top:.3, sl:.12, bot:.12, sz:.98, pu:'slit'},              // squinting, concentrating
+  working:   {top:.06, pu:'circle'},                                    // an agent is at work: calm, no sweat (his eyes are the code screen)
   running:   {top:.08, sz:1.02, tilt:-2, pu:'circle'},                  // watching the terminal
   searching: {sz:1.03, pu:'small'},                                     // darting all over
   looking:   {sz:1.05, pu:'circle'},                                    // studying your screenshot
@@ -1904,7 +1916,7 @@ for(const k in MOODS){ const M=MOODS[k]; for(const e of EYE_KEYS) if(M[e]==null)
 // orbiting sparks per mood: speed, radius, brightness; halo strength
 const AURA={
   idle:{spd:.5,rad:1,a:.5,h:.45}, listening:{spd:1.3,rad:1.05,a:.95,h:.85}, thinking:{spd:2.4,rad:.93,a:.9,h:.6},
-  reading:{spd:1.6,rad:.97,a:.75,h:.55}, editing:{spd:3,rad:.95,a:1,h:.7}, running:{spd:3.4,rad:.98,a:1,h:.75},
+  reading:{spd:1.6,rad:.97,a:.75,h:.55}, editing:{spd:3,rad:.95,a:1,h:.7}, running:{spd:3.4,rad:.98,a:1,h:.75}, working:{spd:1.2,rad:.98,a:.7,h:.55},
   searching:{spd:2.6,rad:1.06,a:.9,h:.65}, looking:{spd:1.2,rad:1.04,a:.8,h:.6}, pleading:{spd:.6,rad:1.02,a:.7,h:.8},
   worried:{spd:.4,rad:.97,a:.5,h:.4}, talking:{spd:.9,rad:1.02,a:.8,h:.6}, t_explain:{spd:.9,rad:1.02,a:.8,h:.6}, t_happy:{spd:1.3,rad:1.05,a:.9,h:.75},
   t_beam:{spd:1.6,rad:1.08,a:1,h:.85}, t_excited:{spd:1.8,rad:1.08,a:1,h:.9}, t_curious:{spd:.8,rad:1.02,a:.75,h:.6},
@@ -1933,6 +1945,7 @@ function mood(now){
   if(busy) return toolMood||'thinking';
   if(MIR.owner==='agent') return 'worried';
   if(MIR.owner==='off'&&MIR.watching) return 'looking';
+  if(CP.working()) return 'working';
   if(now-lastActive>(nightTime()?30000:75000)) return 'sleepy';
   return 'idle';
 }
@@ -2161,12 +2174,12 @@ const wxGroups=[WX.rain.g,WX.snow.g,WX.sun.g,WX.moon.g,WX.partly.g,WX.cloudy.g,W
 const wxOpacity=new Map(wxGroups.map(g=>[g,0]));
 function wxStep(t,dt){
   if(document.body.classList.contains('bar')||document.body.classList.contains('hover')||document.body.classList.contains('calm')||document.body.classList.contains('goohide')) return;
-  const kind=['snow','rain','clear','partly','cloudy'].find(k=>sitOn[k])||'', still=REDUCED.matches;
+  const ambient=document.body.dataset.focus==='ambient', kind=ambient?['snow','rain','clear','partly','cloudy'].find(k=>sitOn[k])||'':'', still=REDUCED.matches;
   const hat=wxHat(), slot=hat?'hat':'head', night=!SIT.day;
-  const key=[kind,slot,SIT.day,SIT.heavy,lowFx,sitOn.windy,SIT.lean,wxOn].join(':');
+  const key=[ambient,kind,slot,SIT.day,SIT.heavy,lowFx,sitOn.windy,SIT.lean,wxOn].join(':');
   if(still&&wxWasReduced&&key===wxReducedKey) return;
   wxWasReduced=still; wxReducedKey=key; t=typeof WXT==='number'?WXT:t;
-  const windy=sitOn.windy, dir=windy&&SIT.lean?-SIT.lean:1, extra=kind==='rain'&&SIT.heavy&&!lowFx&&!wxOn;   // (a mark is up: the small extra clouds would land on it, with or without a hat)
+  const windy=ambient&&sitOn.windy, dir=windy&&SIT.lean?-SIT.lean:1, extra=kind==='rain'&&SIT.heavy&&!lowFx&&!wxOn;   // (a mark is up: the small extra clouds would land on it, with or without a hat)
   const scale=hat?.95:.92, cloudY=hat?-106:-108;
   const cloudX=(phase=0,speed=1,L=63.5,R=56.5,s=scale)=>{
     if(still) return {x:hat?-76:0,fade:1};
@@ -2227,6 +2240,7 @@ function wxStep(t,dt){
   }
 }
 function frame(ts){
+  focusSync(ts);
   const rawDt=(ts-(lastTs||ts))/1000, dt=clamp(rawDt,0,.05); lastTs=ts; const t=ts/1000;
   if(!lowFx && rawDt>0 && rawDt<.25 && document.visibilityState==='visible'){ perfAcc+=rawDt; perfN++;
     if(perfN>=120){ if(perfAcc/perfN>.032){ lowFx=true; ['orbBack','orbFront','vring','workW'].forEach(k=>E[k].removeAttribute('filter')); console.log('[nixi] slow frames — glow off'); } perfAcc=0; perfN=0; } }
@@ -2416,14 +2430,14 @@ function frame(ts){
   if(SP2.halo) SP2.halo.setAttribute('transform',`translate(0,${(Math.sin(t*1.6)*2.2).toFixed(2)})`);
   if(SIT_P){ sitStep(ts);       // looks: spring in/out about their anchors; the tie sways like the other hanging skins
     const w=G.sitW.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)*.6, sp=(S_,on)=>S_.to(on?1:0,dt), skinless=wornSkin(LOOK)==='none';
-    const tp=skinless&&sitOn.party, tb=skinless&&!tp&&sitOn.cold2, tn=skinless&&!tp&&!tb&&sitOn.night, ts6=sitOn.cold1&&!sitOn.meeting&&!SKIN_PARTS.baseProp;     // top zone: party hat > beanie > nightcap, only with no skin; the scarf yields to the tie and a base prop
+    const F=document.body.dataset.focus, ambient=F==='ambient', tp=ambient&&skinless&&sitOn.party, tb=ambient&&skinless&&!tp&&sitOn.cold2, tn=ambient&&skinless&&!tp&&!tb&&sitOn.night, ts6=ambient&&sitOn.cold1&&!sitOn.meeting&&!SKIN_PARTS.baseProp;     // top zone: party hat > beanie > nightcap, only with no skin; the scarf yields to the tie and a base prop
     const ww=REDUCED.matches?0:w;
-    const a=sp(G.sit,sitOn.meeting), b=sp(G.sitMusic,sitOn.music), c=sp(G.sitShade,sitOn.fullscreen), g=sp(G.sitGl,sitOn.coding&&!sitOn.fullscreen),   // eyes: shades > glasses
+    const a=sp(G.sit,ambient&&sitOn.meeting), b=sp(G.sitMusic,F==='media'&&sitOn.music), c=sp(G.sitShade,ambient&&sitOn.fullscreen), g=sp(G.sitGl,ambient&&sitOn.coding&&!sitOn.fullscreen),   // eyes: shades > glasses
       pa=sp(G.sitP,tp), ni=sp(G.sitN,tn), bnn=sp(G.sitBn,tb), scc=sp(G.sitSc,ts6), pch=sp(G.sitChat,propOn&&propOn.cat==='chat'&&ts<propOn.until), pf=sp(G.sitFeed,propOn&&propOn.cat==='video'&&ts<propOn.until), L=G.sitLift.to(isTalk(m)||m==='listening'||['reading','editing','running','searching','looking','thinking'].includes(m)?1:0,dt);
     const put=(el,x,ax,ay,rot)=>{ el.setAttribute('opacity',clamp(x,0,1).toFixed(2)); el.setAttribute('transform',`translate(${ax} ${ay})${rot?` rotate(${rot.toFixed(2)})`:''} scale(${(.7+.3*x).toFixed(3)}) translate(${-ax} ${-ay})`); };
     const lift=(el,x)=>{ put(el,x,0,-4); el.setAttribute('transform',`translate(0 ${(-32*L).toFixed(1)}) scale(${(1-.08*L).toFixed(3)}) `+el.getAttribute('transform')); };   // (lifted onto the forehead while he talks, so his eyes stay visible)
     const off=!(sitOn.meeting||sitOn.music||sitOn.fullscreen||sitOn.coding||tp||tn||tb||ts6)&&Math.max(a,b,c,g,pa,ni,bnn,scc,pch,pf)<.002;
-    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,musBox()?0:b,0,-4,G.sitW.x*.25); put(SIT_P.hf,musBox()?0:b,0,-4,G.sitW.x*.25); sitSettled=off;   // (the boombox stands in for the headphones while it shows)
+    if(!(off&&sitSettled)){ put(SIT_P.tie,a,0,58,w); put(SIT_P.hb,boomPainted()?0:b,0,-4,G.sitW.x*.25); put(SIT_P.hf,boomPainted()?0:b,0,-4,G.sitW.x*.25); sitSettled=off;   // (the boombox stands in for the headphones while it shows)
       lift(SIT_P.sh,c); put(SIT_P.gl,g,0,-4); put(SIT_P.nc,ni,0,-84,w*.5); put(SIT_P.ph,pa,0,-84,w*.3);
       put(SIT_P.bn,bnn,0,-84,ww*.5-8*wn); put(SIT_P.sc,scc,0,50); SIT_P.scT.setAttribute('transform',`rotate(${(-(ww*.6)+8*wn).toFixed(2)} 40 50)`);
       const el=propOn?ts-propOn.t0:0, prop=(Q,x,ax,ay,f)=>{ if(x>.002){ put(Q.g,x,ax,ay); Q.on=true; f(Q); } else if(Q.on){ Q.g.setAttribute('opacity','0'); Q.on=false; } };   // (a prop writes only while it shows)
@@ -2825,11 +2839,12 @@ function onEvent(ev){
   else if(ev.t==='agent_say') agentIn(ev);
   else if(ev.t==='agent_result') agentResult(ev);
   else if(ev.t==='attention'){                            // an agent (claude/codex/agy…) is waiting for you: `nixi-companion attention`
-    if(ev.kind==='working'){ if(!hiddenNow) CP.agent(ev.name||ev.from,ev.from); return; }   // decoration only: no flash, no voice, no attnPend
-    if(ev.kind==='done') CP.agentEnd(ev.from);
+    if(ev.kind==='working'){ if(!hiddenNow) CP.agent(ev); return; }   // decoration only: no flash, no voice, no attnPend
+    CP.agentEnd(ev.from,ev.project);   // (done or ask: that agent's entry is over)
     const ask=ev.kind!=='done', r=(ev.text||'').replace(new RegExp('^'+ev.name+'\\s+','i'),''), pj=ev.project?' · '+ev.project:'';
     const head=ask?(/^(needs|is waiting|wants)\b/i.test(r)?ev.name+' '+r:ev.name+' needs you'+(r?': '+r:'')):'✓ '+ev.name+' finished'+(r?': '+r:'');   // ("Claude needs your permission…", not "Claude needs you: Claude needs…")
     if(hiddenNow){ if(ask) post('/api/notify',{title:'Nixi',body:head+pj}).catch(()=>{}); return; }   // sent away: a desktop notification, no talking
+    evHold(2500);
     if(ask||!quietNow()) restore(ask?20000:11000,false);
     if(info.hover&&(ask||!quietNow())) comeBack(); wake(); agentMark(ev.from,ask?'ask':'done'); if(ask) rxPlay('ask');
     if(!ask&&((attnPend&&performance.now()-attnPend.at<60000)||(AM&&AM.kind==='ask'&&performance.now()<AM.until))){ if(!quietNow()){ sfx('done'); poke('t_beam',1400); } return; }   // (a finish never takes over a question)
@@ -2932,7 +2947,7 @@ remEl.addEventListener('click',e=>{ const b=e.target.closest('[data-rem]'); if(!
   post('/api/nudge',act==='dismiss'?{id,act}:{id,act,minutes:Number(b.dataset.rem)}).catch(()=>{}); });
 function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts>e.until) nudgeQ.delete(k);   // stale: the server's deadline passed
   if(!nudgeQ.size||quietNow()||ts<notifyAt||!notifyIdle()) return;
-  const [kind,ev]=nudgeQ.entries().next().value; nudgeQ.delete(kind); notifyAt=ts+5000; wake();
+  const [kind,ev]=nudgeQ.entries().next().value; nudgeQ.delete(kind); notifyAt=ts+5000; evHold(4000); wake();
   remShow(ev);
   if(kind==='break') rxPlay('workout');
   if(kind==='break'&&!FID&&mood(ts)==='idle'){ FID={name:'stretch',t0:ts,dur:FIDGETS.stretch.dur}; FIDGETS.stretch.start&&FIDGETS.stretch.start(FID); }
@@ -3010,7 +3025,7 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
   if(ev.card&&document.body.matches('.bar,.pnl,.appr')) return;   // a card isn't drawn in the notch or under a panel (#cap is hidden): not marked seen, so the shell shows it at 5 s
   if(!ev.card) notifySeen(ev.key);
   restore(11000,false);   // (before the mail pop-out is measured)
-  const c=ev.app==='nixi-job'?NOTE.job:NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null,card:!!ev.card}; notifyRow=row; notifyAt=ts+(ev.card?7000:5000);
+  const c=ev.app==='nixi-job'?NOTE.job:NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null,card:!!ev.card}; notifyRow=row; notifyAt=ts+(ev.card?7000:5000); if(!ev.card) evHold(5000);   // (a card holds 'answer' while it's drawn)
   if(ev.reaction) rxPlay(ev.reaction); else if(ev.category==='other'&&ev.app!=='nixi-job') rxPlay('notice');
   wake(); G.jelly.kick(-.45); popPupils(); poke(c[3],c[4]); burstLines(c[2],ev.category==='meeting'?8:ev.category==='download'?10:ev.category==='other'&&ev.app!=='nixi-job'?1:3);
   if(ev.category==='chat') G.tilt.kick(-8);
@@ -3020,10 +3035,12 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
       else { if(same&&ev.category==='video'){ G.sitFeed.x=0; G.sitFeed.v=0; } propOn={cat:ev.category,t0:now,until:now+pt,n:1}; }
       if(ev.category==='video') G.jelly.kick(-.4); }
     if(pt&&SIT_P) propIcon(SIT_P[ev.category==='chat'?'chat':'feed'],ev); }
-  if(ev.category==='mail'){ poke('reading',2600); mailPop(ev); }
+  const env=ev.category==='mail'&&mailPop(ev);   // mail: the envelope alone (no row or card beside it); the row only where it can't pop out
+  if(ev.category==='mail') poke('reading',2600);
   if(ev.category==='meeting') setTimeout(()=>{ if(notifyRow===row) poke('t_serious',2000); },750);
   if(ev.category==='video') setTimeout(()=>{ if(!FID&&mood(performance.now())==='idle') { FID={name:'hum',t0:performance.now(),dur:2000}; FIDGETS.hum.start&&FIDGETS.hum.start(FID); } },1500);
-  if(ev.card){ try{ notifyShow(row,notifyText(ev,1),ev); notifySeen(ev.key); }catch(_){ notifyClear(); return; } }   // (seen only once drawn; a failed draw goes back to the shell)
+  if(env){ notifySeen(ev.key); notifyRow=null; }
+  else if(ev.card){ try{ notifyShow(row,notifyText(ev,1),ev); notifySeen(ev.key); }catch(_){ notifyClear(); return; } }   // (seen only once drawn; a failed draw goes back to the shell)
   else notifyShow(row,notifyText(ev,1),ev);
   if(!SIT.meeting){ if(info.notify_sound!==false&&!muted) sfx(c[5]); if(!muted&&(info.notify_speak||[]).includes(ev.category)&&!(ev.category==='mail'&&SIT.locked)){
     const who=notifyWho(ev); enqueue(ev.category==='mail'?(info.notify_details&&info.notify_speak_subject&&ev.summary?ev.summary:'New mail'+(who?' from '+who:'')):c[1],{follow:false});
@@ -3031,16 +3048,17 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
   setTimeout(()=>{ if(notifyRow===row) notifyClear(); },ev.card?7000:5000); }
 // mail (#138): the envelope pops out beside him (the side with more room), opens, and goes back in after ~5 s
 let mailT=[], popWant=[0,0];
-function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.classList.contains('bar')||info.hover) return;
+function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.classList.contains('bar')||info.hover) return false;
   mailT.forEach(clearTimeout); mailT=[]; el.classList.remove('on','open','up');
   el.dataset.key=ev.key; const b=el.querySelector('b'), u=iconUrl(ev); b.textContent=notifyWho(ev)||'Mail';
   if(u){ const im=document.createElement('img'); im.alt=''; im.src=u; im.onerror=()=>im.remove(); b.prepend(im); } el.querySelector('span').textContent=ev.summary||'New mail';
   popWant=[260,0]; sizeWindow();
   const at=(ms,f)=>mailT.push(setTimeout(f,ms));
-  at(60,()=>{ const right=innerWidth/fitK-layoutX-340, left=layoutX/fitK; el.classList.toggle('l',left>right); void el.offsetWidth; el.classList.add('on'); sendRegion(true); });
+  at(60,()=>{ if(stageFocus(performance.now())==='answer'){ mailT.forEach(clearTimeout); mailT=[]; popWant=[0,0]; sizeWindow(); return; }
+    evHold(5000); const right=innerWidth/fitK-layoutX-340, left=layoutX/fitK; el.classList.toggle('l',left>right); void el.offsetWidth; el.classList.add('on'); sendRegion(true); });
   at(420,()=>el.classList.add('open')); at(720,()=>el.classList.add('up')); at(1200,()=>sendRegion(true));   // (the raised letter is clickable too)
   at(4300,()=>el.classList.remove('up')); at(4650,()=>el.classList.remove('open'));
-  at(5000,()=>{ el.classList.remove('on'); sendRegion(true); }); at(5400,()=>{ popWant=[0,0]; sizeWindow(); }); }
+  at(5000,()=>{ el.classList.remove('on'); sendRegion(true); }); at(5400,()=>{ popWant=[0,0]; sizeWindow(); }); return true; }
 /* ================= answer stages (#144): the page only draws what the server sends, every field via textContent; Run, Copy and the rest go back as a token ================= */
 const stgEl=$('#stg'), stgTab=$('#stgTab'), chalkEl=$('#chalk'), hatEl=$('#hat'), popEl=$('#pop'), wtcEl=$('#wtc');
 let gaugeRef=null, gaugeHist={}, GAUGE_MS=5000;   // the live board's refresh loop and the last 24 readings per host+meter
@@ -3794,7 +3812,7 @@ function dismiss(){ menu(false); hideAsk(); const held=stgHeld; stgHeld=null; cl
 function endListening(){ if(rec&&rec.mode!=='approve') stopRec(true); post('/api/follow',{act:'cancel'}).catch(()=>{}); follow=false; hearRaw=0; }
 
 /* ================= hover mode ================= */
-function setHoverClass(on){ document.body.classList.toggle('hover',on); sendRegion(true); }
+function setHoverClass(on){ document.body.classList.toggle('hover',on); sendRegion(true); if(!on) CP.sync(); }   // (out of hover: the agents' sheet comes back)
 async function toggleHover(force){
   const on=typeof force==='boolean'?force:!info.hover;
   if(!NATIVE){ tick('hover mode works in the Nixi window (not the browser fallback)',true); return; }
@@ -4652,7 +4670,7 @@ window.nixiCorner=c=>{ corner=c; const x=c[1]==='l'?-102:102, y=c[0]==='t'?-99:9
 // idleActive: your own action, or something that needs you: he stays (or comes back) up. idleShowing: a passive indicator: he just doesn't shrink further.
 function idleActive(){ const on=el=>el.classList.contains('on'), B=document.body.classList;
   return busy||!!rec||transcribing||follow||menuOn||!!pendingAppr||on(pwEl)||on(apEl)||on(ask)||on(setEl)||on(panelEl)
-    ||B.contains('hover')||B.contains('bar')||!!downAt||hiddenNow||MIR.owner==='pending'||MIR.owner==='agent'; }
+    ||B.contains('hover')||B.contains('bar')||!!downAt||hiddenNow||MIR.owner==='pending'||MIR.owner==='agent'||CP.working(); }
 function idleShowing(){ const now=performance.now();
   return playing||capOn||!!notifyRow||chip.classList.contains('act')||!!AM||(!!attnPend&&now-attnPend.at<60000)
     ||$('#mailPop').classList.contains('on')||(!!propOn&&now<propOn.until)||(!!gaugeRef&&stgOpen()); }
@@ -4760,7 +4778,7 @@ const CP=(()=>{
   const el=$('#code'), out=el.querySelector('.lines'), titleEl=el.querySelector('.tb b'), stEl=el.querySelector('.tb span');
   let W=380, H=120; const ROWS=24, MAXH=442, SHEET_K=.7;           // (drawn at 70%: it sits beside him, it mustn't fill the screen)                       // size, visible lines
   let on=false, last=0, wide=false, offT=null, pos=null;
-  const sp={x:0,y:0,vx:0,vy:0,r:0};                // held in a "hand": follows where he looks, with a little lag and tilt
+  const sp={x:0,y:0,vx:0,vy:0};                // held in a "hand": follows where he looks, with a little lag and tilt
   const ball=()=>document.querySelector('#body > .ball').getBoundingClientRect();
 
   // ---- a cartoon speech bubble beside him (S22): on the side with more room (the window grows away from a screen
@@ -4776,18 +4794,15 @@ const CP=(()=>{
     const edge=barEdge();
     if(edge){ pos={x:170,y:230,cx:170,cy:230}; return; }  // the notch: CSS puts it inside the notch (see body.bar #code)
     const {cx,cy,reach}=geo(), st=new DOMMatrix(getComputedStyle($('#stage')).transform).a||1;
-    const k=SHEET_K*clamp(st,.4,1)*(el.classList.contains('mini')?.6:1), w2=W*k/2, h2=H*k/2, half=w2+14, rr=innerWidth-cx;   // (it shrinks and grows with him: peek, hover)
+    const k=SHEET_K*clamp(st,.4,1), w2=W*k/2, h2=H*k/2, half=w2+14, rr=innerWidth-cx;   // (it shrinks and grows with him: peek, hover)
     if(side>0?cx>rr+40:rr>cx+40) side=-side;                 // (a margin, so it doesn't flip back and forth)
     const tx=clamp(cx+side*(reach*.92+18*k+w2),half,innerWidth-half);
     const ty=clamp(cy+Math.sin(ts/1400)*2,h2+4,innerHeight-h2-4);
     if(!pos){ sp.x=cx; sp.y=cy; sp.vx=sp.vy=0; }            // pops out of him
     sp.vx+=((tx-sp.x)*45-sp.vx*9.5)*dt; sp.vy+=((ty-sp.y)*45-sp.vy*9.5)*dt; sp.x+=sp.vx*dt; sp.y+=sp.vy*dt;
     sp.x=clamp(sp.x,half-6,innerWidth-half+6);              // a springy overshoot mustn't poke out of the window
-    sp.r+=(clamp(sp.vx*.02,-6,6)-sp.r)*Math.min(1,dt*8);   // tips a little only while it's moving
     pos={x:sp.x,y:sp.y,cx,cy};
-    el.classList.toggle('tr',side<0);
-    el.style.setProperty('--ty',clamp((cy-(sp.y-h2))/k,24,H-24).toFixed(0)+'px');   // (in the sheet's own unscaled px)
-    el.style.transform=`translate(${(sp.x-W/2).toFixed(1)}px,${(sp.y-H/2).toFixed(1)}px) rotate(${(sp.r-1).toFixed(2)}deg) scale(${k.toFixed(3)})`;   // (scale last: the move stays in window px)
+    el.style.transform=`translate(${(sp.x-W/2).toFixed(1)}px,${(sp.y-H/2).toFixed(1)}px) scale(${k.toFixed(3)})`;   // (scale last: the move stays in window px)
   }
   requestAnimationFrame(tick);
 
@@ -4803,7 +4818,7 @@ const CP=(()=>{
     H=el.offsetHeight; const want=[2*Math.max(0,Math.ceil(geo().reach*.92+18+W+16-170)),Math.max(0,H+16-460)];
     if(want[0]!==sheetWant[0]||want[1]!==sheetWant[1]){ sheetWant=want; sizeWindow(); } }
   new MutationObserver(()=>{ if(on&&!barEdge()) fitSheet(); }).observe(out,{childList:true,subtree:true,characterData:true});
-  function hide(){ agStop(); sheetWant=[0,0]; sizeWindow(); on=false; el.classList.remove('on'); document.body.classList.remove('term'); clearTimeout(offT); offT=setTimeout(()=>{ if(!on&&wide){ wide=false; native('code:off'); } },400); }
+  function hide(){ sheetWant=[0,0]; sizeWindow(); on=false; el.classList.remove('on'); document.body.classList.remove('term'); clearTimeout(offT); offT=setTimeout(()=>{ if(!on&&wide){ wide=false; native('code:off'); } },400); }
 
   // ---- writing to it
   const KW=/\b(def|return|if|elif|else|for|while|in|not|and|or|import|from|try|except|with|as|const|let|var|function|async|await|new|null|None|True|False|true|false|fn|pub|use|match|export|raise|throw)\b/g;
@@ -4819,7 +4834,7 @@ const CP=(()=>{
     for(let i=1;i<=text.length;i++){ d.innerHTML=pre+hl(text.slice(0,i))+'<i class="cur"></i>'; await wait(1000/cps); if(hurry()) break; }
     d.innerHTML=pre+hl(text);
   }
-  function open(title,root){ agStop(); el.classList.remove('mini'); titleEl.textContent=title; stEl.textContent='…'; stEl.className=''; el.classList.toggle('root',!!root); el.classList.toggle('rootmode',!!info.root); out.innerHTML=''; show(); }
+  function open(title,root){ titleEl.textContent=title; stEl.textContent='…'; stEl.className=''; el.classList.toggle('root',!!root); el.classList.toggle('rootmode',!!info.root); out.innerHTML=''; const f=document.body.dataset.focus; if(f==='answer'||f==='event') yielded=true; else show(); }   // (a card already holds the stage: wait for it, like sync())
   function done(ok){ stEl.textContent=ok?'✓':'✕'; stEl.className=ok?'ok':'bad'; }
   async function result(id){ for(let i=0;i<1200&&!RES[id]&&busy;i++){ if(q.length&&i>20) break; await wait(50); } return RES[id]; }
   const rows=(t,n)=>String(t||'').replace(/\r/g,'').split('\n').filter(x=>x.trim()).slice(0,n);
@@ -4865,28 +4880,24 @@ const CP=(()=>{
 
   async function run(){ running=true;
     while(q.length){ const ev=q.shift(); try{ await (VIEWS[ev.name]||VIEWS.other)(ev); }catch(e){ console.log('[nixi] terminal',e); } }
-    running=false; if(!busy||answering) hide(); }
-  // ---- another agent is working (Claude Code, Codex, agy): a fixed decorative loop, no real text; smaller after a minute,
-  // gone on that agent's "finished" or after 15 minutes without a `working`. Never while his own turn uses the sheet.
-  let ag=null; const SKEL=['<i class="pr">$</i> ▒▒▒▒▒ ▒▒▒▒▒▒▒▒ ▒▒▒','▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒','▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒▒▒▒▒▒','<i class="pr">$</i> ▒▒▒▒ ▒▒▒▒▒▒▒▒','▒▒▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒▒▒','▒▒▒▒ ▒▒▒▒▒▒▒']; 
-  const ownTurn=()=>busy||running||q.length>0||answering;
-  function agStop(){ if(ag){ clearInterval(ag.timer); ag=null; } el.classList.remove('mini'); }
-  function agent(name,from){ if(ownTurn()||info.code_panel===false) return;
-    if(ag){ ag.last=Date.now(); ag.from=from; titleEl.textContent=name; return; }
-    titleEl.textContent=name; stEl.textContent='…'; stEl.className=''; el.classList.remove('root','rootmode'); out.innerHTML=''; show();
-    if(!on) return;
-    ag={from,t0:Date.now(),last:Date.now(),i:0,timer:0};
-    ag.timer=setInterval(()=>{ if(!ag) return; if(ownTurn()){ agStop(); return; }
-      if(Date.now()-ag.last>15*60000){ hide(); return; }
-      if(Date.now()-ag.t0>60000) el.classList.add('mini');
-      line(SKEL[ag.i++%SKEL.length],'out'); },900); }
-  function agentEnd(from){ if(ag&&ag.from===from&&!ownTurn()) hide(); }
+    running=false; sync(); }
+  // ---- other agents are working (Claude Code, Codex, agy): one entry per agent+project, kept until that agent's
+  // "finished"/"needs you" or 15 minutes without a `working`. They show as code in his eyes; the sheet is only for his own runs.
+  const ags=new Map(), ownRun=()=>running||q.length>0;
+  let yielded=false;   // his own run's sheet stepped aside for something that needs your answer
+  function sync(){ const f=document.body.dataset.focus;
+    if(ownRun()||busy&&!answering){ if(f==='answer'||f==='event'){ if(on){ hide(); yielded=true; } } else if(yielded){ yielded=false; show(); } return; }   // (his own turn owns the sheet until he answers: no flicker between two tools)
+    yielded=false; if(on||el.classList.contains('on')) hide(); }
+  function agent(ev){ ags.set(ev.from+'|'+(ev.project||''),{from:ev.from,last:Date.now()}); sync(); }
+  function agentEnd(from,project){ if(project) ags.delete(from+'|'+project); else for(const [k,a] of ags) if(a.from===from) ags.delete(k); sync(); }
+  setInterval(()=>{ for(const [k,a] of ags) if(Date.now()-a.last>15*60000) ags.delete(k); },15000);
   return {
     agent, agentEnd,
+    working:()=>ags.size>0||ownRun(), sync, n:()=>ags.size,
     tool(ev){ if(info.code_panel===false||info.bridge) return; answering=false; q.push(ev); if(!running) run(); },
     result(ev){ RES[ev.id]={text:ev.text||'',is_error:!!ev.is_error}; },
-    answer(){ answering=true; if(!running) hide(); },
-    done(){ answering=false; if(!running) hide(); },
+    answer(){ answering=true; sync(); },   // (every streamed delta: sync() leaves an unchanged sheet alone)
+    done(){ answering=false; sync(); },
     hide,
   };
 })();

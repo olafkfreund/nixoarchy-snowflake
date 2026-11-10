@@ -30,7 +30,7 @@ await ev(`
   window.grp=()=>['#rxSky','#rxBack','#rxFront'].map(s=>document.querySelector(s).innerHTML.length);
   window.empty=()=>grp().every(n=>n===0);
   window.sit=o=>onEvent({t:'situation',...Object.fromEntries(Object.entries(SIT).filter(([k])=>k!=='weather')),weather:SIT.weather,...o});
-  window.rxReset=()=>{ RXS.clear(); musKeep=false; rxEnd(); musSync(); RX_AT={}; stgState='closed'; info.look_beat=false;
+  window.rxReset=()=>{ RXS.clear(); evUntil=0; musKeep=false; rxEnd(); musSync(); RX_AT={}; stgState='closed'; info.look_beat=false;
     sit({meeting:false,fullscreen:false,locked:false,cpu_hot:false,ram_low:false,music:false,windy:false,weather:null});
     for(const k in sitOn){ sitOn[k]=false; sitSeen[k]=false; } nudgeQ.clear(); notifyQ.length=0; if(notifyRow) notifyClear(); notifyRow=null; notifyAt=0;
     Object.assign(info,{proactive:true,reactions:true,look_meeting:true,look_weather:true,look_music:true,hover:false}); hiddenNow=false; delete document.hidden;
@@ -46,8 +46,9 @@ const esc = async () => { for (const type of ["keyDown", "keyUp"]) await send("I
 const centre = sel => ev(`const r=(${sel}).getBoundingClientRect(); return [r.left+r.width/2, r.top+r.height/2];`);
 
 // 1. every in-scope reaction on every character: draws, stays inside the viewBox, keeps off the eyes, leaves the groups empty
+// (#227: music paints only in the music focus, so its case turns music on first)
 for (const ch of ["snowflake", "terminal", "robot", "devil"]) for (const id of ["load","memory","error","soon","meeting","notice","ask","done","open","rain","snow","wind","workout","music"]) {
-  const r = await ev(`rxReset(); setCharacter('${ch}'); const ok=rxPlay('${id}'); await new Promise(r=>setTimeout(r,120)); document.getAnimations().forEach(a=>{ a.pause(); a.currentTime=0; });
+  const r = await ev(`rxReset(); setCharacter('${ch}'); ${id === 'music' ? 'sit({music:true}); sitOn.music=true; sitSeen.music=true; sitAt.music=performance.now();' : ''} const ok=rxPlay('${id}'); await new Promise(r=>setTimeout(r,120)); document.getAnimations().forEach(a=>{ a.pause(); a.currentTime=0; });
     const sv=document.querySelector('#guy').getBoundingClientRect(), eyes=[E.eL,E.eR].map(e=>e.getBoundingClientRect()), out=[], hit=[];
     for(const s of ['#rxSky','#rxBack','#rxFront']) for(const c of document.querySelector(s).querySelectorAll('rect,circle,path,ellipse,line,polygon,text')){ const b=c.getBoundingClientRect(); if(!b.width&&!b.height) continue;
       if(b.left<sv.left-1||b.right>sv.right+1||b.top<sv.top-1||b.bottom>sv.bottom+1) out.push(s+' '+c.tagName+' '+JSON.stringify([b.left,b.top,b.right,b.bottom,'svg',sv.left,sv.top,sv.right,sv.bottom].map(Math.round))); }
