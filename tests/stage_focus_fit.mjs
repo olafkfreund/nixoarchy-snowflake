@@ -75,13 +75,29 @@ check(two.n===2&&two.focus==='work'&&two.on&&two.rows===2, "two working agents: 
 await ev(`onEvent({t:'attention',kind:'done',from:'codex',name:'Codex',project:'p2',text:''}); return 1;`); await settle();
 eq(await ev(`return CP.n();`), 1, "done ends only that agent's entry");
 await ev(`onEvent({t:'attention',kind:'ask',from:'claude',name:'Claude',project:'p1',text:'needs you'}); return 1;`); await settle();
-eq(await ev(`return [CP.n(),$('#code').classList.contains('on'),sheetWant];`), [0,false,[0,0]], "ask ends the last entry: sheet off, window room released");
+eq(await ev(`return [CP.n(),$('#code').classList.contains('on'),sheetWant,AM&&AM.kind];`), [0,false,[0,0],'ask'], "ask ends the last entry: sheet off, window room released, the ask mark still shows");
 await ev(wk("claude","Claude","p1") + wk("codex","Codex","p2") + wk("zed","Zed","p3") + "return 1;"); await sleep(3000); await settle();   // (the ask above holds the event focus for 2.5 s)
 const look = await ev(`const c=$('#code'), B=document.body.classList, d=e=>getComputedStyle(c.querySelector(e)).display;
   const r={st:c.querySelectorAll('.lines .st').length,icons:c.querySelectorAll('.icons > *').length,ini:c.querySelector('.icons .ini')&&c.querySelector('.icons .ini').textContent,deco:d('.deco'),bg:getComputedStyle(c).backgroundColor,pe:getComputedStyle(c).pointerEvents};
   B.add('calm'); r.calm=getComputedStyle(c).display; B.remove('calm'); B.add('bar'); r.barDeco=d('.deco'); r.barIcons=d('.icons'); B.remove('bar'); return r;`);
 check(look.st===3&&look.icons===3&&look.ini==='Z'&&look.deco!=='none'&&look.bg==='rgb(13, 17, 23)'&&look.pe==='none', "terminal: three status lines, three icons (unknown = initial), dark window", look);
 check(look.calm==='none'&&look.barDeco==='none'&&look.barIcons==='none', "calm hides the terminal; the notch hides deco and icons", look);
+// music + work: only the work reaction shows, the chip stays, the glasses fade even with coding on
+await ev(`sit({music:true,coding:true}); return 1;`); await sleep(3600); await settle();
+const mw = await ev(`return {focus:document.body.dataset.focus,sky:$('#rxSky').children.length,front:$('#rxFront').children.length,chip:!$('#musChip').hidden,glasses:+SIT_P.gl.getAttribute('opacity')};`);
+check(mw.focus==='work'&&mw.sky===0&&mw.front===0&&mw.chip&&mw.glasses<.01, "music + work: no reaction art, the music chip stays, glasses at 0", mw);
+await ev(`sit({music:false,coding:false}); return 1;`);
+// a mail notification during work: the terminal steps aside, then comes back
+await ev(`onEvent({t:'notify',key:'work-mail',category:'mail',app:'thunderbird',summary:'Mail in work'}); return 1;`); await sleep(400); await settle();
+const mailDuring = await ev(`return {focus:document.body.dataset.focus,on:$('#code').classList.contains('on'),want:sheetWant};`);
+check(mailDuring.focus==='event'&&!mailDuring.on&&JSON.stringify(mailDuring.want)==='[0,0]', "mail during work: event focus, the terminal steps aside", mailDuring);
+await sleep(6500); await settle();
+const mailAfter = await ev(`return {focus:document.body.dataset.focus,on:$('#code').classList.contains('on')};`);
+check(mailAfter.focus==='work'&&mailAfter.on, "after the mail the terminal comes back", mailAfter);
+// an approval card during work: answer focus, no sheet
+await ev(`onEvent({t:'approve',id:'work-a1',agent:'codex',tool:'Bash',detail:'true',confirm:'click',always:false}); return 1;`); await settle();
+eq(await ev(`return [document.body.dataset.focus,$('#code').classList.contains('on')];`), ["answer",false], "approval card during work: answer focus, no sheet");
+await ev(`approvalGone('work-a1'); return 1;`); await sleep(500); await settle();
 for (const c of ["snowflake", "terminal", "robot", "devil"]) {   // Nixi at work: his eyes become the code screen, the keyboard shows
   await ev(`setCharacter('${c}'); return 1;`); await settle();
   const w = await ev(`const B=document.body.classList, d=e=>getComputedStyle($(e)).display, v=e=>getComputedStyle($(e)).visibility;
@@ -101,6 +117,23 @@ if (process.env.NIXI_SHOTS) {   // screenshots for the PR: the sheet with two ag
   for (const c of ["snowflake", "terminal", "robot", "devil"]) for (const z of [60, 100]) {   // work look at the 60% and 100% size (page zoom stands in for the window zoom)
     await ev(`setCharacter('${c}'); document.documentElement.style.zoom=${z / 100}; return 1;`); await shot(`work-${c}-${z}`); }
 }
+// his own turn: a spoken reply with no tool is not work; his own tool run shows the tool, then returns to the agents' line
+await ev(`for(const f of ['claude','codex','zed']) CP.agentEnd(f,''); CP.answer(); focusSync(performance.now()); return 1;`); await sleep(2800); await settle();
+eq(await ev(`return [CP.n(),document.body.dataset.focus];`), [0,"ambient"], "his spoken reply with no tool use: not work");
+await ev(`CP.done(); `+wk("codex","Codex","p2")+` return 1;`); await settle();
+const run = await ev(`CP.tool({t:'tool',id:'own1',name:'Bash',input:{command:'true',description:'own run'}}); await new Promise(r=>setTimeout(r,80)); focusSync(performance.now());
+  return {focus:document.body.dataset.focus,title:$('#code .tb b').textContent,on:$('#code').classList.contains('on')};`);
+check(run.focus==='work'&&run.title==='own run'&&run.on, "his own tool run shows on the sheet (work focus)", run);
+await sleep(2500); await settle();
+const back = await ev(`return {title:$('#code .tb b').textContent,rows:document.querySelectorAll('#code .lines .st').length,on:$('#code').classList.contains('on')};`);
+check(back.title==='Codex'&&back.rows===1&&back.on, "after his run the sheet returns to codex's line", back);
+// peek: after a long idle he shrinks; a working agent brings him back to full size
+await ev(`CP.agentEnd('codex',''); chip.classList.remove('act'); AM=null; attnPend=null; propOn=null; if(notifyRow) notifyClear(); $('#mailPop').classList.remove('on'); idleHoldUntil=0; lastUser=0; nixiIdleScale(.001); return 1;`);   // (clear what keeps him up: the cues earlier checks left)
+let peeked = false; for (let i = 0; i < 40 && !peeked; i++) { await sleep(250); peeked = await ev(`return document.body.classList.contains('peek');`); }
+check(peeked, "idle: he goes to peek", await ev(`return {active:idleActive(),showing:idleShowing(),mode:info.idle_mode,capOn,playing,hold:idleHoldUntil-performance.now()};`));
+await ev(wk("claude","Claude","p1") + "return 1;"); await sleep(1500);
+eq(await ev(`return document.body.classList.contains('peek');`), false, "a working event wakes him from peek to full size");
+await ev(`nixiIdleScale(1000); return 1;`);
 eq(errors, [], "no console errors");
 
 await ev(`window.fetch=window.fetch0; return 1;`);
