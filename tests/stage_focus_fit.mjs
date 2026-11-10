@@ -142,6 +142,13 @@ check(peeked, "idle: he goes to peek", await ev(`return {active:idleActive(),sho
 await ev(wk("claude","Claude","p1") + "return 1;"); await sleep(1500);
 eq(await ev(`return document.body.classList.contains('peek');`), false, "a working event wakes him from peek to full size");
 await ev(`nixiIdleScale(1000); return 1;`);
+// (agy review) his streamed reply while an agent works: CP.answer() runs per delta and must not resize the window each time
+const spam = await ev(`const fr=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  evUntil=0; onEvent({t:'attention',kind:'working',from:'codex',name:'Codex',project:'pz'}); await fr(); focusSync(performance.now()); await fr();
+  const s0=window.sizeWindow; let n=0; window.sizeWindow=(...a)=>{ n++; return s0(...a); };
+  for(let i=0;i<5;i++) CP.answer(); await fr(); window.sizeWindow=s0;
+  const on=$('#code').classList.contains('on'); CP.done(); CP.agentEnd('codex',''); return [n,on];`);
+eq(spam, [0, true], "five streamed deltas while an agent works: no window resize, the sheet stays");
 eq(errors, [], "no console errors");
 
 await ev(`window.fetch=window.fetch0; return 1;`);

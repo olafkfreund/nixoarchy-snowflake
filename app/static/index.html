@@ -1780,7 +1780,7 @@ function applyAnchors(character=BODY,roots=[$('#accBack'),$('#accFront'),$('#sit
 let RX=null, RXT=0, RXS=new Set(), RX_AT={}, rxKey='', rxShown='';
 let evUntil=0;
 const evHold=ms=>{ evUntil=Math.max(evUntil,performance.now()+ms); };
-const stageFocus=now=>pendingAppr||pwEl.classList.contains('on')||apEl.classList.contains('on')||MIR.owner==='pending'||notifyRow&&notifyRow.card&&notifyRow.span.isConnected||stgOpen()||!$('#musCard').hidden?'answer':now<evUntil?'event':CP.working()?'work':sitOn.music||sitOn.video?'media':'ambient';
+const stageFocus=now=>pendingAppr||pwEl.classList.contains('on')||apEl.classList.contains('on')||MIR.owner==='pending'||notifyRow&&notifyRow.card&&notifyRow.span&&notifyRow.span.isConnected||stgOpen()||!$('#musCard').hidden?'answer':now<evUntil?'event':CP.working()?'work':sitOn.music||sitOn.video?'media':'ambient';
 function focusSync(now){ const f=stageFocus(now); if(document.body.dataset.focus===f) return; document.body.dataset.focus=f; rxCheck(); CP.sync(); musSync(); }
 let musKeep=false;   // after the card's own Pause: chip and card stay, with Play
 const RX_SIT={meeting:'meeting',rain:'rain',snow:'snow',windy:'wind'}, RX_DUR={music:4000},
@@ -3042,7 +3042,7 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
   if(ev.card&&document.body.matches('.bar,.pnl,.appr')) return;   // a card isn't drawn in the notch or under a panel (#cap is hidden): not marked seen, so the shell shows it at 5 s
   if(!ev.card) notifySeen(ev.key);
   restore(11000,false);   // (before the mail pop-out is measured)
-  const c=ev.app==='nixi-job'?NOTE.job:NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null,card:!!ev.card}; notifyRow=row; notifyAt=ts+(ev.card?7000:5000); evHold(ev.card?7000:5000);
+  const c=ev.app==='nixi-job'?NOTE.job:NOTE[ev.category]||NOTE.other, row={key:ev.key,span:null,card:!!ev.card}; notifyRow=row; notifyAt=ts+(ev.card?7000:5000); if(!ev.card) evHold(5000);   // (a card holds 'answer' while it's drawn)
   if(ev.reaction) rxPlay(ev.reaction); else if(ev.category==='other'&&ev.app!=='nixi-job') rxPlay('notice');
   wake(); G.jelly.kick(-.45); popPupils(); poke(c[3],c[4]); burstLines(c[2],ev.category==='meeting'?8:ev.category==='download'?10:ev.category==='other'&&ev.app!=='nixi-job'?1:3);
   if(ev.category==='chat') G.tilt.kick(-8);
@@ -3064,14 +3064,13 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
 // mail (#138): the envelope pops out beside him (the side with more room), opens, and goes back in after ~5 s
 let mailT=[], popWant=[0,0];
 function mailPop(ev){ const el=$('#mailPop'); if(!el||hiddenNow||document.body.classList.contains('bar')||info.hover) return;
-  evHold(5000);
   mailT.forEach(clearTimeout); mailT=[]; el.classList.remove('on','open','up');
   el.dataset.key=ev.key; const b=el.querySelector('b'), u=iconUrl(ev); b.textContent=notifyWho(ev)||'Mail';
   if(u){ const im=document.createElement('img'); im.alt=''; im.src=u; im.onerror=()=>im.remove(); b.prepend(im); } el.querySelector('span').textContent=ev.summary||'New mail';
   popWant=[260,0]; sizeWindow();
   const at=(ms,f)=>mailT.push(setTimeout(f,ms));
   at(60,()=>{ if(stageFocus(performance.now())==='answer'){ mailT.forEach(clearTimeout); mailT=[]; popWant=[0,0]; sizeWindow(); return; }
-    const right=innerWidth/fitK-layoutX-340, left=layoutX/fitK; el.classList.toggle('l',left>right); void el.offsetWidth; el.classList.add('on'); sendRegion(true); });
+    evHold(5000); const right=innerWidth/fitK-layoutX-340, left=layoutX/fitK; el.classList.toggle('l',left>right); void el.offsetWidth; el.classList.add('on'); sendRegion(true); });
   at(420,()=>el.classList.add('open')); at(720,()=>el.classList.add('up')); at(1200,()=>sendRegion(true));   // (the raised letter is clickable too)
   at(4300,()=>el.classList.remove('up')); at(4650,()=>el.classList.remove('open'));
   at(5000,()=>{ el.classList.remove('on'); sendRegion(true); }); at(5400,()=>{ popWant=[0,0]; sizeWindow(); }); }
@@ -4541,7 +4540,7 @@ setEl.addEventListener('change',e=>{
   if(id==='compactSw') setSetting({auto_compact:on});
   if(id==='costIn') setSetting({max_cost_usd:+e.target.value||0}).then(()=>tick(+e.target.value?'a request stops at $'+e.target.value:'no usage limit'));
   if(id==='leanSw') setSetting({lean:on}).then(()=>tick(on?'light mode: fewer tools, less usage':'all your tools on'));
-  if(id==='codeSw'){ setSetting({code_panel:on}); document.body.classList.toggle('nocode',!on); if(!on) CP.hide(); }
+  if(id==='codeSw'){ setSetting({code_panel:on}); document.body.classList.toggle('nocode',!on); if(!on) CP.hide(); else CP.sync(); }
   if(id==='micSel') setSetting({mic_device:e.target.value}).then(()=>tick('microphone changed'));
   if(id==='linkSw'){ const L=curLook(); const patch={link:on}; if(on){ patch.pupR=L.pupL; patch.whiteR=L.whiteL; } setLook(patch).then(()=>selectPart(pkPart.replace('R','L'))); }
   if(id==='themeSw') return setLook({follow_theme:on}).then(()=>{ lookShown=''; syncLook(); renderSettings(); });
@@ -4852,7 +4851,7 @@ const CP=(()=>{
     for(let i=1;i<=text.length;i++){ d.innerHTML=pre+hl(text.slice(0,i))+'<i class="cur"></i>'; await wait(1000/cps); if(hurry()) break; }
     d.innerHTML=pre+hl(text);
   }
-  function open(title,root){ titleEl.textContent=title; stEl.textContent='…'; stEl.className=''; el.classList.toggle('root',!!root); el.classList.toggle('rootmode',!!info.root); out.innerHTML=''; show(); }
+  function open(title,root){ agView=false; titleEl.textContent=title; stEl.textContent='…'; stEl.className=''; el.classList.toggle('root',!!root); el.classList.toggle('rootmode',!!info.root); out.innerHTML=''; show(); }
   function done(ok){ stEl.textContent=ok?'✓':'✕'; stEl.className=ok?'ok':'bad'; }
   async function result(id){ for(let i=0;i<1200&&!RES[id]&&busy;i++){ if(q.length&&i>20) break; await wait(50); } return RES[id]; }
   const rows=(t,n)=>String(t||'').replace(/\r/g,'').split('\n').filter(x=>x.trim()).slice(0,n);
@@ -4898,7 +4897,7 @@ const CP=(()=>{
 
   async function run(){ running=true;
     while(q.length){ const ev=q.shift(); try{ await (VIEWS[ev.name]||VIEWS.other)(ev); }catch(e){ console.log('[nixi] terminal',e); } }
-    running=false; if(!busy||answering) hide(); sync(); }
+    running=false; sync(); }
   // ---- other agents are working (Claude Code, Codex, agy): one entry per agent+project, kept until that agent's
   // "finished"/"needs you" or 15 minutes without a `working`. The map lives on while the sheet is away; the sheet shows only in `work`.
   const icons=el.querySelector('.icons'), ICON={};   // the agents' marks, cloned once from the ask-mark art (no ids, no display)
@@ -4912,25 +4911,25 @@ const CP=(()=>{
     const dc=document.createElement('div'); dc.className='deco'; out.appendChild(dc);
     for(const f of new Set([...ags.values()].map(a=>a.from))){ if(ICON[f]){ const v=document.createElementNS('http://www.w3.org/2000/svg','svg'); v.setAttribute('viewBox','-17 -17 34 34'); v.appendChild(ICON[f].cloneNode(true)); icons.appendChild(v); }
       else { const i=document.createElement('span'); i.className='ini'; i.textContent=(f||'?')[0].toUpperCase(); icons.appendChild(i); } } }
-  let yielded=false;   // his own run's sheet stepped aside for something that needs your answer
+  let yielded=false, agView=false, dirty=true;   // agView: the sheet shows the agents (not his run); dirty: the list changed   // his own run's sheet stepped aside for something that needs your answer
   function sync(){ const f=document.body.dataset.focus;
     if(ownRun()||busy&&!answering){ if(f==='answer'||f==='event'){ if(on){ hide(); yielded=true; } } else if(yielded){ yielded=false; show(); } return; }   // (his own turn owns the sheet until he answers: no flicker between two tools)
     yielded=false;
-    if(ags.size&&info.code_panel!==false&&document.body.dataset.focus==='work'){ paint(); show(); }
+    if(ags.size&&info.code_panel!==false&&f==='work'){ if(!on||!agView||dirty){ paint(); agView=true; dirty=false; } show(); }
     else if(on||el.classList.contains('on')) hide(); }      // (hide() keeps the content and the map)
-  function agent(ev){ const k=ev.from+'|'+(ev.project||''), a=ags.get(k)||{t0:Date.now()};
+  function agent(ev){ const k=ev.from+'|'+(ev.project||''), a=ags.get(k)||{t0:Date.now()}; if(!ags.has(k)) dirty=true;
     ags.set(k,Object.assign(a,{from:ev.from,name:ev.name||ev.from,project:ev.project||'',last:Date.now()})); sync(); }
-  function agentEnd(from,project){ if(project) ags.delete(from+'|'+project); else for(const [k,a] of ags) if(a.from===from) ags.delete(k); sync(); }
+  function agentEnd(from,project){ dirty=true; if(project) ags.delete(from+'|'+project); else for(const [k,a] of ags) if(a.from===from) ags.delete(k); sync(); }
   setInterval(()=>{ const n=ags.size; for(const [k,a] of ags) if(Date.now()-a.last>15*60000) ags.delete(k);
     for(const a of ags.values()) if(a.row&&a.row.textContent!==stTxt(a)) a.row.textContent=stTxt(a);   // (only a changed minute touches the DOM)
-    if(ags.size!==n) sync(); },15000);
+    if(ags.size!==n){ dirty=true; sync(); } },15000);
   return {
     agent, agentEnd,
     working:()=>ags.size>0||ownRun(), sync, n:()=>ags.size,
     tool(ev){ if(info.code_panel===false||info.bridge) return; answering=false; q.push(ev); if(!running) run(); },
     result(ev){ RES[ev.id]={text:ev.text||'',is_error:!!ev.is_error}; },
-    answer(){ answering=true; if(!running) hide(); sync(); },
-    done(){ answering=false; if(!running) hide(); sync(); },
+    answer(){ answering=true; sync(); },   // (every streamed delta: sync() leaves an unchanged sheet alone)
+    done(){ answering=false; sync(); },
     hide,
   };
 })();
