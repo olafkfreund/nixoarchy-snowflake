@@ -28,6 +28,7 @@ await ev(`
   window.__say=[]; sfx=n=>{}; enqueue=(t,o)=>window.__say.push(t);
   nixiIdleScale(1000); const f0=window.fetch.bind(window); window.fetch0=f0;   // keep the flags the test turned on across /api/state re-reads
   window.fetch=async(u,o)=>{ if(/\\/api\\/notify\\/seen/.test(String(u))) return new Response('{}'); const r=await f0(u,o); if(!/\\/api\\/state/.test(String(u))) return r; const j=await r.json(); return new Response(JSON.stringify({...j,proactive:true,reactions:true,look_meeting:true,look_weather:true,look_music:true,look_coding:true,click_through:true})); };
+  Object.assign(info,{proactive:true,reactions:true,look_meeting:true,look_weather:true,look_music:true,look_coding:true});   // (now, not at the next 15 s state refresh)
   window.sit=o=>onEvent({t:'situation',...Object.fromEntries(Object.entries(SIT).filter(([k])=>k!=='weather')),weather:SIT.weather,...o});
   Object.assign(info,{proactive:true,reactions:true,look_music:true,look_weather:true,look_coding:true});
   return 1;`);
@@ -53,12 +54,17 @@ const music = await ev(`return {focus:document.body.dataset.focus, art:!!$('#rxF
 check(music.focus==='media'&&music.art&&!music.other&&JSON.stringify(music.classes)==='["r-music"]'&&music.chip, "media focus paints only music art", music);
 
 const workRain = await ev(`window.__oldWorking=CP.working; CP.working=()=>true; rxEnd(); focusSync(performance.now()); RX_AT.rain=0;
-  const played=rxPlay('rain'); return {played,focus:document.body.dataset.focus,rain:!!$('#rxFront .rain'),classes:[...$('#stage').classList].filter(c=>c.startsWith('r-'))};`);
-check(workRain.played&&workRain.focus==='work'&&!workRain.rain&&!workRain.classes.includes('r-rain'), "rain reaction stays unpainted during work", workRain);
-await ev(`sit({coding:true}); sitOn.rain=true; return 1;`); await sleep(3600); await settle();
+  const played=rxPlay('rain'); return {played,focus:document.body.dataset.focus,rain:$('#rxSky').children.length+$('#rxBack').children.length+$('#rxFront').children.length,classes:[...$('#stage').classList].filter(c=>c.startsWith('r-'))};`);
+check(workRain.played&&workRain.focus==='work'&&workRain.rain===0&&!workRain.classes.includes('r-rain'), "rain reaction stays unpainted during work", workRain);
+await ev(`sit({coding:true,weather:'rain'}); for(const k of ['coding','rain']){ sitOn[k]=true; sitSeen[k]=true; sitAt[k]=performance.now(); } return 1;`);   // (a real weather signal: sitOn alone is undone next frame) await sleep(3600); await settle();
 const workLook = await ev(`return {focus:document.body.dataset.focus, glasses:+SIT_P.gl.getAttribute('opacity'), rain:WX.rain.g.getAttribute('display')};`);
 check(workLook.focus==='work'&&workLook.glasses<.01&&workLook.rain==='none', "work focus fades glasses and weather marks", workLook);
-await ev(`CP.working=window.__oldWorking; sitOn.rain=false; sitOn.music=false; sitOn.coding=false; RXS.delete('music'); rxEnd(); focusSync(performance.now());
+// (positive control) the same glasses and rain marks do show once the stage is ambient again
+const ambLook = await ev(`CP.working=()=>false; sit({music:false}); sitOn.music=false; sitSeen.music=false; RXS.delete('music'); for(const k of ['coding','rain']){ sitOn[k]=true; sitSeen[k]=true; sitAt[k]=performance.now(); }   // (past the 3 s debounce: this pins drawing, not timing)
+  focusSync(performance.now()); await new Promise(r=>setTimeout(r,2500));
+  return {focus:document.body.dataset.focus, glasses:+SIT_P.gl.getAttribute('opacity'), rain:WX.rain.g.getAttribute('display')};`);
+check(ambLook.focus==='ambient'&&ambLook.glasses>.5&&ambLook.rain!=='none', "ambient focus shows the glasses and weather marks again", ambLook);
+await ev(`CP.working=window.__oldWorking; sit({weather:null}); sitOn.rain=false; sitOn.music=false; sitOn.coding=false; RXS.delete('music'); rxEnd(); focusSync(performance.now());
   notifyAt=0; if(notifyRow) notifyClear(); onEvent({t:'notify',key:'focus-mail',category:'mail',app:'thunderbird',summary:'Mail card',card:{runs:[],buttons:[]}}); return 1;`);
 await settle();
 const mail = await ev(`return {card:!!(notifyRow&&notifyRow.card&&notifyRow.span.isConnected),focus:document.body.dataset.focus,pop:$('#mailPop').classList.contains('on')};`);
@@ -106,6 +112,8 @@ for (const c of ["snowflake", "terminal", "robot", "devil"]) {   // Nixi at work
   check(w.focus === "work" && w.eL === "none" && w.ce !== "none" && w.kbd !== "none" && w.mood === "working" && w.barCe === "none" && w.barKbd === "none", `work look on ${c}`, w);
 }
 await ev(`setCharacter('snowflake'); return 1;`);
+const runAnims = `return document.getAnimations().filter(a=>a.playState==='running'&&a.effect&&a.effect.target&&a.effect.target.closest&&a.effect.target.closest('#code,#codeEyes,#kbd')).length;`;
+check(await ev(runAnims) > 0, "without reduced motion the terminal, his screen and the keyboard animate (baseline)");
 await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }); await settle();
 eq(await ev(`return document.getAnimations().filter(a=>a.playState==='running'&&a.effect&&a.effect.target&&a.effect.target.closest&&a.effect.target.closest('#code,#codeEyes,#kbd')).length;`), 0, "reduced motion: no running animation in the terminal, his screen or the keyboard");
 await send("Emulation.setEmulatedMedia", { features: [] });
@@ -118,8 +126,14 @@ if (process.env.NIXI_SHOTS) {   // screenshots for the PR: the sheet with two ag
     await ev(`setCharacter('${c}'); document.documentElement.style.zoom=${z / 100}; return 1;`); await shot(`work-${c}-${z}`); }
 }
 // his own turn: a spoken reply with no tool is not work; his own tool run shows the tool, then returns to the agents' line
-await ev(`for(const f of ['claude','codex','zed']) CP.agentEnd(f,''); CP.answer(); focusSync(performance.now()); return 1;`); await sleep(2800); await settle();
-eq(await ev(`return [CP.n(),document.body.dataset.focus];`), [0,"ambient"], "his spoken reply with no tool use: not work");
+await ev(`for(const f of ['claude','codex','zed']) CP.agentEnd(f,''); evUntil=0; return 1;`); await sleep(2800); await settle();
+eq(await ev(`busy=true; focusSync(performance.now()); const f0=document.body.dataset.focus; CP.answer(); focusSync(performance.now());
+  const r=[CP.n(),f0,document.body.dataset.focus,$('#code').classList.contains('on')]; busy=false; CP.done(); return r;`), [0,"ambient","ambient",false], "his spoken reply (busy, a delta, no tool): not work, no sheet");
+// (Opus review) an agent finishing while he is still thinking: the agents' sheet follows at once, not after his reply
+eq(await ev(`const fr=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  onEvent({t:'attention',kind:'working',from:'codex',name:'Codex',project:'pq'}); await fr(); focusSync(performance.now()); await fr();
+  const on0=$('#code').classList.contains('on'); busy=true; answering=false; CP.agentEnd('codex','pq'); await fr();
+  const on1=$('#code').classList.contains('on'); busy=false; CP.done(); evUntil=0; return [on0,on1];`), [true,false], "an agent ending while he thinks takes its sheet away at once");
 await ev(`CP.done(); `+wk("codex","Codex","p2")+` return 1;`); await settle();
 const run = await ev(`CP.tool({t:'tool',id:'own1',name:'Bash',input:{command:'true',description:'own run'}}); await new Promise(r=>setTimeout(r,80)); focusSync(performance.now());
   return {focus:document.body.dataset.focus,title:$('#code .tb b').textContent,on:$('#code').classList.contains('on')};`);

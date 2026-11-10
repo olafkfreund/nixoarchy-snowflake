@@ -3827,7 +3827,7 @@ function dismiss(){ menu(false); hideAsk(); const held=stgHeld; stgHeld=null; cl
 function endListening(){ if(rec&&rec.mode!=='approve') stopRec(true); post('/api/follow',{act:'cancel'}).catch(()=>{}); follow=false; hearRaw=0; }
 
 /* ================= hover mode ================= */
-function setHoverClass(on){ document.body.classList.toggle('hover',on); sendRegion(true); }
+function setHoverClass(on){ document.body.classList.toggle('hover',on); sendRegion(true); if(!on) CP.sync(); }   // (out of hover: the agents' sheet comes back)
 async function toggleHover(force){
   const on=typeof force==='boolean'?force:!info.hover;
   if(!NATIVE){ tick('hover mode works in the Nixi window (not the browser fallback)',true); return; }
@@ -4817,8 +4817,6 @@ const CP=(()=>{
     sp.vx+=((tx-sp.x)*45-sp.vx*9.5)*dt; sp.vy+=((ty-sp.y)*45-sp.vy*9.5)*dt; sp.x+=sp.vx*dt; sp.y+=sp.vy*dt;
     sp.x=clamp(sp.x,half-6,innerWidth-half+6);              // a springy overshoot mustn't poke out of the window
     pos={x:sp.x,y:sp.y,cx,cy};
-    el.classList.toggle('tr',side<0);
-    el.style.setProperty('--ty',clamp((cy-(sp.y-h2))/k,24,H-24).toFixed(0)+'px');   // (in the sheet's own unscaled px)
     el.style.transform=`translate(${(sp.x-W/2).toFixed(1)}px,${(sp.y-H/2).toFixed(1)}px) scale(${k.toFixed(3)})`;   // (scale last: the move stays in window px)
   }
   requestAnimationFrame(tick);
@@ -4913,7 +4911,7 @@ const CP=(()=>{
       else { const i=document.createElement('span'); i.className='ini'; i.textContent=(f||'?')[0].toUpperCase(); icons.appendChild(i); } } }
   let yielded=false, agView=false, dirty=true;   // agView: the sheet shows the agents (not his run); dirty: the list changed   // his own run's sheet stepped aside for something that needs your answer
   function sync(){ const f=document.body.dataset.focus;
-    if(ownRun()||busy&&!answering){ if(f==='answer'||f==='event'){ if(on){ hide(); yielded=true; } } else if(yielded){ yielded=false; show(); } return; }   // (his own turn owns the sheet until he answers: no flicker between two tools)
+    if(ownRun()||busy&&!answering&&!agView){ if(f==='answer'||f==='event'){ if(on){ hide(); yielded=true; } } else if(yielded){ yielded=false; show(); } return; }   // (his own turn owns the sheet until he answers: no flicker between two tools)
     yielded=false;
     if(ags.size&&info.code_panel!==false&&f==='work'){ if(!on||!agView||dirty){ paint(); agView=true; dirty=false; } show(); }
     else if(on||el.classList.contains('on')) hide(); }      // (hide() keeps the content and the map)
