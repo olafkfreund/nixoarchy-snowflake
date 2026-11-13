@@ -1544,6 +1544,8 @@ def agent_say_ready(frm):
         return {"speak": False, "reason": "hidden"}
     if Ambient.meeting:
         return {"speak": False, "reason": "meeting"}
+    if Ambient.phone_call:
+        return {"speak": False, "reason": "call"}
     if Ambient.dnd:
         return {"speak": False, "reason": "dnd"}
     if CFG.get("proactive"):
@@ -1798,6 +1800,7 @@ class Ambient:
     alerted = set()                                            # calendar items already announced
     thread = None
     meeting = music = video = False                            # what the look layer wears, and what quiets him (#133)
+    phone_call = False                                         # a call on a Flux phone (#231): quiets him like a meeting, but doesn't dress him for one
     music_due = 0.0
     dnd = False
     dnd_due = 0.0
@@ -2200,7 +2203,7 @@ class Ambient:
 
     @classmethod
     def situation(cls):
-        return {k: getattr(cls, k) for k in ("meeting", "music", "video", "track", "cpu_hot", "ram_low", "fullscreen", "locked", "dnd", "coding", "weather", "day", "cold", "windy", "lean", "heavy", "storm", "hot", "night", "party")}
+        return {k: getattr(cls, k) for k in ("meeting", "phone_call", "music", "video", "track", "cpu_hot", "ram_low", "fullscreen", "locked", "dnd", "coding", "weather", "day", "cold", "windy", "lean", "heavy", "storm", "hot", "night", "party")}
 
     @classmethod
     def sense(cls, now=None, proc="/proc", mono=None):
@@ -2869,7 +2872,7 @@ class Nudge:
             del cls.pending[k]                                      # gone stale while it waited
             if k == "workout":
                 cls.workout_pending.clear()
-        if not cls.pending or Ambient.locked or Ambient.dnd or Ambient.fullscreen or Ambient.meeting:
+        if not cls.pending or Ambient.locked or Ambient.dnd or Ambient.fullscreen or Ambient.meeting or Ambient.phone_call:
             return
         at_break = (Ambient.unlocked_at and t - Ambient.unlocked_at <= 10) or (Desk.last_switch and t - Desk.last_switch <= 10) \
             or (Desk.last_event > 0 and t - Desk.last_event >= 20)
@@ -2886,7 +2889,7 @@ class Nudge:
         cls.last_visual = cls.last_kind[kind] = t
         if kind == "break" and kind in cls.skip_cool:
             cls.active_since = t
-        speak = bool(spoken) and not Ambient.meeting and (cls.last_speech is None or t - cls.last_speech >= 600)
+        speak = bool(spoken) and not Ambient.meeting and not Ambient.phone_call and (cls.last_speech is None or t - cls.last_speech >= 600)
         if speak:
             cls.last_speech = t
         event = dict(t="nudge", kind=kind, text=text, speak=speak, wait=None if deadline is None else max(0, deadline - t))
@@ -3037,6 +3040,16 @@ class NImage:
             cls.served.clear()
 
 
+def phone_call_row(x):
+    """Is this notification Flux's own call popup (app = one of its devices, title "Call from …")? Only with a #231 Flux."""
+    try:
+        if not (CFG.get("phone_on") and Phone.connected and Phone.modern):
+            return False
+        return str(x.get("summary") or "").startswith(("Call from ", "Missed call from ")) and str(x.get("app") or "") in {d["name"] for d in Phone.devices()}
+    except Exception:  # noqa: BLE001  (a malformed row never stops the inbox)
+        return False
+
+
 class Inbox:
     """Notifications the shell hands to the companion (#133), only while this thread holds a lease on the shell's IPC
     socket (renewed every second). Row text is never logged, written to disk or sent to the agent."""
@@ -3174,6 +3187,7 @@ class Inbox:
             if not isinstance(x, dict) or not isinstance(x.get("key"), str) or not cls.KEY.fullmatch(x["key"]) or x.get("category") not in cls.CATS:
                 continue
             summary, body = str(x.get("summary") or "")[:120], str(x.get("body") or "")[:120]
+            flux_call = phone_call_row(x)                            # (from the raw title: before the details are blanked)
             if not CFG.get("notify_details") or SECRET_LINE.search(summary + "\n" + body) or cls.OTP.search(summary + "\n" + body):
                 summary = body = ""
             row = {"key": x["key"], "app": str(x.get("app") or "")[:60], "source": str(x.get("source") or "")[:80],
@@ -3202,6 +3216,8 @@ class Inbox:
                                 cls.acts.pop(min(cls.acts.items(), key=lambda kv: kv[1][2])[0])
                     if buttons or "image" in card:
                         row["card"] = card
+            if flux_call:
+                row["phone_call"] = True
             icon = Icons.lookup(row["app"], row["source"])
             if icon:
                 row["icon"] = Icons.register(icon)
@@ -4416,7 +4432,7 @@ class Wake:
 
     @classmethod
     def should_run(cls):
-        if cls.asleep or Ambient.meeting or Listen.lock.locked():      # (in a meeting the wake word is paused)
+        if cls.asleep or Ambient.meeting or Ambient.phone_call or Listen.lock.locked():      # (in a meeting or a call the wake word is paused)
             return False
         if FLOOR.floor_overlaps(time.monotonic()):      # another voice has the floor: keep the mic closed
             return False
@@ -6685,7 +6701,7 @@ def ollama_summary(model, text):
 
 
 def mail_may_speak():
-    return Desk.locked() is False and not Ambient.meeting
+    return Desk.locked() is False and not Ambient.meeting and not Ambient.phone_call
 
 
 def mail_play_ok(queued):
@@ -6860,14 +6876,47 @@ def phone_battery_check(devs):
             Nudge.offer("phone_battery", lang.t("phone.battery_low", name=d["name"], n=round(charge)), False)
 
 
+def phone_call_sync():
+    """Ambient.phone_call follows Phone.call_active. On the edge to true he stops talking and listening, like a meeting starting."""
+    now = bool(CFG.get("phone_on")) and Phone.call_active
+    if now == Ambient.phone_call:
+        return
+    Ambient.phone_call = now
+    if now:
+        Speaker.stop()                                   # what he says and what is queued
+        Wake.end_follow("cancel")                        # the follow-up window, as /api/listen does
+        ls = Listen.current
+        if ls and Listen.lock.locked():
+            ls.stop(cancel=True)
+    BUS.pub(t="situation", **Ambient.situation())
+
+
+def phone_may_announce():
+    return bool(CFG.get("proactive")) and not Wake.asleep and Desk.locked() is False and not Ambient.meeting and not Ambient.dnd and Speaker.available()
+
+
+def phone_on_call(key, rec):
+    """A call record Nixi hasn't seen: a ringing one is announced once, in his normal voice. This is the one speech the call quiet lets through."""
+    if not isinstance(rec, dict) or rec.get("state") != "ringing" or not phone_may_announce():
+        return
+    dev = next((d for d in Phone.devices() if d["id"] == key[1]), None)
+    if not dev:
+        return
+    who = rec.get("caller") if isinstance(rec.get("caller"), str) else ""
+    who = " ".join(who.split())[:40]
+    Speaker.say(lang.t("phone.call_named", caller=who, name=dev["name"]) if who else lang.t("phone.call", name=dev["name"]), None, None, False, None)
+
+
 def phone_state():
     """Fluxd sent a new snapshot (the Phone worker calls this)."""
     if CFG.get("phone_on"):
         phone_battery_check(Phone.devices())
+    phone_call_sync()
     phone_pub()
 
 
 Phone.on_state = phone_state
+Phone.on_call = phone_on_call
 
 
 def _phone_where(d):
@@ -7100,6 +7149,7 @@ def phone_reset():
     Phone.outgoing.clear()
     PHONE_BATT.clear()
     PHONE_LOW.clear()
+    phone_call_sync()                               # (phone_on is already off: the call quiet ends)
     plugins.forget()                                # (a cached board with phone readings is never served again)
     if STAGES.forget_where(lambda pg: pg.get("kind") == "phone_pick" or pg.get("from_phone")):
         BUS.pub(t="stage_close")
@@ -8155,7 +8205,7 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/say":                       # speak this (played by the server, see Speaker)
                 b = json.loads(self._body() or b"{}")
                 text = speakable(b.get("text", ""), board_up())
-                if not text or (not tts_engine() and tts_mode() != "elevenlabs") or (Ambient.meeting and b.get("follow", True) is False):   # (no unasked speech in a meeting)
+                if not text or (not tts_engine() and tts_mode() != "elevenlabs") or ((Ambient.meeting or Ambient.phone_call) and b.get("follow", True) is False):   # (no unasked speech in a meeting or a call)
                     BUS.pub(t="spk_skip", id=b.get("id"))
                 else:
                     Speaker.say(text, b.get("id"), b.get("epoch"), b.get("follow", True) is not False, b.get("reply"), strict=b.get("strict") is True)

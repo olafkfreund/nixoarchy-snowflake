@@ -89,7 +89,9 @@
     "phone.last_seen": "last seen {ago} ago",
     "phone.summary": "{name} is at {pct} percent, {where}.",
     "phone.summary_charging": "{name} is at {pct} percent and charging, {where}.",
-    "phone.offline_word": "offline"
+    "phone.offline_word": "offline",
+    "phone.call_named": "{caller} is calling on your {name}",
+    "phone.call": "A call on your {name}"
   },
   "phrases": {
     "phone_generic": [

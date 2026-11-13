@@ -396,7 +396,7 @@ class StubPhone:
 
     def __init__(self, devices):
         self.connected, self._devices, self.calls, self.outgoing = True, devices, [], set()
-        self.stop, self.modern = (lambda: None), True
+        self.stop, self.modern, self.call_active = (lambda: None), True, False
         self.errors, self.results, self.states, self.at_call = {}, {}, [], {}
 
     def devices(self):
@@ -645,27 +645,135 @@ class Battery(_Phone4):
         self.assertEqual(self.ask("phone battery")["say"], "Pixel is at 50 percent, online.")
 
 
-class Calls(unittest.TestCase):
-    @unittest.skip("step 6")
-    def test_new_ringing_record_stops_speech_and_followup(self): ...
+class Calls(_Phone4):
+    def setUp(self):
+        super().setUp()
+        s = self.server
+        s.CFG["proactive"] = True
+        self.phone.call_active = False
+        self.say = mock.patch.object(s.Speaker, "say").start()
+        self.stop = mock.patch.object(s.Speaker, "stop").start()
+        self.follow = mock.patch.object(s.Wake, "end_follow").start()
+        for p in (mock.patch.object(s.Speaker, "available", return_value=True), mock.patch.object(s.Desk, "locked", return_value=False),
+                  mock.patch.object(s.Ambient, "meeting", False), mock.patch.object(s.Ambient, "dnd", False),
+                  mock.patch.object(s.Wake, "asleep", False), mock.patch.object(s.Ambient, "phone_call", False)):
+            p.start()
+        self.addCleanup(mock.patch.stopall)
 
-    @unittest.skip("step 6")
-    def test_ringing_to_talking_within_one_snapshot_not_announced(self): ...
+    def ring(self, caller="Anna", state="ringing", since=1):
+        return ("call", "pixel", since), {"state": state, "caller": caller, "number": "123", "since": since}
 
-    @unittest.skip("step 6")
-    def test_call_present_at_startup_not_announced(self): ...
+    def test_new_ringing_record_stops_speech_and_followup(self):
+        s = self.server
+        ls = mock.Mock()
+        self.phone.call_active = True
+        with mock.patch.object(s.Listen, "current", ls), mock.patch.object(s.Listen, "lock", mock.Mock(locked=lambda: True)):
+            s.phone_state()
+        self.assertTrue(s.Ambient.phone_call)
+        self.assertFalse(s.Ambient.meeting)                           # (the tie look is not his to wear)
+        self.stop.assert_called_once_with()
+        self.follow.assert_called_once_with("cancel")
+        ls.stop.assert_called_once_with(cancel=True)
+        self.assertTrue(s.Ambient.situation()["phone_call"])
+        self.assertFalse(s.Wake.should_run())                         # (wake is held while it lasts)
+        s.phone_state()                                               # (no second edge)
+        self.stop.assert_called_once_with()
+        self.phone.call_active = False
+        s.phone_state()
+        self.assertFalse(s.Ambient.phone_call)
 
-    @unittest.skip("step 6")
-    def test_locked_meeting_or_dnd_gives_no_speech(self): ...
+    def test_ringing_is_announced_once_in_the_normal_voice_even_in_a_call(self):
+        s = self.server
+        s.Ambient.phone_call = True
+        s.phone_on_call(*self.ring())
+        self.say.assert_called_once_with("Anna is calling on your Pixel", None, None, False, None)
+        self.say.reset_mock()
+        s.phone_on_call(*self.ring(caller=None))
+        self.say.assert_called_once_with("A call on your Pixel", None, None, False, None)
 
-    @unittest.skip("step 6")
-    def test_flux_call_row_marked_before_redaction_not_with_old_flux(self): ...
+    def test_ringing_to_talking_within_one_snapshot_not_announced(self):
+        self.server.phone_on_call(*self.ring(state="talking"))
+        self.say.assert_not_called()
+
+    def test_locked_meeting_or_dnd_gives_no_speech(self):
+        s = self.server
+        for patch in (mock.patch.object(s.Desk, "locked", return_value=True), mock.patch.object(s.Desk, "locked", return_value=None),
+                      mock.patch.object(s.Ambient, "meeting", True), mock.patch.object(s.Ambient, "dnd", True),
+                      mock.patch.dict(s.CFG, {"proactive": False}), mock.patch.object(s.Wake, "asleep", True)):
+            with patch:
+                s.phone_on_call(*self.ring())
+        self.say.assert_not_called()
+
+    def test_the_call_quiet_holds_every_other_voice(self):
+        s = self.server
+        s.Ambient.phone_call = True
+        self.assertFalse(s.mail_may_speak())
+        self.assertEqual(s.agent_say_ready("claude"), {"speak": False, "reason": "call"})
+        s.Nudge.pending.clear()
+        s.Nudge.offer("break", "x", True)
+        with mock.patch.object(s.BUS, "pub") as pub:
+            s.Nudge.tick()
+        pub.assert_not_called()
+        s.Nudge.pending.clear()
+
+    def test_flux_call_row_marked_before_redaction_not_with_old_flux(self):
+        s = self.server
+        raw = json.dumps([{"key": "k1", "app": "Pixel", "category": "other", "summary": "Call from Anna", "body": ""},
+                          {"key": "k2", "app": "Pixel", "category": "other", "summary": "Hello", "body": ""},
+                          {"key": "k3", "app": "Other", "category": "other", "summary": "Call from Bob", "body": ""},
+                          {"key": "k4", "app": "Pixel", "category": "other", "summary": "Missed call from Anna", "body": ""}])
+        with mock.patch.dict(s.CFG, {"notify_details": False}):
+            rows = {r["key"]: r for r in s.Inbox.rows(raw)}
+            self.assertEqual({k for k, r in rows.items() if r.get("phone_call")}, {"k1", "k4"})
+            self.assertEqual(rows["k1"]["summary"], "")                  # (details are off: blanked, and still marked)
+            self.phone.modern = False
+            self.assertFalse(any(r.get("phone_call") for r in s.Inbox.rows(raw)))
+            self.phone.modern, self.phone.connected = True, False
+            self.assertFalse(any(r.get("phone_call") for r in s.Inbox.rows(raw)))
 
     @unittest.skip("step 7")
     def test_missed_call_with_number_gives_text_back_card_without_number_no_button(self): ...
 
-    @unittest.skip("step 6")
-    def test_reconnect_during_same_ringing_call_not_announced_again(self): ...
+
+class CallRecords(_FluxCase, _PhoneEnv):
+    """The real client with the server's callbacks: what is announced, over a socket."""
+
+    def setUp(self):
+        _FluxCase.setUp(self)
+        s = self.server
+        saved = dict(s.CFG)
+        self.addCleanup(lambda: (s.CFG.clear(), s.CFG.update(saved)))
+        s.CFG.update(phone_on=True, proactive=True)
+        self.say = mock.patch.object(s.Speaker, "say").start()
+        for p in (mock.patch.object(s.Speaker, "stop"), mock.patch.object(s.Wake, "end_follow"), mock.patch.object(s.BUS, "pub"),
+                  mock.patch.object(s.Speaker, "available", return_value=True), mock.patch.object(s.Desk, "locked", return_value=False),
+                  mock.patch.object(s.Ambient, "meeting", False), mock.patch.object(s.Ambient, "dnd", False),
+                  mock.patch.object(s.Wake, "asleep", False), mock.patch.object(s.Ambient, "phone_call", False)):
+            p.start()
+        self.addCleanup(mock.patch.stopall)
+        self.client = phone.Phone()
+        self.client.on_call, self.client.on_state = s.phone_on_call, s.phone_state
+        mock.patch.object(s, "Phone", self.client).start()
+        self.client.start()
+        self.addCleanup(self.client.stop)
+        self.assertTrue(wait_for(lambda: self.client.connected))
+
+    def test_call_present_at_startup_not_announced_and_a_reconnect_does_not_repeat(self):
+        s = self.server
+        self.flux.push_state(snapshot([device(call={"state": "ringing", "caller": "Anna", "since": 1})]))
+        self.assertTrue(wait_for(lambda: s.Ambient.phone_call))
+        self.say.assert_not_called()
+        self.flux.push_state(snapshot([device(call={"state": "ringing", "caller": "Bob", "since": 2})]))
+        self.assertTrue(wait_for(lambda: self.say.call_count == 1))
+        self.assertIn("Bob is calling", self.say.call_args.args[0])
+        self.flux.close_client()
+        self.assertTrue(wait_for(lambda: self.flux.accepted == 2, 3))
+        self.flux.push_state(snapshot([device(call={"state": "ringing", "caller": "Bob", "since": 2})]))
+        self.assertTrue(wait_for(lambda: self.client.connected and s.Ambient.phone_call))
+        time.sleep(0.2)
+        self.assertEqual(self.say.call_count, 1)
+        self.flux.push_state(snapshot([device()]))                    # the call ends: the quiet ends
+        self.assertTrue(wait_for(lambda: not s.Ambient.phone_call))
 
 
 class Messages(unittest.TestCase):

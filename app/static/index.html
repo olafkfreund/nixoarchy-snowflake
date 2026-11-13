@@ -2856,7 +2856,7 @@ function onEvent(ev){
     if(!muted) sayAside(head+(ev.project?', in '+ev.project:'')); }
   else if(ev.t==='notify') notifyIn(ev);
   else if(ev.t==='nudge') { if(['break','water','workout'].includes(ev.kind)&&Number.isInteger(ev.id)) remClose(); if(!quietNow()) restore(11000,false); const now=performance.now(); ev.rt=now; ev.until=ev.wait==null?Infinity:now+ev.wait*1000; nudgeQ.set(ev.kind,ev); nudgeDrain(now); }
-  else if(ev.t==='situation'){ const hot0=SIT.cpu_hot, low0=SIT.ram_low, trk0=SIT.track; SIT.track=ev.track||0; SIT.dnd=!!ev.dnd; SIT.meeting=!!ev.meeting; if(ev.music&&!SIT.music) musKeep=false; SIT.music=!!ev.music; /* (music started again: the card's own Pause is over) */ SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party; SIT.heavy=!!ev.heavy; SIT.windy=!!ev.windy; SIT.lean=ev.lean||0; SIT.cold=ev.cold||0; SIT.day=ev.day!==false;
+  else if(ev.t==='situation'){ const hot0=SIT.cpu_hot, low0=SIT.ram_low, trk0=SIT.track; SIT.track=ev.track||0; SIT.dnd=!!ev.dnd; SIT.meeting=!!ev.meeting; SIT.phone_call=!!ev.phone_call; if(ev.music&&!SIT.music) musKeep=false; SIT.music=!!ev.music; /* (music started again: the card's own Pause is over) */ SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party; SIT.heavy=!!ev.heavy; SIT.windy=!!ev.windy; SIT.lean=ev.lean||0; SIT.cold=ev.cold||0; SIT.day=ev.day!==false;
     if(ev.weather==='snow'&&SIT.weather!=='snow'&&info.look_weather&&!quietNow()) poke('excited',1800);      // he loves snow: once, when it starts
     SIT.video=!!ev.video; SIT.weather=ev.weather||null; remSync(); rxSignals(hot0,low0,trk0); }
   else if(ev.t==='ambient'){ if(ev.alert&&!quietNow()) restore(12000,false); const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive&&!quietNow()) poke('confused',1500); if(more) rxPlay('error'); if(ev.alert&&ev.cal) rxPlay('soon');
@@ -2967,8 +2967,8 @@ function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts>e.until) nudgeQ.delete
   else { karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; plateReset(); ntfDrop(); setYou('');
     const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); shownTxt=''; capShow(); sendRegion(true); dropSync();
     setTimeout(()=>{ if(sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } },6000); } }
-let SIT={track:0,dnd:false,meeting:false,music:false,video:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false,heavy:false,windy:false,lean:0,cold:0,day:true};   // situation signals, as the server sends them
-function quietNow(){ return SIT.dnd||SIT.locked||SIT.fullscreen||SIT.meeting; }
+let SIT={track:0,dnd:false,meeting:false,phone_call:false,music:false,video:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false,heavy:false,windy:false,lean:0,cold:0,day:true};   // situation signals, as the server sends them
+function quietNow(){ return SIT.dnd||SIT.locked||SIT.fullscreen||SIT.meeting||SIT.phone_call; }
 // a look goes on after 3 s of signal and off after 8 s without it: timestamps, no timers
 const sitOn={meeting:false,music:false,video:false,fullscreen:false,coding:false,night:false,party:false,rain:false,snow:false,clear:false,partly:false,cloudy:false,windy:false,cold1:false,cold2:false}, sitSeen={...sitOn}, sitAt=Object.fromEntries(Object.keys(sitOn).map(k=>[k,0]));
 function sitStep(ts){ const weather={rain:SIT.weather==='rain',snow:SIT.weather==='snow',clear:SIT.weather==='clear',partly:SIT.weather==='partly',cloudy:SIT.weather==='cloudy',windy:SIT.windy,cold1:SIT.cold>=1,cold2:SIT.cold>=2};
@@ -3045,7 +3045,7 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
   if(env){ notifySeen(ev.key); notifyRow=null; }
   else if(ev.card){ try{ notifyShow(row,notifyText(ev,1),ev); notifySeen(ev.key); }catch(_){ notifyClear(); return; } }   // (seen only once drawn; a failed draw goes back to the shell)
   else notifyShow(row,notifyText(ev,1),ev);
-  if(!SIT.meeting){ if(info.notify_sound!==false&&!muted) sfx(c[5]); if(!muted&&(info.notify_speak||[]).includes(ev.category)&&!(ev.category==='mail'&&SIT.locked)){
+  if(!SIT.meeting&&!SIT.phone_call){ if(info.notify_sound!==false&&!muted) sfx(c[5]); if(!muted&&!ev.phone_call&&(info.notify_speak||[]).includes(ev.category)&&!(ev.category==='mail'&&SIT.locked)){
     const who=notifyWho(ev); enqueue(ev.category==='mail'?(info.notify_details&&info.notify_speak_subject&&ev.summary?ev.summary:'New mail'+(who?' from '+who:'')):c[1],{follow:false});
     if(ev.category==='mail'){ talk.away=[5,1]; talk.awayUntil=now+1500; } } }   // (not say(): that would wipe the row)
   setTimeout(()=>{ if(notifyRow===row) notifyClear(); },ev.card?7000:5000); }
@@ -3427,7 +3427,7 @@ function workChip(){ if(chipT) return;
   if(chip.dataset.w!==txt){ chip.dataset.w=txt; chip.innerHTML='<i class="spin"></i>'; chip.appendChild(document.createTextNode(txt)); }
   if(chip.className!=='on work') chip.className='on work'; }
 function say(t,follow){ const reply=nextReply(); capShow(); setYou(''); if(voiced()){ himSet(''); enqueue(t,{cap:true,fresh:true,follow,reply}); } else { himSet(t); enqueue(t,{follow,reply}); } capQuiet(); }
-function sayAside(t){ if(SIT.meeting){ capShow(); himSet(t); capQuiet(); return; } say(t,false); }   // (in a meeting: words on screen only)   // said unasked: no follow-up window (#133)
+function sayAside(t){ if(SIT.meeting||SIT.phone_call){ capShow(); himSet(t); capQuiet(); return; } say(t,false); }   // (in a meeting: words on screen only)   // said unasked: no follow-up window (#133)
 function fail(t){ capShow(); himSet(t,true); errorUntil=performance.now()+2200; capQuiet(); }
 const base=p=>String(p||'').split('/').filter(Boolean).pop()||p;
 function toolLabel(name,detail){
