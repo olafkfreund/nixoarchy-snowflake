@@ -871,14 +871,15 @@ def _is_gog_send(text):
     return bool(_GOG_RE.search(text)) and bool(_GOG_WORD_RE.search(_GOG_DRAFT_RE.sub(" ", text)))
 
 
-def _is_flux(text):
-    return bool(_FLUX_RE.search(text) or (re.search(r"\bflux(?:-cli|d)?\b", text, re.I) and re.search(r"[$`\{\}*?\[]", text)))
+def _is_flux(text, raw):
+    """raw: the command as written, where expansion markers survive (cleaning erases them, Codex PR review)."""
+    return bool(_FLUX_RE.search(text) or (re.search(r"\bflux(?:-cli|d)?\b", text, re.I) and re.search(r"[$`\{\}*?\[]", raw)))
 
 
 def click_only(cmd):
     raw, clean = _send_texts(cmd)
     # any shell expansion or pattern ($…, `…`, {a,b}, s{e..e}nd, *, ?, [..]) in a gog command can assemble a send word
-    return any("herdr" in t.lower() or _is_gog_send(t) or _is_flux(t) or (_GOG_RE.search(t) and re.search(r"[$`{}*?\[]", raw))
+    return any("herdr" in t.lower() or _is_gog_send(t) or _is_flux(t, raw) or (_GOG_RE.search(t) and re.search(r"[$`{}*?\[]", raw))
                for t in (raw, clean, _send_defaults(raw)))
 
 
