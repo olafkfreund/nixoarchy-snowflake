@@ -500,7 +500,7 @@ class NixiWindow:
             self.mon_i = 0
             _, g = self._geom()
             self.mx, self.my = g.width - self._px(W) - 10, g.height - self._px(H) - 10       # default: bottom-right corner
-        GtkLayerShell.set_monitor(self.win, self._geom()[0])
+        self._set_monitor(self._geom()[0])
         self._place(self.mx, self.my, clamp=True)
 
     # ---- where he is (window mode: global screen position, saved after you drag him)
@@ -572,7 +572,7 @@ class NixiWindow:
     def _place(self, x, y, clamp=False, mon=None):
         if mon is not None and mon != self.mon_i:
             self.mon_i = mon
-            GtkLayerShell.set_monitor(self.win, self._geom()[0])
+            self._set_monitor(self._geom()[0])
         _, g = self._geom()
         if clamp:                                  # keep the whole surface on screen
             x, y = screens.clamp_on((0, 0, g.width, g.height), x, y, self.cur_w, self.cur_h)
@@ -602,15 +602,25 @@ class NixiWindow:
         except AttributeError:                             # (an old gtk-layer-shell: interactivity on or off)
             L.set_keyboard_interactivity(self.win, mode != "none")
 
+    def _kbd_quiet(self):
+        """Before the surface maps again, drop the keyboard mode to none, and go back to on-demand a moment later (#232).
+        Hyprland gives a newly mapped on-demand layer the keyboard, and he maps again often: peek, doze, step aside,
+        and every move to another screen (set_monitor re-creates the surface), which hover mode does as he follows
+        your cursor. Clicking him to type still works once he is back on on-demand."""
+        if not self.layer or self.kbd_grab:
+            return
+        self._kbd_mode("none")
+        self.kbd_gen = n = getattr(self, "kbd_gen", 0) + 1
+        GLib.timeout_add(KBD_BACK_MS, lambda: (self.kbd_grab or n != self.kbd_gen or self._kbd_mode("on_demand"), False)[1])
+
+    def _set_monitor(self, mon):
+        self._kbd_quiet()
+        GtkLayerShell.set_monitor(self.win, mon)
+
     def _map(self):
-        """Show the window without taking the keyboard from the focused one (#232). Hyprland gives a newly mapped
-        on-demand layer the keyboard, and he maps again often (peek, doze, step aside), so he maps with none and
-        goes back to on-demand a moment later: clicking him to type still works."""
-        if self.layer and not self.kbd_grab:
-            self._kbd_mode("none")
+        """Show the window without taking the keyboard from the focused one (#232)."""
+        self._kbd_quiet()
         self.win.show_all()
-        if self.layer and not self.kbd_grab:
-            GLib.timeout_add(KBD_BACK_MS, lambda: (self.kbd_grab or self._kbd_mode("on_demand"), False)[1])
 
     def set_wide(self, on, kind="panel"):
         """Make room: panels (settings / history) widen him to the left; the code panel wants room on both sides.
