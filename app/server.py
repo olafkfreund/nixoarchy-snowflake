@@ -6917,6 +6917,10 @@ def phone_send(draft_id, text, keyed):
         Phone.call("sms.send", device=draft["device"], addresses=[draft["number"]], body=text)
     except Exception as exc:
         print(f"[nixi] phone send failed: {type(exc).__name__}", file=sys.stderr)
+        if isinstance(exc, ConnectionError):                  # (never reached Flux: the draft may be sent again)
+            with PHONE_LOCK:
+                if PHONE_DRAFT is None and draft["gen"] == PHONE_GEN:
+                    PHONE_DRAFT = draft
         return {"ok": False, "say": lang.t("phone.text_failed")}
     with PHONE_LOCK:
         if draft["gen"] == PHONE_GEN and CFG.get("phone_on"):

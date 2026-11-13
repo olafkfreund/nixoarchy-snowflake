@@ -955,6 +955,15 @@ class Messages(_PhoneEnv):
         self.assertTrue(s.phone_draft(page["rows"][0]["reply"])["ok"])
         return s.PHONE_DRAFT["id"]
 
+    def test_send_that_never_reached_flux_keeps_the_draft(self):
+        s = self.server
+        draft = self.draft()
+        self.phone.errors["sms.send"] = ConnectionError("Flux isn't running")
+        self.assertEqual(self.post("/api/phone/send", {"draft": draft, "text": "Hi"}, s.CLICK_KEY)[0], 403)
+        self.assertEqual(s.PHONE_DRAFT["id"], draft)                      # (review: a definite failure may be retried)
+        del self.phone.errors["sms.send"]
+        self.assertEqual(self.post("/api/phone/send", {"draft": draft, "text": "Hi"}, s.CLICK_KEY)[0], 200)
+
     def test_board_not_kept_in_back(self):
         s = self.server
         s.phone_read_messages()
@@ -1128,6 +1137,15 @@ class Silence(_PhoneEnv, _FluxCase):
         self.flag.touch()
         self.flux.push_state(snapshot([device(dnd=dnd)]))
         return client
+
+    def test_failed_dnd_set_is_tried_again(self):
+        self.flux.errors["dnd.set"] = {"code": "offline", "message": "x"}
+        client = self.start({"on": False, "by": "phone", "at": 1})
+        ok = self.flux.before_reply                                  # (the phone reports only a set that worked)
+        self.flux.before_reply = lambda conn, req: None if "dnd.set" in self.flux.errors else ok(conn, req)
+        self.assertTrue(wait_for(lambda: self.flux.methods().count("dnd.set") >= 1))
+        del self.flux.errors["dnd.set"]
+        self.assertTrue(wait_for(lambda: client.silenced == {"pixel": 7}, 5))   # (review: not stuck after one failure)
 
     def test_start_with_dnd_off_sets_on_and_records_at(self):
         client = self.start({"on": False, "by": "phone", "at": 1})

@@ -341,7 +341,11 @@ class Phone:
             self._silence_seen.add(d["id"])
             if state.get("on") is not False:
                 continue
-            self.call("dnd.set", device=d["id"], on=True)
+            try:
+                self.call("dnd.set", device=d["id"], on=True)
+            except Exception:
+                self._silence_seen.discard(d["id"])               # (a failed request is tried again next tick)
+                raise
             self._silence_pending[d["id"]] = time.monotonic() + 10
 
     def _worker(self):
