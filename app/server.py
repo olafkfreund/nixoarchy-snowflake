@@ -830,12 +830,13 @@ def is_nixi_see(cmd):
 # commands that run other commands: "always" for one of these would approve whatever is chained after it
 CHAINED_RE = re.compile(r"&&|\|\||[;|&<>`\n]|\$\(")
 
-# A click-only command is a herdr write or a gog send: it needs a click, never a key, a voice yes or "always".
+# A click-only command is a herdr write, a gog send or a Flux command: it needs a click, never a key, a voice yes or "always".
 # Python twin of isHerdrWrite / isGogSend / gogSendDetail in bridge/send-policy.js (nixi-nixarchy): keep the rules equal.
 # Fail-safe, not a parser: a miss is a hidden send, so a false positive (an extra card) is accepted.
 # Known residual: a wrapper script or alias without the word "gog" / "herdr" in the command.
 _GOG_SEND_WORDS = r"api|send|reply|reply-all|replyall|forward|fwd|autoreply|post|create|respond|rsvp"
 _GOG_RE = re.compile(r"\bgog\b", re.I)
+_FLUX_RE = re.compile(r"\bflux-cli\b|\bflux\s+(?:send|clip|url|sms|ring|ping|notify|share)\b|fluxd\.sock", re.I)
 _GOG_WORD_RE = re.compile(r"\b(?:%s)\b" % _GOG_SEND_WORDS, re.I)          # \b, as the JS twin: "send-later" counts
 _GOG_DRAFT_RE = re.compile(r"\bdrafts\s+(?:create|reply|forward|update)\b", re.I)
 _HERDR_WRITE_RE = re.compile(r"\bherdr\b(?:\s+--session\s+\S+)?\s+(?:agent|pane)\s+[\w-]+\s*(\S*)")   # the write verbs stay out of this file (test_no_herdr_writes)
@@ -870,10 +871,14 @@ def _is_gog_send(text):
     return bool(_GOG_RE.search(text)) and bool(_GOG_WORD_RE.search(_GOG_DRAFT_RE.sub(" ", text)))
 
 
+def _is_flux(text):
+    return bool(_FLUX_RE.search(text))
+
+
 def click_only(cmd):
     raw, clean = _send_texts(cmd)
     # any shell expansion or pattern ($…, `…`, {a,b}, s{e..e}nd, *, ?, [..]) in a gog command can assemble a send word
-    return any("herdr" in t.lower() or _is_gog_send(t) or (_GOG_RE.search(t) and re.search(r"[$`{}*?\[]", raw))
+    return any("herdr" in t.lower() or _is_gog_send(t) or _is_flux(t) or (_GOG_RE.search(t) and re.search(r"[$`{}*?\[]", raw))
                for t in (raw, clean, _send_defaults(raw)))
 
 
