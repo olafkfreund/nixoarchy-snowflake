@@ -836,7 +836,7 @@ CHAINED_RE = re.compile(r"&&|\|\||[;|&<>`\n]|\$\(")
 # Known residual: a wrapper script or alias without the word "gog" / "herdr" in the command.
 _GOG_SEND_WORDS = r"api|send|reply|reply-all|replyall|forward|fwd|autoreply|post|create|respond|rsvp"
 _GOG_RE = re.compile(r"\bgog\b", re.I)
-_FLUX_RE = re.compile(r"\bflux-cli\b|\bflux\s+(?:send|clip|url|sms|ring|ping|notify|share)\b|fluxd\.sock", re.I)
+_FLUX_RE = re.compile(r"\bflux-cli\b|\bflux(?:\s+--[\w-]+(?:=\S+)?)*\s+(?:send|clip|url|sms|ring|ping|notify|share|dnd)\b|fluxd\.sock", re.I)
 _GOG_WORD_RE = re.compile(r"\b(?:%s)\b" % _GOG_SEND_WORDS, re.I)          # \b, as the JS twin: "send-later" counts
 _GOG_DRAFT_RE = re.compile(r"\bdrafts\s+(?:create|reply|forward|update)\b", re.I)
 _HERDR_WRITE_RE = re.compile(r"\bherdr\b(?:\s+--session\s+\S+)?\s+(?:agent|pane)\s+[\w-]+\s*(\S*)")   # the write verbs stay out of this file (test_no_herdr_writes)
@@ -872,7 +872,7 @@ def _is_gog_send(text):
 
 
 def _is_flux(text):
-    return bool(_FLUX_RE.search(text))
+    return bool(_FLUX_RE.search(text) or (re.search(r"\bflux(?:-cli|d)?\b", text, re.I) and re.search(r"[$\{\}*?\[]", text)))
 
 
 def click_only(cmd):
@@ -7342,11 +7342,11 @@ def phone_read_messages():
     return {"say": lang.t("phone.messages_ready"), "mood": "curious"}
 
 
-def phone_reply_quick(name, text):
+def phone_reply_quick(name, text, sms=False):
     if not CFG.get("phone_on") or not Phone.connected:
-        return {"say": lang.t("phone.not_running"), "mood": "sad"}
-    if not BRIDGED or not stages_on():
-        return {"say": lang.t("phone.open_messages"), "mood": "curious"}
+        return None
+    if len(text) > 1000:
+        return {"say": lang.t("phone.text_length"), "mood": "curious"}
     threads = [c for c in Phone.sms_threads() if isinstance(c.get("name"), str) and c.get("address")
                and len(c.get("addresses") or [c["address"]]) == 1]
     matches = [c for c in threads if c["name"].casefold() == name.casefold()]
@@ -7357,13 +7357,14 @@ def phone_reply_quick(name, text):
             longest = max(len(c["name"]) for c in extended)
             matches = [c for c in extended if len(c["name"]) == longest]
             text = full[longest + 1:]
-    found = bool(matches)
+    if re.match(r"on (?:the |a )?.*?\bchannel\b", text, re.I):
+        return {"say": lang.t("phone.contact_missing"), "mood": "curious"} if sms else None
     if not matches:
-        matches = threads
-    if not matches:
-        return {"say": lang.t("phone.contact_missing"), "mood": "curious"}
+        return {"say": lang.t("phone.contact_missing"), "mood": "curious"} if sms else None
+    if not BRIDGED or not stages_on():
+        return {"say": lang.t("phone.open_messages"), "mood": "curious"}
     rows = [{"device": c["device"], "number": c["address"], "name": c["name"]} for c in matches]
-    if not found or len(rows) > 1:
+    if len(rows) > 1:
         page = STAGES.put({"v": 1, "kind": "phone_threads", "title": lang.t("phone.which_thread"),
                            "rows": rows, "text": text, "reply_label": lang.t("phone.reply_button"),
                            "draft_gone": lang.t("phone.draft_gone"), "draft_error": lang.t("phone.draft_open_failed"),
@@ -7377,10 +7378,14 @@ def phone_reply_quick(name, text):
 def phone_quick(r):
     """quick.handle matched a phone phrase {do: ring|clip|shot|status, name} -> the reply, or None if it isn't for the phone."""
     do, name = r.get("do"), r.get("name")
+    if not CFG.get("phone_on") or not Phone.connected:
+        if do in ("ring", "clip", "shot", "status") and r.get("generic"):
+            return {"say": lang.t("phone.off" if not CFG.get("phone_on") else "phone.not_running"), "mood": "curious"}
+        return None
     if do == "read":
         return phone_read_messages()
     if do == "reply":
-        return phone_reply_quick(name or "", r.get("text") or "")
+        return phone_reply_quick(name or "", r.get("text") or "", r.get("sms", False))
     if do == "status":
         return phone_board(name)
     devs, reply = phone_choose(name, "ring" if do == "ring" else "share")
