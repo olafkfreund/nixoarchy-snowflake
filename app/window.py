@@ -123,6 +123,7 @@ WIDE = 470                   # while settings / history / memory are open the wi
 CODE_SIDE = 100              # room on each side for the code panel when he swings it out to his side
 BAR_SIDE = 70                # docked at the top / bottom: room either side of the notch, so his glow fades out in it
 GLIDE = 0.26                 # seconds the window takes to glide into the notch and back (quick: it should feel snappy)
+KBD_BACK_MS = 400            # after a map he waits this long before taking the keyboard on click again (#232)
 SOCK = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", f"nixi-companion-{os.getuid()}.sock")
 BALL = (170, 165)            # where the ball's centre sits inside the window (CSS px)
 CONF_FILE = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "nixi-companion", "config.json")
@@ -376,10 +377,8 @@ class NixiWindow:
             L.set_anchor(w, L.Edge.TOP, True)
             L.set_anchor(w, L.Edge.LEFT, True)
             L.set_exclusive_zone(w, -1)                    # don't push other things around, and may sit over bars
-            try:
-                L.set_keyboard_mode(w, L.KeyboardMode.ON_DEMAND)   # takes the keyboard when you click him
-            except AttributeError:
-                L.set_keyboard_interactivity(w, True)
+            self.kbd_grab = False
+            self._kbd_mode("none")                         # (mapped without the keyboard; on-demand right after, #232)
             self._load_pos()
             for why in LAYER_WHY:
                 log(f"overlay: {why}")
@@ -422,7 +421,7 @@ class NixiWindow:
         w.connect("delete-event", lambda *a: (self.hide(), True)[1])
         if not self.layer:
             self._load_xpos()
-        w.show_all()
+        self._map()
         v.grab_focus()
         # Redraw the whole window on every frame. WebKit only reports the bits that changed, and on some GPU/compositor
         # combos (NVIDIA + layer-shell especially) the untouched parts of the see-through window come back from an older
@@ -501,7 +500,7 @@ class NixiWindow:
             self.mon_i = 0
             _, g = self._geom()
             self.mx, self.my = g.width - self._px(W) - 10, g.height - self._px(H) - 10       # default: bottom-right corner
-        GtkLayerShell.set_monitor(self.win, self._geom()[0])
+        self._set_monitor(self._geom()[0])
         self._place(self.mx, self.my, clamp=True)
 
     # ---- where he is (window mode: global screen position, saved after you drag him)
@@ -573,7 +572,7 @@ class NixiWindow:
     def _place(self, x, y, clamp=False, mon=None):
         if mon is not None and mon != self.mon_i:
             self.mon_i = mon
-            GtkLayerShell.set_monitor(self.win, self._geom()[0])
+            self._set_monitor(self._geom()[0])
         _, g = self._geom()
         if clamp:                                  # keep the whole surface on screen
             x, y = screens.clamp_on((0, 0, g.width, g.height), x, y, self.cur_w, self.cur_h)
@@ -589,13 +588,39 @@ class NixiWindow:
         if not self.layer:
             self.win.present()
             return
-        L = GtkLayerShell
-        try:
-            L.set_keyboard_mode(self.win, L.KeyboardMode.EXCLUSIVE if grab else L.KeyboardMode.ON_DEMAND)
-        except AttributeError:
-            L.set_keyboard_interactivity(self.win, bool(grab))
+        self.kbd_grab = bool(grab)
+        self._kbd_mode("exclusive" if grab else "on_demand")
         if grab:
             self.view.grab_focus()
+
+    def _kbd_mode(self, mode):
+        """gtk-layer-shell keyboard mode: none, on_demand (the keyboard when you click him) or exclusive."""
+        L = GtkLayerShell
+        try:
+            L.set_keyboard_mode(self.win, {"none": L.KeyboardMode.NONE, "on_demand": L.KeyboardMode.ON_DEMAND,
+                                           "exclusive": L.KeyboardMode.EXCLUSIVE}[mode])
+        except AttributeError:                             # (an old gtk-layer-shell: on is a full grab, so only for the card)
+            L.set_keyboard_interactivity(self.win, mode == "exclusive")
+
+    def _kbd_quiet(self):
+        """Before the surface maps again, drop the keyboard mode to none, and go back to on-demand a moment later (#232).
+        Hyprland gives a newly mapped on-demand layer the keyboard, and he maps again often: peek, doze, step aside,
+        and every move to another screen (set_monitor re-creates the surface), which hover mode does as he follows
+        your cursor. Clicking him to type still works once he is back on on-demand."""
+        if not self.layer or self.kbd_grab:
+            return
+        self._kbd_mode("none")
+        self.kbd_gen = n = getattr(self, "kbd_gen", 0) + 1
+        GLib.timeout_add(KBD_BACK_MS, lambda: (self.kbd_grab or n != self.kbd_gen or self._kbd_mode("on_demand"), False)[1])
+
+    def _set_monitor(self, mon):
+        self._kbd_quiet()
+        GtkLayerShell.set_monitor(self.win, mon)
+
+    def _map(self):
+        """Show the window without taking the keyboard from the focused one (#232)."""
+        self._kbd_quiet()
+        self.win.show_all()
 
     def set_wide(self, on, kind="panel"):
         """Make room: panels (settings / history) widen him to the left; the code panel wants room on both sides.
@@ -780,7 +805,7 @@ class NixiWindow:
     def _remap(self):
         """Re-map at the GTK level only (no page callbacks: nixiHidden would put him to sleep) → stacks above the card."""
         self.win.hide()
-        GLib.timeout_add(30, lambda: (self.win.show_all(), self._apply_region(), False)[2])
+        GLib.timeout_add(30, lambda: (self._map(), self._apply_region(), False)[2])
 
     def aside_off(self):
         a, self.aside = self.aside, None
@@ -839,17 +864,18 @@ class NixiWindow:
         """Wake from a doze: reappear where he was, without stealing focus or announcing himself."""
         if self.hover:
             return
-        self.win.show_all()
+        self._map()
         self._apply_region()
 
     def show(self):
         if self.hover:
             self.cursor_hidden(True)
         self.shown = True
-        self.win.show_all()
+        self._map()
         if self.hypr.ok() and not self.layer:
             GLib.timeout_add(250, self._hypr_setup)
-        self.win.present()
+        if not self.layer:
+            self.win.present()                             # (a layer is never presented: it would take the keyboard, #232)
         self.view.grab_focus()
         self._apply_region()
         self._js("window.nixiShown&&nixiShown()")
