@@ -280,7 +280,7 @@ class Reader(_FluxCase):
         self.assertTrue(wait_for(lambda: client.snap == second))
         self.assertEqual(client.devices()[0]["name"], "Second")
 
-    def test_eof_reconnects_after_1s_then_2s(self):
+    def test_eof_reconnects_after_1s_each_time_it_had_connected(self):
         client = self.client()
         self.assertTrue(wait_for(lambda: self.flux.accepted == 1))
         start = time.monotonic()
@@ -290,7 +290,7 @@ class Reader(_FluxCase):
         start = time.monotonic()
         self.flux.close_client()
         self.assertTrue(wait_for(lambda: self.flux.accepted == 3, 3))
-        self.assertGreaterEqual(time.monotonic() - start, 1.9)
+        self.assertGreaterEqual(time.monotonic() - start, 0.9)      # (a good connection resets the backoff, review)
 
     def test_45s_silence_keeps_the_connection(self):
         client = self.client()
@@ -403,7 +403,13 @@ class Records(_FluxCase):
         self.flux.push_state(snapshot([row]))
         self.assertTrue(wait_for(lambda: client.sms_delivery("pixel", "123", "secret") == "failed"))
         self.flux.push_state(snapshot([device()]))
-        self.assertTrue(wait_for(lambda: client.sms_delivery("pixel", "123", "secret") == "gone"))
+        # a failed text that disappears is no proof it was sent (review)
+        self.assertTrue(wait_for(lambda: client.sms_delivery("pixel", "123", "secret") == "pending"))
+        row["outbox"] = [{"address": "123", "body": "again", "pending": True, "failed": False}]
+        self.flux.push_state(snapshot([row]))
+        self.assertTrue(wait_for(lambda: client.sms_delivery("pixel", "123", "again") == "pending"))
+        self.flux.push_state(snapshot([device()]))
+        self.assertTrue(wait_for(lambda: client.sms_delivery("pixel", "123", "again") == "gone"))
 
 
 class StubPhone:
@@ -1131,6 +1137,120 @@ class Approvals(_FluxCase, _PhoneEnv):
         s.CFG["phone_on"] = False
         s.phone_approvals_sync()
         self.assertEqual(self.caps(), [""])
+
+
+class PhoneReviewFixes(_FluxCase):
+    def test_reader_handles_state_while_send_is_stalled(self):
+        client = self.client()
+        self.assertTrue(wait_for(lambda: client.connected))
+        entered, release = threading.Event(), threading.Event()
+        sock = client._socket
+
+        class SlowWrite:
+            def sendall(self, data):
+                entered.set()
+                release.wait(2)
+                sock.sendall(data)
+
+        with client._lock:
+            client._socket = SlowWrite()
+        self.addCleanup(lambda: setattr(client, "_socket", sock))
+        thread = threading.Thread(target=lambda: client.call("ring", device="pixel"))
+        thread.start()
+        self.assertTrue(entered.wait(1))
+        self.flux.push_state(snapshot([device(name="Still reading")]))
+        self.assertTrue(wait_for(lambda: client.devices() and client.devices()[0]["name"] == "Still reading", 1))
+        release.set()
+        thread.join(2)
+        self.assertFalse(thread.is_alive())
+        with client._lock:
+            client._socket = sock
+
+    def test_reconnect_backoff_resets_after_success(self):
+        client = self.client()
+        self.assertTrue(wait_for(lambda: self.flux.accepted == 1))
+        self.flux.close_client()
+        self.assertTrue(wait_for(lambda: self.flux.accepted == 2, 2))
+        start = time.monotonic()
+        self.flux.close_client()
+        self.assertTrue(wait_for(lambda: self.flux.accepted == 3, 2))
+        self.assertLess(time.monotonic() - start, 1.8)
+
+    def test_reader_ignores_bad_lines_and_keeps_connection(self):
+        client = self.client()
+        self.assertTrue(wait_for(lambda: client.connected))
+        with self.flux._lock:
+            conn = self.flux._conn
+        conn.sendall(b'[]\n{"id":[]}\n{"event":"state","data":{"devices":[],"approvals":[]}}\n')
+        self.assertTrue(wait_for(lambda: client.modern))
+        self.assertEqual(self.flux.accepted, 1)
+
+    def test_restart_has_one_reader_and_worker(self):
+        client = self.client()
+        self.assertTrue(wait_for(lambda: client.connected))
+        old_reader, old_worker = client._reader_thread, client._worker_thread
+        client.stop()
+        client.start()
+        self.assertTrue(wait_for(lambda: client.connected))
+        self.assertFalse(old_reader.is_alive() or old_worker.is_alive())
+        self.assertTrue(client._reader_thread.is_alive())
+        self.assertTrue(client._worker_thread.is_alive())
+        self.assertEqual(sum(t.name == client._reader_thread.name and t is client._reader_thread
+                             for t in threading.enumerate()), 1)
+
+    def test_delivery_requires_observed_pending_and_outbox_key(self):
+        client = self.client()
+        self.assertTrue(wait_for(lambda: client.connected and self.flux._conn is not None))
+        after = time.monotonic()
+        row = device()
+        row.pop("outbox")
+        self.flux.push_state(snapshot([row]))
+        self.assertTrue(wait_for(lambda: client.modern))
+        self.assertEqual(client.sms_delivery("pixel", "123", "secret", after), "unknown")
+        row["outbox"] = []
+        self.flux.push_state(snapshot([row]))
+        self.assertTrue(wait_for(lambda: "outbox" in client.snap.get("devices", [{}])[0]))
+        self.assertEqual(client.sms_delivery("pixel", "123", "secret", after), "pending")
+        row["outbox"] = [{"address": "123", "body": "secret", "pending": True}]
+        self.flux.push_state(snapshot([row]))
+        self.assertTrue(wait_for(lambda: client.sms_delivery("pixel", "123", "secret", after) == "pending"))
+        row["outbox"] = []
+        self.flux.push_state(snapshot([row]))
+        self.assertTrue(wait_for(lambda: client.sms_delivery("pixel", "123", "secret", after) == "gone"))
+
+    def test_failed_text_does_not_become_sent_when_removed(self):
+        client = self.client()
+        self.assertTrue(wait_for(lambda: client.connected))
+        after = time.monotonic()
+        row = device()
+        row["outbox"] = [{"address": "123", "body": "secret", "pending": True}]
+        self.flux.push_state(snapshot([row]))
+        self.assertTrue(wait_for(lambda: client._sms_pending.get(("pixel", "123", "secret"), 0) > after))
+        row["outbox"] = [{"address": "123", "body": "secret", "failed": True}]
+        self.flux.push_state(snapshot([row]))
+        self.assertTrue(wait_for(lambda: client.sms_delivery("pixel", "123", "secret", after) == "failed"))
+        row["outbox"] = []
+        self.flux.push_state(snapshot([row]))
+        self.assertFalse(wait_for(lambda: client.sms_delivery("pixel", "123", "secret", after) == "gone", 0.2))
+
+    def test_meeting_ownership_survives_offline_and_late_report(self):
+        client = self.client()
+        meeting = [True]
+        client.meeting_now = lambda: meeting[0]
+        self.assertTrue(wait_for(lambda: client.connected))
+        self.flux.push_state(snapshot([device(dnd={"on": False, "by": "phone", "at": 1})]))
+        self.assertTrue(wait_for(lambda: self.flux.methods().count("dnd.set") == 1))
+        self.assertFalse(client.silenced)
+        client._silence_pending["pixel"] = time.monotonic() - 1
+        self.flux.push_state(snapshot([device(dnd={"on": True, "by": "set", "at": 7})]))
+        self.assertTrue(wait_for(lambda: client.silenced == {"pixel": 7}))
+        meeting[0] = False
+        self.flux.push_state(snapshot([device(online=False, dnd={"on": True, "by": "set", "at": 7})]))
+        time.sleep(0.1)
+        self.assertEqual(client.silenced, {"pixel": 7})
+        self.flux.push_state(snapshot([device(dnd={"on": True, "by": "set", "at": 7})]))
+        self.assertTrue(wait_for(lambda: self.flux.methods().count("dnd.set") == 2))
+        self.assertEqual(client.silenced, {})
 
 
 if __name__ == "__main__":
