@@ -91,7 +91,29 @@
     "phone.summary_charging": "{name} is at {pct} percent and charging, {where}.",
     "phone.offline_word": "offline",
     "phone.call_named": "{caller} is calling on your {name}",
-    "phone.call": "A call on your {name}"
+    "phone.call": "A call on your {name}",
+    "phone.approve": "Approve on your {name} ({kind})",
+    "phone.messages_title": "Texts",
+    "phone.messages_empty": "No recent texts",
+    "phone.messages_ready": "Here are your texts.",
+    "phone.messages_read": "{items}",
+    "phone.open_messages": "Open Nixi to read and reply to texts.",
+    "phone.contact_missing": "I couldn't find that text thread.",
+    "phone.which_thread": "Which text thread?",
+    "phone.draft_title": "Text reply",
+    "phone.draft_ready": "Check the draft and click Send.",
+    "phone.reply_button": "Reply",
+    "phone.send_button": "Send",
+    "phone.missed": "Missed call from {name}",
+    "phone.textback": "Sorry I missed your call, I'll call you back.",
+    "phone.textback_button": "Text back",
+    "phone.text_sending": "Sending…",
+    "phone.text_sent": "Sent.",
+    "phone.text_waiting": "Still waiting on your {name}.",
+    "phone.text_failed": "That text didn't go.",
+    "phone.draft_gone": "That text thread is gone.",
+    "phone.draft_open_failed": "Couldn't open the draft.",
+    "phone.text_length": "Write 1–1000 characters."
   },
   "phrases": {
     "phone_generic": [
@@ -131,6 +153,15 @@
       "phone status",
       "phone battery",
       "is my phone charged"
+    ],
+    "phone_read": [
+      "read my texts",
+      "any new messages",
+      "check my texts"
+    ],
+    "phone_reply": [
+      "reply to {name}, {text}",
+      "text {name} {text}"
     ]
   }
 }

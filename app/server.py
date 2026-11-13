@@ -5278,6 +5278,7 @@ class Speaker:
     sending = set()
     strict = set()
     mail_sids = {}       # sid -> (MAIL_GEN, hear token) when queued: mail audio gets a second privacy check when it is ready to play
+    phone_sids = {}      # sid -> (PHONE_GEN, board) for the same playback privacy check
     current_engine = None
     current_sid = None
     queued_at = {}
@@ -5344,6 +5345,7 @@ class Speaker:
             cls.ready.clear()
             cls.strict.clear()
             cls.mail_sids.clear()
+            cls.phone_sids.clear()
             cls.queued_at.clear()
             cls.current_engine = cls.current_sid = None
             p, cls.proc = cls.proc, None
@@ -5416,6 +5418,7 @@ class Speaker:
                         skipped = sid in cls.strict
                         cls.strict.discard(sid)
                         cls.mail_sids.pop(sid, None)
+                        cls.phone_sids.pop(sid, None)
                     if skipped:
                         BUS.pub(t="spk_skip", id=sid)
                     continue
@@ -5441,10 +5444,11 @@ class Speaker:
                         cls.ready.append((cls.gen, sid, text, pcm, prate, words, level, round(40 * sr / prate, 2), follow, engine, reply))
                         cls.cv.notify_all()
             except Exception as e:  # noqa: BLE001
-                print(f"[nixi] speech: {type(e).__name__ if sid in cls.mail_sids else e}", file=sys.stderr)
+                print(f"[nixi] speech: {type(e).__name__ if sid in cls.mail_sids or (isinstance(sid, int) and sid >= 2_000_000_000) else e}", file=sys.stderr)
                 with cls.cv:
                     cls.strict.discard(sid)
                     cls.mail_sids.pop(sid, None)
+                    cls.phone_sids.pop(sid, None)
                 BUS.pub(t="spk_skip", id=sid)
             finally:
                 with cls.cv:
@@ -5536,13 +5540,18 @@ class Speaker:
             try:
                 cls._player(prate)
             except Exception as e:  # noqa: BLE001
-                print(f"[nixi] audio player: {type(e).__name__ if sid in cls.mail_sids else e}", file=sys.stderr)
+                print(f"[nixi] audio player: {type(e).__name__ if sid in cls.mail_sids or (isinstance(sid, int) and sid >= 2_000_000_000) else e}", file=sys.stderr)
                 BUS.pub(t="spk_skip", id=sid)
                 cls._release_if_idle()
                 continue
             with cls.cv:
                 mail_gen = cls.mail_sids.pop(sid, None)
+                phone_gen = cls.phone_sids.pop(sid, None)
             if mail_gen is not None and not mail_play_ok(mail_gen):
+                BUS.pub(t="spk_skip", id=sid)
+                cls._release_if_idle()
+                continue
+            if phone_gen is not None and not phone_play_ok(phone_gen):
                 BUS.pub(t="spk_skip", id=sid)
                 cls._release_if_idle()
                 continue
@@ -6835,6 +6844,130 @@ def mail_reset():
 
 
 PHONE_GEN = 0
+PHONE_LOCK = threading.Lock()
+PHONE_DRAFT = None
+PHONE_MISSED = {}                 # record key -> missed call waiting for a safe moment
+PHONE_SHOWN = set()
+PHONE_OUTBOX = []                 # sent texts waiting for Flux's delivery report
+PHONE_SID = 2_000_000_000
+
+
+def phone_play_ok(queued):
+    gen, board = queued
+    return (CFG.get("phone_on") and gen == PHONE_GEN and STAGES.current() is board and
+            Desk.locked() is False and not Ambient.meeting and not Ambient.phone_call)
+
+
+def phone_on_screen():
+    cur = STAGES.current()
+    return bool(cur and cur.get("kind") in ("phone_sms", "phone_draft", "phone_missed", "phone_threads"))
+
+
+def phone_draft_item(item):
+    """Hold the recipient here; the page receives a one-use draft id and an editable body."""
+    global PHONE_DRAFT
+    if not CFG.get("phone_on") or not item.get("number"):
+        return {"ok": False}
+    with PHONE_LOCK:
+        PHONE_DRAFT = {"id": secrets.token_urlsafe(18), "device": item["device"], "number": item["number"],
+                       "name": item["name"], "created": time.monotonic(), "gen": PHONE_GEN}
+        draft = dict(PHONE_DRAFT)
+    page = STAGES.put({"v": 1, "kind": "phone_draft", "title": lang.t("phone.draft_title"),
+                       "draft": draft["id"], "name": draft["name"], "number": draft["number"],
+                       "text": item.get("text") or "", "send_label": lang.t("phone.send_button"),
+                       "length_error": lang.t("phone.text_length"), "send_error": lang.t("phone.text_failed"),
+                       "from_phone": True})
+    BUS.pub(t="stage", **stage_event(page))
+    return {"ok": True}
+
+
+def phone_draft(token):
+    got = STAGES.get(token) if isinstance(token, str) else None
+    return phone_draft_item(got[1]) if got and got[0] == "phone_reply" else {"ok": False}
+
+
+def phone_send(draft_id, text, keyed):
+    """Consume a live draft before touching Flux, so parallel clicks and replays cannot send twice."""
+    global PHONE_DRAFT
+    if not keyed or not isinstance(draft_id, str) or not isinstance(text, str) or not text.strip() or len(text) > 1000:
+        return {"ok": False}
+    with PHONE_LOCK:
+        draft = PHONE_DRAFT
+        if (not CFG.get("phone_on") or not draft or draft["id"] != draft_id or
+                draft["gen"] != PHONE_GEN or time.monotonic() - draft["created"] >= 600):
+            return {"ok": False}
+        PHONE_DRAFT = None
+    sent_at = time.monotonic()
+    try:
+        Phone.call("sms.send", device=draft["device"], addresses=[draft["number"]], body=text)
+    except Exception as exc:
+        print(f"[nixi] phone send failed: {type(exc).__name__}", file=sys.stderr)
+        return {"ok": False, "say": lang.t("phone.text_failed")}
+    with PHONE_LOCK:
+        if draft["gen"] == PHONE_GEN and CFG.get("phone_on"):
+            PHONE_OUTBOX.append({"device": draft["device"], "number": draft["number"], "body": text,
+                                 "name": draft["name"], "gen": draft["gen"], "created": time.monotonic(),
+                                 "after": sent_at, "waiting": False})
+    return {"ok": True, "say": lang.t("phone.text_sending")}
+
+
+def phone_tick():
+    """Worker-only follow-up for missed calls and sent texts."""
+    if not CFG.get("phone_on"):
+        return
+    live = {("missed", d["id"], d["missedCall"]["at"]) for d in Phone.devices()
+            if d.get("missedCall") and "at" in d["missedCall"]}
+    with PHONE_LOCK:
+        for key in list(PHONE_MISSED):
+            if key not in live:
+                PHONE_MISSED.pop(key, None)
+        waiting = [(key, item) for key, item in PHONE_MISSED.items() if key not in PHONE_SHOWN]
+    if waiting and Desk.locked() is False and not (Ambient.meeting or Ambient.dnd or Ambient.phone_call):
+        key, item = waiting[0]
+        if BRIDGED and stages_on():
+            page = STAGES.put({"v": 1, "kind": "phone_missed", "title": lang.t("phone.missed", name=item["name"]),
+                               "name": item["name"], "device": item["device"], "number": item.get("number"),
+                               "text": lang.t("phone.textback"), "reply_label": lang.t("phone.textback_button"),
+                               "draft_gone": lang.t("phone.draft_gone"), "draft_error": lang.t("phone.draft_open_failed"),
+                               "from_phone": True})
+            BUS.pub(t="stage", **stage_event(page))
+        with PHONE_LOCK:
+            PHONE_SHOWN.add(key)
+            PHONE_MISSED.pop(key, None)
+    with PHONE_LOCK:
+        outbox = list(PHONE_OUTBOX)
+    for item in outbox:
+        if item["gen"] != PHONE_GEN:
+            with PHONE_LOCK:
+                if item in PHONE_OUTBOX:
+                    PHONE_OUTBOX.remove(item)
+            continue
+        state = Phone.sms_delivery(item["device"], item["number"], item["body"], item["after"])
+        line = None
+        if state == "failed":
+            line = lang.t("phone.text_failed")
+        elif state == "gone":
+            line = lang.t("phone.text_sent")
+        elif time.monotonic() - item["created"] >= 30 and not item["waiting"]:
+            item["waiting"] = True
+            BUS.pub(t="note", text=lang.t("phone.text_waiting", name=item["name"]))
+        if line:
+            BUS.pub(t="note", text=line)
+            with PHONE_LOCK:
+                if item in PHONE_OUTBOX:
+                    PHONE_OUTBOX.remove(item)
+
+
+def phone_on_missed(key, rec):
+    if not CFG.get("phone_on") or not isinstance(rec, dict):
+        return
+    dev = next((d for d in Phone.devices() if d["id"] == key[1]), None)
+    if not dev:
+        return
+    with PHONE_LOCK:
+        PHONE_MISSED[key] = {"device": dev["id"], "name": mail_clean(rec.get("caller") or dev["name"], 100),
+                             "number": rec.get("number") if "sms" in dev["can"] else None}
+    phone_tick()
 
 
 def phone_status():
@@ -6907,16 +7040,44 @@ def phone_on_call(key, rec):
     Speaker.say(lang.t("phone.call_named", caller=who, name=dev["name"]) if who else lang.t("phone.call", name=dev["name"]), None, None, False, None)
 
 
+PHONE_APPROVALS = set()               # (device, kind, since) of the approvals whose caption is up
+
+
+def phone_on_approval(key, rec):
+    """An approval waits on a phone (sudo / ssh through Flux): a caption, never spoken, no buttons."""
+    if not isinstance(rec, dict) or rec.get("kind") not in ("sudo", "ssh"):
+        return
+    dev = next((d for d in Phone.devices() if d["id"] == rec.get("device")), None)
+    if not dev:
+        return
+    PHONE_APPROVALS.add(key[1:])
+    BUS.pub(t="phone_cap", text=lang.t("phone.approve", name=dev["name"], kind=rec["kind"]))
+
+
+def phone_approvals_sync():
+    """Close the caption when its record has left the snapshot."""
+    if not PHONE_APPROVALS:
+        return
+    live = {(a.get("device"), a.get("kind"), a.get("since")) for a in Phone.approvals()} if CFG.get("phone_on") else set()
+    PHONE_APPROVALS.intersection_update(live)
+    if not PHONE_APPROVALS:
+        BUS.pub(t="phone_cap", text="")
+
+
 def phone_state():
     """Fluxd sent a new snapshot (the Phone worker calls this)."""
     if CFG.get("phone_on"):
         phone_battery_check(Phone.devices())
     phone_call_sync()
+    phone_approvals_sync()
     phone_pub()
 
 
 Phone.on_state = phone_state
 Phone.on_call = phone_on_call
+Phone.on_missed = phone_on_missed
+Phone.tick = phone_tick
+Phone.on_approval = phone_on_approval
 
 
 def _phone_where(d):
@@ -7115,9 +7276,86 @@ def phone_pick_card(devs, do):
     return {"say": lang.t("phone.which", names=lang.t("stage.or").join(d["name"] for d in devs)), "mood": "curious"}
 
 
+def phone_read_messages():
+    global PHONE_SID
+    if not CFG.get("phone_on") or not Phone.connected:
+        return {"say": lang.t("phone.not_running"), "mood": "sad"}
+    if not BRIDGED or not stages_on():
+        return {"say": lang.t("phone.open_messages"), "mood": "curious"}
+    try:
+        for d in Phone.devices():
+            if d["online"] and "sms" in d["can"]:
+                Phone.call("sms.refresh", device=d["id"])
+    except Exception as exc:
+        print(f"[nixi] phone refresh failed: {type(exc).__name__}", file=sys.stderr)
+        return {"say": lang.t("phone.failed"), "mood": "sad"}
+    rows = []
+    for c in sorted(Phone.sms_threads(), key=lambda x: x.get("time") or 0, reverse=True):
+        if not c.get("address") or len(c.get("addresses") or [c["address"]]) != 1:
+            continue
+        name, last = mail_scrub([mail_clean(c.get("name") or c["address"], 100), mail_clean(c.get("last") or "", 500)])
+        rows.append({"device": c["device"], "number": c["address"], "name": name, "last": last})
+        if len(rows) == 5:
+            break
+    page = STAGES.put({"v": 1, "kind": "phone_sms", "title": lang.t("phone.messages_title"),
+                       "rows": rows, "reply_label": lang.t("phone.reply_button"),
+                       "empty": lang.t("phone.messages_empty"), "draft_gone": lang.t("phone.draft_gone"),
+                       "draft_error": lang.t("phone.draft_open_failed"), "from_phone": True})
+    BUS.pub(t="stage", **stage_event(page))
+    if rows and Speaker.available() and phone_play_ok((PHONE_GEN, page)):
+        line = lang.t("phone.messages_read", items="; ".join(f'{r["name"]}: {r["last"]}' for r in rows))
+        with Speaker.cv:
+            PHONE_SID += 1
+            sid = PHONE_SID
+            Speaker.phone_sids[sid] = (PHONE_GEN, page)
+        try:
+            Speaker.say(line, sid, local=True)
+        except Exception as exc:
+            with Speaker.cv:
+                Speaker.phone_sids.pop(sid, None)
+            print(f"[nixi] phone speech failed: {type(exc).__name__}", file=sys.stderr)
+    return {"say": lang.t("phone.messages_ready"), "mood": "curious"}
+
+
+def phone_reply_quick(name, text):
+    if not CFG.get("phone_on") or not Phone.connected:
+        return {"say": lang.t("phone.not_running"), "mood": "sad"}
+    if not BRIDGED or not stages_on():
+        return {"say": lang.t("phone.open_messages"), "mood": "curious"}
+    threads = [c for c in Phone.sms_threads() if isinstance(c.get("name"), str) and c.get("address")
+               and len(c.get("addresses") or [c["address"]]) == 1]
+    matches = [c for c in threads if c["name"].casefold() == name.casefold()]
+    if not matches:
+        full = name + " " + text
+        extended = [c for c in threads if full.casefold().startswith(c["name"].casefold() + " ")]
+        if extended:
+            longest = max(len(c["name"]) for c in extended)
+            matches = [c for c in extended if len(c["name"]) == longest]
+            text = full[longest + 1:]
+    found = bool(matches)
+    if not matches:
+        matches = threads
+    if not matches:
+        return {"say": lang.t("phone.contact_missing"), "mood": "curious"}
+    rows = [{"device": c["device"], "number": c["address"], "name": c["name"]} for c in matches]
+    if not found or len(rows) > 1:
+        page = STAGES.put({"v": 1, "kind": "phone_threads", "title": lang.t("phone.which_thread"),
+                           "rows": rows, "text": text, "reply_label": lang.t("phone.reply_button"),
+                           "draft_gone": lang.t("phone.draft_gone"), "draft_error": lang.t("phone.draft_open_failed"),
+                           "from_phone": True})
+        BUS.pub(t="stage", **stage_event(page))
+        return {"say": lang.t("phone.which_thread"), "mood": "curious"}
+    phone_draft_item({**rows[0], "text": text})
+    return {"say": lang.t("phone.draft_ready"), "mood": "curious"}
+
+
 def phone_quick(r):
     """quick.handle matched a phone phrase {do: ring|clip|shot|status, name} -> the reply, or None if it isn't for the phone."""
     do, name = r.get("do"), r.get("name")
+    if do == "read":
+        return phone_read_messages()
+    if do == "reply":
+        return phone_reply_quick(name or "", r.get("text") or "")
     if do == "status":
         return phone_board(name)
     devs, reply = phone_choose(name, "ring" if do == "ring" else "share")
@@ -7138,8 +7376,13 @@ def phone_pick_act(dev_id, what):
 
 def phone_reset():
     """Phone switched off: void work in flight, close the client, delete the files waiting to be sent."""
-    global PHONE_GEN
-    PHONE_GEN += 1                                  # (drafts and boards check this; none exist before step 4)
+    global PHONE_GEN, PHONE_DRAFT
+    with PHONE_LOCK:
+        PHONE_GEN += 1
+        PHONE_DRAFT = None
+        PHONE_MISSED.clear()
+        PHONE_SHOWN.clear()
+        PHONE_OUTBOX.clear()
     Phone.stop()
     for f in list(Phone.outgoing):
         try:
@@ -7150,6 +7393,7 @@ def phone_reset():
     PHONE_BATT.clear()
     PHONE_LOW.clear()
     phone_call_sync()                               # (phone_on is already off: the call quiet ends)
+    phone_approvals_sync()
     plugins.forget()                                # (a cached board with phone readings is never served again)
     if STAGES.forget_where(lambda pg: pg.get("kind") == "phone_pick" or pg.get("from_phone")):
         BUS.pub(t="stage_close")
@@ -8496,6 +8740,13 @@ class Handler(BaseHTTPRequestHandler):
                 b = b if isinstance(b, dict) else {}
                 what = "ring" if p.endswith("ring") else b.get("what")
                 return self._json(phone_pick_act(b.get("id"), what) if what in ("ring", "clip", "shot") else {"ok": False, "say": lang.t("phone.failed")})
+            if p == "/api/phone/draft":
+                b = json.loads(self._body() or b"{}")
+                return self._json(phone_draft(b.get("token")) if isinstance(b, dict) else {"ok": False})
+            if p == "/api/phone/send":
+                b = json.loads(self._body() or b"{}")
+                r = phone_send(b.get("draft"), b.get("text"), click_ok(self.headers.get("X-Nixi-Click") or "")) if isinstance(b, dict) else {"ok": False}
+                return self._json(r, 200 if r.get("ok") else 403)
             if p == "/api/mail/open":                # the menu; the window's token only (not in TOOL_PATHS)
                 return self._json(mail_open())
             if p == "/api/mail/hear":
@@ -8567,8 +8818,8 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/capture":
                 if BRIDGED:
                     return self._json({"error": "off in nixi mode"}, 403)
-                if mail_on_screen():                  # a picture of the screen would carry the mail (#210)
-                    return self._json({"error": "mail is on screen"}, 403)
+                if mail_on_screen() or phone_on_screen():
+                    return self._json({"error": "private messages are on screen"}, 403)
                 b = json.loads(self._body() or b"{}")
                 kind = b.get("kind", "screen")
                 if not full:                          # Claude's commands may look at the screen, never your clipboard

@@ -390,6 +390,21 @@ class Records(_FluxCase):
         self.assertEqual(client.devices()[0]["can"], {"ring", "share", "sms", "dnd"})
         self.assertEqual(client.sms_threads()[0]["body"], "private")
 
+    def test_sms_delivery_reads_outbox_without_exposing_it(self):
+        client = self.client()
+        self.assertTrue(wait_for(lambda: client.connected))
+        row = device()
+        row["outbox"] = [{"address": "123", "body": "secret", "pending": True, "failed": False}]
+        self.flux.push_state(snapshot([row]))
+        self.assertTrue(wait_for(lambda: client.sms_delivery("pixel", "123", "secret") == "pending"))
+        self.assertEqual(client.sms_delivery("pixel", "123", "secret", time.monotonic() + 1), "unknown")
+        self.assertNotIn("outbox", client.devices()[0])
+        row["outbox"][0].update(pending=False, failed=True)
+        self.flux.push_state(snapshot([row]))
+        self.assertTrue(wait_for(lambda: client.sms_delivery("pixel", "123", "secret") == "failed"))
+        self.flux.push_state(snapshot([device()]))
+        self.assertTrue(wait_for(lambda: client.sms_delivery("pixel", "123", "secret") == "gone"))
+
 
 class StubPhone:
     """Stands in for server.Phone: the server-side phone logic without a socket."""
@@ -404,6 +419,12 @@ class StubPhone:
 
     def transfers(self):
         return self.states.pop(0) if len(self.states) > 1 else (self.states[0] if self.states else [])
+
+    def sms_threads(self):
+        return getattr(self, "threads", [])
+
+    def sms_delivery(self, device, address, body, after=0):
+        return getattr(self, "delivery", "pending")
 
     def call(self, method, **params):
         self.calls.append((method, params))
@@ -731,8 +752,38 @@ class Calls(_Phone4):
             self.phone.modern, self.phone.connected = True, False
             self.assertFalse(any(r.get("phone_call") for r in s.Inbox.rows(raw)))
 
-    @unittest.skip("step 7")
-    def test_missed_call_with_number_gives_text_back_card_without_number_no_button(self): ...
+    def test_missed_call_with_number_gives_text_back_card_without_number_no_button(self):
+        s = self.server
+        s.PHONE_MISSED.clear()
+        s.PHONE_SHOWN.clear()
+        self.phone._devices = [dev("pixel", "Pixel", can=("sms",))]
+        self.phone._devices[0]["missedCall"] = {"caller": "Anna", "number": "123", "at": 1}
+        with mock.patch.object(s, "BRIDGED", True), mock.patch.object(s, "stages_on", return_value=True):
+            s.phone_on_missed(("missed", "pixel", 1), self.phone._devices[0]["missedCall"])
+        page = s.STAGES.current()
+        self.assertEqual(page["kind"], "phone_missed")
+        self.assertIn("Missed call from Anna", page["title"])
+        self.assertTrue(page["reply"])
+        self.assertTrue(s.phone_draft(page["reply"])["ok"])
+        self.assertEqual((s.PHONE_DRAFT["number"], s.STAGES.current()["text"]), ("123", "Sorry I missed your call, I'll call you back."))
+        self.phone._devices[0]["missedCall"] = {"caller": "Bob", "at": 2}
+        with mock.patch.object(s, "BRIDGED", True), mock.patch.object(s, "stages_on", return_value=True):
+            s.phone_on_missed(("missed", "pixel", 2), self.phone._devices[0]["missedCall"])
+        self.assertNotIn("reply", s.STAGES.current())
+
+    def test_missed_call_waits_for_unlock_and_stays_in_snapshot(self):
+        s = self.server
+        s.PHONE_MISSED.clear()
+        s.PHONE_SHOWN.clear()
+        self.phone._devices = [dev("pixel", "Pixel", can=("sms",))]
+        self.phone._devices[0]["missedCall"] = {"caller": "Anna", "number": "123", "at": 3}
+        s.STAGES.clear()
+        with mock.patch.object(s, "BRIDGED", True), mock.patch.object(s, "stages_on", return_value=True), mock.patch.object(s.Desk, "locked", return_value=True):
+            s.phone_on_missed(("missed", "pixel", 3), self.phone._devices[0]["missedCall"])
+            self.assertIsNone(s.STAGES.current())
+        with mock.patch.object(s, "BRIDGED", True), mock.patch.object(s, "stages_on", return_value=True), mock.patch.object(s.Desk, "locked", return_value=False):
+            s.phone_tick()
+        self.assertEqual(s.STAGES.current()["kind"], "phone_missed")
 
 
 class CallRecords(_FluxCase, _PhoneEnv):
@@ -776,36 +827,178 @@ class CallRecords(_FluxCase, _PhoneEnv):
         self.assertTrue(wait_for(lambda: not s.Ambient.phone_call))
 
 
-class Messages(unittest.TestCase):
-    @unittest.skip("step 7")
-    def test_board_not_kept_in_back(self): ...
+class Messages(_PhoneEnv):
+    def setUp(self):
+        s = self.server
+        saved = dict(s.CFG)
+        self.addCleanup(lambda: (s.CFG.clear(), s.CFG.update(saved)))
+        s.CFG["phone_on"] = True
+        s.STAGES.clear()
+        s.PHONE_DRAFT = None
+        s.PHONE_OUTBOX.clear()
+        s.Speaker.phone_sids.clear()
+        self.addCleanup(s.Speaker.phone_sids.clear)
+        self.phone = StubPhone([dev("pixel", "Pixel", can=("sms",))])
+        self.phone.threads = [{"device": "pixel", "name": "Anna", "address": "123", "addresses": ["123"],
+                               "last": "Hello", "time": 10}]
+        self.pub = mock.patch.object(s.BUS, "pub").start()
+        mock.patch.object(s, "Phone", self.phone).start()
+        mock.patch.object(s, "BRIDGED", True).start()
+        mock.patch.object(s, "stages_on", return_value=True).start()
+        mock.patch.object(s.Speaker, "available", return_value=False).start()
+        mock.patch.object(s.Desk, "locked", return_value=False).start()
+        mock.patch.object(s.Ambient, "meeting", False).start()
+        mock.patch.object(s.Ambient, "dnd", False).start()
+        mock.patch.object(s.Ambient, "phone_call", False).start()
+        self.addCleanup(mock.patch.stopall)
+        with s.CLICK_LOCK:
+            old = dict(s.CLICK)
+            s.CLICK.update(claimed=True, spoiled=False)
+        self.addCleanup(lambda: s.CLICK.update(old))
+        self.srv = s.ThreadingHTTPServer(("127.0.0.1", 0), s.Handler)
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        self.addCleanup(self.srv.server_close)
+        self.addCleanup(self.srv.shutdown)
 
-    @unittest.skip("step 7")
-    def test_capture_403_while_board_up(self): ...
+    def post(self, route, body, key=None):
+        import urllib.error
+        import urllib.request
+        headers = {"Content-Type": "application/json", "X-Nixi-Token": self.server.TOKEN}
+        if key is not None:
+            headers["X-Nixi-Click"] = key
+        req = urllib.request.Request(f"http://127.0.0.1:{self.srv.server_port}{route}", data=json.dumps(body).encode(), headers=headers)
+        try:
+            with urllib.request.urlopen(req) as r:
+                return r.status, json.load(r)
+        except urllib.error.HTTPError as e:
+            with e:
+                return e.code, json.load(e)
 
-    @unittest.skip("step 7")
-    def test_one_time_code_scrubbed(self): ...
+    def draft(self):
+        s = self.server
+        self.assertTrue(s.phone_read_messages())
+        page = s.STAGES.current()
+        self.assertEqual(page["kind"], "phone_sms")
+        self.assertTrue(s.phone_draft(page["rows"][0]["reply"])["ok"])
+        return s.PHONE_DRAFT["id"]
 
-    @unittest.skip("step 7")
-    def test_send_refused_without_click_key(self): ...
+    def test_board_not_kept_in_back(self):
+        s = self.server
+        s.phone_read_messages()
+        page = s.STAGES.current()
+        self.assertIsNone(s.STAGES._keep((page, {}, 0)))
+        s.STAGES.put({"v": 1, "kind": "facts", "title": "Other", "points": []})
+        self.assertFalse(s.STAGES.has_prev())
+        self.assertNotIn("123", json.dumps(page))
 
-    @unittest.skip("step 7")
-    def test_send_refused_with_wrong_click_key(self): ...
+    def test_capture_403_while_board_up(self):
+        s = self.server
+        s.phone_read_messages()
+        with mock.patch.object(s, "BRIDGED", False):
+            code, _ = self.post("/api/capture", {"kind": "screen"})
+        self.assertEqual(code, 403)
+        self.assertTrue(s.phone_on_screen())
 
-    @unittest.skip("step 7")
-    def test_send_refused_for_expired_draft(self): ...
+    def test_one_time_code_scrubbed(self):
+        s = self.server
+        self.phone.threads[0]["last"] = "Your code is 123456"
+        with mock.patch.object(s.Speaker, "available", return_value=True), mock.patch.object(s.Speaker, "say") as say:
+            s.phone_read_messages()
+        page = s.STAGES.current()
+        self.assertIn("[code]", page["rows"][0]["last"])
+        self.assertNotIn("123456", json.dumps(page))
+        self.assertNotIn("123456", say.call_args.args[0])
+        with mock.patch.object(s.Ambient, "phone_call", True):
+            self.assertFalse(s.phone_play_ok((s.PHONE_GEN, page)))
 
-    @unittest.skip("step 7")
-    def test_send_refused_for_draft_from_before_phone_off(self): ...
+    def test_send_refused_without_click_key(self):
+        draft = self.draft()
+        self.assertEqual(self.post("/api/phone/send", {"draft": draft, "text": "Edited"})[0], 403)
+        self.assertEqual(self.phone.calls, [("sms.refresh", {"device": "pixel"})])
 
-    @unittest.skip("step 7")
-    def test_send_refused_on_replay_after_success(self): ...
+    def test_send_refused_with_wrong_click_key(self):
+        draft = self.draft()
+        self.assertEqual(self.post("/api/phone/send", {"draft": draft, "text": "Edited"}, "wrong")[0], 403)
+        self.assertEqual(len(self.phone.calls), 1)
 
-    @unittest.skip("step 7")
-    def test_two_parallel_sends_give_exactly_one_sms_send(self): ...
+    def test_send_refused_for_expired_draft(self):
+        draft = self.draft()
+        self.server.PHONE_DRAFT["created"] -= 601
+        self.assertEqual(self.post("/api/phone/send", {"draft": draft, "text": "Edited"}, self.server.CLICK_KEY)[0], 403)
+        self.assertEqual(len(self.phone.calls), 1)
 
-    @unittest.skip("step 7")
-    def test_edited_text_is_sent_as_edited(self): ...
+    def test_send_refused_for_draft_from_before_phone_off(self):
+        draft = self.draft()
+        s = self.server
+        s.CFG["phone_on"] = False
+        s.phone_reset()
+        s.CFG["phone_on"] = True
+        self.assertEqual(self.post("/api/phone/send", {"draft": draft, "text": "Edited"}, s.CLICK_KEY)[0], 403)
+        self.assertEqual(len(self.phone.calls), 1)
+
+    def test_send_refused_on_replay_after_success(self):
+        draft = self.draft()
+        s = self.server
+        self.assertEqual(self.post("/api/phone/send", {"draft": draft, "text": "Edited"}, s.CLICK_KEY)[0], 200)
+        self.assertEqual(self.post("/api/phone/send", {"draft": draft, "text": "Edited"}, s.CLICK_KEY)[0], 403)
+        self.assertEqual([m for m, _ in self.phone.calls].count("sms.send"), 1)
+
+    def test_two_parallel_sends_give_exactly_one_sms_send(self):
+        from concurrent.futures import ThreadPoolExecutor
+        draft = self.draft()
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            codes = list(pool.map(lambda _: self.post("/api/phone/send", {"draft": draft, "text": "Edited"}, self.server.CLICK_KEY)[0], range(2)))
+        self.assertEqual(sorted(codes), [200, 403])
+        self.assertEqual([m for m, _ in self.phone.calls].count("sms.send"), 1)
+
+    def test_edited_text_is_sent_as_edited(self):
+        draft = self.draft()
+        code, _ = self.post("/api/phone/send", {"draft": draft, "text": "Different words"}, self.server.CLICK_KEY)
+        self.assertEqual(code, 200)
+        self.assertIn(("sms.send", {"device": "pixel", "addresses": ["123"], "body": "Different words"}), self.phone.calls)
+        self.assertNotIn("123", json.dumps(self.server.STAGES.current().get("rows", [])))
+
+    def test_quick_read_and_reply_keep_the_text_out_of_the_agent(self):
+        s = self.server
+        self.assertEqual(s.quick.handle("read my texts"), {"phone": {"do": "read"}})
+        got = s.quick.handle("reply to Anna, See you soon")
+        self.assertEqual(got, {"phone": {"do": "reply", "name": "Anna", "text": "See you soon"}})
+        self.assertEqual(s.phone_quick(got["phone"])["say"], "Check the draft and click Send.")
+        self.assertEqual(s.STAGES.current()["text"], "See you soon")
+
+    def test_no_name_match_offers_thread_chooser(self):
+        s = self.server
+        s.phone_reply_quick("Nobody", "Hi")
+        page = s.STAGES.current()
+        self.assertEqual(page["kind"], "phone_threads")
+        self.assertEqual([r["name"] for r in page["rows"]], ["Anna"])
+        self.assertNotIn("123", json.dumps(page))
+
+    def test_text_length_and_delivery_feedback(self):
+        s = self.server
+        draft = self.draft()
+        for text in ("", " " * 4, "x" * 1001):
+            self.assertEqual(self.post("/api/phone/send", {"draft": draft, "text": text}, s.CLICK_KEY)[0], 403)
+        self.assertEqual(self.post("/api/phone/send", {"draft": draft, "text": "Edited"}, s.CLICK_KEY)[0], 200)
+        item = s.PHONE_OUTBOX[0]
+        s.phone_tick()
+        self.assertFalse(item["waiting"])
+        self.phone.delivery = "gone"
+        s.phone_tick()
+        self.assertTrue(any(c.kwargs.get("text") == "Sent." for c in self.pub.call_args_list))
+        self.assertEqual(s.PHONE_OUTBOX, [])
+
+    def test_pending_text_reports_waiting_then_failure(self):
+        s = self.server
+        draft = self.draft()
+        self.assertEqual(self.post("/api/phone/send", {"draft": draft, "text": "Edited"}, s.CLICK_KEY)[0], 200)
+        s.PHONE_OUTBOX[0]["created"] -= 31
+        s.phone_tick()
+        self.assertTrue(any(c.kwargs.get("text") == "Still waiting on your Anna." for c in self.pub.call_args_list))
+        self.phone.delivery = "failed"
+        s.phone_tick()
+        self.assertTrue(any(c.kwargs.get("text") == "That text didn't go." for c in self.pub.call_args_list))
+        self.assertEqual(s.PHONE_OUTBOX, [])
 
 
 class Silence(unittest.TestCase):
@@ -828,12 +1021,54 @@ class Silence(unittest.TestCase):
     def test_calendar_item_silent_from_start_minus_60s_to_end(self): ...
 
 
-class Approvals(unittest.TestCase):
-    @unittest.skip("step 10")
-    def test_record_shows_caption_once(self): ...
+class Approvals(_FluxCase, _PhoneEnv):
+    def setUp(self):
+        _FluxCase.setUp(self)
+        s = self.server
+        saved = dict(s.CFG)
+        self.addCleanup(lambda: (s.CFG.clear(), s.CFG.update(saved)))
+        s.CFG["phone_on"] = True
+        self.pub = mock.patch.object(s.BUS, "pub").start()
+        mock.patch.object(s.Ambient, "phone_call", False).start()
+        self.addCleanup(mock.patch.stopall)
+        self.addCleanup(s.PHONE_APPROVALS.clear)
+        self.client = phone.Phone()
+        self.client.on_approval, self.client.on_state = s.phone_on_approval, s.phone_state
+        mock.patch.object(s, "Phone", self.client).start()
+        self.client.start()
+        self.addCleanup(self.client.stop)
+        self.assertTrue(wait_for(lambda: self.client.connected))
+        self.flux.push_state(snapshot([device()]))                    # (the first snapshot: nothing in it is news)
+        self.assertTrue(wait_for(lambda: not self.client._first))
 
-    @unittest.skip("step 10")
-    def test_record_added_and_answered_in_one_snapshot_shows_nothing(self): ...
+    def caps(self):
+        return [c.kwargs["text"] for c in self.pub.call_args_list if c.kwargs.get("t") == "phone_cap"]
+
+    def test_record_shows_caption_once(self):
+        approval = {"device": "pixel", "kind": "sudo", "since": 5}
+        self.flux.push_state(snapshot([device()], [approval]))
+        self.assertTrue(wait_for(lambda: self.caps() == ["Approve on your Pixel (sudo)"]))
+        self.flux.push_state(snapshot([device(battery=70)], [approval]))     # (another snapshot, same record)
+        time.sleep(0.2)
+        self.assertEqual(self.caps(), ["Approve on your Pixel (sudo)"])
+        self.flux.push_state(snapshot([device()], []))                         # answered: it closes
+        self.assertTrue(wait_for(lambda: self.caps()[-1:] == [""]))
+        self.assertEqual(len(self.caps()), 2)
+        self.flux.push_state(snapshot([device()], [{"device": "pixel", "kind": "ssh", "since": 9}]))
+        self.assertTrue(wait_for(lambda: self.caps()[-1:] == ["Approve on your Pixel (ssh)"]))
+        self.assertFalse(self.server.Speaker.todo if hasattr(self.server.Speaker, "todo") else False)   # (never spoken)
+
+    def test_record_added_and_answered_in_one_snapshot_shows_nothing(self):
+        self.flux.push_state(snapshot([device()], []))
+        time.sleep(0.2)
+        self.assertEqual(self.caps(), [])
+
+    def test_switching_phone_off_closes_it(self):
+        s = self.server
+        s.PHONE_APPROVALS.add(("pixel", "sudo", 5))
+        s.CFG["phone_on"] = False
+        s.phone_approvals_sync()
+        self.assertEqual(self.caps(), [""])
 
 
 if __name__ == "__main__":

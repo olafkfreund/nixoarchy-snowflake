@@ -2838,6 +2838,7 @@ function onEvent(ev){
   else if(ev.t==='spk_done'){ if(ev.id!=null){ const it=spkMap.get(ev.id); spkMap.delete(ev.id); if(it&&it.cap) karaNow(it.cap,it.fresh); } quietNative(); }
   else if(ev.t==='tts_gen'){ cutTtsGen(ev.gen); }
   else if(ev.t==='note'){ tick(ev.text); }
+  else if(ev.t==='phone_cap') phoneCap(ev.text);
   else if(ev.t==='approve'){ restore(20000,true); queueApproval(ev); }
   else if(ev.t==='agent_say') agentIn(ev);
   else if(ev.t==='agent_result') agentResult(ev);
@@ -2923,6 +2924,10 @@ function karaParse(text){ const ws=[], faces=[]; let pend=null, tagged=false;
 function plain(s){ return s.replace(/```[\s\S]*?(```|$)/g,' [code] ').replace(/\*\*|__|^#+\s*/gm,''); }
 let shownTxt='', capOn=false, quietSince=0;
 function capShow(){ cap.classList.remove('off'); capOn=true; quietSince=performance.now(); }
+let phoneCapTxt='', phoneCapT=0;
+function phoneCap(t){ clearInterval(phoneCapT); phoneCapT=0;     // Flux waits for an approval on the phone: a caption while it does (never spoken, no buttons)
+  if(!t){ if(phoneCapTxt){ phoneCapTxt=''; himSet(''); capQuiet(); } return; }
+  phoneCapTxt=t; capShow(); setYou(''); himSet(t); phoneCapT=setInterval(()=>{ if(phoneCapTxt) quietSince=performance.now(); },2000); }
 function capQuiet(){ quietSince=performance.now(); }
 let lastAnswer=''; const moreEl=$('#moreB');
 moreEl.addEventListener('click',()=>openPanel('reply'));
@@ -3081,11 +3086,14 @@ function stageBuild(ev){
   const board=ev.kind==='commands', map=ev.kind==='place', film=ev.kind==='video', sky=ev.kind==='weather', cal=ev.kind==='calendar', stat=ev.kind==='status', dy=ev.kind==='day', gau=ev.kind==='gauges', press=ev.kind==='headlines', tr=ev.trust, guide=tr==='guide';
   mailCardDrop(true);
   $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':film?'Now showing':sky?'Sky':cal?'Coming up':stat?'Sessions':dy?'Your day':ev.kind==='mail'?'Mail':press?'News':''));
-  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat||dy||ev.kind==='mail'||ev.kind==='phone_pick'?'desk':gau?'term':press?'press':'notebook')+(stgEl.classList.contains('l')?' l':'');
+  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat||dy||ev.kind==='mail'||ev.kind==='phone_pick'||ev.kind.startsWith('phone_')?'desk':gau?'term':press?'press':'notebook')+(stgEl.classList.contains('l')?' l':'');
   if(sky) stageSky(ev,bd,fn);
   else if(dy) stageDay(ev,bd,acts,fn);
   else if(ev.kind==='mail') stageMail(ev,bd,acts,fn);
   else if(ev.kind==='phone_pick') stagePhone(ev,bd,acts,fn);
+  else if(ev.kind==='phone_sms'||ev.kind==='phone_threads') stagePhoneMessages(ev,bd,fn);
+  else if(ev.kind==='phone_missed') stagePhoneMissed(ev,bd,acts,fn);
+  else if(ev.kind==='phone_draft') stagePhoneDraft(ev,bd,fn);
   else if(gau) stageGauges(ev,bd,acts,fn);
   else if(press) stagePress(ev,bd,acts,fn);
   else if(cal) stageCal(ev,bd,acts,fn);
@@ -3121,6 +3129,29 @@ function stagePhone(ev,bd,acts,fn){
       post(ev.do==='ring'?'/api/phone/ring':'/api/phone/share',{id:d.id,what:ev.do}).then(x=>x.json()).then(j=>{ msg.textContent=j.say||j.error||''; }).catch(()=>{ msg.textContent="Couldn't do that"; }).finally(()=>{ b.disabled=false; }); }));
     row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
   bd.appendChild(msg); }
+function phoneOpenDraft(ev,token,fn){ post('/api/phone/draft',{token}).then(r=>r.json()).then(j=>{ if(!j.ok) fn.textContent=ev.draft_gone||''; }).catch(()=>{ fn.textContent=ev.draft_error||''; }); }
+function stagePhoneMessages(ev,bd,fn){
+  if(!(ev.rows||[]).length) bd.appendChild(hx('div','pt1',ev.empty||''));
+  (ev.rows||[]).forEach(r=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab');
+    tx.appendChild(hx('div','lb',r.name)); if(r.last) tx.appendChild(hx('div','vm',r.last));
+    ab.appendChild(stageBtn(ev.reply_label,()=>phoneOpenDraft(ev,r.reply,fn)));
+    row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
+}
+function stagePhoneMissed(ev,bd,acts,fn){
+  bd.appendChild(hx('div','pt1',ev.name||''));
+  if(ev.reply) acts.appendChild(stageBtn(ev.reply_label,()=>phoneOpenDraft(ev,ev.reply,fn)));
+}
+function stagePhoneDraft(ev,bd,fn){
+  const card=hx('div','mcard'), ta=hx('textarea'), msg=hx('div','mmsg'), act=hx('div','mact');
+  card.appendChild(hx('div','mln',ev.name+' · '+ev.number)); ta.rows=4; ta.value=ev.text||''; card.appendChild(ta);
+  const send=hx('button','sb',ev.send_label); send.type='button';
+  send.addEventListener('click',e=>{ e.stopPropagation(); if(!e.isTrusted||!['mouse','pen','touch'].includes(e.pointerType)) return;
+    if(!ta.value.trim()||ta.value.length>1000){ msg.textContent=ev.length_error; return; }
+    send.disabled=true; stgUse=performance.now();
+    post('/api/phone/send',{draft:ev.draft,text:ta.value},{headers:hdr(Object.assign({'Content-Type':'application/json'},CLICKKEY.hdr()))})
+      .then(r=>r.json()).then(j=>{ msg.textContent=j.say||ev.send_error; if(!j.ok) send.disabled=false; }).catch(()=>{ msg.textContent=ev.send_error; send.disabled=false; }); });
+  act.appendChild(send); card.appendChild(act); card.appendChild(msg); bd.appendChild(card); ta.focus();
+}
 function stageMail(ev,bd,acts,fn){
   const rows=ev.rows||[];
   if(!rows.length) bd.appendChild(hx('div','pt1','No unread mail from the last three days'));

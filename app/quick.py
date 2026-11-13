@@ -345,6 +345,8 @@ def _phone_phrase(t, key):
 
 def _phone(t):
     """Find my phone / send to my phone / how is my phone (#231). The server does the work."""
+    if t in lang.load(lang.active).get("phrases", {}).get("phone_read", []) or t in lang.load("en").get("phrases", {}).get("phone_read", []):
+        return {"phone": {"do": "read"}}
     for key, do in (("phone_find", "ring"), ("phone_send", "clip"), ("phone_send_shot", "shot"), ("phone_status", "status")):
         name = _phone_phrase(t, key)
         if name is not None:
@@ -370,6 +372,13 @@ def handle(text):
                     + r"|(?:open|hand|send|move|take)(?: this| that| it)?(?: over)?(?: to| in| into) " + NIXI,
                     re.sub(r"^\W*(?:(?:hey|hi|ok|okay)\W+)?" + NIXI + r"\W+", "", t)):
         return {"nixi_ask": None}
+    for code in dict.fromkeys((lang.active, "en")):
+        for phrase in lang.load(code).get("phrases", {}).get("phone_reply", []):
+            name_pat = r"(?P<name>[\w .'-]{1,60})" if "," in phrase else r"(?P<name>[\w'-]{1,60})"
+            pat = re.escape(phrase).replace(r"\{name\}", name_pat).replace(r"\{text\}", r"(?P<text>.+)")
+            m = re.fullmatch(pat, (text or "").strip(), re.I | re.S)
+            if m and 1 <= len(m["text"].strip()) <= 1000:
+                return {"phone": {"do": "reply", "name": m["name"].strip(), "text": m["text"].strip()}}
     if not t or len(t) > 120:
         return None
 

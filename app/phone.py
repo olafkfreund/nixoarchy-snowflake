@@ -8,6 +8,7 @@ import stat
 import struct
 import sys
 import threading
+import time
 
 
 class Phone:
@@ -30,6 +31,7 @@ class Phone:
         self._first = True
         self._connected = False
         self._has_snapshot = False
+        self._snap_at = 0.0
         self._error_logged = False
         self._reader_thread = self._worker_thread = None
 
@@ -116,6 +118,19 @@ class Phone:
             return [{"device": d.get("id"), **c} for d in self.snap.get("devices", [])
                     if d.get("paired") for c in d.get("conversations", [])]
 
+    def sms_delivery(self, device, address, body, after=0):
+        """The delivery state of one sent text; no outbox contents leave this module."""
+        with self._lock:
+            if not self._connected or self._snap_at <= after:
+                return "unknown"
+            row = next((d for d in self.snap.get("devices", []) if d.get("id") == device), None)
+            if not row or not row.get("paired"):
+                return "unknown"
+            # shortcut: identical texts to one number share a match, until Flux exposes a stable SMS id.
+            item = next((m for m in row.get("outbox", [])
+                         if m.get("address") == address and m.get("body") == body), None)
+            return "failed" if item and item.get("failed") else "pending" if item else "gone"
+
     def transfers(self):
         with self._lock:
             return [{"id": t.get("id"), "state": t.get("state")}
@@ -175,6 +190,7 @@ class Phone:
                 with self._lock:
                     self._socket = sock
                     self._connected = True
+                    self._snap_at = 0.0
                     self._error_logged = False
                     ident = self._next_id
                     self._next_id += 1
@@ -197,6 +213,7 @@ class Phone:
                             if msg.get("event") == "state" and isinstance(msg.get("data"), dict):
                                 self.snap = msg["data"]
                                 self._has_snapshot = True
+                                self._snap_at = time.monotonic()
                                 self._version += 1
                                 self._wake.set()
                             elif "id" in msg:
@@ -216,6 +233,7 @@ class Phone:
                     self._connected = False
                     self.snap = {}
                     self._has_snapshot = False
+                    self._snap_at = 0.0
                     self._version += 1
                     self._wake.set()
                     for future in self._pending.values():
