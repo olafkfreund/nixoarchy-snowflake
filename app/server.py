@@ -6528,7 +6528,7 @@ def peers_withdrawn(st):
 
 
 def phone_read(p):
-    return "phone-status" in p.manifest["stage"].get("reads", [])
+    return "phone-status" in (((getattr(p, "manifest", None) or {}).get("stage")) or {}).get("reads", [])   # (a plugin without a stage reads nothing)
 
 
 def plugin_stage(pid, query, before=_ANY):
