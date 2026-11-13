@@ -91,7 +91,29 @@
     "phone.summary_charging": "{name} er på {pct} prosent og lader, {where}.",
     "phone.offline_word": "frakoblet",
     "phone.call_named": "{caller} ringer på {name}",
-    "phone.call": "Et anrop på {name}"
+    "phone.call": "Et anrop på {name}",
+    "phone.approve": "Godkjenn på {name} ({kind})",
+    "phone.messages_title": "Meldinger",
+    "phone.messages_empty": "Ingen nylige meldinger",
+    "phone.messages_ready": "Her er meldingene dine.",
+    "phone.messages_read": "{items}",
+    "phone.open_messages": "Åpne Nixi for å lese og svare på meldinger.",
+    "phone.contact_missing": "Jeg fant ikke den meldingstråden.",
+    "phone.which_thread": "Hvilken meldingstråd?",
+    "phone.draft_title": "Meldingssvar",
+    "phone.draft_ready": "Sjekk utkastet og klikk Send.",
+    "phone.reply_button": "Svar",
+    "phone.send_button": "Send",
+    "phone.missed": "Tapt anrop fra {name}",
+    "phone.textback": "Beklager at jeg ikke rakk å ta telefonen, jeg ringer deg tilbake.",
+    "phone.textback_button": "Send melding",
+    "phone.text_sending": "Sender…",
+    "phone.text_sent": "Sendt.",
+    "phone.text_waiting": "Venter fortsatt på {name}.",
+    "phone.text_failed": "Meldingen ble ikke sendt.",
+    "phone.draft_gone": "Den meldingstråden er borte.",
+    "phone.draft_open_failed": "Klarte ikke å åpne utkastet.",
+    "phone.text_length": "Skriv 1–1000 tegn."
   },
   "phrases": {
     "phone_generic": [
@@ -137,6 +159,22 @@
       "telefonstatus",
       "telefonbatteri",
       "er telefonen min ladet"
+    ],
+    "phone_read": [
+      "les meldingene mine",
+      "les opp meldingene mine",
+      "noen nye meldinger",
+      "har jeg fått nye meldinger",
+      "sjekk meldingene mine",
+      "sjekk sms"
+    ],
+    "phone_reply": [
+      "svar {name}, {text}",
+      "send melding til {name}, {text}",
+      "send sms til {name}, {text}",
+      "svar {name} {text}",
+      "send melding til {name} {text}",
+      "send sms til {name} {text}"
     ]
   },
   "_review": [

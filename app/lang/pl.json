@@ -152,7 +152,29 @@
     "phone.summary_charging": "{name} ma {pct} procent i się ładuje, {where}.",
     "phone.offline_word": "offline",
     "phone.call_named": "{caller} dzwoni na {name}",
-    "phone.call": "Połączenie na {name}"
+    "phone.call": "Połączenie na {name}",
+    "phone.approve": "Zatwierdź na {name} ({kind})",
+    "phone.messages_title": "Wiadomości",
+    "phone.messages_empty": "Brak ostatnich wiadomości",
+    "phone.messages_ready": "Oto twoje wiadomości.",
+    "phone.messages_read": "{items}",
+    "phone.open_messages": "Otwórz Nixi, aby przeczytać wiadomości i odpowiedzieć.",
+    "phone.contact_missing": "Nie znalazłem tego wątku wiadomości.",
+    "phone.which_thread": "Który wątek wiadomości?",
+    "phone.draft_title": "Odpowiedź SMS",
+    "phone.draft_ready": "Sprawdź szkic i kliknij Wyślij.",
+    "phone.reply_button": "Odpowiedz",
+    "phone.send_button": "Wyślij",
+    "phone.missed": "Nieodebrane połączenie od {name}",
+    "phone.textback": "Przepraszam, nie mogłem odebrać, oddzwonię.",
+    "phone.textback_button": "Odpisz SMS-em",
+    "phone.text_sending": "Wysyłam…",
+    "phone.text_sent": "Wysłano.",
+    "phone.text_waiting": "Wciąż czekam na {name}.",
+    "phone.text_failed": "Nie udało się wysłać wiadomości.",
+    "phone.draft_gone": "Ten wątek wiadomości zniknął.",
+    "phone.draft_open_failed": "Nie udało się otworzyć szkicu.",
+    "phone.text_length": "Wpisz 1–1000 znaków."
   },
   "phrases": {
     "phone_generic": [
@@ -190,6 +212,24 @@
       "status telefonu",
       "bateria w telefonie",
       "czy mój telefon jest naładowany"
+    ],
+    "phone_read": [
+      "przeczytaj moje wiadomości",
+      "przeczytaj moje smsy",
+      "przeczytaj smsy",
+      "czy są nowe wiadomości",
+      "sprawdź moje wiadomości",
+      "sprawdź smsy"
+    ],
+    "phone_reply": [
+      "odpowiedz {name}, {text}",
+      "odpisz {name}, {text}",
+      "napisz do {name}, {text}",
+      "wyślij sms do {name}, {text}",
+      "odpowiedz {name} {text}",
+      "odpisz {name} {text}",
+      "napisz do {name} {text}",
+      "wyślij sms do {name} {text}"
     ]
   },
   "_review": [
