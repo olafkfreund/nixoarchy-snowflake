@@ -1001,24 +1001,86 @@ class Messages(_PhoneEnv):
         self.assertEqual(s.PHONE_OUTBOX, [])
 
 
-class Silence(unittest.TestCase):
-    @unittest.skip("step 9")
-    def test_start_with_dnd_off_sets_on_and_records_at(self): ...
+class Silence(_PhoneEnv, _FluxCase):
+    def setUp(self):
+        super().setUp()
+        self.flag = Path(os.environ["XDG_STATE_HOME"]) / "meeting-mode" / "active"
+        self.flag.parent.mkdir(exist_ok=True)
+        self.flag.unlink(missing_ok=True)
+        self.addCleanup(lambda: self.flag.unlink(missing_ok=True))
+        self._cfg = mock.patch.dict(self.server.CFG, {"ambient_calendar": False})
+        self._cfg.start()
+        self.addCleanup(self._cfg.stop)
+        self._cal = mock.patch.object(self.server.Ambient, "cal_items", [])
+        self._cal.start()
+        self.addCleanup(self._cal.stop)
 
-    @unittest.skip("step 9")
-    def test_start_with_dnd_on_does_nothing(self): ...
+    def client(self):
+        client = super().client()
+        client.meeting_now = self.server.phone_meeting_now
+        return client
 
-    @unittest.skip("step 9")
-    def test_end_with_same_at_sets_off(self): ...
+    def start(self, dnd):
+        client = self.client()
+        self.assertTrue(wait_for(lambda: client.connected))
+        self.flux.before_reply = lambda conn, req: self.flux._send(conn, {"event": "state", "data": snapshot([
+            device(dnd={"on": True, "by": "set", "at": 7})])}) if req["method"] == "dnd.set" and req["params"]["on"] else None
+        self.flag.touch()
+        self.flux.push_state(snapshot([device(dnd=dnd)]))
+        return client
 
-    @unittest.skip("step 9")
-    def test_end_with_later_at_does_nothing(self): ...
+    def test_start_with_dnd_off_sets_on_and_records_at(self):
+        client = self.start({"on": False, "by": "phone", "at": 1})
+        self.assertTrue(wait_for(lambda: client.silenced == {"pixel": 7}))
+        self.assertEqual([r["params"] for r in self.flux.requests if r["method"] == "dnd.set"],
+                         [{"device": "pixel", "on": True}])
 
-    @unittest.skip("step 9")
-    def test_dnd_absent_or_null_never_touched(self): ...
+    def test_start_with_dnd_on_does_nothing(self):
+        client = self.start({"on": True, "by": "phone", "at": 1})
+        self.assertTrue(wait_for(lambda: client.modern))
+        self.assertFalse(wait_for(lambda: "dnd.set" in self.flux.methods(), 1.2))
 
-    @unittest.skip("step 9")
-    def test_calendar_item_silent_from_start_minus_60s_to_end(self): ...
+    def test_end_with_same_at_sets_off(self):
+        client = self.start({"on": False, "by": "phone", "at": 1})
+        self.assertTrue(wait_for(lambda: client.silenced == {"pixel": 7}))
+        self.flag.unlink()
+        self.assertTrue(wait_for(lambda: len([m for m in self.flux.methods() if m == "dnd.set"]) == 2, 2))
+        self.assertEqual(self.flux.requests[-1]["params"], {"device": "pixel", "on": False})
+        self.assertEqual(client.silenced, {})
+
+    def test_end_with_later_at_does_nothing(self):
+        client = self.start({"on": False, "by": "phone", "at": 1})
+        self.assertTrue(wait_for(lambda: client.silenced == {"pixel": 7}))
+        self.flux.push_state(snapshot([device(dnd={"on": True, "by": "set", "at": 8})]))
+        self.assertTrue(wait_for(lambda: client.devices()[0]["dnd"]["at"] == 8))
+        self.flag.unlink()
+        self.assertTrue(wait_for(lambda: not client.silenced, 2))
+        self.assertEqual(self.flux.methods().count("dnd.set"), 1)
+
+    def test_dnd_absent_or_null_never_touched(self):
+        client = self.start(None)
+        self.assertTrue(wait_for(lambda: client.modern))
+        self.flux.push_state(snapshot([device(dnd={"on": None, "by": "connect", "at": 1})]))
+        self.assertTrue(wait_for(lambda: client.devices()[0].get("dnd", {}).get("on") is None))
+        self.assertFalse(wait_for(lambda: "dnd.set" in self.flux.methods(), 1.2))
+
+    def test_calendar_item_silent_from_start_minus_60s_to_end(self):
+        import datetime
+        self.server.CFG["ambient_calendar"] = True
+        now = datetime.datetime.now().astimezone()
+        self.server.Ambient.cal_items = [{"start": now + datetime.timedelta(seconds=61),
+                                          "end": now + datetime.timedelta(minutes=2), "link": "https://meet.google.com/x"}]
+        self.assertFalse(self.server.phone_meeting_now())
+        client = self.client()
+        self.assertTrue(wait_for(lambda: client.connected))
+        self.flux.before_reply = lambda conn, req: self.flux._send(conn, {"event": "state", "data": snapshot([
+            device(dnd={"on": True, "by": "set", "at": 7})])}) if req["method"] == "dnd.set" and req["params"]["on"] else None
+        self.flux.push_state(snapshot([device(dnd={"on": False, "by": "phone", "at": 1})]))
+        self.server.Ambient.cal_items[0]["start"] = now + datetime.timedelta(seconds=59)
+        self.assertTrue(wait_for(lambda: client.silenced == {"pixel": 7}, 2))
+        self.server.Ambient.cal_items[0]["end"] = now - datetime.timedelta(seconds=1)
+        self.assertTrue(wait_for(lambda: self.flux.methods().count("dnd.set") == 2, 2))
+        self.assertEqual(self.flux.requests[-1]["params"]["on"], False)
 
 
 class Approvals(_FluxCase, _PhoneEnv):

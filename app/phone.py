@@ -20,6 +20,7 @@ class Phone:
         self.seen = set()
         self.outgoing = set()
         self.silenced = {}
+        self._silence_seen = set()
         self.on_call = self.on_missed = self.on_approval = self.on_transfer = self.on_state = None
         self._lock = threading.RLock()
         self._wake = threading.Event()
@@ -262,8 +263,41 @@ class Phone:
             if "id" in t:
                 yield ("transfer", t["id"]), t
 
+    def meeting_now(self):
+        return False  # The server supplies its Meeting Mode and calendar signal.
+
     def tick(self):
-        pass  # Later plan steps add meeting and transfer work here.
+        if not self.meeting_now():
+            for d in self.devices():
+                state = d.get("dnd")
+                if (d["id"] in self.silenced and d["online"] and state and
+                        state.get("on") is True and state.get("by") == "set" and
+                        state.get("at") == self.silenced[d["id"]]):
+                    self.call("dnd.set", device=d["id"], on=False)
+            self.silenced.clear()
+            self._silence_seen.clear()
+            return
+        if not self.connected or not self.modern:
+            return
+        for d in self.devices():
+            state = d.get("dnd")
+            if not d["online"] or "dnd" not in d["can"] or not state or state.get("on") is None or d["id"] in self._silence_seen:
+                continue
+            self._silence_seen.add(d["id"])
+            if state.get("on") is not False:
+                continue
+            self.call("dnd.set", device=d["id"], on=True)
+            deadline = time.monotonic() + 10
+            while not self._stop.is_set() and self.meeting_now():
+                report = next((row.get("dnd") for row in self.devices() if row["id"] == d["id"]), None)
+                if report and report.get("on") is True and report.get("by") == "set" and report.get("at") is not None:
+                    self.silenced[d["id"]] = report["at"]
+                    break
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    break
+                self._wake.wait(left)
+                self._wake.clear()
 
     def _worker(self):
         last = -1
