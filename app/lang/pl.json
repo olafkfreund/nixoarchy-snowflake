@@ -123,7 +123,7 @@
     "phone.off": "Telefon jest wyłączony. Możesz go włączyć w Ustawieniach.",
     "phone.none_can": "Żadne z twoich urządzeń tego nie potrafi.",
     "phone.ringing": "Dzwonię na {name}.",
-    "phone.cant_ring": "{name} nie może dzwonić.",
+    "phone.cant_ring": "{name} nie może odtworzyć dzwonka.",
     "phone.offline": "{name} nie jest połączony, ostatnio widziany {ago} temu.",
     "phone.offline_never": "{name} nie jest połączony.",
     "phone.which": "Które: {names}?",
