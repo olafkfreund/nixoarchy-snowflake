@@ -67,6 +67,8 @@
     "phone.offline_never": "{name} er ikke tilkoblet.",
     "phone.which": "Hvilken: {names}?",
     "phone.pick": "Hvilken enhet?",
+    "phone.ring_button": "Ring",
+    "phone.pick_failed": "Det gikk ikke",
     "phone.sent": "Sendt til {name}.",
     "phone.sending": "Sender til {name}…",
     "phone.file_done": "På {name}.",

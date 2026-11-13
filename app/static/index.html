@@ -3125,8 +3125,8 @@ function stagePhone(ev,bd,acts,fn){
   const msg=hx('div','vm');
   (ev.devices||[]).forEach(d=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab');
     tx.appendChild(hx('div','lb',d.name));
-    ab.appendChild(stageBtn(ev.do==='ring'?'Ring':'Send',b=>{ b.disabled=true;
-      post(ev.do==='ring'?'/api/phone/ring':'/api/phone/share',{id:d.id,what:ev.do}).then(x=>x.json()).then(j=>{ msg.textContent=j.say||j.error||''; }).catch(()=>{ msg.textContent="Couldn't do that"; }).finally(()=>{ b.disabled=false; }); }));
+    ab.appendChild(stageBtn(ev.do==='ring'?ev.ring_label:ev.send_label,b=>{ b.disabled=true;
+      post(ev.do==='ring'?'/api/phone/ring':'/api/phone/share',{id:d.id,what:ev.do}).then(x=>x.json()).then(j=>{ msg.textContent=j.say||j.error||''; }).catch(()=>{ msg.textContent=ev.error_label; }).finally(()=>{ b.disabled=false; }); }));
     row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
   bd.appendChild(msg); }
 function phoneOpenDraft(ev,token,fn){ post('/api/phone/draft',{token}).then(r=>r.json()).then(j=>{ if(!j.ok) fn.textContent=ev.draft_gone||''; }).catch(()=>{ fn.textContent=ev.draft_error||''; }); }

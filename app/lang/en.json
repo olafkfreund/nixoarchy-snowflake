@@ -67,6 +67,8 @@
     "phone.offline_never": "{name} isn't connected.",
     "phone.which": "Which one: {names}?",
     "phone.pick": "Which device?",
+    "phone.ring_button": "Ring",
+    "phone.pick_failed": "Couldn't do that",
     "phone.sent": "Sent to your {name}.",
     "phone.sending": "Sending to your {name}…",
     "phone.file_done": "On your {name}.",

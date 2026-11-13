@@ -5284,6 +5284,7 @@ class Speaker:
     strict = set()
     mail_sids = {}       # sid -> (MAIL_GEN, hear token) when queued: mail audio gets a second privacy check when it is ready to play
     phone_sids = {}      # sid -> (PHONE_GEN, board) for the same playback privacy check
+    phone_call_sids = set()  # ringing announcements re-check the current speech gate at playback
     current_engine = None
     current_sid = None
     queued_at = {}
@@ -5351,6 +5352,7 @@ class Speaker:
             cls.strict.clear()
             cls.mail_sids.clear()
             cls.phone_sids.clear()
+            cls.phone_call_sids.clear()
             cls.queued_at.clear()
             cls.current_engine = cls.current_sid = None
             p, cls.proc = cls.proc, None
@@ -5424,6 +5426,7 @@ class Speaker:
                         cls.strict.discard(sid)
                         cls.mail_sids.pop(sid, None)
                         cls.phone_sids.pop(sid, None)
+                        cls.phone_call_sids.discard(sid)
                     if skipped:
                         BUS.pub(t="spk_skip", id=sid)
                     continue
@@ -5454,6 +5457,7 @@ class Speaker:
                     cls.strict.discard(sid)
                     cls.mail_sids.pop(sid, None)
                     cls.phone_sids.pop(sid, None)
+                    cls.phone_call_sids.discard(sid)
                 BUS.pub(t="spk_skip", id=sid)
             finally:
                 with cls.cv:
@@ -5552,11 +5556,17 @@ class Speaker:
             with cls.cv:
                 mail_gen = cls.mail_sids.pop(sid, None)
                 phone_gen = cls.phone_sids.pop(sid, None)
+                phone_call = sid in cls.phone_call_sids
+                cls.phone_call_sids.discard(sid)
             if mail_gen is not None and not mail_play_ok(mail_gen):
                 BUS.pub(t="spk_skip", id=sid)
                 cls._release_if_idle()
                 continue
             if phone_gen is not None and not phone_play_ok(phone_gen):
+                BUS.pub(t="spk_skip", id=sid)
+                cls._release_if_idle()
+                continue
+            if phone_call and not phone_may_announce():
                 BUS.pub(t="spk_skip", id=sid)
                 cls._release_if_idle()
                 continue
@@ -7030,7 +7040,7 @@ def phone_call_sync():
 
 
 def phone_may_announce():
-    return bool(CFG.get("proactive")) and not Wake.asleep and Desk.locked() is False and not Ambient.meeting and not Ambient.dnd and Speaker.available()
+    return bool(CFG.get("phone_on") and CFG.get("proactive")) and not Wake.asleep and Desk.locked() is False and not Ambient.meeting and not Ambient.dnd and Speaker.available()
 
 
 def phone_on_call(key, rec):
@@ -7042,7 +7052,17 @@ def phone_on_call(key, rec):
         return
     who = rec.get("caller") if isinstance(rec.get("caller"), str) else ""
     who = " ".join(who.split())[:40]
-    Speaker.say(lang.t("phone.call_named", caller=who, name=dev["name"]) if who else lang.t("phone.call", name=dev["name"]), None, None, False, None)
+    global PHONE_SID
+    with Speaker.cv:
+        PHONE_SID += 1
+        sid = PHONE_SID
+        Speaker.phone_call_sids.add(sid)
+    try:
+        Speaker.say(lang.t("phone.call_named", caller=who, name=dev["name"]) if who else lang.t("phone.call", name=dev["name"]), sid, None, False, None)
+    except Exception:
+        with Speaker.cv:
+            Speaker.phone_call_sids.discard(sid)
+        raise
 
 
 PHONE_APPROVALS = set()               # (device, kind, since) of the approvals whose caption is up
@@ -7244,10 +7264,20 @@ def phone_send_file(dev, src):
     run = os.path.realpath(os.path.join(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}", "nixi-companion", "phone"))
     os.makedirs(run, mode=0o700, exist_ok=True)
     os.chmod(run, 0o700)
-    dst = os.path.join(run, secrets.token_hex(8) + ".png")
-    fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, "wb") as out, open(src, "rb") as inp:
-        shutil.copyfileobj(inp, out)
+    with open(src, "rb") as inp:
+        head = inp.read(8)
+        suffix = ".jpg" if head.startswith(b"\xff\xd8\xff") else ".png" if head == b"\x89PNG\r\n\x1a\n" else None
+        if suffix is None:
+            raise ValueError("unsupported picture")
+        inp.seek(0)
+        dst = os.path.join(run, secrets.token_hex(8) + suffix)
+        fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            with os.fdopen(fd, "wb") as out:
+                shutil.copyfileobj(inp, out)
+        except Exception:
+            os.unlink(dst)
+            raise
     Phone.outgoing.add(dst)
     try:
         got = Phone.call("share.files", device=dev["id"], paths=[dst])
@@ -7271,7 +7301,7 @@ def phone_share(dev, what):
     name = dev["name"]
     try:
         cap = capture("window" if what == "shot" else "clipboard")
-        if cap["kind"] in ("window", "clipimg"):
+        if cap["kind"] in ("window", "screen", "clipimg"):
             line = phone_send_file(dev, cap["path"])
         else:
             text = cap["text"]
@@ -7296,7 +7326,9 @@ def phone_pick_card(devs, do):
     """Several devices fit: a card with one button each (needs boards), else ask by name."""
     if BRIDGED and stages_on():
         BUS.pub(t="stage", **stage_event(STAGES.put({"v": 1, "kind": "phone_pick", "title": lang.t("phone.pick"), "do": do,
-                                                      "devices": [{"id": d["id"], "name": d["name"]} for d in devs]})))
+                                                      "devices": [{"id": d["id"], "name": d["name"]} for d in devs],
+                                                      "ring_label": lang.t("phone.ring_button"), "send_label": lang.t("phone.send_button"),
+                                                      "error_label": lang.t("phone.pick_failed")})))
         return {"say": lang.t("phone.pick"), "mood": "curious"}
     return {"say": lang.t("phone.which", names=lang.t("stage.or").join(d["name"] for d in devs)), "mood": "curious"}
 
@@ -7408,6 +7440,13 @@ def phone_reset():
         PHONE_MISSED.clear()
         PHONE_SHOWN.clear()
         PHONE_OUTBOX.clear()
+    for d in Phone.devices():
+        state = d.get("dnd")
+        if d["id"] in Phone.silenced and state and state.get("on") is True and state.get("by") == "set" and state.get("at") == Phone.silenced[d["id"]]:
+            try:
+                Phone.call("dnd.set", device=d["id"], on=False)
+            except Exception:
+                pass
     Phone.stop()
     for f in list(Phone.outgoing):
         try:
@@ -7415,7 +7454,7 @@ def phone_reset():
         except OSError:
             pass
     Phone.outgoing.clear()
-    Phone.silenced = {}                            # Switching Phone off mid-meeting leaves the phone silent.
+    Phone.silenced = {}
     Phone._silence_seen = set()
     PHONE_BATT.clear()
     PHONE_LOW.clear()

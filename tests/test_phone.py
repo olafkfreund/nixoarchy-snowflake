@@ -411,6 +411,7 @@ class StubPhone:
 
     def __init__(self, devices):
         self.connected, self._devices, self.calls, self.outgoing = True, devices, [], set()
+        self.silenced = {}
         self.stop, self.modern, self.call_active = (lambda: None), True, False
         self.errors, self.results, self.states, self.at_call = {}, {}, [], {}
 
@@ -472,6 +473,7 @@ class Ring(_Phone4):
         self.assertEqual(self.phone.calls, [])
         page = s.STAGES.current()
         self.assertEqual((page["kind"], [d["name"] for d in page["devices"]]), ("phone_pick", ["Pixel", "iPad"]))
+        self.assertEqual((page["ring_label"], page["send_label"], page["error_label"]), ("Ring", "Send", "Couldn't do that"))
         self.assertEqual(r["say"], "Which device?")
         self.assertIsNone(s.STAGES._keep((page, {}, 0)))          # (never kept for Back)
         s.phone_reset()
@@ -485,6 +487,16 @@ class Ring(_Phone4):
     def test_two_devices_without_boards_ask_by_name(self):
         self.phone._devices = [dev("pixel", "Pixel"), dev("ipad", "iPad")]
         self.assertEqual(self.ask("find my phone")["say"], "Which one: Pixel or iPad?")
+
+    def test_chooser_labels_follow_active_language(self):
+        s = self.server
+        self.phone._devices = [dev("pixel", "Pixel"), dev("ipad", "iPad")]
+        with mock.patch.object(s, "BRIDGED", True), mock.patch.object(s, "stages_on", return_value=True), \
+             mock.patch.object(s.lang, "active", "pl"):
+            self.ask("find my phone")
+        page = s.STAGES.current()
+        self.assertEqual((page["ring_label"], page["send_label"], page["error_label"]),
+                         ("Zadzwoń", "Wyślij", "Nie udało się"))
 
     def test_ring_my_ipad_rings_the_ipad(self):
         self.phone._devices = [dev("pixel", "Pixel"), dev("ipad", "iPad")]
@@ -539,7 +551,7 @@ class Send(_Phone4):
 
     def test_screenshot_is_share_files_with_registered_run_dir_path(self):
         shot = Path(self.tmp) / "shot.png"
-        shot.write_bytes(b"png")
+        shot.write_bytes(b"\x89PNG\r\n\x1a\n")
         mocked = mock.patch.object(self.server, "capture", return_value={"kind": "window", "path": str(shot), "label": "x"})
         mocked.start()
         self.addCleanup(mocked.stop)
@@ -558,7 +570,7 @@ class Send(_Phone4):
 
     def test_transfer_waiting_then_done_lines_and_file_deleted(self):
         shot = Path(self.tmp) / "shot2.png"
-        shot.write_bytes(b"png")
+        shot.write_bytes(b"\x89PNG\r\n\x1a\n")
         mocked = mock.patch.object(self.server, "capture", return_value={"kind": "window", "path": str(shot), "label": "x"})
         mocked.start()
         self.addCleanup(mocked.stop)
@@ -573,7 +585,7 @@ class Send(_Phone4):
 
     def test_failed_transfer_says_so_and_a_refused_send_leaves_no_file(self):
         shot = Path(self.tmp) / "shot3.png"
-        shot.write_bytes(b"png")
+        shot.write_bytes(b"\x89PNG\r\n\x1a\n")
         mocked = mock.patch.object(self.server, "capture", return_value={"kind": "window", "path": str(shot), "label": "x"})
         mocked.start()
         self.addCleanup(mocked.stop)
@@ -585,6 +597,28 @@ class Send(_Phone4):
         self.assertEqual(self.phone.outgoing, set())
         d = Path(nixi_env.run_dir()) / "nixi-companion" / "phone"
         self.assertTrue(wait_for(lambda: not list(d.glob("*.png"))))
+
+    def test_screen_fallback_is_sent_as_a_jpeg_picture(self):
+        shot = Path(self.tmp) / "shot.jpg"
+        shot.write_bytes(b"\xff\xd8\xffsample")
+        with mock.patch.object(self.server, "capture", return_value={"kind": "screen", "path": str(shot)}):
+            self.phone.results["share.files"] = {"transfers": ["t1"]}
+            self.phone.states = [[{"id": "t1", "state": "done"}]]
+            self.assertEqual(self.ask("send a screenshot to my phone")["say"], "On your Pixel.")
+        path = self.phone.calls[0][1]["paths"][0]
+        self.assertTrue(path.endswith(".jpg"))
+        self.assertEqual(self.phone.at_call["registered"], [True])
+
+    def test_failed_copy_leaves_no_unregistered_file(self):
+        shot = Path(self.tmp) / "shot.png"
+        shot.write_bytes(b"\x89PNG\r\n\x1a\n")
+        folder = Path(nixi_env.run_dir()) / "nixi-companion" / "phone"
+        before = set(folder.iterdir()) if folder.exists() else set()
+        with mock.patch.object(self.server.shutil, "copyfileobj", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                self.server.phone_send_file(self.phone.devices()[0], str(shot))
+        self.assertEqual(self.phone.outgoing, set())
+        self.assertEqual(set(folder.iterdir()), before)
 
 
 class Battery(_Phone4):
@@ -673,6 +707,7 @@ class Calls(_Phone4):
         s.CFG["proactive"] = True
         self.phone.call_active = False
         self.say = mock.patch.object(s.Speaker, "say").start()
+        self.addCleanup(s.Speaker.phone_call_sids.clear)
         self.stop = mock.patch.object(s.Speaker, "stop").start()
         self.follow = mock.patch.object(s.Wake, "end_follow").start()
         for p in (mock.patch.object(s.Speaker, "available", return_value=True), mock.patch.object(s.Desk, "locked", return_value=False),
@@ -707,10 +742,28 @@ class Calls(_Phone4):
         s = self.server
         s.Ambient.phone_call = True
         s.phone_on_call(*self.ring())
-        self.say.assert_called_once_with("Anna is calling on your Pixel", None, None, False, None)
+        self.assertEqual(self.say.call_args.args[0], "Anna is calling on your Pixel")
+        self.assertEqual(self.say.call_args.args[2:], (None, False, None))
+        self.assertIn(self.say.call_args.args[1], s.Speaker.phone_call_sids)
         self.say.reset_mock()
         s.phone_on_call(*self.ring(caller=None))
-        self.say.assert_called_once_with("A call on your Pixel", None, None, False, None)
+        self.assertEqual(self.say.call_args.args[0], "A call on your Pixel")
+
+    def test_ringing_rechecks_privacy_when_audio_is_ready(self):
+        s = self.server
+        s.phone_on_call(*self.ring())
+        sid = self.say.call_args.args[1]
+        class Done(Exception):
+            pass
+        with s.Speaker.cv:
+            s.Speaker.ready.append((s.Speaker.gen, sid, "call", b"", 22050, None, None, 0, False, "elevenlabs", None))
+        with mock.patch.object(s.Desk, "locked", return_value=True), mock.patch.object(s.FLOOR, "hold", return_value=True), \
+             mock.patch.object(s.Speaker, "_player"), mock.patch.object(s.Speaker, "_release_if_idle", side_effect=Done):
+            with self.assertRaises(Done):
+                s.Speaker._player_loop()
+        self.assertNotIn(sid, s.Speaker.phone_call_sids)
+        s.BUS.pub.assert_any_call(t="spk_skip", id=sid)
+        s.Speaker.current_engine = s.Speaker.current_sid = None
 
     def test_ringing_to_talking_within_one_snapshot_not_announced(self):
         self.server.phone_on_call(*self.ring(state="talking"))
@@ -724,6 +777,20 @@ class Calls(_Phone4):
             with patch:
                 s.phone_on_call(*self.ring())
         self.say.assert_not_called()
+
+    def test_phone_off_restores_only_dnd_still_owned_by_nixi(self):
+        s = self.server
+        self.phone._devices = [dev("pixel", "Pixel"), dev("ipad", "iPad"), dev("watch", "Watch")]
+        self.phone._devices[0]["dnd"] = {"on": True, "by": "set", "at": 7}
+        self.phone._devices[1]["dnd"] = {"on": True, "by": "set", "at": 8}
+        self.phone._devices[2]["dnd"] = {"on": True, "by": "set", "at": 9}
+        self.phone.silenced = {"pixel": 7, "ipad": 7, "watch": 9}
+        self.phone.errors["dnd.set"] = OSError("offline")
+        s.CFG["phone_on"] = False
+        s.phone_reset()
+        self.assertEqual(self.phone.calls, [("dnd.set", {"device": "pixel", "on": False}),
+                                            ("dnd.set", {"device": "watch", "on": False})])
+        self.assertEqual(self.phone.silenced, {})
 
     def test_the_call_quiet_holds_every_other_voice(self):
         s = self.server
