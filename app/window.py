@@ -599,8 +599,8 @@ class NixiWindow:
         try:
             L.set_keyboard_mode(self.win, {"none": L.KeyboardMode.NONE, "on_demand": L.KeyboardMode.ON_DEMAND,
                                            "exclusive": L.KeyboardMode.EXCLUSIVE}[mode])
-        except AttributeError:                             # (an old gtk-layer-shell: interactivity on or off)
-            L.set_keyboard_interactivity(self.win, mode != "none")
+        except AttributeError:                             # (an old gtk-layer-shell: on is a full grab, so only for the card)
+            L.set_keyboard_interactivity(self.win, mode == "exclusive")
 
     def _kbd_quiet(self):
         """Before the surface maps again, drop the keyboard mode to none, and go back to on-demand a moment later (#232).
