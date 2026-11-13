@@ -391,35 +391,179 @@ class Records(_FluxCase):
         self.assertEqual(client.sms_threads()[0]["body"], "private")
 
 
-class Ring(unittest.TestCase):
-    @unittest.skip("step 4")
-    def test_one_device_online_rings(self): ...
+class StubPhone:
+    """Stands in for server.Phone: the server-side phone logic without a socket."""
 
-    @unittest.skip("step 4")
-    def test_two_devices_give_a_card_with_two_buttons(self): ...
+    def __init__(self, devices):
+        self.connected, self._devices, self.calls, self.outgoing = True, devices, [], set()
+        self.stop, self.modern = (lambda: None), True
+        self.errors, self.results, self.states, self.at_call = {}, {}, [], {}
 
-    @unittest.skip("step 4")
-    def test_ring_my_ipad_rings_the_ipad(self): ...
+    def devices(self):
+        return self._devices
 
-    @unittest.skip("step 4")
-    def test_no_device_online_gives_last_seen_line(self): ...
+    def transfers(self):
+        return self.states.pop(0) if len(self.states) > 1 else (self.states[0] if self.states else [])
 
-    @unittest.skip("step 4")
-    def test_not_supported_gives_cant_ring_line(self): ...
+    def call(self, method, **params):
+        self.calls.append((method, params))
+        if method == "share.files":
+            self.at_call["registered"] = [p in self.outgoing and os.path.isfile(p) for p in params["paths"]]
+        if method in self.errors:
+            raise self.errors[method]
+        return self.results.get(method, {})
 
 
-class Send(unittest.TestCase):
-    @unittest.skip("step 4")
-    def test_url_on_clipboard_is_share_url(self): ...
+def dev(id, name, online=True, can=("ring", "share"), last=0):
+    return {"id": id, "name": name, "online": online, "lastSeen": last, "battery": {"charge": 50, "charging": False}, "can": set(can)}
 
-    @unittest.skip("step 4")
-    def test_text_on_clipboard_is_share_text(self): ...
 
-    @unittest.skip("step 4")
-    def test_screenshot_is_share_files_with_registered_run_dir_path(self): ...
+class _Phone4(_PhoneEnv):
+    def setUp(self):
+        s = self.server
+        saved = dict(s.CFG)
+        self.addCleanup(lambda: (s.CFG.clear(), s.CFG.update(saved)))
+        s.CFG["phone_on"] = True
+        self.phone = StubPhone([dev("pixel", "Pixel")])
+        for p in (mock.patch.object(s, "Phone", self.phone), mock.patch.object(s, "PHONE_POLL", 0.01),
+                  mock.patch.object(s, "PHONE_FIRST_WAIT", 2), mock.patch.object(s.BUS, "pub"),
+                  mock.patch.object(s, "BRIDGED", False)):
+            p.start()
+            self.addCleanup(p.stop)
 
-    @unittest.skip("step 4")
-    def test_transfer_waiting_then_done_lines_and_file_deleted(self): ...
+    def ask(self, text):
+        r = self.server.quick.handle(text)
+        self.assertIn("phone", r, text)
+        return self.server.phone_quick(r["phone"])
+
+
+class Ring(_Phone4):
+    def test_one_device_online_rings(self):
+        r = self.ask("where's my phone")
+        self.assertEqual(self.phone.calls, [("ring", {"device": "pixel"})])
+        self.assertEqual(r["say"], "Ringing your Pixel.")
+
+    def test_two_devices_give_a_card_with_two_buttons(self):
+        s = self.server
+        self.phone._devices = [dev("pixel", "Pixel"), dev("ipad", "iPad")]
+        with mock.patch.object(s, "BRIDGED", True), mock.patch.object(s, "stages_on", return_value=True):
+            r = self.ask("find my phone")
+        self.assertEqual(self.phone.calls, [])
+        page = s.STAGES.current()
+        self.assertEqual((page["kind"], [d["name"] for d in page["devices"]]), ("phone_pick", ["Pixel", "iPad"]))
+        self.assertEqual(r["say"], "Which device?")
+        self.assertIsNone(s.STAGES._keep((page, {}, 0)))          # (never kept for Back)
+        s.phone_reset()
+        self.assertIsNone(s.STAGES.current())
+        # and the button: a device that is online and can ring; nothing else
+        self.assertTrue(s.phone_pick_act("ipad", "ring")["ok"])
+        self.assertEqual(self.phone.calls, [("ring", {"device": "ipad"})])
+        self.assertFalse(s.phone_pick_act("nope", "ring")["ok"])
+        self.assertEqual(len(self.phone.calls), 1)
+
+    def test_two_devices_without_boards_ask_by_name(self):
+        self.phone._devices = [dev("pixel", "Pixel"), dev("ipad", "iPad")]
+        self.assertEqual(self.ask("find my phone")["say"], "Which one: Pixel or iPad?")
+
+    def test_ring_my_ipad_rings_the_ipad(self):
+        self.phone._devices = [dev("pixel", "Pixel"), dev("ipad", "iPad")]
+        self.ask("ring my iPad")
+        self.assertEqual(self.phone.calls, [("ring", {"device": "ipad"})])
+
+    def test_no_device_online_gives_last_seen_line(self):
+        self.phone._devices = [dev("pixel", "Pixel", online=False, last=time.time() - 20 * 60 - 5)]
+        self.assertEqual(self.ask("find my phone")["say"], "Pixel isn't connected, last seen 20 min ago.")
+        self.assertEqual(self.phone.calls, [])
+
+    def test_not_supported_gives_cant_ring_line(self):
+        self.phone.errors["ring"] = RuntimeError({"code": "not_supported"})
+        self.assertEqual(self.ask("find my phone")["say"], "Your Pixel can't ring.")
+
+    def test_a_device_that_cannot_ring_is_named_not_swapped(self):
+        self.phone._devices = [dev("pixel", "Pixel"), dev("ipad", "iPad", can=("share",))]
+        self.assertEqual(self.ask("ring my ipad")["say"], "Your iPad can't ring.")
+        self.assertEqual(self.phone.calls, [])
+
+    def test_not_ours_and_off_and_flux_down(self):
+        s = self.server
+        self.assertIsNone(s.phone_quick({"do": "ring", "name": "sister"}))
+        self.phone.connected = False
+        self.assertEqual(self.ask("find my phone")["say"], "Flux isn't running")
+        self.assertIsNone(s.phone_quick({"do": "ring", "name": "pixel"}))
+        s.CFG["phone_on"] = False
+        self.assertIn("switch it on", self.ask("find my phone")["say"])
+
+
+class Send(_Phone4):
+    def clip(self, text=None, image=None):
+        c = {"kind": "clipimg", "path": image, "label": "x"} if image else {"kind": "clip", "text": text, "label": "x"}
+        p = mock.patch.object(self.server, "capture", return_value=c)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_url_on_clipboard_is_share_url(self):
+        self.clip("https://example.com/a?b=1")
+        r = self.ask("send this to my phone")
+        self.assertEqual(self.phone.calls, [("share.url", {"device": "pixel", "url": "https://example.com/a?b=1"})])
+        self.assertEqual(r["say"], "Sent to your Pixel.")
+
+    def test_text_on_clipboard_is_share_text(self):
+        self.clip("two words")
+        r = self.ask("send the clipboard to my pixel")
+        self.assertEqual(self.phone.calls, [("share.text", {"device": "pixel", "text": "two words"})])
+        self.assertEqual(r["say"], "Sent to your Pixel.")
+        self.clip("see https://example.com now")                       # (not a single URL)
+        self.ask("send this to my phone")
+        self.assertEqual(self.phone.calls[-1][0], "share.text")
+
+    def test_screenshot_is_share_files_with_registered_run_dir_path(self):
+        shot = Path(self.tmp) / "shot.png"
+        shot.write_bytes(b"png")
+        mocked = mock.patch.object(self.server, "capture", return_value={"kind": "window", "path": str(shot), "label": "x"})
+        mocked.start()
+        self.addCleanup(mocked.stop)
+        self.phone.results["share.files"] = {"transfers": ["t1"]}
+        self.phone.states = [[{"id": "t1", "state": "done"}]]
+        r = self.ask("send a screenshot to my phone")
+        (method, params), = self.phone.calls
+        (path,) = params["paths"]
+        self.assertEqual(method, "share.files")
+        self.assertEqual(os.path.dirname(path), os.path.realpath(os.path.join(nixi_env.run_dir(), "nixi-companion", "phone")))
+        self.assertEqual(self.phone.at_call["registered"], [True])
+        self.assertEqual(oct(os.stat(os.path.dirname(path)).st_mode & 0o777), "0o700")
+        self.assertEqual(r["say"], "On your Pixel.")
+        self.assertTrue(wait_for(lambda: not os.path.exists(path) and path not in self.phone.outgoing))
+        self.assertTrue(shot.exists())                                 # (only the copy goes)
+
+    def test_transfer_waiting_then_done_lines_and_file_deleted(self):
+        shot = Path(self.tmp) / "shot2.png"
+        shot.write_bytes(b"png")
+        mocked = mock.patch.object(self.server, "capture", return_value={"kind": "window", "path": str(shot), "label": "x"})
+        mocked.start()
+        self.addCleanup(mocked.stop)
+        self.phone.results["share.files"] = {"transfers": ["t1"]}
+        self.phone.states = [[{"id": "t1", "state": "waiting"}], [{"id": "t1", "state": "waiting"}], [{"id": "t1", "state": "done"}]]
+        r = self.ask("send a screenshot to my phone")
+        self.assertEqual(r["say"], "Waiting for your Pixel; it goes when it's back.")
+        path = self.phone.calls[0][1]["paths"][0]
+        self.assertTrue(wait_for(lambda: self.server.BUS.pub.call_args_list and not os.path.exists(path)))
+        self.server.BUS.pub.assert_called_with(t="note", text="On your Pixel.")
+        self.assertNotIn(path, self.phone.outgoing)
+
+    def test_failed_transfer_says_so_and_a_refused_send_leaves_no_file(self):
+        shot = Path(self.tmp) / "shot3.png"
+        shot.write_bytes(b"png")
+        mocked = mock.patch.object(self.server, "capture", return_value={"kind": "window", "path": str(shot), "label": "x"})
+        mocked.start()
+        self.addCleanup(mocked.stop)
+        self.phone.results["share.files"] = {"transfers": ["t1"]}
+        self.phone.states = [[{"id": "t1", "state": "failed"}]]
+        self.assertEqual(self.ask("send a screenshot to my phone")["say"], "That didn't reach your Pixel.")
+        self.phone.errors["share.files"] = RuntimeError({"code": "not_supported"})
+        self.assertEqual(self.ask("send a screenshot to my phone")["say"], "Your Pixel can't take that.")
+        self.assertEqual(self.phone.outgoing, set())
+        d = Path(nixi_env.run_dir()) / "nixi-companion" / "phone"
+        self.assertTrue(wait_for(lambda: not list(d.glob("*.png"))))
 
 
 class Battery(unittest.TestCase):

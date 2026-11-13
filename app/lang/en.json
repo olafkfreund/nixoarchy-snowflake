@@ -58,6 +58,66 @@
     "phone.not_running": "Flux isn't running",
     "phone.update_flux": "Update Flux for calls and meeting silence",
     "phone.turn_on_sync": "Turn on Sync Do Not Disturb on the {name} for meeting silence",
-    "phone.connected": "Connected: {names}"
+    "phone.connected": "Connected: {names}",
+    "phone.off": "Phone is off. You can switch it on in Settings.",
+    "phone.none_can": "None of your devices can do that.",
+    "phone.ringing": "Ringing your {name}.",
+    "phone.cant_ring": "Your {name} can't ring.",
+    "phone.offline": "{name} isn't connected, last seen {ago} ago.",
+    "phone.offline_never": "{name} isn't connected.",
+    "phone.which": "Which one: {names}?",
+    "phone.pick": "Which device?",
+    "phone.sent": "Sent to your {name}.",
+    "phone.sending": "Sending to your {name}…",
+    "phone.file_done": "On your {name}.",
+    "phone.file_waiting": "Waiting for your {name}; it goes when it's back.",
+    "phone.file_failed": "That didn't reach your {name}.",
+    "phone.cant_share": "Your {name} can't take that.",
+    "phone.nothing": "There's nothing to send.",
+    "phone.too_long": "That's too long to send.",
+    "phone.failed": "I couldn't do that.",
+    "phone.min": "{n} min",
+    "phone.hour": "{n} h",
+    "phone.day": "{n} days"
+  },
+  "phrases": {
+    "phone_generic": [
+      "phone",
+      "my phone",
+      "mobile",
+      "cell",
+      "cell phone",
+      "tablet",
+      "device"
+    ],
+    "phone_find": [
+      "where's my phone",
+      "where is my phone",
+      "find my phone",
+      "ring my phone",
+      "find my {name}",
+      "ring my {name}",
+      "where's my {name}"
+    ],
+    "phone_send": [
+      "send this to my phone",
+      "send this to my {name}",
+      "send the clipboard to my phone",
+      "send the clipboard to my {name}",
+      "send my clipboard to my {name}"
+    ],
+    "phone_send_shot": [
+      "send a screenshot to my phone",
+      "send a screenshot to my {name}",
+      "send the screenshot to my {name}",
+      "send my screen to my {name}"
+    ],
+    "phone_status": [
+      "how's my phone",
+      "how is my phone",
+      "phone status",
+      "phone battery",
+      "is my phone charged"
+    ]
   }
 }

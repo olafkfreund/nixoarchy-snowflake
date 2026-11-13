@@ -6830,6 +6830,184 @@ def phone_pub():
 Phone.on_state = phone_pub
 
 
+PHONE_POLL = 0.3                      # how often a sent file's transfer is looked at (seconds)
+PHONE_FIRST_WAIT = 8                  # how long the reply to "send a screenshot" waits for the transfer to say something
+
+
+def _phone_ago(last_seen):
+    secs = max(0, time.time() - (last_seen or 0))
+    return lang.t("phone.min", n=max(1, int(secs // 60))) if secs < 3600 else lang.t("phone.hour", n=int(secs // 3600)) if secs < 86400 else lang.t("phone.day", n=int(secs // 86400))
+
+
+def _phone_offline(d):
+    return lang.t("phone.offline", name=d["name"], ago=_phone_ago(d["lastSeen"])) if d.get("lastSeen") else lang.t("phone.offline_never", name=d["name"])
+
+
+def phone_choose(name, cap):
+    """Which device does a spoken request mean? -> (devices, reply). A reply means there is nothing to act on;
+    (None, None) means the phrase isn't about one of ours (it goes on to the agent); one device is acted on, several are chosen from."""
+    if not CFG.get("phone_on"):
+        return None, (None if name else {"say": lang.t("phone.off"), "mood": "curious"})
+    if not Phone.connected:
+        return None, (None if name else {"say": lang.t("phone.not_running"), "mood": "curious"})
+    devs = Phone.devices()
+    low = (name or "").lower()
+    if low:
+        hit = [d for d in devs if low in d["name"].lower() or d["name"].lower() in low]
+        if not hit:
+            return None, None
+        devs = hit
+    able = [d for d in devs if cap in d["can"]]
+    if low and len(devs) == 1:                      # named: say why it can't, rather than pick another
+        d = devs[0]
+        if cap not in d["can"]:
+            return None, {"say": lang.t("phone.cant_ring" if cap == "ring" else "phone.cant_share", name=d["name"]), "mood": "sad"}
+        if not d["online"]:
+            return None, {"say": _phone_offline(d), "mood": "sad"}
+    online = [d for d in able if d["online"]]
+    if online:
+        return online, None
+    if able:
+        return None, {"say": _phone_offline(max(able, key=lambda d: d["lastSeen"] or 0)), "mood": "sad"}
+    return None, {"say": lang.t("phone.none_can"), "mood": "sad"}
+
+
+def phone_ring(dev):
+    try:
+        Phone.call("ring", device=dev["id"])
+    except ConnectionError:
+        return {"say": lang.t("phone.not_running"), "mood": "sad"}
+    except RuntimeError as e:
+        return {"say": lang.t("phone.cant_ring", name=dev["name"]) if "not_supported" in str(e) else lang.t("phone.failed"), "mood": "sad"}
+    except (TimeoutError, ValueError):
+        return {"say": lang.t("phone.failed"), "mood": "sad"}
+    return {"say": lang.t("phone.ringing", name=dev["name"]), "mood": "happy", "sfx": "ok"}
+
+
+class _PhoneFirst:
+    """The first line a followed transfer has is the reply; later lines are notes."""
+
+    def __init__(self):
+        self.ev, self.line, self.gone, self.lock = threading.Event(), None, False, threading.Lock()
+
+    def emit(self, line):
+        with self.lock:
+            if not self.gone and not self.ev.is_set():
+                self.line = line
+                self.ev.set()
+                return
+        BUS.pub(t="note", text=line)
+
+
+def phone_follow(dev, dst, tids, first):
+    """Follow a sent file's transfer; delete the file at its end or after 10 minutes, and forget it."""
+    name, end, last = dev["name"], time.monotonic() + 600, None
+    try:
+        while time.monotonic() < end and CFG.get("phone_on"):
+            states = {t["id"]: t["state"] for t in Phone.transfers()}
+            cur = [states.get(i) for i in tids]
+            if all(c == "done" for c in cur):
+                first.emit(lang.t("phone.file_done", name=name))
+                return
+            if any(c in ("failed", "canceled") for c in cur):
+                first.emit(lang.t("phone.file_failed", name=name))
+                return
+            waiting = any(c == "waiting" for c in cur)
+            if waiting and last != "waiting":
+                first.emit(lang.t("phone.file_waiting", name=name))
+            last = "waiting" if waiting else None
+            time.sleep(PHONE_POLL)
+    finally:
+        Phone.outgoing.discard(dst)
+        try:
+            os.unlink(dst)
+        except OSError:
+            pass
+
+
+def phone_send_file(dev, src):
+    """Copy a picture into Nixi's own 0600 folder, register it, send it with share.files and follow the transfer."""
+    run = os.path.realpath(os.path.join(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}", "nixi-companion", "phone"))
+    os.makedirs(run, mode=0o700, exist_ok=True)
+    os.chmod(run, 0o700)
+    dst = os.path.join(run, secrets.token_hex(8) + ".png")
+    fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "wb") as out, open(src, "rb") as inp:
+        shutil.copyfileobj(inp, out)
+    Phone.outgoing.add(dst)
+    try:
+        got = Phone.call("share.files", device=dev["id"], paths=[dst])
+        tids = [i for i in (got or {}).get("transfers", []) if isinstance(i, str)]
+        if not tids:
+            raise RuntimeError("no transfer")
+    except Exception:
+        Phone.outgoing.discard(dst)
+        os.unlink(dst)
+        raise
+    first = _PhoneFirst()
+    threading.Thread(target=phone_follow, args=(dev, dst, tids, first), daemon=True).start()
+    first.ev.wait(PHONE_FIRST_WAIT)
+    with first.lock:
+        first.gone = True
+        return first.line or lang.t("phone.sending", name=dev["name"])
+
+
+def phone_share(dev, what):
+    """Send the screenshot ("shot") or the clipboard ("clip") to one device -> what he says."""
+    name = dev["name"]
+    try:
+        cap = capture("window" if what == "shot" else "clipboard")
+        if cap["kind"] in ("window", "clipimg"):
+            line = phone_send_file(dev, cap["path"])
+        else:
+            text = cap["text"]
+            if len(text) >= 12000:                    # (capture() cuts there: never send half of it)
+                return {"say": lang.t("phone.too_long"), "mood": "sad"}
+            if re.fullmatch(r"https?://\S+", text):
+                Phone.call("share.url", device=dev["id"], url=text)
+            else:
+                Phone.call("share.text", device=dev["id"], text=text)
+            line = lang.t("phone.sent", name=name)
+    except ConnectionError:
+        return {"say": lang.t("phone.not_running"), "mood": "sad"}
+    except RuntimeError as e:
+        return {"say": lang.t("phone.cant_share", name=name) if "not_supported" in str(e) else lang.t("phone.nothing") if "empty" in str(e) else lang.t("phone.failed"), "mood": "sad"}
+    except Exception as e:  # noqa: BLE001  (a missing tool, a full disk: the type only, never the content)
+        print("phone share:", type(e).__name__, file=sys.stderr)
+        return {"say": lang.t("phone.failed"), "mood": "sad"}
+    return {"say": line, "mood": "happy", "sfx": "ok"}
+
+
+def phone_pick_card(devs, do):
+    """Several devices fit: a card with one button each (needs boards), else ask by name."""
+    if BRIDGED and stages_on():
+        BUS.pub(t="stage", **stage_event(STAGES.put({"v": 1, "kind": "phone_pick", "title": lang.t("phone.pick"), "do": do,
+                                                      "devices": [{"id": d["id"], "name": d["name"]} for d in devs]})))
+        return {"say": lang.t("phone.pick"), "mood": "curious"}
+    return {"say": lang.t("phone.which", names=lang.t("stage.or").join(d["name"] for d in devs)), "mood": "curious"}
+
+
+def phone_quick(r):
+    """quick.handle matched a phone phrase {do: ring|clip|shot|status, name} -> the reply, or None if it isn't for the phone."""
+    do, name = r.get("do"), r.get("name")
+    if do == "status":
+        return {"say": lang.t("stage.not_yet"), "mood": "curious"}       # (the status board comes with the battery step)
+    devs, reply = phone_choose(name, "ring" if do == "ring" else "share")
+    if reply or not devs:
+        return reply
+    return phone_ring(devs[0]) if do == "ring" and len(devs) == 1 else phone_share(devs[0], do) if len(devs) == 1 else phone_pick_card(devs, do)
+
+
+def phone_pick_act(dev_id, what):
+    """A card button: act on that device if it can still do it."""
+    cap = "ring" if what == "ring" else "share"
+    dev = next((d for d in Phone.devices() if d["id"] == dev_id and d["online"] and cap in d["can"]), None) if CFG.get("phone_on") and isinstance(dev_id, str) else None
+    if not dev:
+        return {"say": lang.t("phone.none_can"), "ok": False}
+    r = phone_ring(dev) if what == "ring" else phone_share(dev, what)
+    return {"say": r["say"], "ok": r.get("mood") == "happy"}
+
+
 def phone_reset():
     """Phone switched off: void work in flight, close the client, delete the files waiting to be sent."""
     global PHONE_GEN
@@ -6841,6 +7019,8 @@ def phone_reset():
         except OSError:
             pass
     Phone.outgoing.clear()
+    if STAGES.forget_where(lambda pg: pg.get("kind") == "phone_pick"):
+        BUS.pub(t="stage_close")
     phone_pub()
 
 
@@ -8162,6 +8342,8 @@ class Handler(BaseHTTPRequestHandler):
                     r = day_next()
                 elif r and "mail" in r:                  # the mail board, off the turn (#210)
                     r = mail_open()
+                elif r and "phone" in r:                 # find my phone, send to my phone (#231)
+                    r = phone_quick(r["phone"])
                 elif r and "nixi_ask" in r:
                     r = {"say": open_in_nixi(r["nixi_ask"]), "mood": "happy"} if BRIDGED else None
                 elif r and "session_show" in r:
@@ -8175,6 +8357,11 @@ class Handler(BaseHTTPRequestHandler):
                     APPROVALS.reset()
                     r["state"] = state_info()
                 return self._json({"handled": bool(r), **(r or {})})
+            if p in ("/api/phone/ring", "/api/phone/share"):      # the chooser card's buttons: the window's token only (not in TOOL_PATHS)
+                b = json.loads(self._body() or b"{}")
+                b = b if isinstance(b, dict) else {}
+                what = "ring" if p.endswith("ring") else b.get("what")
+                return self._json(phone_pick_act(b.get("id"), what) if what in ("ring", "clip", "shot") else {"ok": False, "say": lang.t("phone.failed")})
             if p == "/api/mail/open":                # the menu; the window's token only (not in TOOL_PATHS)
                 return self._json(mail_open())
             if p == "/api/mail/hear":

@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import threading
 import time
+import lang
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -331,6 +332,26 @@ def matches(text):
         _dry.on = False
 
 
+def _phone_phrase(t, key):
+    """-> the {name} a phrase of the language's `key` list names ("" if it has none), or None if t is none of them."""
+    for code in dict.fromkeys((lang.active, "en")):
+        for ph in lang.load(code).get("phrases", {}).get(key, []):
+            m = re.fullmatch(re.escape(ph).replace(r"\{name\}", r"(?P<name>[\w .'-]{1,30})"), t)
+            if m:
+                name = (m.groupdict().get("name") or "").strip()
+                return "" if name in lang.load(code).get("phrases", {}).get("phone_generic", []) else name
+    return None
+
+
+def _phone(t):
+    """Find my phone / send to my phone / how is my phone (#231). The server does the work."""
+    for key, do in (("phone_find", "ring"), ("phone_send", "clip"), ("phone_send_shot", "shot"), ("phone_status", "status")):
+        name = _phone_phrase(t, key)
+        if name is not None:
+            return {"phone": {"do": do, "name": name or None}}
+    return None
+
+
 def handle(text):
     t = " ".join((text or "").lower().replace("’", "'").split()).strip(" .!?")
     t = re.sub(r"^((?:hey|hi|okay|ok|yo|oi|hei|hallo|hej|cześć) nixi|nixi)[,\s]+", "", t)
@@ -357,6 +378,10 @@ def handle(text):
 
     if t in ("read my mail", "any new email", "check my email"):   # the mail board, made by the server (#210)
         return {"mail": True}
+
+    r = _phone(t)
+    if r:
+        return r
 
     if t in ("take control back", "stop the agent", "revoke control", "give me my desktop back"):
         return {"mirror": "off"}

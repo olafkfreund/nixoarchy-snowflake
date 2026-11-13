@@ -426,8 +426,8 @@ class Store:
 
     @staticmethod
     def _keep(e):
-        """A mail board is never kept as the previous stage: Back can't bring someone's mail back (#210)."""
-        return None if e and e[0].get("kind") == "mail" else e
+        """A mail board is never kept as the previous stage: Back can't bring someone's mail back (#210). Nor can a stale phone chooser."""
+        return None if e and e[0].get("kind") in ("mail", "phone_pick") else e
 
     def put(self, stage, refresh=None):
         """-> the stage for the page: items (or the stage) carry a token, nothing else added."""
@@ -462,6 +462,8 @@ class Store:
                     toks[row["hear"]] = ("mail_hear", {"account": r["account"], "id": r["id"]})
                     toks[row["reply"]] = ("mail_reply", {"account": r["account"], "id": r["id"], "thread": r["thread"]})
                 page["rows"].append(row)
+        elif stage["kind"] == "phone_pick":  # device names and ids only; the buttons post to /api/phone/ring or /share (#231)
+            pass
         elif stage["kind"] == "weather":    # read-only: nothing to press
             pass
         elif stage["kind"] == "calendar":   # Join per event with a link, and Open calendar; URLs held here, the page gets tokens
