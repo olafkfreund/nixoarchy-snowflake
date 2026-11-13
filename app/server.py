@@ -7471,6 +7471,8 @@ def phone_reset():
             pass
     Phone.outgoing.clear()
     Phone.silenced = {}
+    if hasattr(Phone, "_silence_pending"):              # (unconfirmed silence ends with the switch too, review)
+        Phone._silence_pending.clear()
     Phone._silence_seen = set()
     PHONE_BATT.clear()
     PHONE_LOW.clear()
