@@ -872,7 +872,7 @@ def _is_gog_send(text):
 
 
 def _is_flux(text):
-    return bool(_FLUX_RE.search(text) or (re.search(r"\bflux(?:-cli|d)?\b", text, re.I) and re.search(r"[$\{\}*?\[]", text)))
+    return bool(_FLUX_RE.search(text) or (re.search(r"\bflux(?:-cli|d)?\b", text, re.I) and re.search(r"[$`\{\}*?\[]", text)))
 
 
 def click_only(cmd):

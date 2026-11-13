@@ -13,7 +13,7 @@ import nixi_env
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-COUNT = ["gog send x", "gog gmail send-later x", "gog --gmail-no-send gmail list", "gog gmail send --to a@b", "gog mail send", "gog gmail reply 123", "gog gmail reply-all 1",
+COUNT = ["flux `printf sms` send 1 hi", "gog send x", "gog gmail send-later x", "gog --gmail-no-send gmail list", "gog gmail send --to a@b", "gog mail send", "gog gmail reply 123", "gog gmail reply-all 1",
          "gog gmail replyall 1", "gog gmail forward 1", "gog gmail fwd 1", "gog gmail autoreply", "gog gmail drafts send 9",
          "gog gmail drafts post 9", "gog chat messages send s", "gog chat messages create s", "gog chat messages post s",
          "gog api POST /x", 'g""og gmail send', "g\\og gmail send", "gog gmail drafts create x; gog gmail send y",
