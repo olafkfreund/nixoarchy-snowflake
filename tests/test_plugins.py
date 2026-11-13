@@ -272,6 +272,14 @@ class T(unittest.TestCase):
         self.assertEqual(self.one(dict(GOOD, stage=dict(st, network=True, reads=["peer-status"])), ["run"]).error,
                          "a plugin that reads your other machines' status can't use the network")
 
+    def test_phone_status_read_is_valid_and_refused_with_network(self):
+        st = {"phrases": ["x"], "argv": ["run"], "reads": ["phone-status"]}
+        self.assertIsNone(self.one(dict(GOOD, stage=st), ["run"]).error)
+        self.assertIsNone(self.one(dict(GOOD, stage=dict(st, reads=["system-status", "phone-status"])), ["run"]).error)
+        self.assertEqual(self.one(dict(GOOD, stage=dict(st, network=True)), ["run"]).error,
+                         "a plugin that reads your phone's status can't use the network")
+        self.assertEqual(self.one(dict(GOOD, stage=dict(st, reads=["phone-state"])), ["run"]).error, "bad stage reads")
+
     def test_plugin_dirs(self):
         d = plugins.plugin_dirs()
         self.assertEqual(d[0], plugins.APP_DIR.parent / "plugins")

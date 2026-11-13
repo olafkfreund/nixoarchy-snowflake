@@ -415,7 +415,7 @@ five parts. `mkCompanionPlugin` checks the manifest when it builds, so a bad one
   `chat` or `feed`.
 - **`stage`:** a program that fills the board under him. It has `phrases` (what you say to open it) and `argv` (the
   program and its words, run without a shell), and optionally `hint`, `network`, `cache_seconds`, `reads`
-  (`system-status` and/or `peer-status`) and `config`. With `config`, the plugin's `defaults.json` becomes a settings
+  (`system-status`, `peer-status` and/or `phone-status`) and `config`. `phone-status` gives the program `phone`, a list of `{name, online, battery, charging}` for your devices (no ids, numbers or texts, and only while Phone is on); it can't be combined with `network`, and a gauge host name made from a device name must fit `[A-Za-z0-9._-]{1,32}`. With `config`, the plugin's `defaults.json` becomes a settings
   file in `~/.config/nixi-companion/plugin-config/<id>.json`. A stage program runs in a `bwrap` sandbox, and a plugin
   that uses the network also needs `pasta`.
 

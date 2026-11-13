@@ -304,6 +304,9 @@ _config_lock = threading.RLock()
 eleven.CFG, eleven.DATA_DIR = CFG, DATA_DIR      # (one config and one data folder for the cloud voice)
 PEERS = peers.load()
 plugins.peers_allowed = lambda: CFG.get("peers_on") is True and bool(PEERS)
+plugins.phone_allowed = lambda: CFG.get("phone_on") is True
+plugins.phone_feed = lambda: [{"name": d["name"], "online": bool(d["online"]), "battery": (d.get("battery") or {}).get("charge"),
+                               "charging": bool((d.get("battery") or {}).get("charging"))} for d in Phone.devices()]
 
 SKINS = ["none", "halo", "crown", "sprout", "bow"]
 CHARACTERS = ("snowflake", "terminal", "robot", "devil")
@@ -2506,6 +2509,8 @@ def plugin_caps(m):
         out.append("Runs a program when you ask for it" + (" and uses the network" if m["stage"].get("network") else ""))
         if "system-status" in m["stage"].get("reads", []):
             out.append("Can read your system status")
+        if "phone-status" in m["stage"].get("reads", []):
+            out.append("Can read your phone's name, battery and whether it is online")
         if "peer-status" in m["stage"].get("reads", []):
             out.append("It can read your other machines' status (load, memory, disks, failed services)")
         if m["stage"].get("videos"):
@@ -2658,7 +2663,7 @@ class Nudge:
     """Unasked nudges (#133b): break, welcome back, memory, load. They wait for a breakpoint (an unlock, a workspace switch, or
     20 s without window events), and a budget keeps them rare: one visual per 5 minutes, one spoken per 10, a cooldown per kind."""
     COOL = {"cpu": 1800, "ram": 1800, "break": 3600, "workout": 0, "water": 0, "welcome": 0, "rain": 72000, "snow": 72000, "night": 72000, "party": 72000, "coding": 7200, "news": 1800,
-            "error": 1800, "disk": 21600, "offline": 1800, "host": 1800, "storm": 72000, "hot": 72000}
+            "error": 1800, "disk": 21600, "offline": 1800, "host": 1800, "storm": 72000, "hot": 72000, "phone_battery": 1800}
     lock = threading.Lock()
     pending = {}                                              # kind -> (text, spoken, deadline, peer); oldest first
     last_visual = last_speech = None
@@ -6492,6 +6497,10 @@ def peers_withdrawn(st):
     return st.get("kind") == "gauges" and len(st.get("hosts") or []) > 1 and not plugins.peers_allowed()
 
 
+def phone_read(p):
+    return "phone-status" in p.manifest["stage"].get("reads", [])
+
+
 def plugin_stage(pid, query, before=_ANY):
     """Run an enabled stage plugin (no agent turn) and put its facts on the stage. -> (shown, what to say). The output is for the
     page only: it is never added to a prompt (the follow-up note only ever names a day desk). With `before` (the stage on screen
@@ -6509,6 +6518,10 @@ def plugin_stage(pid, query, before=_ANY):
         return False, lang.t("plugin.failed", name=p.manifest["name"], error=e)
     if peers_withdrawn(st):
         return False, lang.t("plugin.peers_off")
+    if phone_read(p):
+        if not plugins.phone_allowed():
+            return False, lang.t("phone.off")
+        st = {**st, "from_phone": True}                        # (so switching Phone off can close it)
     if before is _ANY or (stages_on() and STAGES.current() is before):
         page = STAGES.put(st, refresh=(pid, query))
         BUS.pub(t="stage", **stage_event(page))
@@ -6827,7 +6840,73 @@ def phone_pub():
     BUS.pub(t="phone", status=phone_status())
 
 
-Phone.on_state = phone_pub
+PHONE_BATT = {}                       # device id -> its last charge seen
+PHONE_LOW = set()                     # devices already nudged: re-armed by charging or 20 % (#231)
+
+
+def phone_battery_check(devs):
+    """Offer the low-battery nudge when an online device falls from 15 % or more to under 15 % off the charger."""
+    for d in devs:
+        b = d.get("battery") or {}
+        charge, charging = b.get("charge"), bool(b.get("charging"))
+        if not isinstance(charge, (int, float)) or isinstance(charge, bool):
+            continue
+        before = PHONE_BATT.get(d["id"])
+        PHONE_BATT[d["id"]] = charge
+        if charging or charge >= 20:
+            PHONE_LOW.discard(d["id"])
+        if d.get("online") and before is not None and before >= 15 > charge and not charging and d["id"] not in PHONE_LOW:
+            PHONE_LOW.add(d["id"])
+            Nudge.offer("phone_battery", lang.t("phone.battery_low", name=d["name"], n=round(charge)), False)
+
+
+def phone_state():
+    """Fluxd sent a new snapshot (the Phone worker calls this)."""
+    if CFG.get("phone_on"):
+        phone_battery_check(Phone.devices())
+    phone_pub()
+
+
+Phone.on_state = phone_state
+
+
+def _phone_where(d):
+    return lang.t("phone.online") if d["online"] else lang.t("phone.last_seen", ago=_phone_ago(d["lastSeen"])) if d.get("lastSeen") else lang.t("phone.offline_word")
+
+
+def phone_board(name):
+    """"How is my phone": a gauges board, one gauge per paired device (or spoken, without boards) -> what he says."""
+    if not CFG.get("phone_on"):
+        return None if name else {"say": lang.t("phone.off"), "mood": "curious"}
+    if not Phone.connected:
+        return None if name else {"say": lang.t("phone.not_running"), "mood": "curious"}
+    devs = Phone.devices()
+    low = (name or "").lower()
+    if low:
+        devs = [d for d in devs if low in d["name"].lower() or d["name"].lower() in low]
+        if not devs:
+            return None
+    if not devs:
+        return {"say": lang.t("phone.none_can"), "mood": "sad"}
+    if BRIDGED and stages_on():
+        hosts = []
+        for d in devs:
+            charge = (d.get("battery") or {}).get("charge")
+            h = {"name": d["name"], "state": "up", "meters": [], "badges": [], "lists": []}
+            if isinstance(charge, (int, float)) and 0 <= charge <= 100:
+                h["meters"].append({"label": lang.t("phone.battery"), "pct": charge})
+            if (d.get("battery") or {}).get("charging"):
+                h["badges"].append({"k": lang.t("phone.charging"), "v": "\u26a1"})
+            h["badges"].append({"k": lang.t("phone.status"), "v": _phone_where(d)[:60], **({} if d["online"] else {"tone": "warn"})})
+            hosts.append(h)
+        BUS.pub(t="stage", **stage_event(STAGES.put({"v": 1, "kind": "gauges", "title": lang.t("phone.board_title"), "hosts": hosts[:6], "from_phone": True})))
+        return {"say": lang.t("phone.board"), "mood": "happy"}
+    out = []
+    for d in devs:
+        charge = (d.get("battery") or {}).get("charge")
+        key = "phone.summary_charging" if (d.get("battery") or {}).get("charging") else "phone.summary"
+        out.append(lang.t(key, name=d["name"], pct=round(charge) if isinstance(charge, (int, float)) else "?", where=_phone_where(d)))
+    return {"say": " ".join(out), "mood": "happy"}
 
 
 PHONE_POLL = 0.3                      # how often a sent file's transfer is looked at (seconds)
@@ -6991,7 +7070,7 @@ def phone_quick(r):
     """quick.handle matched a phone phrase {do: ring|clip|shot|status, name} -> the reply, or None if it isn't for the phone."""
     do, name = r.get("do"), r.get("name")
     if do == "status":
-        return {"say": lang.t("stage.not_yet"), "mood": "curious"}       # (the status board comes with the battery step)
+        return phone_board(name)
     devs, reply = phone_choose(name, "ring" if do == "ring" else "share")
     if reply or not devs:
         return reply
@@ -7019,7 +7098,10 @@ def phone_reset():
         except OSError:
             pass
     Phone.outgoing.clear()
-    if STAGES.forget_where(lambda pg: pg.get("kind") == "phone_pick"):
+    PHONE_BATT.clear()
+    PHONE_LOW.clear()
+    plugins.forget()                                # (a cached board with phone readings is never served again)
+    if STAGES.forget_where(lambda pg: pg.get("kind") == "phone_pick" or pg.get("from_phone")):
         BUS.pub(t="stage_close")
     phone_pub()
 
@@ -7241,8 +7323,10 @@ def refresh_stage(token):
         if str(e) == plugins.CHANGED:
             Plug.reload()
         return {"ok": False}
-    if st["kind"] != "gauges" or not st.get("live") or peers_withdrawn(st):
+    if st["kind"] != "gauges" or not st.get("live") or peers_withdrawn(st) or (phone_read(p) and not plugins.phone_allowed()):
         return {"ok": False}
+    if phone_read(p):
+        st = {**st, "from_phone": True}
     page = STAGES.replace(token, st)
     if page is None:
         return {"ok": False, "error": "gone"}

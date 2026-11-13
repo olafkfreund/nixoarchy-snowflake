@@ -78,7 +78,18 @@
     "phone.failed": "I couldn't do that.",
     "phone.min": "{n} min",
     "phone.hour": "{n} h",
-    "phone.day": "{n} days"
+    "phone.day": "{n} days",
+    "phone.battery_low": "Your {name} is down to {n}%.",
+    "phone.board_title": "Your devices",
+    "phone.board": "Here are your devices.",
+    "phone.battery": "battery",
+    "phone.charging": "charging",
+    "phone.status": "status",
+    "phone.online": "online",
+    "phone.last_seen": "last seen {ago} ago",
+    "phone.summary": "{name} is at {pct} percent, {where}.",
+    "phone.summary_charging": "{name} is at {pct} percent and charging, {where}.",
+    "phone.offline_word": "offline"
   },
   "phrases": {
     "phone_generic": [

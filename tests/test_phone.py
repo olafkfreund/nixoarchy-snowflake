@@ -566,12 +566,83 @@ class Send(_Phone4):
         self.assertTrue(wait_for(lambda: not list(d.glob("*.png"))))
 
 
-class Battery(unittest.TestCase):
-    @unittest.skip("step 5")
-    def test_16_to_14_nudges_once_and_14_to_13_not(self): ...
+class Battery(_Phone4):
+    def setUp(self):
+        super().setUp()
+        s = self.server
+        s.PHONE_BATT.clear()
+        s.PHONE_LOW.clear()
+        s.Nudge.pending.pop("phone_battery", None)
+        self.addCleanup(lambda: s.Nudge.pending.pop("phone_battery", None))
 
-    @unittest.skip("step 5")
-    def test_charging_then_14_again_nudges_once_more(self): ...
+    def feed(self, charge, charging=False, online=True):
+        d = dev("pixel", "Pixel", online=online)
+        d["battery"] = {"charge": charge, "charging": charging}
+        self.phone._devices = [d]
+        self.server.phone_state()
+
+    def offered(self):
+        return self.server.Nudge.pending.pop("phone_battery", None)
+
+    def test_16_to_14_nudges_once_and_14_to_13_not(self):
+        self.feed(16)
+        self.assertIsNone(self.offered())
+        self.feed(14)
+        self.assertEqual(self.offered()[0], "Your Pixel is down to 14%.")
+        self.feed(13)
+        self.assertIsNone(self.offered())
+
+    def test_charging_then_14_again_nudges_once_more(self):
+        for c, ch in ((16, False), (14, False)):
+            self.feed(c, ch)
+        self.assertIsNotNone(self.offered())
+        self.feed(30, True)
+        self.feed(14, False)
+        self.assertIsNotNone(self.offered())
+
+    def test_no_nudge_while_charging_or_offline_or_at_first_sight_and_it_holds_until_20(self):
+        self.feed(14)                               # (first reading is low: nothing fell)
+        self.assertIsNone(self.offered())
+        self.feed(16)
+        self.feed(14, True)
+        self.assertIsNone(self.offered())
+        self.feed(16)
+        self.feed(14, online=False)
+        self.assertIsNone(self.offered())
+        self.feed(16)
+        self.feed(14)
+        self.assertIsNotNone(self.offered())
+        self.feed(16)                               # (below 20 and not charged: still latched)
+        self.feed(14)
+        self.assertIsNone(self.offered())
+        self.feed(25)
+        self.feed(14)
+        self.assertIsNotNone(self.offered())
+
+    def test_cooldown_and_off_switch(self):
+        self.assertEqual(self.server.Nudge.COOL["phone_battery"], 1800)
+        self.server.CFG["phone_on"] = False
+        self.feed(16)
+        self.feed(14)
+        self.assertIsNone(self.offered())
+
+    def test_status_board_has_one_gauge_per_device_and_no_private_text(self):
+        s = self.server
+        self.phone._devices = [dev("pixel", "Pixel", last=time.time()), dev("ipad", "iPad", online=False, last=time.time() - 1500)]
+        self.phone._devices[0]["battery"] = {"charge": 80, "charging": True}
+        with mock.patch.object(s, "BRIDGED", True), mock.patch.object(s, "stages_on", return_value=True):
+            r = self.ask("how's my phone")
+        page = s.STAGES.current()
+        self.assertEqual((page["kind"], [h["name"] for h in page["hosts"]]), ("gauges", ["Pixel", "iPad"]))
+        self.assertEqual(page["hosts"][0]["meters"], [{"label": "battery", "pct": 80}])
+        self.assertIn({"k": "charging", "v": "\u26a1"}, page["hosts"][0]["badges"])
+        self.assertEqual(page["hosts"][1]["badges"][-1]["v"], "last seen 25 min ago")
+        self.assertEqual(r["say"], "Here are your devices.")
+        self.assertIsNotNone(s.STAGES._keep((page, {}, 0)))       # (may stay in Back)
+
+    def test_status_without_boards_is_spoken(self):
+        self.phone._devices = [dev("pixel", "Pixel")]
+        self.assertEqual(self.ask("phone battery")["say"], "Pixel is at 50 percent, online.")
 
 
 class Calls(unittest.TestCase):
