@@ -20,6 +20,11 @@ jobs:
         run: time nix develop -c timeout 600 python3 -B tests/test_plugin_sandbox.py
       - name: relax the AppArmor userns restriction
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: make /usr/bin/env a Nix binary, as on NixOS (the sandbox binds only /nix/store)
+        run: |
+          ENV=$(nix build --no-link --print-out-paths nixpkgs#coreutils)/bin/env
+          sudo mount --bind "$ENV" /usr/bin/env
+          ls -la /usr/bin/env; /usr/bin/env --version | head -1
       - name: sandbox tests after relaxing
         continue-on-error: true
         run: time nix develop -c timeout 600 python3 -B tests/test_plugin_sandbox.py
