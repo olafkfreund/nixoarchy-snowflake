@@ -48,6 +48,7 @@ APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 import plugins  # noqa: E402
 import peers  # noqa: E402
+import phone  # noqa: E402
 from floor import FLOOR, pdeathsig_preexec  # noqa: E402
 import day  # noqa: E402
 import lang  # noqa: E402
@@ -55,6 +56,7 @@ import eleven  # noqa: E402
 import quick  # noqa: E402
 import recall  # noqa: E402
 import stages  # noqa: E402
+Phone = phone.Phone()
 STATIC = APP_DIR / "static"
 try:                                            # written by the release build (and kept in git for git installs)
     VERSION = (APP_DIR / "VERSION").read_text(encoding="utf-8").strip() or "0.0.0"
@@ -8705,6 +8707,8 @@ def main():
     Ambient.start()
     Mirror.start()
     Inbox.start()
+    if CFG.get("phone_on"):
+        Phone.start()
     Desk.start()
     if not BRIDGED:
         Updates.start()

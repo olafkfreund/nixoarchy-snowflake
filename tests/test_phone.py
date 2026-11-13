@@ -12,9 +12,12 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import nixi_env
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
+import phone
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -55,6 +58,7 @@ class FakeFlux:
         os.chmod(self.dir, 0o700)
         self.path = os.path.join(self.dir, "fluxd.sock")
         self.results, self.errors, self.requests = {}, {}, []
+        self.before_reply = None
         self.accepted = 0  # connections so far, to watch reconnects
         self._lock = threading.Lock()
         self._conn = None
@@ -108,6 +112,8 @@ class FakeFlux:
         with self._lock:
             self.requests.append(req)
         m = req.get("method")
+        if self.before_reply:
+            self.before_reply(conn, req)
         reply = {"id": req.get("id")}
         if m in self.errors:
             reply["error"] = self.errors[m]
@@ -183,6 +189,15 @@ class _FluxCase(unittest.TestCase):
     def setUp(self):
         self.flux = FakeFlux().start()
         self.addCleanup(self.flux.stop)
+        old = os.environ.get("FLUX_SOCKET")
+        os.environ["FLUX_SOCKET"] = self.flux.path
+        self.addCleanup(lambda: os.environ.pop("FLUX_SOCKET", None) if old is None else os.environ.__setitem__("FLUX_SOCKET", old))
+
+    def client(self):
+        client = phone.Phone()
+        client.start()
+        self.addCleanup(client.stop)
+        return client
 
 
 class FakeFluxTest(_FluxCase):
@@ -220,42 +235,160 @@ class FakeFluxTest(_FluxCase):
 
 # ---- placeholders: one per spec "Verification" case. Each names the step that fills it in. ----
 
-class SocketChecks(unittest.TestCase):
+class SocketChecks(_FluxCase):
     """Refused with "Flux isn't running", and no request is sent."""
 
-    @unittest.skip("step 2")
-    def test_symlinked_socket(self): ...
+    def test_symlinked_socket(self):
+        link = self.flux.path + ".link"
+        os.symlink(self.flux.path, link)
+        self.addCleanup(os.unlink, link)
+        os.environ["FLUX_SOCKET"] = link
+        client = self.client()
+        self.assertFalse(wait_for(lambda: client.connected, 0.1))
+        self.assertEqual(self.flux.requests, [])
 
-    @unittest.skip("step 2")
-    def test_socket_owned_by_another_uid(self): ...
+    def test_socket_owned_by_another_uid(self):
+        real = phone.os.lstat
+        def other(path):
+            st = real(path)
+            if path == self.flux.path:
+                values = list(st)
+                values[4] = os.getuid() + 1
+                return os.stat_result(values)
+            return st
+        with mock.patch.object(phone.os, "lstat", side_effect=other):
+            client = self.client()
+            self.assertFalse(wait_for(lambda: client.connected, 0.1))
+        self.assertEqual(self.flux.requests, [])
 
-    @unittest.skip("step 2")
-    def test_parent_folder_mode_0775(self): ...
+    def test_parent_folder_mode_0775(self):
+        os.chmod(self.flux.dir, 0o775)
+        client = self.client()
+        self.assertFalse(wait_for(lambda: client.connected, 0.1))
+        self.assertEqual(self.flux.requests, [])
 
 
-class Reader(unittest.TestCase):
-    @unittest.skip("step 2")
-    def test_two_states_before_subscribe_reply_keeps_the_second(self): ...
+class Reader(_FluxCase):
+    def test_two_states_before_subscribe_reply_keeps_the_second(self):
+        first, second = snapshot([device(name="First")]), snapshot([device(name="Second")])
+        def before(conn, req):
+            if req["method"] == "subscribe":
+                self.flux._send(conn, {"event": "state", "data": first})
+                self.flux._send(conn, {"event": "state", "data": second})
+        self.flux.before_reply = before
+        client = self.client()
+        self.assertTrue(wait_for(lambda: client.snap == second))
+        self.assertEqual(client.devices()[0]["name"], "Second")
 
-    @unittest.skip("step 2")
-    def test_eof_reconnects_after_1s_then_2s(self): ...
+    def test_eof_reconnects_after_1s_then_2s(self):
+        client = self.client()
+        self.assertTrue(wait_for(lambda: self.flux.accepted == 1))
+        start = time.monotonic()
+        self.flux.close_client()
+        self.assertTrue(wait_for(lambda: self.flux.accepted == 2, 2))
+        self.assertGreaterEqual(time.monotonic() - start, 0.9)
+        start = time.monotonic()
+        self.flux.close_client()
+        self.assertTrue(wait_for(lambda: self.flux.accepted == 3, 3))
+        self.assertGreaterEqual(time.monotonic() - start, 1.9)
 
-    @unittest.skip("step 2")
-    def test_45s_silence_keeps_the_connection(self): ...
+    def test_45s_silence_keeps_the_connection(self):
+        client = self.client()
+        self.assertTrue(wait_for(lambda: self.flux.accepted == 1))
+        time.sleep(45)
+        self.assertTrue(client.connected)
+        self.assertEqual(self.flux.accepted, 1)
 
-    @unittest.skip("step 2")
-    def test_handler_dnd_set_gets_its_reply_while_reader_runs(self): ...
+    def test_handler_dnd_set_gets_its_reply_while_reader_runs(self):
+        got = []
+        client = self.client()
+        self.assertTrue(wait_for(lambda: client.connected))
+        self.flux.push_state(snapshot())
+        self.assertTrue(wait_for(lambda: client.modern))
+        client.on_state = lambda: got.append(client.call("dnd.set", device="pixel", on=True)) if client.connected else None
+        self.flux.push_state(snapshot([device(dnd={"on": False, "by": "phone", "at": 1})]))
+        self.assertTrue(wait_for(lambda: got, 2))
+        self.assertIn("dnd.set", self.flux.methods())
 
 
-class CallList(unittest.TestCase):
-    @unittest.skip("step 2")
-    def test_refuses_methods_outside_the_list(self): ...  # commands.run settings.set automation.add pair.accept notification.reply
+class CallList(_FluxCase):
+    def test_refuses_methods_outside_the_list(self):
+        client = self.client()
+        for method in ("commands.run", "settings.set", "automation.add", "pair.accept", "notification.reply"):
+            with self.subTest(method=method), self.assertRaises(ValueError):
+                client.call(method)
+        self.assertEqual([m for m in self.flux.methods() if m != "subscribe"], [])
 
-    @unittest.skip("step 2")
-    def test_share_files_refuses_unregistered_paths(self): ...  # ../x, sibling prefix, symlink into outgoing, folder, unregistered file
+    def test_share_files_refuses_unregistered_paths(self):
+        client = self.client()
+        base = Path(self.flux.dir) / "outgoing"
+        base.mkdir()
+        good = base / "good"
+        good.write_text("good")
+        client.outgoing.add(str(good))
+        sibling = Path(str(base) + "-sibling")
+        sibling.write_text("x")
+        link = base / "link"
+        link.symlink_to(good)
+        stray = base / "stray"
+        stray.write_text("x")
+        for bad in ("../x", str(sibling), str(link), str(base), str(stray)):
+            with self.subTest(path=bad), self.assertRaises(ValueError):
+                client.call("share.files", paths=[bad])
+        self.assertEqual([m for m in self.flux.methods() if m != "subscribe"], [])
+        self.assertTrue(wait_for(lambda: client.connected))
+        client.call("share.files", paths=[str(good)])
+        self.assertIn("share.files", self.flux.methods())
 
-    @unittest.skip("step 2")
-    def test_no_af_unix_or_fluxd_sock_outside_phone_py(self): ...
+    def test_no_af_unix_or_fluxd_sock_outside_phone_py(self):
+        for path in (REPO_ROOT / "app").rglob("*.py"):
+            if path.name == "phone.py":
+                continue
+            text = path.read_text()
+            self.assertNotIn("fluxd.sock", text, path)
+            self.assertNotIn("FLUX_SOCKET", text, path)
+            self.assertNotIn("/flux/", text, path)
+
+
+class Records(_FluxCase):
+    def test_first_snapshot_silent_and_keys_survive_reconnect(self):
+        seen = []
+        client = self.client()
+        client.on_call = lambda key, row: seen.append(key)
+        first = snapshot([device(call={"state": "ringing", "since": 1})])
+        self.assertTrue(wait_for(lambda: client.connected))
+        self.flux.push_state(first)
+        self.assertTrue(wait_for(lambda: ("call", "pixel", 1) in client.seen))
+        self.assertEqual(seen, [])
+        self.flux.push_state(snapshot([device(call={"state": "ringing", "since": 2})]))
+        self.assertTrue(wait_for(lambda: len(seen) == 1))
+        self.flux.close_client()
+        self.assertTrue(wait_for(lambda: self.flux.accepted == 2, 2))
+        self.flux.push_state(snapshot([device(call={"state": "talking", "since": 2})]))
+        time.sleep(0.1)
+        self.assertEqual(len(seen), 1)
+
+    def test_missed_approval_transfer_keys_and_clean_views(self):
+        client = self.client()
+        got = []
+        client.on_missed = lambda key, row: got.append(key)
+        client.on_approval = lambda key, row: got.append(key)
+        client.on_transfer = lambda key, row: got.append(key)
+        self.assertTrue(wait_for(lambda: client.connected))
+        self.flux.push_state(snapshot())
+        self.assertTrue(wait_for(lambda: not client._first))
+        row = device(missed={"caller": "Anna", "number": "123", "at": 5}, dnd={"on": False, "by": "phone", "at": 1})
+        row["conversations"] = [{"name": "Anna", "body": "private"}]
+        self.flux.push_state(snapshot([row, device(id="unpaired", paired=False)],
+                                      [{"device": "pixel", "kind": "sudo", "since": 6}],
+                                      [{"id": "t1", "state": "waiting", "path": "/private"}]))
+        self.assertTrue(wait_for(lambda: len(got) == 3))
+        self.assertEqual(set(got), {("missed", "pixel", 5), ("approval", "pixel", "sudo", 6), ("transfer", "t1")})
+        self.assertEqual(client.transfers(), [{"id": "t1", "state": "waiting"}])
+        self.assertEqual(len(client.devices()), 1)
+        self.assertNotIn("conversations", client.devices()[0])
+        self.assertEqual(client.devices()[0]["can"], {"ring", "share", "sms", "dnd"})
+        self.assertEqual(client.sms_threads()[0]["body"], "private")
 
 
 class Ring(unittest.TestCase):
