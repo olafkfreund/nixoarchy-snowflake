@@ -958,11 +958,18 @@ class Messages(_PhoneEnv):
     def test_send_that_never_reached_flux_keeps_the_draft(self):
         s = self.server
         draft = self.draft()
-        self.phone.errors["sms.send"] = ConnectionError("Flux isn't running")
+        self.phone.errors["sms.send"] = self.server.phone.NotSent("Flux isn't running")
         self.assertEqual(self.post("/api/phone/send", {"draft": draft, "text": "Hi"}, s.CLICK_KEY)[0], 403)
         self.assertEqual(s.PHONE_DRAFT["id"], draft)                      # (review: a definite failure may be retried)
         del self.phone.errors["sms.send"]
         self.assertEqual(self.post("/api/phone/send", {"draft": draft, "text": "Hi"}, s.CLICK_KEY)[0], 200)
+
+    def test_lost_reply_does_not_restore_the_draft(self):
+        s = self.server
+        draft = self.draft()
+        self.phone.errors["sms.send"] = ConnectionError("Flux isn't running")   # (sent, then the link dropped)
+        self.assertEqual(self.post("/api/phone/send", {"draft": draft, "text": "Hi"}, s.CLICK_KEY)[0], 403)
+        self.assertIsNone(s.PHONE_DRAFT)                                  # (review: it may have gone; no second send)
 
     def test_board_not_kept_in_back(self):
         s = self.server

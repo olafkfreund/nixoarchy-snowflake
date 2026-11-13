@@ -6918,7 +6918,7 @@ def phone_send(draft_id, text, keyed):
         Phone.call("sms.send", device=draft["device"], addresses=[draft["number"]], body=text)
     except Exception as exc:
         print(f"[nixi] phone send failed: {type(exc).__name__}", file=sys.stderr)
-        if isinstance(exc, ConnectionError):                  # (never reached Flux: the draft may be sent again)
+        if isinstance(exc, phone.NotSent):                    # (nothing was written: the draft may be sent again; a lost reply may mean it went)
             with PHONE_LOCK:
                 if PHONE_DRAFT is None and draft["gen"] == PHONE_GEN:
                     PHONE_DRAFT = draft
@@ -6942,7 +6942,7 @@ def phone_tick():
             if key not in live:
                 PHONE_MISSED.pop(key, None)
         waiting = [(key, item) for key, item in PHONE_MISSED.items() if key not in PHONE_SHOWN]
-    if waiting and Desk.locked() is False and not (Ambient.meeting or Ambient.dnd or Ambient.phone_call):
+    if waiting and PHONE_DRAFT is None and Desk.locked() is False and not (Ambient.meeting or Ambient.dnd or Ambient.phone_call):   # (never over a draft being written)
         key, item = waiting[0]
         if BRIDGED and stages_on():
             page = STAGES.put({"v": 1, "kind": "phone_missed", "title": lang.t("phone.missed", name=item["name"]),

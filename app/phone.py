@@ -11,6 +11,10 @@ import threading
 import time
 
 
+class NotSent(ConnectionError):
+    """Flux wasn't connected, so nothing was written: the request certainly didn't reach it."""
+
+
 class Phone:
     METHODS = frozenset({"ring", "share.url", "share.text", "share.files", "clipboard.send",
                          "sms.refresh", "sms.send", "dnd.set"})
@@ -179,7 +183,7 @@ class Phone:
         with self._send_lock:
             with self._lock:
                 if not self._connected or not self._socket:
-                    raise ConnectionError("Flux isn't running")
+                    raise NotSent("Flux isn't running")
                 sock = self._socket
                 ident = self._next_id
                 self._next_id += 1
