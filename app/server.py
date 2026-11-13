@@ -7093,7 +7093,15 @@ Phone.meeting_now = phone_meeting_now
 Phone.on_state = phone_state
 Phone.on_call = phone_on_call
 Phone.on_missed = phone_on_missed
-Phone.tick = phone_tick
+_phone_silence_tick = Phone.tick                    # (meeting silence lives in phone.py's own tick: keep it running)
+
+
+def _phone_ticks():
+    phone_tick()
+    _phone_silence_tick()
+
+
+Phone.tick = _phone_ticks
 Phone.on_approval = phone_on_approval
 
 
