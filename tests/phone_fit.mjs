@@ -23,7 +23,7 @@ const mouse = async (x, y) => { for (const type of ["mouseMoved", "mousePressed"
   await send("Input.dispatchMouseEvent", { type, x, y, button: "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: 1, pointerType: "mouse" }); await sleep(200); };
 const centre = sel => ev(`const r=(${sel}).getBoundingClientRect(); return [r.left+r.width/2, r.top+r.height/2];`);
 
-const PICK = { t: "stage", v: 1, kind: "phone_pick", title: "Which phone?", do: "ring", devices: [{ id: "d1", name: "Pixel" }, { id: "d2", name: "Tablet" }] };
+const PICK = { t: "stage", v: 1, kind: "phone_pick", title: "Which phone?", do: "ring", ring_label: "Ringe", send_label: "Sende", error_label: "Feil", devices: [{ id: "d1", name: "Pixel" }, { id: "d2", name: "Tablet" }] };
 const DRAFT = { t: "stage", v: 1, kind: "phone_draft", title: "Text", draft: "dr1", name: "Ann", number: "+4712345678", text: "On my way", send_label: "Send", length_error: "Too long", send_error: "Couldn't send" };
 
 // stub the phone routes in the page and record every POST (with its headers); sound and speech are stubbed too
@@ -43,7 +43,7 @@ await sleep(300);
 // 1. the ring chooser: two devices, two buttons, a click posts that device's id
 const p1 = await ev(`await show(${JSON.stringify(PICK)}); window.__posts.length=0;
   const rows=[...stgEl.querySelectorAll('.it')]; return {n:rows.length, names:rows.map(r=>r.querySelector('.lb').textContent), btns:rows.map(r=>[...r.querySelectorAll('button')].map(b=>b.textContent))};`);
-eq([p1.n, p1.names, p1.btns], [2, ["Pixel", "Tablet"], [["Ring"], ["Ring"]]], "the chooser has one Ring button per device");
+eq([p1.n, p1.names, p1.btns], [2, ["Pixel", "Tablet"], [["Ringe"], ["Ringe"]]], "the chooser uses the translated Ring label");
 await ev(`stgEl.querySelectorAll('.it')[1].querySelector('button').click(); await new Promise(r=>setTimeout(r,200)); return 1`);
 eq(await ev(`return window.__posts.map(p=>[p.u,p.b])`), [["/api/phone/ring", { id: "d2", what: "ring" }]], "a click on the second Ring posts /api/phone/ring with that device id");
 

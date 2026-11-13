@@ -128,6 +128,8 @@
     "phone.offline_never": "{name} nie jest połączony.",
     "phone.which": "Które: {names}?",
     "phone.pick": "Które urządzenie?",
+    "phone.ring_button": "Zadzwoń",
+    "phone.pick_failed": "Nie udało się",
     "phone.sent": "Wysłano na {name}.",
     "phone.sending": "Wysyłam na {name}…",
     "phone.file_done": "Już na {name}.",
