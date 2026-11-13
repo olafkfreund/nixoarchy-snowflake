@@ -7343,6 +7343,7 @@ def phone_pick_card(devs, do):
 
 def phone_read_messages():
     global PHONE_SID
+    gen = PHONE_GEN                                      # (a switch-off while this runs voids it, review)
     if not CFG.get("phone_on") or not Phone.connected:
         return {"say": lang.t("phone.not_running"), "mood": "sad"}
     if not BRIDGED or not stages_on():
@@ -7362,6 +7363,8 @@ def phone_read_messages():
         rows.append({"device": c["device"], "number": c["address"], "name": name, "last": last})
         if len(rows) == 5:
             break
+    if gen != PHONE_GEN or not CFG.get("phone_on"):
+        return {"say": lang.t("phone.off"), "mood": "curious"}
     page = STAGES.put({"v": 1, "kind": "phone_sms", "title": lang.t("phone.messages_title"),
                        "rows": rows, "reply_label": lang.t("phone.reply_button"),
                        "empty": lang.t("phone.messages_empty"), "draft_gone": lang.t("phone.draft_gone"),
