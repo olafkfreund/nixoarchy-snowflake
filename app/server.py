@@ -6938,11 +6938,14 @@ def phone_tick():
     live = {("missed", d["id"], d["missedCall"]["at"]) for d in Phone.devices()
             if d.get("missedCall") and "at" in d["missedCall"]}
     with PHONE_LOCK:
-        for key in list(PHONE_MISSED):
-            if key not in live:
-                PHONE_MISSED.pop(key, None)
+        if Phone.connected and Phone.modern:                  # (a disconnect is no news: keep what waits, review)
+            for key in list(PHONE_MISSED):
+                if key not in live:
+                    PHONE_MISSED.pop(key, None)
         waiting = [(key, item) for key, item in PHONE_MISSED.items() if key not in PHONE_SHOWN]
-    if waiting and PHONE_DRAFT is None and Desk.locked() is False and not (Ambient.meeting or Ambient.dnd or Ambient.phone_call):   # (never over a draft being written)
+    cur = STAGES.current()
+    drafting = bool(cur and cur.get("kind") == "phone_draft")   # (a draft card on screen, not a draft closed unsent)
+    if waiting and not drafting and Desk.locked() is False and not (Ambient.meeting or Ambient.dnd or Ambient.phone_call):   # (never over a draft being written)
         key, item = waiting[0]
         if BRIDGED and stages_on():
             page = STAGES.put({"v": 1, "kind": "phone_missed", "title": lang.t("phone.missed", name=item["name"]),
