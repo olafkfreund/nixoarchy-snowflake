@@ -21,8 +21,12 @@ class Phone:
         self.outgoing = set()
         self.silenced = {}
         self._silence_seen = set()
+        self._silence_pending = {}
+        self._sms_pending = {}
         self.on_call = self.on_missed = self.on_approval = self.on_transfer = self.on_state = None
         self._lock = threading.RLock()
+        self._send_lock = threading.Lock()
+        self._lifecycle_lock = threading.Lock()
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._socket = None
@@ -51,9 +55,17 @@ class Phone:
             raise ConnectionError("Flux isn't running")
 
     def start(self):
-        with self._lock:
-            if self._reader_thread and self._reader_thread.is_alive():
+        with self._lifecycle_lock:
+            if (self._reader_thread and self._reader_thread.is_alive() and
+                    self._worker_thread and self._worker_thread.is_alive()):
                 return
+            self._stop.set()
+            self._wake.set()
+            for thread in (self._reader_thread, self._worker_thread):
+                if thread and thread is not threading.current_thread():
+                    thread.join()
+            with self._lock:
+                self._sms_pending.clear()
             self._stop.clear()
             self._reader_thread = threading.Thread(target=self._reader, daemon=True)
             self._worker_thread = threading.Thread(target=self._worker, daemon=True)
@@ -61,19 +73,22 @@ class Phone:
             self._worker_thread.start()
 
     def stop(self):
-        self._stop.set()
-        self._wake.set()
-        with self._lock:
-            sock = self._socket
-        if sock:
-            try:
-                sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            sock.close()
-        for thread in (self._reader_thread, self._worker_thread):
-            if thread and thread is not threading.current_thread():
-                thread.join(timeout=1)
+        with self._lifecycle_lock:
+            self._stop.set()
+            self._wake.set()
+            with self._lock:
+                sock = self._socket
+            if sock:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                sock.close()
+            for thread in (self._reader_thread, self._worker_thread):
+                if thread and thread is not threading.current_thread():
+                    thread.join()
+            with self._lock:
+                self._sms_pending.clear()
 
     @property
     def connected(self):
@@ -127,10 +142,17 @@ class Phone:
             row = next((d for d in self.snap.get("devices", []) if d.get("id") == device), None)
             if not row or not row.get("paired"):
                 return "unknown"
+            if "outbox" not in row:
+                return "unknown"
             # shortcut: identical texts to one number share a match, until Flux exposes a stable SMS id.
             item = next((m for m in row.get("outbox", [])
                          if m.get("address") == address and m.get("body") == body), None)
-            return "failed" if item and item.get("failed") else "pending" if item else "gone"
+            if item and item.get("failed"):
+                self._sms_pending.pop((device, address, body), None)
+                return "failed"
+            if item or self._sms_pending.get((device, address, body), 0) <= after:
+                return "pending"
+            return "gone"
 
     def transfers(self):
         with self._lock:
@@ -154,16 +176,19 @@ class Phone:
         if threading.current_thread() is self._reader_thread:
             raise RuntimeError("Phone.call cannot run on the reader")
         future = concurrent.futures.Future()
-        with self._lock:
-            if not self._connected or not self._socket:
-                raise ConnectionError("Flux isn't running")
-            ident = self._next_id
-            self._next_id += 1
-            self._pending[ident] = future
+        with self._send_lock:
+            with self._lock:
+                if not self._connected or not self._socket:
+                    raise ConnectionError("Flux isn't running")
+                sock = self._socket
+                ident = self._next_id
+                self._next_id += 1
+                self._pending[ident] = future
             try:
-                self._socket.sendall((json.dumps({"id": ident, "method": method, "params": params}) + "\n").encode())
+                sock.sendall((json.dumps({"id": ident, "method": method, "params": params}) + "\n").encode())
             except OSError as exc:
-                self._pending.pop(ident, None)
+                with self._lock:
+                    self._pending.pop(ident, None)
                 raise ConnectionError("Flux isn't running") from exc
         try:
             reply = future.result(timeout=10)
@@ -188,14 +213,16 @@ class Phone:
                 uid = struct.unpack("3i", sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[1]
                 if uid != os.getuid():
                     raise ConnectionError("Flux isn't running")
+                with self._send_lock:
+                    with self._lock:
+                        ident = self._next_id
+                        self._next_id += 1
+                    sock.sendall((json.dumps({"id": ident, "method": "subscribe"}) + "\n").encode())
                 with self._lock:
                     self._socket = sock
-                    self._connected = True
                     self._snap_at = 0.0
                     self._error_logged = False
-                    ident = self._next_id
-                    self._next_id += 1
-                    sock.sendall((json.dumps({"id": ident, "method": "subscribe"}) + "\n").encode())
+                delay = 1
                 buf = b""
                 while not self._stop.is_set():
                     try:
@@ -210,18 +237,30 @@ class Phone:
                         if not line:
                             continue
                         msg = json.loads(line)
+                        if not isinstance(msg, dict) or ("id" in msg and not isinstance(msg["id"], (str, int))):
+                            continue
                         with self._lock:
+                            if not self._connected:
+                                self._connected = True
+                                self._wake.set()
                             if msg.get("event") == "state" and isinstance(msg.get("data"), dict):
                                 self.snap = msg["data"]
                                 self._has_snapshot = True
                                 self._snap_at = time.monotonic()
+                                for d in self.snap.get("devices", []):
+                                    if not isinstance(d, dict):
+                                        continue
+                                    for m in d.get("outbox", []):
+                                        if isinstance(m, dict) and m.get("pending") and not m.get("failed"):
+                                            key = (d.get("id"), m.get("address"), m.get("body"))
+                                            if all(isinstance(v, (str, int)) for v in key):
+                                                self._sms_pending[key] = self._snap_at
                                 self._version += 1
                                 self._wake.set()
                             elif "id" in msg:
                                 future = self._pending.pop(msg["id"], None)
                                 if future:
                                     future.set_result(msg)
-                delay = 1 if self._stop.is_set() else delay
             except (OSError, ValueError, ConnectionError):
                 pass
             finally:
@@ -267,37 +306,43 @@ class Phone:
         return False  # The server supplies its Meeting Mode and calendar signal.
 
     def tick(self):
-        if not self.meeting_now():
-            for d in self.devices():
-                state = d.get("dnd")
-                if (d["id"] in self.silenced and d["online"] and state and
-                        state.get("on") is True and state.get("by") == "set" and
-                        state.get("at") == self.silenced[d["id"]]):
-                    self.call("dnd.set", device=d["id"], on=False)
-            self.silenced.clear()
+        meeting = self.meeting_now()
+        devices = self.devices()
+        for d in devices:
+            state = d.get("dnd")
+            if (d["id"] in self._silence_pending and state and
+                    state.get("on") is True and state.get("by") == "set" and state.get("at") is not None):
+                self.silenced[d["id"]] = state["at"]
+                self._silence_pending.pop(d["id"])
+        if not meeting:
             self._silence_seen.clear()
+            if not self.connected:
+                return
+            for d in devices:
+                ident = d["id"]
+                if ident not in self.silenced or not d["online"]:
+                    continue
+                state = d.get("dnd")
+                if not state:
+                    continue
+                if state.get("at") != self.silenced[ident]:
+                    self.silenced.pop(ident)
+                elif state.get("on") is True and state.get("by") == "set":
+                    self.call("dnd.set", device=ident, on=False)
+                    self.silenced.pop(ident)
             return
         if not self.connected or not self.modern:
             return
-        for d in self.devices():
+        for d in devices:
             state = d.get("dnd")
-            if not d["online"] or "dnd" not in d["can"] or not state or state.get("on") is None or d["id"] in self._silence_seen:
+            if (not d["online"] or "dnd" not in d["can"] or not state or state.get("on") is None or
+                    d["id"] in self._silence_seen or d["id"] in self._silence_pending or d["id"] in self.silenced):
                 continue
             self._silence_seen.add(d["id"])
             if state.get("on") is not False:
                 continue
             self.call("dnd.set", device=d["id"], on=True)
-            deadline = time.monotonic() + 10
-            while not self._stop.is_set() and self.meeting_now():
-                report = next((row.get("dnd") for row in self.devices() if row["id"] == d["id"]), None)
-                if report and report.get("on") is True and report.get("by") == "set" and report.get("at") is not None:
-                    self.silenced[d["id"]] = report["at"]
-                    break
-                left = deadline - time.monotonic()
-                if left <= 0:
-                    break
-                self._wake.wait(left)
-                self._wake.clear()
+            self._silence_pending[d["id"]] = time.monotonic() + 10
 
     def _worker(self):
         last = -1
