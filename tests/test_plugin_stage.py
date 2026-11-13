@@ -225,6 +225,21 @@ class RunnerTest(unittest.TestCase):
                 self.assertEqual(json.loads(plugins.run_stage(p._replace(manifest=m), "q", fresh=True)["points"][0]), [peer])
         snap.assert_called_once()
 
+    def test_phone_feed_has_names_and_numbers_only_and_only_while_allowed(self):    # (#231)
+        body = "import json,sys\nq=json.load(sys.stdin)\nprint(json.dumps({'v':1,'kind':'facts','title':'t','points':[json.dumps(q.get('phone'))]}))"
+        p = prog(self.root, body)
+        m = {**p.manifest, "stage": {**p.manifest["stage"], "reads": ["phone-status"], "cache_seconds": 60}}
+        rows = [{"name": "Pixel 8", "online": True, "battery": 40, "charging": False}]
+        with mock.patch.object(plugins, "phone_feed", return_value=rows):
+            with mock.patch.object(plugins, "phone_allowed", return_value=False):
+                self.assertEqual(plugins.run_stage(p._replace(manifest=m), "q")["points"], ["null"])
+            with mock.patch.object(plugins, "phone_allowed", return_value=True):      # (the cache key has the switch: not served from the line above)
+                got = json.loads(plugins.run_stage(p._replace(manifest=m), "q")["points"][0])
+        self.assertEqual(got, rows)
+        self.assertEqual(set(got[0]), {"name", "online", "battery", "charging"})
+        undeclared = plugins.run_stage(p, "q", fresh=True)
+        self.assertEqual(undeclared["points"], ["null"])
+
     def test_reading_plugin_stderr_is_length_only(self):
         p = prog(self.root, "import json,sys\nsys.stderr.write('private reading')\nprint(json.dumps(%r))" % FACTS)
         m = {**p.manifest, "stage": {**p.manifest["stage"], "reads": ["system-status"]}}
@@ -891,6 +906,30 @@ class StageServerTest(_ServerEnv):
         self.assertTrue(run.call_args.kwargs["fresh"])
         self.assertEqual(pub.call_args.kwargs["t"], "stage_update")
         self.assertEqual(len(s.STAGES.current()["hosts"]), 2)
+
+    def test_phone_switch_off_closes_phone_boards_and_drops_the_cache(self):    # (#231)
+        s = self.server
+        s.STAGES.put({**self.gauge(), "from_phone": True}, refresh=("phone-one", "q"))
+        plugins._cache[("phone-one", "q", False, True, "en")] = (time.monotonic(), self.gauge())
+        with mock.patch.object(s.Phone, "stop"), mock.patch.object(s.BUS, "pub"):
+            s.phone_reset()
+        self.assertFalse(plugins._cache)
+        self.assertIsNone(s.STAGES.current())
+        self.assertFalse(s.STAGES.has_prev())
+
+    def test_a_phone_board_isnt_shown_once_phone_is_off(self):
+        s = self.server
+        self.mk("user", "phone-one", reads=["phone-status"])
+        self.on("phone-one")
+        with mock.patch.dict(s.CFG, {"phone_on": False}), mock.patch.object(plugins, "run_stage", return_value=self.gauge(1)), \
+                mock.patch.object(s.BUS, "pub") as pub:
+            shown, _ = s.plugin_stage("phone-one", "q")
+        self.assertFalse(shown)
+        pub.assert_not_called()
+        self.assertIsNone(s.STAGES.current())
+        with mock.patch.dict(s.CFG, {"phone_on": True}), mock.patch.object(plugins, "run_stage", return_value=self.gauge(1)), mock.patch.object(s.BUS, "pub"):
+            self.assertTrue(s.plugin_stage("phone-one", "q")[0])
+        self.assertTrue(s.STAGES.current()["from_phone"])
 
     def test_a_board_with_peers_isnt_shown_once_they_are_off(self):   # a run under way when the switch went off
         s = self.server

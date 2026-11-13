@@ -13,14 +13,19 @@ import nixi_env
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-COUNT = ["gog send x", "gog gmail send-later x", "gog --gmail-no-send gmail list", "gog gmail send --to a@b", "gog mail send", "gog gmail reply 123", "gog gmail reply-all 1",
+COUNT = ["flux `printf sms` send 1 hi", "unset X; VERB=ring; fl${X}ux $VERB", "gog send x", "gog gmail send-later x", "gog --gmail-no-send gmail list", "gog gmail send --to a@b", "gog mail send", "gog gmail reply 123", "gog gmail reply-all 1",
          "gog gmail replyall 1", "gog gmail forward 1", "gog gmail fwd 1", "gog gmail autoreply", "gog gmail drafts send 9",
          "gog gmail drafts post 9", "gog chat messages send s", "gog chat messages create s", "gog chat messages post s",
          "gog api POST /x", 'g""og gmail send', "g\\og gmail send", "gog gmail drafts create x; gog gmail send y",
          "gog gmail \\\nsend --to a@b", "herdr agent prompt 1-1 hi", 'her""dr agent prompt 1 x',
-         ["gog", "gmail", "send"], ["gog", "api", "x"]]
+         ["gog", "gmail", "send"], ["gog", "api", "x"],
+         "flux-cli send f", "flux-cli clip", "flux-cli url https://x", "flux sms send 1 hi", "flux ring",
+         "echo x | nc -U /run/user/1000/flux/fluxd.sock", '"flux-cli" status', "${X:-flux-cli} send f",
+         'fl""ux-cli status', "fl${X:-ux-cli} send f", "flux --json sms send 1 hi", "flux dnd on",
+         "flux/*.sock", "fluxd.so?k", "/bin/flux-c[l]i status", "flux $VERB", "flux {sms,dnd}", "flux ?ms"]
 NOT = ["gog gmail list", "gog gmail search x", "gog chat spaces list", "gog gmail drafts create", "gog gmail drafts reply",
-       "gog gmail drafts forward", "gog gmail drafts update", "blog send", "echo gogs", "ls -la", ["gog", "gmail", "list"]]
+       "gog gmail drafts forward", "gog gmail drafts update", "blog send", "echo gogs", "ls -la", ["gog", "gmail", "list"],
+       "fluxcd get all"]
 SEND = "gog gmail send --to me@example.com --subject topsecret-subject --body topsecret-body"
 
 

@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import threading
 import time
+import lang
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -331,6 +332,29 @@ def matches(text):
         _dry.on = False
 
 
+def _phone_phrase(t, key):
+    """-> the {name} a phrase of the language's `key` list names ("" if it has none), or None if t is none of them."""
+    for code in dict.fromkeys((lang.active, "en")):
+        for ph in lang.load(code).get("phrases", {}).get(key, []):
+            m = re.fullmatch(re.escape(ph).replace(r"\{name\}", r"(?P<name>[\w .'-]{1,30})"), t)
+            if m:
+                name = (m.groupdict().get("name") or "").strip()
+                return "" if name in lang.load(code).get("phrases", {}).get("phone_generic", []) else name
+    return None
+
+
+def _phone(t):
+    """Find my phone / send to my phone / how is my phone (#231). The server does the work."""
+    if t in lang.load(lang.active).get("phrases", {}).get("phone_read", []) or t in lang.load("en").get("phrases", {}).get("phone_read", []):
+        return {"phone": {"do": "read"}}
+    for key, do in (("phone_find", "ring"), ("phone_send", "clip"), ("phone_send_shot", "shot"), ("phone_status", "status")):
+        name = _phone_phrase(t, key)
+        if name is not None:
+            generic = bool(re.search(r"\b(?:my phone|telefonen min|mobilen min|mój telefon)\b", t))
+            return {"phone": {"do": do, "name": name or None, **({"generic": True} if generic else {})}}
+    return None
+
+
 def handle(text):
     t = " ".join((text or "").lower().replace("’", "'").split()).strip(" .!?")
     t = re.sub(r"^((?:hey|hi|okay|ok|yo|oi|hei|hallo|hej|cześć) nixi|nixi)[,\s]+", "", t)
@@ -349,6 +373,16 @@ def handle(text):
                     + r"|(?:open|hand|send|move|take)(?: this| that| it)?(?: over)?(?: to| in| into) " + NIXI,
                     re.sub(r"^\W*(?:(?:hey|hi|ok|okay)\W+)?" + NIXI + r"\W+", "", t)):
         return {"nixi_ask": None}
+    phone_text = re.sub(r"^\s*(?:(?:hey|hi|okay|ok|yo|oi|hei|hallo|hej|cześć)\s+)?" + NIXI + r"[,\s]+", "", (text or "").strip(), flags=re.I)
+    for code in dict.fromkeys((lang.active, "en")):
+        for phrase in lang.load(code).get("phrases", {}).get("phone_reply", []):
+            name_pat = r"(?P<name>[\w .'-]{1,60})" if "," in phrase else r"(?P<name>[\w'-]{1,60})"
+            pat = re.escape(phrase).replace(r"\{name\}", name_pat).replace(r"\{text\}", r"(?P<text>.+)")
+            m = re.fullmatch(pat, phone_text, re.I | re.S)
+            if m and m["text"].strip():
+                sms = bool(re.search(r"\b(?:sms|text message|melding|wiadomość)\b", phone_text[:m.start("text")], re.I))
+                return {"phone": {"do": "reply", "name": m["name"].strip(), "text": m["text"].strip(),
+                                  **({"sms": True} if sms else {})}}
     if not t or len(t) > 120:
         return None
 
@@ -357,6 +391,10 @@ def handle(text):
 
     if t in ("read my mail", "any new email", "check my email"):   # the mail board, made by the server (#210)
         return {"mail": True}
+
+    r = _phone(t)
+    if r:
+        return r
 
     if t in ("take control back", "stop the agent", "revoke control", "give me my desktop back"):
         return {"mirror": "off"}

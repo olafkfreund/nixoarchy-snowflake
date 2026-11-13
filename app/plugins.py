@@ -19,6 +19,8 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "nixi-companion"
 peers_allowed = lambda: False
+phone_allowed = lambda: False       # (the server sets these: Phone on)
+phone_feed = lambda: []
 
 Plugin = namedtuple("Plugin", "id dir manifest source error")
 
@@ -212,12 +214,14 @@ def _check(m, d):
         c = s.get("cache_seconds", 60)
         if type(c) is not int or not 0 <= c <= 600:
             return "bad stage cache_seconds"
-        if "reads" in s and not (isinstance(s["reads"], list) and all(_in(x, ("system-status", "peer-status")) for x in s["reads"])):
+        if "reads" in s and not (isinstance(s["reads"], list) and all(_in(x, ("system-status", "peer-status", "phone-status")) for x in s["reads"])):
             return "bad stage reads"
         if s.get("network") is True and "peer-status" in s.get("reads", []):
             return "a plugin that reads your other machines' status can't use the network"
         if s.get("network") is True and "system-status" in s.get("reads", []):
             return "a plugin that reads your system status can't use the network"
+        if s.get("network") is True and "phone-status" in s.get("reads", []):
+            return "a plugin that reads your phone's status can't use the network"
         if not _inside(d, s["argv"][0]):
             return "stage argv[0] missing or outside the folder"
         if any(a.startswith("/") or "=/" in a or ".." in re.split(r"[/=]", a) for a in s["argv"][1:]):
@@ -855,7 +859,8 @@ def run_stage(p, query, locale="en", timeout=TIME_DEFAULT, fresh=False):
     Cached per plugin and query for stage.cache_seconds; if a run fails the last good result is shown with its age."""
     import stages
     stg, now = p.manifest["stage"], _now()
-    key = (p.id, norm(query), "peer-status" in stg.get("reads", []) and peers_allowed(), locale)   # (a board with peers is never served once they're off)
+    key = (p.id, norm(query), "peer-status" in stg.get("reads", []) and peers_allowed(),
+           "phone-status" in stg.get("reads", []) and phone_allowed(), locale)   # (a board with peers is never served once they're off)
     _consented(p)                                                  # (before the cache too: a changed plugin shows nothing, old or new)
     user = None
     if stg.get("config"):                                          # (one read of the settings: the key and the plugin's stdin both come from it)
@@ -926,6 +931,8 @@ def _run_copy(p, query, locale, timeout, stages, tmp, user=None):
         if "peer-status" in stg.get("reads", []) and peers_allowed():
             import peers
             feed["peers"] = peers.snapshot()
+        if "phone-status" in stg.get("reads", []) and phone_allowed():
+            feed["phone"] = phone_feed()                          # [{name, online, battery, charging}]: no ids, numbers or texts
         proc = subprocess.Popen(sandbox_argv(os.path.join(tmp, "plugin"), stg, os.path.join(tmp, "resolv.conf")), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 start_new_session=True, bufsize=0, preexec_fn=_limits)
     except OSError as e:

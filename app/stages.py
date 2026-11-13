@@ -426,8 +426,8 @@ class Store:
 
     @staticmethod
     def _keep(e):
-        """A mail board is never kept as the previous stage: Back can't bring someone's mail back (#210)."""
-        return None if e and e[0].get("kind") == "mail" else e
+        """Private mail and phone stages, and stale choosers, never come back."""
+        return None if e and e[0].get("kind") in ("mail", "phone_pick", "phone_sms", "phone_threads", "phone_draft", "phone_missed") else e
 
     def put(self, stage, refresh=None):
         """-> the stage for the page: items (or the stage) carry a token, nothing else added."""
@@ -462,6 +462,25 @@ class Store:
                     toks[row["hear"]] = ("mail_hear", {"account": r["account"], "id": r["id"]})
                     toks[row["reply"]] = ("mail_reply", {"account": r["account"], "id": r["id"], "thread": r["thread"]})
                 page["rows"].append(row)
+        elif stage["kind"] == "phone_pick":  # device names and ids only; the buttons post to /api/phone/ring or /share (#231)
+            pass
+        elif stage["kind"] in ("phone_sms", "phone_threads"):
+            page["rows"] = []
+            page.pop("text", None)
+            for row in stage.get("rows", []):
+                token = secrets.token_urlsafe(12)
+                toks[token] = ("phone_reply", {"device": row["device"], "number": row["number"], "name": row["name"], "text": stage.get("text", "")})
+                page["rows"].append({"name": row["name"], "last": row.get("last", ""), "reply": token})
+        elif stage["kind"] == "phone_missed":
+            page.pop("number", None)
+            if stage.get("number"):
+                page["reply"] = secrets.token_urlsafe(12)
+                toks[page["reply"]] = ("phone_reply", {"device": stage["device"], "number": stage["number"],
+                                                       "name": stage["name"], "text": stage.get("text", "")})
+            page.pop("device", None)
+            page.pop("text", None)
+        elif stage["kind"] == "phone_draft":
+            pass
         elif stage["kind"] == "weather":    # read-only: nothing to press
             pass
         elif stage["kind"] == "calendar":   # Join per event with a link, and Open calendar; URLs held here, the page gets tokens

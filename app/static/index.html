@@ -933,6 +933,8 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="lookPartySw"><span class="sw"></span><span class="l">Party hat on special days<small>New Year, Christmas, and birthdays in your calendar (needs the calendar on).</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="reactQuipsSw"><span class="sw"></span><span class="l">Little jokes<small>Now and then a short line about the weather, the hour or a long session. Never spoken.</small></span></label></div>
       <div class="row"><div class="t">Say out loud</div><div class="h">Notifications he speaks. In a meeting he stays silent.</div><div class="seg" id="nsChips"></div></div>
+      <div class="row" id="phoneRow"><label class="tg"><input type="checkbox" id="phoneSw"><span class="sw"></span><span class="l">Phone (Flux)<small>Find, send to and watch your phone or tablet through Flux. Off until you switch it on.</small></span></label>
+        <div class="h" id="phoneStat" hidden></div></div>
       <div class="row" id="mailRow"><label class="tg"><input type="checkbox" id="mailSw"><span class="sw"></span><span class="l">Mail<small>Open a board of unread mail, hear a summary of one message and reply with a click. Off until you switch it on. Needs answer boards in nixi mode. Summaries come from a model on this computer.</small></span></label>
         <div id="mailOpts" hidden><div class="t sub">Addresses</div><div class="h">Only the ones you tick are read.</div><div id="mailAccts"></div>
           <div class="t sub">Summary model</div><div class="h">Local models only. None lists and replies without summaries.</div><select id="mailModel"></select></div></div>
@@ -2806,6 +2808,7 @@ async function agentTick(){
 setInterval(()=>agentTick().catch(()=>{ agentCheck=false; }),250);
 function onEvent(ev){
   if(ev.t==='mirror'){ mirSet(ev); return; }
+  if(ev.t==='phone'){ info.phone_status=ev.status; renderPhone(); return; }
   if(ev.t==='theme'){ info.theme=ev.theme; lookShown=''; syncLook(); if(setEl.classList.contains('on')) renderSettings(); return; }
   if(ev.t==='beat'){ beat=Math.max(beat,+ev.v||0); beatAt=performance.now(); return; }   // the music's kick (look_beat)
   if(ev.t==='saw'){ poke('looking',1800); wake(); return; }   // Claude took a look at your screen (`nixi-companion see`)
@@ -2835,6 +2838,7 @@ function onEvent(ev){
   else if(ev.t==='spk_done'){ if(ev.id!=null){ const it=spkMap.get(ev.id); spkMap.delete(ev.id); if(it&&it.cap) karaNow(it.cap,it.fresh); } quietNative(); }
   else if(ev.t==='tts_gen'){ cutTtsGen(ev.gen); }
   else if(ev.t==='note'){ tick(ev.text); }
+  else if(ev.t==='phone_cap') phoneCap(ev.text);
   else if(ev.t==='approve'){ restore(20000,true); queueApproval(ev); }
   else if(ev.t==='agent_say') agentIn(ev);
   else if(ev.t==='agent_result') agentResult(ev);
@@ -2853,7 +2857,7 @@ function onEvent(ev){
     if(!muted) sayAside(head+(ev.project?', in '+ev.project:'')); }
   else if(ev.t==='notify') notifyIn(ev);
   else if(ev.t==='nudge') { if(['break','water','workout'].includes(ev.kind)&&Number.isInteger(ev.id)) remClose(); if(!quietNow()) restore(11000,false); const now=performance.now(); ev.rt=now; ev.until=ev.wait==null?Infinity:now+ev.wait*1000; nudgeQ.set(ev.kind,ev); nudgeDrain(now); }
-  else if(ev.t==='situation'){ const hot0=SIT.cpu_hot, low0=SIT.ram_low, trk0=SIT.track; SIT.track=ev.track||0; SIT.dnd=!!ev.dnd; SIT.meeting=!!ev.meeting; if(ev.music&&!SIT.music) musKeep=false; SIT.music=!!ev.music; /* (music started again: the card's own Pause is over) */ SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party; SIT.heavy=!!ev.heavy; SIT.windy=!!ev.windy; SIT.lean=ev.lean||0; SIT.cold=ev.cold||0; SIT.day=ev.day!==false;
+  else if(ev.t==='situation'){ const hot0=SIT.cpu_hot, low0=SIT.ram_low, trk0=SIT.track; SIT.track=ev.track||0; SIT.dnd=!!ev.dnd; SIT.meeting=!!ev.meeting; const call0=SIT.phone_call; SIT.phone_call=!!ev.phone_call; if(SIT.phone_call&&!call0) shush();   /* (a call starts: the page's own speech stops too, review) */ if(ev.music&&!SIT.music) musKeep=false; SIT.music=!!ev.music; /* (music started again: the card's own Pause is over) */ SIT.cpu_hot=!!ev.cpu_hot; SIT.ram_low=!!ev.ram_low; SIT.fullscreen=!!ev.fullscreen; SIT.locked=!!ev.locked; SIT.coding=!!ev.coding; SIT.night=!!ev.night; SIT.party=!!ev.party; SIT.heavy=!!ev.heavy; SIT.windy=!!ev.windy; SIT.lean=ev.lean||0; SIT.cold=ev.cold||0; SIT.day=ev.day!==false;
     if(ev.weather==='snow'&&SIT.weather!=='snow'&&info.look_weather&&!quietNow()) poke('excited',1800);      // he loves snow: once, when it starts
     SIT.video=!!ev.video; SIT.weather=ev.weather||null; remSync(); rxSignals(hot0,low0,trk0); }
   else if(ev.t==='ambient'){ if(ev.alert&&!quietNow()) restore(12000,false); const more=(ev.sys||[]).length>(AMB.sys||[]).length; AMB={sys:ev.sys||[],cal:ev.cal,weather:ev.weather}; renderCue(); if(more&&info.proactive&&!quietNow()) poke('confused',1500); if(more) rxPlay('error'); if(ev.alert&&ev.cal) rxPlay('soon');
@@ -2920,6 +2924,10 @@ function karaParse(text){ const ws=[], faces=[]; let pend=null, tagged=false;
 function plain(s){ return s.replace(/```[\s\S]*?(```|$)/g,' [code] ').replace(/\*\*|__|^#+\s*/gm,''); }
 let shownTxt='', capOn=false, quietSince=0;
 function capShow(){ cap.classList.remove('off'); capOn=true; quietSince=performance.now(); }
+let phoneCapTxt='', phoneCapT=0;
+function phoneCap(t){ clearInterval(phoneCapT); phoneCapT=0;     // Flux waits for an approval on the phone: a caption while it does (never spoken, no buttons)
+  if(!t){ if(phoneCapTxt){ phoneCapTxt=''; himSet(''); capQuiet(); } return; }
+  phoneCapTxt=t; capShow(); setYou(''); himSet(t); phoneCapT=setInterval(()=>{ if(phoneCapTxt) quietSince=performance.now(); },2000); }
 function capQuiet(){ quietSince=performance.now(); }
 let lastAnswer=''; const moreEl=$('#moreB');
 moreEl.addEventListener('click',()=>openPanel('reply'));
@@ -2964,8 +2972,8 @@ function nudgeDrain(ts){ for(const [k,e] of nudgeQ) if(ts>e.until) nudgeQ.delete
   else { karaDrop(); himEl.classList.remove('err'); himEl.textContent=''; plateReset(); ntfDrop(); setYou('');
     const sp=document.createElement('span'); sp.textContent=txt; himEl.appendChild(sp); shownTxt=''; capShow(); sendRegion(true); dropSync();
     setTimeout(()=>{ if(sp.isConnected){ himEl.textContent=''; cap.classList.add('off'); capOn=false; dropSync(); } },6000); } }
-let SIT={track:0,dnd:false,meeting:false,music:false,video:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false,heavy:false,windy:false,lean:0,cold:0,day:true};   // situation signals, as the server sends them
-function quietNow(){ return SIT.dnd||SIT.locked||SIT.fullscreen||SIT.meeting; }
+let SIT={track:0,dnd:false,meeting:false,phone_call:false,music:false,video:false,cpu_hot:false,ram_low:false,fullscreen:false,locked:false,coding:false,weather:null,night:false,party:false,heavy:false,windy:false,lean:0,cold:0,day:true};   // situation signals, as the server sends them
+function quietNow(){ return SIT.dnd||SIT.locked||SIT.fullscreen||SIT.meeting||SIT.phone_call; }
 // a look goes on after 3 s of signal and off after 8 s without it: timestamps, no timers
 const sitOn={meeting:false,music:false,video:false,fullscreen:false,coding:false,night:false,party:false,rain:false,snow:false,clear:false,partly:false,cloudy:false,windy:false,cold1:false,cold2:false}, sitSeen={...sitOn}, sitAt=Object.fromEntries(Object.keys(sitOn).map(k=>[k,0]));
 function sitStep(ts){ const weather={rain:SIT.weather==='rain',snow:SIT.weather==='snow',clear:SIT.weather==='clear',partly:SIT.weather==='partly',cloudy:SIT.weather==='cloudy',windy:SIT.windy,cold1:SIT.cold>=1,cold2:SIT.cold>=2};
@@ -3042,7 +3050,7 @@ function notifyDrain(ts){ if(ts<notifyAt||!notifyIdle()) return;
   if(env){ notifySeen(ev.key); notifyRow=null; }
   else if(ev.card){ try{ notifyShow(row,notifyText(ev,1),ev); notifySeen(ev.key); }catch(_){ notifyClear(); return; } }   // (seen only once drawn; a failed draw goes back to the shell)
   else notifyShow(row,notifyText(ev,1),ev);
-  if(!SIT.meeting){ if(info.notify_sound!==false&&!muted) sfx(c[5]); if(!muted&&(info.notify_speak||[]).includes(ev.category)&&!(ev.category==='mail'&&SIT.locked)){
+  if(!SIT.meeting&&!SIT.phone_call){ if(info.notify_sound!==false&&!muted) sfx(c[5]); if(!muted&&!ev.phone_call&&(info.notify_speak||[]).includes(ev.category)&&!(ev.category==='mail'&&SIT.locked)){
     const who=notifyWho(ev); enqueue(ev.category==='mail'?(info.notify_details&&info.notify_speak_subject&&ev.summary?ev.summary:'New mail'+(who?' from '+who:'')):c[1],{follow:false});
     if(ev.category==='mail'){ talk.away=[5,1]; talk.awayUntil=now+1500; } } }   // (not say(): that would wipe the row)
   setTimeout(()=>{ if(notifyRow===row) notifyClear(); },ev.card?7000:5000); }
@@ -3078,10 +3086,14 @@ function stageBuild(ev){
   const board=ev.kind==='commands', map=ev.kind==='place', film=ev.kind==='video', sky=ev.kind==='weather', cal=ev.kind==='calendar', stat=ev.kind==='status', dy=ev.kind==='day', gau=ev.kind==='gauges', press=ev.kind==='headlines', tr=ev.trust, guide=tr==='guide';
   mailCardDrop(true);
   $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':film?'Now showing':sky?'Sky':cal?'Coming up':stat?'Sessions':dy?'Your day':ev.kind==='mail'?'Mail':press?'News':''));
-  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat||dy||ev.kind==='mail'?'desk':gau?'term':press?'press':'notebook')+(stgEl.classList.contains('l')?' l':'');
+  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat||dy||ev.kind==='mail'||ev.kind==='phone_pick'||ev.kind.startsWith('phone_')?'desk':gau?'term':press?'press':'notebook')+(stgEl.classList.contains('l')?' l':'');
   if(sky) stageSky(ev,bd,fn);
   else if(dy) stageDay(ev,bd,acts,fn);
   else if(ev.kind==='mail') stageMail(ev,bd,acts,fn);
+  else if(ev.kind==='phone_pick') stagePhone(ev,bd,acts,fn);
+  else if(ev.kind==='phone_sms'||ev.kind==='phone_threads') stagePhoneMessages(ev,bd,fn);
+  else if(ev.kind==='phone_missed') stagePhoneMissed(ev,bd,acts,fn);
+  else if(ev.kind==='phone_draft') stagePhoneDraft(ev,bd,fn);
   else if(gau) stageGauges(ev,bd,acts,fn);
   else if(press) stagePress(ev,bd,acts,fn);
   else if(cal) stageCal(ev,bd,acts,fn);
@@ -3109,6 +3121,37 @@ let mailSeq=0, mailCard=null;      // mailCard: {el, ta, draft} while the reply 
 function mailCardDrop(cancel){ const c=mailCard; mailCard=null; mailSeq++; if(!c) return;
   if(cancel&&(c.draft||c.flight)) post('/api/mail/cancel',{draft:c.flight?'pending':c.draft}).catch(()=>{});   // (a Review still on its way has no id yet: any cancel makes the server drop it)
   c.el.remove(); }
+function stagePhone(ev,bd,acts,fn){
+  const msg=hx('div','vm');
+  (ev.devices||[]).forEach(d=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab');
+    tx.appendChild(hx('div','lb',d.name));
+    ab.appendChild(stageBtn(ev.do==='ring'?ev.ring_label:ev.send_label,b=>{ b.disabled=true;
+      post(ev.do==='ring'?'/api/phone/ring':'/api/phone/share',{id:d.id,what:ev.do}).then(x=>x.json()).then(j=>{ msg.textContent=j.say||j.error||''; }).catch(()=>{ msg.textContent=ev.error_label; }).finally(()=>{ b.disabled=false; }); }));
+    row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
+  bd.appendChild(msg); }
+function phoneOpenDraft(ev,token,fn){ post('/api/phone/draft',{token}).then(r=>r.json()).then(j=>{ if(!j.ok) fn.textContent=ev.draft_gone||''; }).catch(()=>{ fn.textContent=ev.draft_error||''; }); }
+function stagePhoneMessages(ev,bd,fn){
+  if(!(ev.rows||[]).length) bd.appendChild(hx('div','pt1',ev.empty||''));
+  (ev.rows||[]).forEach(r=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab');
+    tx.appendChild(hx('div','lb',r.name)); if(r.last) tx.appendChild(hx('div','vm',r.last));
+    ab.appendChild(stageBtn(ev.reply_label,()=>phoneOpenDraft(ev,r.reply,fn)));
+    row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
+}
+function stagePhoneMissed(ev,bd,acts,fn){
+  bd.appendChild(hx('div','pt1',ev.name||''));
+  if(ev.reply) acts.appendChild(stageBtn(ev.reply_label,()=>phoneOpenDraft(ev,ev.reply,fn)));
+}
+function stagePhoneDraft(ev,bd,fn){
+  const card=hx('div','mcard'), ta=hx('textarea'), msg=hx('div','mmsg'), act=hx('div','mact');
+  card.appendChild(hx('div','mln',ev.name+' · '+ev.number)); ta.rows=4; ta.value=ev.text||''; card.appendChild(ta);
+  const send=hx('button','sb',ev.send_label); send.type='button';
+  send.addEventListener('click',e=>{ e.stopPropagation(); if(!e.isTrusted||!['mouse','pen','touch'].includes(e.pointerType)) return;
+    if(!ta.value.trim()||ta.value.length>1000){ msg.textContent=ev.length_error; return; }
+    send.disabled=true; stgUse=performance.now();
+    post('/api/phone/send',{draft:ev.draft,text:ta.value},{headers:hdr(Object.assign({'Content-Type':'application/json'},CLICKKEY.hdr()))})
+      .then(r=>r.json()).then(j=>{ msg.textContent=j.say||ev.send_error; if(!j.ok) send.disabled=false; }).catch(()=>{ msg.textContent=ev.send_error; send.disabled=false; }); });
+  act.appendChild(send); card.appendChild(act); card.appendChild(msg); bd.appendChild(card); ta.focus();
+}
 function stageMail(ev,bd,acts,fn){
   const rows=ev.rows||[];
   if(!rows.length) bd.appendChild(hx('div','pt1','No unread mail from the last three days'));
@@ -3329,7 +3372,7 @@ function stagePress(ev,bd,acts,fn){
     bd.appendChild(row); });
   pressAges(); pressWatch(ev.clips,bd,fn,false); fn.textContent=ev.source||''; if(ev.copy) acts.appendChild(stageBtn('Copy',b=>stageAct('copy',ev.copy,b))); }
 const clipLine=c=>{ const m=[c.channel,c.duration].filter(Boolean).join(', '); return c.title+(m?' \u2014 '+m:''); };
-function stageText(ev){ if(ev.kind==='mail') return ''; if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>{ const st=h.state||'up'; if(st==='down'||st==='stale') return [h.name+': '+gaugeOneText(h)]; return [...(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))), ...(h.badges||[]).map(b=>(many?h.name+' ':'')+b.k+': '+b.v), ...(h.lists||[]).map(l=>(many?h.name+' ':'')+l.title+': '+(l.items||[]).join(', '))]; })).join('\n'); } if(ev.kind==='headlines') return [ev.title||'News',...(ev.items||[]).map(it=>it.title+' \u2014 '+it.source+', '+pressAge(it.at)),...(ev.clips&&ev.clips.length?['Watch:',...ev.clips.map(clipLine)]:[]),...(ev.source?[ev.source]:[])].join('\n'); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
+function stageText(ev){ if(ev.kind==='mail'||ev.kind==='phone_pick') return ''; if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>{ const st=h.state||'up'; if(st==='down'||st==='stale') return [h.name+': '+gaugeOneText(h)]; return [...(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))), ...(h.badges||[]).map(b=>(many?h.name+' ':'')+b.k+': '+b.v), ...(h.lists||[]).map(l=>(many?h.name+' ':'')+l.title+': '+(l.items||[]).join(', '))]; })).join('\n'); } if(ev.kind==='headlines') return [ev.title||'News',...(ev.items||[]).map(it=>it.title+' \u2014 '+it.source+', '+pressAge(it.at)),...(ev.clips&&ev.clips.length?['Watch:',...ev.clips.map(clipLine)]:[]),...(ev.source?[ev.source]:[])].join('\n'); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
   if(document.body.classList.contains('pnl')){ stgHeld=ev; return; }
@@ -3415,7 +3458,7 @@ function workChip(){ if(chipT) return;
   if(chip.dataset.w!==txt){ chip.dataset.w=txt; chip.innerHTML='<i class="spin"></i>'; chip.appendChild(document.createTextNode(txt)); }
   if(chip.className!=='on work') chip.className='on work'; }
 function say(t,follow){ const reply=nextReply(); capShow(); setYou(''); if(voiced()){ himSet(''); enqueue(t,{cap:true,fresh:true,follow,reply}); } else { himSet(t); enqueue(t,{follow,reply}); } capQuiet(); }
-function sayAside(t){ if(SIT.meeting){ capShow(); himSet(t); capQuiet(); return; } say(t,false); }   // (in a meeting: words on screen only)   // said unasked: no follow-up window (#133)
+function sayAside(t){ if(SIT.meeting||SIT.phone_call){ capShow(); himSet(t); capQuiet(); return; } say(t,false); }   // (in a meeting: words on screen only)   // said unasked: no follow-up window (#133)
 function fail(t){ capShow(); himSet(t,true); errorUntil=performance.now()+2200; capQuiet(); }
 const base=p=>String(p||'').split('/').filter(Boolean).pop()||p;
 function toolLabel(name,detail){
@@ -4107,6 +4150,7 @@ $('#pkRnd').addEventListener('click',()=>{ const kind=pkPart.startsWith('white')
 $('#pkAll').addEventListener('click',()=>{ const L=curLook(), R=randomLook(L); Object.assign(L,R); L.random=false; info.look=L; applyLook(L);
   post('/api/settings',{look:L}).then(r=>r.json()).then(j=>{ info=j; }); selectPart(pkPart); poke('excited',900); });
 
+function renderPhone(){ const sw=$('#phoneSw'); if(!sw) return; sw.checked=!!info.phone_on; const st=$('#phoneStat'); st.textContent=info.phone_status||''; st.hidden=!(info.phone_on&&info.phone_status); }
 let mailOpt={accounts:[],models:[]}, mailOptT=0;
 function renderMail(){ const sw=$('#mailSw'); if(!sw) return; sw.checked=!!info.mail_on; $('#mailOpts').hidden=!info.mail_on;
   if(!info.mail_on) return;
@@ -4206,7 +4250,7 @@ function renderSettings(){
     updSw:info.update_check!==false,peersSw:!!info.peers_on,agentApproveSw:!!info.agent_approvals,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
   renderAgents(); renderUpdate(); renderPtt();
-  renderMail();
+  renderMail(); renderPhone();
   for(const k in sw){ const e=document.getElementById(k); if(e) e.checked=!!sw[k]; }
   { const e=$('#reactSw'); e.disabled=!info.proactive; e.closest('.row').style.opacity=info.proactive?'':'.5';   // (needs Proactive)
     const off=[['look_music','Headphones for music'],['look_meeting','Tie in meetings'],['look_weather','Dress for the weather'],['react_load','Notice a busy machine'],['react_break','Remind me to move']].filter(([k])=>!info[k]).map(x=>x[1]);
@@ -4514,6 +4558,7 @@ setEl.addEventListener('change',e=>{
   { const k={proactiveSw:'proactive',newsWatchSw:'news_watch',reactSw:'reactions',takeoverSw:'notifications_takeover',detailsSw:'notify_details',nsoundSw:'notify_sound',lookMeetSw:'look_meeting',lookMusicSw:'look_music',lookBeatSw:'look_beat',speakSubjSw:'notify_speak_subject',lookFsSw:'look_fullscreen',reactLoadSw:'react_load',reactBreakSw:'react_break',reactWelcomeSw:'react_welcome',lookCodingSw:'look_coding',lookNightSw:'look_night',lookWeatherSw:'look_weather',lookPartySw:'look_party',reactQuipsSw:'react_quips'}[id]; if(k) setSetting({[k]:on}); }
   if(id==='clickSw') setSetting({click_through:on}).then(()=>sendRegion(true));
   if(id==='notifySw') setSetting({notify_done:on});
+  if(id==='phoneSw') setSetting({phone_on:on}).then(renderPhone);
   if(id==='mailSw') setSetting({mail_on:on}).then(()=>{ mailOptT=0; renderMail(); });
   if(id==='mailModel') setSetting({mail_model:e.target.value});
   if(e.target.dataset&&e.target.dataset.mailAcct) setSetting({mail_accounts:$$('#mailAccts input:checked').map(c=>c.dataset.mailAcct)});
