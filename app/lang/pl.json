@@ -115,7 +115,82 @@
     "page.agents_hint": "Czytaj na głos podsumowania od agentów kodowania.",
     "page.agents_empty": "Brak podsumowań.",
     "page.agent_replay": "Powtórz",
-    "page.agent_more": "Powiedz więcej"
+    "page.agent_more": "Powiedz więcej",
+    "phone.not_running": "Flux nie działa",
+    "phone.update_flux": "Zaktualizuj Flux, aby obsłużyć połączenia i wyciszanie na spotkaniach",
+    "phone.turn_on_sync": "Włącz synchronizację Nie przeszkadzać na urządzeniu {name}, aby wyciszać na spotkaniach",
+    "phone.connected": "Połączono: {names}",
+    "phone.off": "Telefon jest wyłączony. Możesz go włączyć w Ustawieniach.",
+    "phone.none_can": "Żadne z twoich urządzeń tego nie potrafi.",
+    "phone.ringing": "Dzwonię na {name}.",
+    "phone.cant_ring": "{name} nie może dzwonić.",
+    "phone.offline": "{name} nie jest połączony, ostatnio widziany {ago} temu.",
+    "phone.offline_never": "{name} nie jest połączony.",
+    "phone.which": "Które: {names}?",
+    "phone.pick": "Które urządzenie?",
+    "phone.sent": "Wysłano na {name}.",
+    "phone.sending": "Wysyłam na {name}…",
+    "phone.file_done": "Już na {name}.",
+    "phone.file_waiting": "Czekam na {name}; wyślę, gdy znów będzie dostępny.",
+    "phone.file_failed": "Nie udało się przesłać na {name}.",
+    "phone.cant_share": "{name} nie może tego odebrać.",
+    "phone.nothing": "Nie ma nic do wysłania.",
+    "phone.too_long": "To jest za długie, żeby wysłać.",
+    "phone.failed": "Nie udało się.",
+    "phone.min": "{n} min",
+    "phone.hour": "{n} godz.",
+    "phone.day": "{n} dni",
+    "phone.battery_low": "{name} ma już tylko {n}% baterii.",
+    "phone.board_title": "Twoje urządzenia",
+    "phone.board": "Oto twoje urządzenia.",
+    "phone.battery": "bateria",
+    "phone.charging": "ładowanie",
+    "phone.status": "status",
+    "phone.online": "online",
+    "phone.last_seen": "ostatnio widziany {ago} temu",
+    "phone.summary": "{name} ma {pct} procent, {where}.",
+    "phone.summary_charging": "{name} ma {pct} procent i się ładuje, {where}.",
+    "phone.offline_word": "offline",
+    "phone.call_named": "{caller} dzwoni na {name}",
+    "phone.call": "Połączenie na {name}"
+  },
+  "phrases": {
+    "phone_generic": [
+      "telefon",
+      "mój telefon",
+      "komórka",
+      "komórkę",
+      "tablet",
+      "urządzenie"
+    ],
+    "phone_find": [
+      "gdzie jest mój telefon",
+      "znajdź mój telefon",
+      "zadzwoń na mój telefon",
+      "znajdź {name}",
+      "zadzwoń na {name}",
+      "gdzie jest {name}"
+    ],
+    "phone_send": [
+      "wyślij to na mój telefon",
+      "wyślij to na telefon",
+      "wyślij to na {name}",
+      "wyślij schowek na mój telefon",
+      "wyślij schowek na {name}"
+    ],
+    "phone_send_shot": [
+      "wyślij zrzut ekranu na mój telefon",
+      "wyślij zrzut ekranu na telefon",
+      "wyślij zrzut ekranu na {name}",
+      "wyślij mój ekran na {name}"
+    ],
+    "phone_status": [
+      "jak tam mój telefon",
+      "jaki jest stan telefonu",
+      "status telefonu",
+      "bateria w telefonie",
+      "czy mój telefon jest naładowany"
+    ]
   },
   "_review": [
     "page.agents",
