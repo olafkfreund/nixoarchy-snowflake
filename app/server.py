@@ -6915,6 +6915,18 @@ def phone_state():
     phone_pub()
 
 
+def phone_meeting_now():
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state")
+    if (state / "meeting-mode" / "active").exists():
+        return True
+    now = datetime.datetime.now().astimezone()
+    return bool(CFG.get("ambient_calendar")) and any(
+        item.get("link") and item.get("start") and item.get("end") and
+        item["start"] - datetime.timedelta(seconds=60) <= now < item["end"]
+        for item in Ambient.cal_items)
+
+
+Phone.meeting_now = phone_meeting_now
 Phone.on_state = phone_state
 Phone.on_call = phone_on_call
 
@@ -7147,6 +7159,8 @@ def phone_reset():
         except OSError:
             pass
     Phone.outgoing.clear()
+    Phone.silenced = {}                            # Switching Phone off mid-meeting leaves the phone silent.
+    Phone._silence_seen = set()
     PHONE_BATT.clear()
     PHONE_LOW.clear()
     phone_call_sync()                               # (phone_on is already off: the call quiet ends)
