@@ -8845,8 +8845,10 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/capture":
                 if BRIDGED:
                     return self._json({"error": "off in nixi mode"}, 403)
-                if mail_on_screen() or phone_on_screen():
-                    return self._json({"error": "private messages are on screen"}, 403)
+                if mail_on_screen():                  # a picture of the screen would carry the mail (#210)
+                    return self._json({"error": "mail is on screen"}, 403)
+                if phone_on_screen():                 # ...or the texts and the caller (#231)
+                    return self._json({"error": "phone messages are on screen"}, 403)
                 b = json.loads(self._body() or b"{}")
                 kind = b.get("kind", "screen")
                 if not full:                          # Claude's commands may look at the screen, never your clipboard
