@@ -972,13 +972,13 @@ class Messages(_PhoneEnv):
         self.assertEqual(s.phone_quick(got["phone"])["say"], "Check the draft and click Send.")
         self.assertEqual(s.STAGES.current()["text"], "See you soon")
 
-    def test_no_name_match_offers_thread_chooser(self):
+    def test_no_name_match_goes_to_the_agent_unless_it_says_sms(self):
         s = self.server
-        s.phone_reply_quick("Nobody", "Hi")
-        page = s.STAGES.current()
-        self.assertEqual(page["kind"], "phone_threads")
-        self.assertEqual([r["name"] for r in page["rows"]], ["Anna"])
-        self.assertNotIn("123", json.dumps(page))
+        before = s.STAGES.current()
+        self.assertIsNone(s.phone_reply_quick("Nobody", "Hi"))          # (review: "text me when..." is not a text)
+        self.assertIs(s.STAGES.current(), before)
+        said = s.phone_reply_quick("Nobody", "Hi", sms=True)
+        self.assertEqual(said["say"], s.lang.t("phone.contact_missing"))   # (an explicit SMS never reaches the agent)
 
     def test_text_length_and_delivery_feedback(self):
         s = self.server
@@ -1005,6 +1005,33 @@ class Messages(_PhoneEnv):
         s.phone_tick()
         self.assertTrue(any(c.kwargs.get("text") == "That text didn't go." for c in self.pub.call_args_list))
         self.assertEqual(s.PHONE_OUTBOX, [])
+
+
+    def test_quick_reply_routes_only_known_sms_contacts(self):
+        s = self.server
+        for phrase in ("text me when the build finishes", "reply to the PR review, say it looks good",
+                       "Text Anna on the team channel that I am late"):
+            got = s.quick.handle(phrase)
+            self.assertIsNone(s.phone_quick(got["phone"]) if got and "phone" in got else None, phrase)
+        got = s.quick.handle("hey nixi, reply to aNnA, See You Soon")
+        self.assertEqual(s.phone_quick(got["phone"])["say"], "Check the draft and click Send.")
+        self.assertEqual(s.STAGES.current()["text"], "See You Soon")
+        with mock.patch.object(s.lang, "active", "pl"):
+            got = s.quick.handle("nixi, wyślij sms do Nobody, Hello")
+        self.assertIn("say", s.phone_quick(got["phone"]))
+
+    def test_quick_reply_long_text_and_phone_off_fall_through(self):
+        s = self.server
+        got = s.quick.handle("ok nixi, reply to Anna, " + "X" * 1001)
+        self.assertIn("1000", s.phone_quick(got["phone"])["say"])
+        self.assertIsNone(s.STAGES.current())
+        for connected, enabled in ((False, True), (True, False)):
+            self.phone.connected = connected
+            s.CFG["phone_on"] = enabled
+            for phrase in ("read my texts", "reply to Anna, Hi", "ring my Pixel", "phone status"):
+                got = s.quick.handle(phrase)
+                self.assertIsNone(s.phone_quick(got["phone"]), phrase)
+            self.assertIn("say", s.phone_quick(s.quick.handle("find my phone")["phone"]))
 
 
 class Silence(_PhoneEnv, _FluxCase):
