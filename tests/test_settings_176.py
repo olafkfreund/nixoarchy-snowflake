@@ -76,6 +76,36 @@ class VoiceSettingsTest(_ServerEnv):
         self.assertEqual(code, 200)
         self.assertEqual((s.CFG["tts_fallback"], s.CFG["eleven_daily_chars"]), ("espeak", 5000))
 
+    def test_phone_on_is_a_bool_setting_that_starts_and_resets_the_client(self):
+        s = self.server
+        self.assertIs(s.DEFAULTS["phone_on"], False)
+        with mock.patch.object(s.Phone, "start") as start, mock.patch.object(s.Phone, "stop") as stop:
+            code, r = self.post({"phone_on": 1})
+            self.assertEqual((code, r["phone_on"], s.CFG["phone_on"]), (200, True, True))
+            self.assertEqual(json.loads(s.CONF_PATH.read_text())["phone_on"], True)
+            start.assert_called_once()
+            gen = s.PHONE_GEN
+            code, r = self.post({"phone_on": False})
+            self.assertEqual((code, r["phone_on"], r["phone_status"], s.CFG["phone_on"]), (200, False, "", False))
+            stop.assert_called_once()
+            self.assertEqual(s.PHONE_GEN, gen + 1)
+            self.post({"phone_on": False})                       # (no change: no second reset)
+            stop.assert_called_once()
+
+    def test_phone_status_line_is_names_and_fixed_words(self):
+        s = self.server
+        s.CFG["phone_on"] = True
+        with mock.patch.object(type(s.Phone), "connected", False):
+            self.assertEqual(s.phone_status(), "Flux isn't running")
+        dev = {"id": "p", "name": "Pixel", "can": {"dnd"}, "dnd": {"on": None}}
+        with mock.patch.object(type(s.Phone), "connected", True), mock.patch.object(s.Phone, "devices", return_value=[dev]):
+            with mock.patch.object(type(s.Phone), "modern", False):
+                self.assertEqual(s.phone_status(), "Update Flux for calls and meeting silence")
+            with mock.patch.object(type(s.Phone), "modern", True):
+                self.assertIn("Sync Do Not Disturb on the Pixel", s.phone_status())
+                dev["dnd"] = {"on": False}
+                self.assertEqual(s.phone_status(), "Connected: Pixel")
+
     def test_state_has_engines_with_reasons_and_never_the_key(self):
         s = self.server
         s.CFG.update(eleven_on=True, eleven_voice=VOICE)

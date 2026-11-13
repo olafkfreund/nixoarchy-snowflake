@@ -54,6 +54,10 @@
     "page.agents_hint": "Speak turn summaries from your coding agents.",
     "page.agents_empty": "No summaries yet.",
     "page.agent_replay": "Replay",
-    "page.agent_more": "Tell me more"
+    "page.agent_more": "Tell me more",
+    "phone.not_running": "Flux isn't running",
+    "phone.update_flux": "Update Flux for calls and meeting silence",
+    "phone.turn_on_sync": "Turn on Sync Do Not Disturb on the {name} for meeting silence",
+    "phone.connected": "Connected: {names}"
   }
 }

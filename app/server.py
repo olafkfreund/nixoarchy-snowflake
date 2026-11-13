@@ -241,6 +241,7 @@ DEFAULTS = {
     "ambient_system": True, "ambient_calendar": False, "ambient_weather": False,
     # desktop awareness (#133): all off but the per-category sound and the spoken categories
     "proactive": False, "reactions": False, "news_watch": False, "notifications_takeover": False, "notify_details": False, "notify_speak": ["meeting"], "agent_voice_mute": [],
+    "phone_on": False,                                               # the phone through Flux (#231): off
     "mail_on": False, "mail_accounts": [], "mail_model": "",       # hear and answer mail (#210): off, no address, no summaries
     "notify_sound": True, "look_meeting": False, "look_music": False,
     "look_beat": False, "notify_speak_subject": False,
@@ -6804,6 +6805,45 @@ def mail_reset():
         BUS.pub(t="stage_close")
 
 
+PHONE_GEN = 0
+
+
+def phone_status():
+    """The one status line under the Phone switch. Names and fixed words only: no numbers, texts or notifications."""
+    if not CFG.get("phone_on"):
+        return ""
+    if not Phone.connected:
+        return lang.t("phone.not_running")
+    devs = Phone.devices()
+    if not Phone.modern:
+        return lang.t("phone.update_flux")
+    for d in devs:
+        if "dnd" in d["can"] and d.get("dnd") and d["dnd"].get("on") is None:
+            return lang.t("phone.turn_on_sync", name=d["name"])
+    return lang.t("phone.connected", names=", ".join(d["name"] for d in devs) or "-")
+
+
+def phone_pub():
+    BUS.pub(t="phone", status=phone_status())
+
+
+Phone.on_state = phone_pub
+
+
+def phone_reset():
+    """Phone switched off: void work in flight, close the client, delete the files waiting to be sent."""
+    global PHONE_GEN
+    PHONE_GEN += 1                                  # (drafts and boards check this; none exist before step 4)
+    Phone.stop()
+    for f in list(Phone.outgoing):
+        try:
+            os.unlink(f)
+        except OSError:
+            pass
+    Phone.outgoing.clear()
+    phone_pub()
+
+
 def mail_on_screen():
     """A mail board or a reply draft is up."""
     cur = STAGES.current()
@@ -7596,6 +7636,7 @@ def state_info():
         **{k: bool(CFG.get(k, k == "ambient_system")) for k in Ambient.FLAG.values()},
         "projects": quick.projects(),
         **{k: bool(CFG.get(k, k == "notify_sound")) for k in NOTIFY_FLAGS}, "notify_speak": CFG.get("notify_speak", ["meeting"]),
+        "phone_on": CFG.get("phone_on") is True, "phone_status": phone_status(),
         "mail_on": CFG.get("mail_on") is True, "mail_accounts": CFG.get("mail_accounts") or [], "mail_model": CFG.get("mail_model") or "",
         "agent_voice_mute": CFG.get("agent_voice_mute") or [],
         "workout": CFG.get("workout") or [], "water_every": CFG.get("water_every") or 0,
@@ -7999,6 +8040,8 @@ class Handler(BaseHTTPRequestHandler):
                     stages_off()
                 if "mail_on" in b:
                     upd["mail_on"] = bool(b["mail_on"])
+                if "phone_on" in b:
+                    upd["phone_on"] = bool(b["phone_on"])
                 ma = b.get("mail_accounts")
                 if isinstance(ma, list) and len(ma) <= 5 and all(isinstance(x, str) and MAIL_ADDR.fullmatch(x) for x in ma):
                     upd["mail_accounts"] = list(dict.fromkeys(ma))
@@ -8048,6 +8091,7 @@ class Handler(BaseHTTPRequestHandler):
                 if upd:
                     peers_changed = "peers_on" in upd and upd["peers_on"] != (CFG.get("peers_on") is True)
                     cut_cloud = ("tts" in upd and upd["tts"] != CFG.get("tts") and "elevenlabs" in (upd["tts"], CFG.get("tts"))) or (upd.get("eleven_on") is False and CFG.get("eleven_on") is True)
+                    was_phone = CFG.get("phone_on") is True
                     with _switch_lock:
                         with _config_lock:
                             if "voice" in upd:
@@ -8057,6 +8101,8 @@ class Handler(BaseHTTPRequestHandler):
                             save_config(**upd)
                         if mail_changed:
                             mail_reset()
+                        if "phone_on" in upd and upd["phone_on"] != was_phone:
+                            Phone.start() if upd["phone_on"] else phone_reset()
                         if "language" in upd or "whisper_model" in upd:
                             request_language(lang.norm(CFG.get("language")), force="whisper_model" in upd)
                     if "voice_by_character" in upd or ("look" in upd and CFG.get("voice_by_character")):

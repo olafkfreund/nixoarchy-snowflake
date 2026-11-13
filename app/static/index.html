@@ -933,6 +933,8 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="lookPartySw"><span class="sw"></span><span class="l">Party hat on special days<small>New Year, Christmas, and birthdays in your calendar (needs the calendar on).</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="reactQuipsSw"><span class="sw"></span><span class="l">Little jokes<small>Now and then a short line about the weather, the hour or a long session. Never spoken.</small></span></label></div>
       <div class="row"><div class="t">Say out loud</div><div class="h">Notifications he speaks. In a meeting he stays silent.</div><div class="seg" id="nsChips"></div></div>
+      <div class="row" id="phoneRow"><label class="tg"><input type="checkbox" id="phoneSw"><span class="sw"></span><span class="l">Phone (Flux)<small>Find, send to and watch your phone or tablet through Flux. Off until you switch it on.</small></span></label>
+        <div class="h" id="phoneStat" hidden></div></div>
       <div class="row" id="mailRow"><label class="tg"><input type="checkbox" id="mailSw"><span class="sw"></span><span class="l">Mail<small>Open a board of unread mail, hear a summary of one message and reply with a click. Off until you switch it on. Needs answer boards in nixi mode. Summaries come from a model on this computer.</small></span></label>
         <div id="mailOpts" hidden><div class="t sub">Addresses</div><div class="h">Only the ones you tick are read.</div><div id="mailAccts"></div>
           <div class="t sub">Summary model</div><div class="h">Local models only. None lists and replies without summaries.</div><select id="mailModel"></select></div></div>
@@ -2806,6 +2808,7 @@ async function agentTick(){
 setInterval(()=>agentTick().catch(()=>{ agentCheck=false; }),250);
 function onEvent(ev){
   if(ev.t==='mirror'){ mirSet(ev); return; }
+  if(ev.t==='phone'){ info.phone_status=ev.status; renderPhone(); return; }
   if(ev.t==='theme'){ info.theme=ev.theme; lookShown=''; syncLook(); if(setEl.classList.contains('on')) renderSettings(); return; }
   if(ev.t==='beat'){ beat=Math.max(beat,+ev.v||0); beatAt=performance.now(); return; }   // the music's kick (look_beat)
   if(ev.t==='saw'){ poke('looking',1800); wake(); return; }   // Claude took a look at your screen (`nixi-companion see`)
@@ -4107,6 +4110,7 @@ $('#pkRnd').addEventListener('click',()=>{ const kind=pkPart.startsWith('white')
 $('#pkAll').addEventListener('click',()=>{ const L=curLook(), R=randomLook(L); Object.assign(L,R); L.random=false; info.look=L; applyLook(L);
   post('/api/settings',{look:L}).then(r=>r.json()).then(j=>{ info=j; }); selectPart(pkPart); poke('excited',900); });
 
+function renderPhone(){ const sw=$('#phoneSw'); if(!sw) return; sw.checked=!!info.phone_on; const st=$('#phoneStat'); st.textContent=info.phone_status||''; st.hidden=!(info.phone_on&&info.phone_status); }
 let mailOpt={accounts:[],models:[]}, mailOptT=0;
 function renderMail(){ const sw=$('#mailSw'); if(!sw) return; sw.checked=!!info.mail_on; $('#mailOpts').hidden=!info.mail_on;
   if(!info.mail_on) return;
@@ -4206,7 +4210,7 @@ function renderSettings(){
     updSw:info.update_check!==false,peersSw:!!info.peers_on,agentApproveSw:!!info.agent_approvals,fullSw:info.full_text,compactSw:info.auto_compact!==false,leanSw:info.lean!==false};
   { const c=$('#costIn'); if(c&&document.activeElement!==c){ c.value=info.max_cost_usd||0; costLbl(); } }
   renderAgents(); renderUpdate(); renderPtt();
-  renderMail();
+  renderMail(); renderPhone();
   for(const k in sw){ const e=document.getElementById(k); if(e) e.checked=!!sw[k]; }
   { const e=$('#reactSw'); e.disabled=!info.proactive; e.closest('.row').style.opacity=info.proactive?'':'.5';   // (needs Proactive)
     const off=[['look_music','Headphones for music'],['look_meeting','Tie in meetings'],['look_weather','Dress for the weather'],['react_load','Notice a busy machine'],['react_break','Remind me to move']].filter(([k])=>!info[k]).map(x=>x[1]);
@@ -4514,6 +4518,7 @@ setEl.addEventListener('change',e=>{
   { const k={proactiveSw:'proactive',newsWatchSw:'news_watch',reactSw:'reactions',takeoverSw:'notifications_takeover',detailsSw:'notify_details',nsoundSw:'notify_sound',lookMeetSw:'look_meeting',lookMusicSw:'look_music',lookBeatSw:'look_beat',speakSubjSw:'notify_speak_subject',lookFsSw:'look_fullscreen',reactLoadSw:'react_load',reactBreakSw:'react_break',reactWelcomeSw:'react_welcome',lookCodingSw:'look_coding',lookNightSw:'look_night',lookWeatherSw:'look_weather',lookPartySw:'look_party',reactQuipsSw:'react_quips'}[id]; if(k) setSetting({[k]:on}); }
   if(id==='clickSw') setSetting({click_through:on}).then(()=>sendRegion(true));
   if(id==='notifySw') setSetting({notify_done:on});
+  if(id==='phoneSw') setSetting({phone_on:on}).then(renderPhone);
   if(id==='mailSw') setSetting({mail_on:on}).then(()=>{ mailOptT=0; renderMail(); });
   if(id==='mailModel') setSetting({mail_model:e.target.value});
   if(e.target.dataset&&e.target.dataset.mailAcct) setSetting({mail_accounts:$$('#mailAccts input:checked').map(c=>c.dataset.mailAcct)});
