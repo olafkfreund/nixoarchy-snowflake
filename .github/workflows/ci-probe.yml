@@ -1,4 +1,4 @@
-# Throwaway probe for #63's spec: can a hosted runner run bwrap + pasta and headless Chromium from Nix? Never merged.
+# Throwaway probe for #63's spec: the whole suite, file by file, on a hosted runner. Never merged.
 name: ci-probe
 on:
   push:
@@ -6,31 +6,19 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
       - uses: cachix/install-nix-action@526118121621777ccd86f79b04685a9319637641 # v31.3.0
-      - name: kernel and userns facts
+      - name: let bwrap make user namespaces, and give the sandbox a Nix /usr/bin/env
         run: |
-          uname -r; cat /etc/os-release | head -2
-          sysctl kernel.apparmor_restrict_unprivileged_userns || true
-          sysctl kernel.unprivileged_userns_clone || true
-      - name: sandbox tests as-is (expected to show the userns limit)
-        continue-on-error: true
-        run: time nix develop -c timeout 600 python3 -B tests/test_plugin_sandbox.py
-      - name: relax the AppArmor userns restriction
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - name: make /usr/bin/env a Nix binary, as on NixOS (the sandbox binds only /nix/store)
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          sudo mount --bind "$(nix build --no-link --print-out-paths nixpkgs#coreutils)/bin/env" /usr/bin/env
+      - name: every test file, own process, own deadline
+        env:
+          NIXI_DOCS_ALL: "1"
         run: |
-          ENV=$(nix build --no-link --print-out-paths nixpkgs#coreutils)/bin/env
-          sudo mount --bind "$ENV" /usr/bin/env
-          ls -la /usr/bin/env; /usr/bin/env --version | head -1
-      - name: sandbox tests after relaxing
-        continue-on-error: true
-        run: time nix develop -c timeout 600 python3 -B tests/test_plugin_sandbox.py
-      - name: one fit test with Nix chromium and node
-        continue-on-error: true
-        run: time nix shell nixpkgs#chromium nixpkgs#nodejs nixpkgs#python3 -c timeout 600 python3 -B tests/test_notify_fit.py
-      - name: nix build cold cost
-        continue-on-error: true
-        run: time nix build --no-link -L .#default 2>&1 | tail -3; df -h / | tail -1
+          time nix develop -c nix shell nixpkgs#chromium nixpkgs#nodejs nixpkgs#ffmpeg -c \
+            python3 -B .github/ci/run_tests.py --allow /dev/null
