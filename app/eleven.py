@@ -33,9 +33,12 @@ class ElevenError(Exception):
         super().__init__(message + (f" ({status})" if status else ""))
 
 
+KEY_ROOTS = ("/run/agenix", "/run/agenix.d", "/run/secrets", "/run/secrets.d")   # agenix, sops-nix (NixOS module)
+
+
 def _key():
     path = os.path.realpath(CFG.get("eleven_key_file", "/run/agenix/api-elevenlabs"))
-    roots = ["/run/agenix", "/run/agenix.d", "/run/secrets"]
+    roots = list(KEY_ROOTS)
     if os.environ.get("CREDENTIALS_DIRECTORY"):
         roots.append(os.path.realpath(os.environ["CREDENTIALS_DIRECTORY"]))
     if not any(path.startswith(root.rstrip("/") + "/") for root in roots):
