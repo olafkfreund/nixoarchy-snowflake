@@ -53,16 +53,23 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          base = [
+            pkgs.python3
+            pkgs.bubblewrap
+            pkgs.passt
+            pkgs.iproute2
+          ];
         in
         {
           default = pkgs.mkShell {
-            packages = [
-              pkgs.python3
-              pkgs.bubblewrap
-              pkgs.passt
-              pkgs.iproute2
-            ];
+            packages = base;
             NIXI_SANDBOX_TESTS = "require";
+          };
+          # CI (#63): the default tools plus a browser, node and ffmpeg for the fit and docs tests
+          ci = pkgs.mkShell {
+            packages = base ++ [ pkgs.chromium pkgs.nodejs pkgs.ffmpeg ];
+            NIXI_SANDBOX_TESTS = "require";
+            NIXI_DOCS_ALL = "1";
           };
         }
       );

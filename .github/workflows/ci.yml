@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "ci-${{ github.event.pull_request.number || github.sha }}"
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@526118121621777ccd86f79b04685a9319637641 # v31.3.0
+      - name: Set up the runner
+        run: |
+          # GitHub runner only: let bwrap make user namespaces, and give the sandbox a Nix env, as on NixOS.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          env_bin="$(nix develop .#ci -c sh -c 'command -v env')"
+          sudo mount --bind "$env_bin" /usr/bin/env
+          git rev-parse --verify origin/main   # the character baseline needs it; fail here, not as a skip later
+      - run: nix build -L .#packages.x86_64-linux.default
+      - run: nix flake check -L
+      - run: nix develop .#ci -c python3 -B .github/ci/run_tests.py --exclude test_character_fit.py --exclude test_accessories_fit.py
+
+  fit-slow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@526118121621777ccd86f79b04685a9319637641 # v31.3.0
+      - name: Set up the runner
+        run: |
+          # GitHub runner only: let bwrap make user namespaces, and give the sandbox a Nix env, as on NixOS.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          env_bin="$(nix develop .#ci -c sh -c 'command -v env')"
+          sudo mount --bind "$env_bin" /usr/bin/env
+          git rev-parse --verify origin/main   # the character baseline needs it; fail here, not as a skip later
+      - run: nix develop .#ci -c python3 -B .github/ci/run_tests.py --deadline 1800 test_character_fit.py test_accessories_fit.py

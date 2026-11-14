@@ -91,7 +91,8 @@ const undo = { "notch": "document.body.classList.remove('bar')", "hover": "docum
 for (const [name, v] of Object.entries(mid)) {
   const [on, off] = Array.isArray(v) ? v : [v, undo[name]];
   const r = await ev(`rxReset(); sit({cpu_hot:true}); rxEnd(); const sust=rxPlay('rain'); const a=[!empty(), [...RXS]];   // (the sustained load starts via the situation event, then rain plays over it)
-    ${on}; await new Promise(r=>setTimeout(r,80)); const during={empty:empty(), RX:RX&&RX.id, cl:document.querySelector('#stage').classList.contains('rx')};
+    ${on}; for(const end=performance.now()+2000; !(empty()&&!document.querySelector('#stage').classList.contains('rx')) && performance.now()<end;) await new Promise(r=>setTimeout(r,20));   // at most 2 s: 80 ms was too short on a GitHub runner (#63)
+    const during={empty:empty(), RX:RX&&RX.id, cl:document.querySelector('#stage').classList.contains('rx')};
     ${off}; await new Promise(r=>setTimeout(r,80)); const back={drawn:!empty(), RX:RX&&RX.id, cl:document.querySelector('#stage').className, sust:[...RXS]}; return {a,during,back};`);
   check(r.sust !== false && r.a && r.a[0] && r.a[1].includes('load'), `${name}: a reaction and the sustained prop were up first`, r);
   check(r.during && r.during.empty && r.during.RX === null && !r.during.cl, `${name} arriving mid-reaction empties the groups and ends it`, r);
