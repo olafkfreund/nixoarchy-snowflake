@@ -364,7 +364,7 @@ if (ID === "snowflake" || ID === "robot") {
       grow(await during("FID={name:'roll',t0:performance.now(),dur:FIDGETS.roll.dur}; FIDGETS.roll.start&&FIDGETS.roll.start(FID)", 2600)); await ev("FID=null; return 1");
     }
     const ok = worst && worst[0] >= 3 && worst[1] >= 3 && worst[2] <= 337 && worst[3] <= 457;
-    check(!!ok, `${ID}: ${c.name} fits 340 × 460`, worst ? worst.map(v => v.toFixed(0)).join(",") : "not drawn");
+    check(!!ok, `${ID}: ${c.name} fits 340 × 460`, worst ? worst.map(v => v.toFixed(2)).join(",") : "not drawn");
     if (c.after) await ev(c.after + " return 1");
   }
   await ev("clearInterval(__hold); WXT=null; return 1");

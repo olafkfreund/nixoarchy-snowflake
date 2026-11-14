@@ -16,9 +16,8 @@ jobs:
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo mount --bind "$(nix build --no-link --print-out-paths nixpkgs#coreutils)/bin/env" /usr/bin/env
-      - name: every test file, own process, own deadline
-        env:
-          NIXI_DOCS_ALL: "1"
+      - name: halo case only, bounds to 2 decimals, and the fonts in use
         run: |
-          time nix develop -c nix shell nixpkgs#chromium nixpkgs#nodejs nixpkgs#ffmpeg -c \
-            python3 -B .github/ci/run_tests.py --allow /dev/null
+          nix develop -c nix shell nixpkgs#chromium nixpkgs#nodejs nixpkgs#fontconfig -c sh -c '
+            fc-match sans-serif; fc-match serif; fc-match monospace; fc-list | wc -l
+            cd tests && python3 -B -m unittest -v test_character_fit.CharacterFit.test_plugin_character' 2>&1 | tail -60
