@@ -137,7 +137,7 @@ class SessionsTest(unittest.TestCase):
     def test_send_needs_an_exact_match(self):
         s = self.server
         with mock.patch.object(s, "BRIDGED", True), mock.patch.object(s, "herdr_agents", return_value=AGENTS), \
-                mock.patch.object(s, "nixi_conf", return_value={}):
+                mock.patch.object(s, "nixi_conf", return_value={}), mock.patch.object(s, "herdr_read", return_value="ok"):
             self.assertIn("can't find", s.session_send("quattro", "hi")[0])        # a substring of a title: fine for status, not for a send
             self.assertIsNone(s.session_send("nixarchy", "hi")[0])                 # the cwd folder, exact
             self.assertIsNotNone(s.session_status("quattro")[1])
