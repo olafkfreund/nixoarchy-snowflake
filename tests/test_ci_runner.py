@@ -24,6 +24,7 @@ FILES = {
             def test_a(self): pass
         """),
     "test_empty.py": "import unittest\n",
+    "test_xfail.py": "import unittest\nclass T(unittest.TestCase):\n    @unittest.expectedFailure\n    def test_a(self): self.fail('no')\n",
     "test_exit0.py": "import os\nos._exit(0)\n",
     "test_hang.py": textwrap.dedent("""\
         import os, subprocess, sys, time, unittest
@@ -75,7 +76,7 @@ class RunnerTest(unittest.TestCase):
 
     def test_states(self):
         want = {"test_pass.py": "ok", "test_fail.py": "FAIL", "test_skip_stray.py": "SKIP?",
-                "test_skip_ok.py": "ok", "test_skip_class.py": "ok", "test_empty.py": "EMPTY",
+                "test_skip_ok.py": "ok", "test_skip_class.py": "ok", "test_empty.py": "EMPTY", "test_xfail.py": "SKIP?",
                 "test_exit0.py": "NOREPORT", "test_hang.py": "TIMEOUT", "test_home.py": "ok"}
         self.assertEqual({n: self.state(n) for n in want}, want, self.r.stdout)
         self.assertEqual(self.r.returncode, 1)
@@ -95,6 +96,8 @@ class RunnerTest(unittest.TestCase):
     def test_exclude_and_unmatched_pattern(self):
         r = self.go("--exclude", "test_fail.py", "test_pass.py", "test_fail.py")
         self.assertEqual(r.returncode, 0, r.stdout)
+        r = self.go("--exclude", "test_pass.py", "test_pass.py")
+        self.assertNotEqual(r.returncode, 0, r.stdout)
         r = self.go("test_pass.py", "test_nope.py")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("test_nope.py", r.stderr)

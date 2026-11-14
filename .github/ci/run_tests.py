@@ -33,7 +33,9 @@ def child(tests, name, report):
     """In the test's own process: run one file, then write {"run": n, "skipped": [[id, reason]...]}."""
     suite = unittest.defaultTestLoader.discover(tests, pattern=name, top_level_dir=tests)
     r = unittest.TextTestRunner(verbosity=2).run(suite)
-    Path(report).write_text(json.dumps({"run": r.testsRun, "skipped": [[t.id(), why] for t, why in r.skipped]}))
+    # an expected failure is a test that doesn't run green: it needs an allow-list entry like a skip
+    skipped = [[t.id(), why] for t, why in r.skipped] + [[t.id(), "expected failure"] for t, _ in r.expectedFailures]
+    Path(report).write_text(json.dumps({"run": r.testsRun, "skipped": skipped}))
     sys.exit(0 if r.wasSuccessful() else 1)
 
 
@@ -76,18 +78,20 @@ def run(tests, f, deadline):
         env = {**os.environ, "HOME": str(home), "XDG_RUNTIME_DIR": str(rt)}   # never the runner's own HOME
         with open(log, "w") as out:   # a file, not a pipe: a leftover child holding it can't stall us
             p = subprocess.Popen([sys.executable, "-B", __file__, "--child", tests, f.name, str(report)],
-                                 cwd=REPO, env=env, stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
+                                 cwd=REPO, env=env, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
+                                 start_new_session=True)
+            timed_out = False
             try:
                 p.wait(timeout=deadline)
-                timed_out = False
             except subprocess.TimeoutExpired:
                 timed_out = True
-            try:
-                os.killpg(p.pid, signal.SIGKILL)   # leftovers in the file's own group
-            except (ProcessLookupError, PermissionError):
-                pass
-            p.wait()
-            reap_orphans()
+            finally:   # also on Ctrl-C or SIGTERM: the file runs in its own session, so nothing else stops it
+                try:
+                    os.killpg(p.pid, signal.SIGKILL)   # leftovers in the file's own group
+                except (ProcessLookupError, PermissionError):
+                    pass
+                p.wait()
+                reap_orphans()
         text = log.read_text(errors="replace")
         try:
             rep = json.loads(report.read_text())
@@ -117,6 +121,9 @@ def main():
             sys.exit(f"no test file matches {pat}")
         files |= hit
     files = sorted(f for f in files if f.name not in a.exclude)
+    if not files:
+        sys.exit("every matched test file is excluded")
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))   # runs run()'s cleanup, as Ctrl-C does
     subreaper()
     bad = []
     for f in files:
