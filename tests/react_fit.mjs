@@ -23,8 +23,8 @@ const eq = (got, want, what) => check(JSON.stringify(got) === JSON.stringify(wan
 
 await ev(`
   window.__say=[]; sfx=n=>{}; enqueue=(t,o)=>window.__say.push(t);
-  nixiIdleScale(1000); const f0=window.fetch.bind(window);   // the page re-reads /api/state every few seconds: keep the flags the test turned on
-  window.fetch=async(u,o)=>{ const r=await f0(u,o); if(!/\\/api\\/state/.test(String(u))) return r; const j=await r.json(); return new Response(JSON.stringify({...j,proactive:true,reactions:true,look_meeting:true,look_weather:true,look_music:true,click_through:true})); };
+  nixiIdleScale(1000); const f0=window.fetch.bind(window);   // the page re-reads /api/state every few seconds: keep its current flags
+  window.fetch=async(u,o)=>{ const r=await f0(u,o); if(!/\\/api\\/state/.test(String(u))) return r; const j=await r.json(); return new Response(JSON.stringify({...j,proactive:info.proactive,reactions:info.reactions,look_meeting:true,look_weather:true,look_music:true,click_through:true})); };
   window.IDS=['load','memory','error','soon','meeting','notice','ask','done','open','rain','snow','wind','workout'];
   window.CH=['snowflake','terminal','robot','devil'];
   window.grp=()=>['#rxSky','#rxBack','#rxFront'].map(s=>document.querySelector(s).innerHTML.length);
@@ -34,7 +34,7 @@ await ev(`
     sit({meeting:false,fullscreen:false,locked:false,cpu_hot:false,ram_low:false,music:false,windy:false,weather:null});
     for(const k in sitOn){ sitOn[k]=false; sitSeen[k]=false; } nudgeQ.clear(); notifyQ.length=0; if(notifyRow) notifyClear(); notifyRow=null; notifyAt=0;
     Object.assign(info,{proactive:true,reactions:true,look_meeting:true,look_weather:true,look_music:true,hover:false}); hiddenNow=false; delete document.hidden;
-    document.body.classList.remove('bar','hover','calm','peek'); setCharacter('snowflake'); lastActive=performance.now(); };
+    setEl.classList.remove('on'); document.body.classList.remove('bar','hover','calm','peek'); setCharacter('snowflake'); lastActive=performance.now(); };
   rxReset(); return 1;`);
 await sleep(300);
 const settle = () => ev(`await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))); await new Promise(r=>setTimeout(r,60)); return 1;`);
@@ -64,12 +64,12 @@ for (const ch of ["snowflake", "terminal", "robot", "devil"]) for (const id of [
 // 2. nothing plays when a blocker holds
 const blockers = {
   "reactions off": "info.reactions=false", "proactive off": "info.proactive=false", "notch": "document.body.classList.add('bar')",
-  "hover": "document.body.classList.add('hover')", "calm": "document.body.classList.add('calm')", "peek": "document.body.classList.add('peek')",
+  "hover": "document.body.classList.add('hover')", "calm": "setEl.classList.add('on'); calmCheck()", "peek": "document.body.classList.add('peek')",
   "fullscreen": "sit({fullscreen:true})", "locked": "sit({locked:true})", "page hidden": "Object.defineProperty(document,'hidden',{get:()=>true,configurable:true})",
   "sent away": "hiddenNow=true" };
 for (const [name, js] of Object.entries(blockers)) {
-  const r = await ev(`rxReset(); ${js}; await new Promise(r=>setTimeout(r,60)); const ok=rxPlay('rain'); return [ok, empty(), RX];`);
-  eq(r, [false, true, null], `nothing plays with ${name}`);
+  const r = await ev(`rxReset(); const base0=rxBase(); ${js}; await new Promise(r=>setTimeout(r,60)); const base1=rxBase(), calm1=${JSON.stringify(name)}==='calm' && document.body.classList.contains('calm'); const ok=rxPlay('rain'); return [ok, empty(), RX, base0, base1${name === 'calm' ? ', calm1' : ''}];`);
+  eq(r, [false, true, null, true, false, ...(name === 'calm' ? [true] : [])], `nothing plays with ${name}`);
 }
 eq(await ev(`rxReset(); sit({meeting:true}); await new Promise(r=>setTimeout(r,60)); return ['load','rain','notice','error','done','meeting','ask'].map(i=>{ RX=null; RX_AT={}; return rxPlay(i); });`),
   [false, false, false, false, false, true, true], "in a meeting only meeting and ask play");
@@ -86,7 +86,7 @@ const mid = {
   "proactive off": ["info.proactive=false;showInfo()", "info.proactive=true;showInfo()"],
   "page hidden": ["Object.defineProperty(document,'hidden',{get:()=>true,configurable:true});document.dispatchEvent(new Event('visibilitychange'))", "delete document.hidden;document.dispatchEvent(new Event('visibilitychange'))"],
   "sent away": ["nixiHidden()", "nixiShown()"] };
-const undo = { "notch": "document.body.classList.remove('bar')", "hover": "document.body.classList.remove('hover')", "calm": "document.body.classList.remove('calm')", "peek": "document.body.classList.remove('peek')",
+const undo = { "notch": "document.body.classList.remove('bar')", "hover": "document.body.classList.remove('hover')", "calm": "setEl.classList.remove('on'); calmCheck()", "peek": "document.body.classList.remove('peek')",
   "fullscreen": "sit({fullscreen:false})", "locked": "sit({locked:false})", "meeting (SIT.meeting, before sitOn)": "sit({meeting:false})" };
 for (const [name, v] of Object.entries(mid)) {
   const [on, off] = Array.isArray(v) ? v : [v, undo[name]];
