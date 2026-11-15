@@ -610,10 +610,11 @@ body.calm.mir-agent #mirBar{display:flex} #mirBar span{overflow:hidden;text-over
 #set .hd{padding:12px 12px 8px 14px}
 #set .hd .logo{width:24px;height:24px;overflow:visible;flex:none}
 #set .hd b{font-size:14px;letter-spacing:.01em}
-#tabs{position:relative;display:flex;gap:0;margin:0 12px 8px;padding:3px;border:0;border-radius:13px;background:var(--panel2);box-shadow:inset 0 0 0 1px #1f1f1f}
+#tabs{container-type:inline-size;position:relative;display:flex;gap:0;margin:0 12px 8px;padding:3px;border:0;border-radius:13px;background:var(--panel2);box-shadow:inset 0 0 0 1px #1f1f1f}
 #tabs button{position:relative;z-index:1;flex:1;display:flex;align-items:center;justify-content:center;gap:5px;background:none;border:0;border-radius:10px;
   padding:6px 0;color:#8f8f8f;font-size:12px;font-weight:500;cursor:pointer;transition:color .25s}
 #tabs button svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+@container (width < 414px){ #tabs button svg{display:none} }   /* six tabs at a narrow Settings: labels only (#93) */
 #tabs button:hover{color:var(--text);background:none}
 #tabs button.on{color:#fff;background:none;box-shadow:none}
 #tabs .ind{position:absolute;z-index:0;top:3px;bottom:3px;left:3px;border-radius:10px;background:linear-gradient(180deg,var(--acc),var(--edge2));
@@ -880,6 +881,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
     <button id="tab-voice" role="tab" aria-selected="false" aria-controls="panel-voice" tabindex="-1" data-tab="voice"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>Voice</button>
     <button id="tab-brain" role="tab" aria-selected="false" aria-controls="panel-brain" tabindex="-1" data-tab="brain"><svg viewBox="0 0 24 24"><path d="M12 4a3.5 3.5 0 0 0-6.6 1.6A3.5 3.5 0 0 0 4 12a3.5 3.5 0 0 0 2 5.9A3.5 3.5 0 0 0 12 19.5ZM12 4a3.5 3.5 0 0 1 6.6 1.6A3.5 3.5 0 0 1 20 12a3.5 3.5 0 0 1-2 5.9 3.5 3.5 0 0 1-6 1.6"/></svg>Brain</button>
     <button id="tab-plugins" role="tab" aria-selected="false" aria-controls="panel-plugins" tabindex="-1" data-tab="plugins"><svg viewBox="0 0 24 24"><path d="M19.4 13a1.65 1.65 0 0 0 0-2H18a1 1 0 0 1-1-1V7a1 1 0 0 0-1-1h-3a1 1 0 0 1-1-1V3.6a1.65 1.65 0 0 0-2 0V5a1 1 0 0 1-1 1H6a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h1.4a1.65 1.65 0 0 1 0 2H6a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1.4a1.65 1.65 0 0 1 2 0V17a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-3a1 1 0 0 1 1-1z"/></svg>Plugins</button>
+    <button id="tab-phone" role="tab" aria-selected="false" aria-controls="panel-phone" tabindex="-1" data-tab="phone"><svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M11 18.5h2"/></svg>Phone</button>
     <button id="tab-more" role="tab" aria-selected="false" aria-controls="panel-more" tabindex="-1" data-tab="more"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>More</button>
     <i class="ind" id="tabInd"></i>
   </div>
@@ -933,8 +935,6 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><label class="tg"><input type="checkbox" id="lookPartySw"><span class="sw"></span><span class="l">Party hat on special days<small>New Year, Christmas, and birthdays in your calendar (needs the calendar on).</small></span></label></div>
       <div class="row"><label class="tg"><input type="checkbox" id="reactQuipsSw"><span class="sw"></span><span class="l">Little jokes<small>Now and then a short line about the weather, the hour or a long session. Never spoken.</small></span></label></div>
       <div class="row"><div class="t">Say out loud</div><div class="h">Notifications he speaks. In a meeting he stays silent.</div><div class="seg" id="nsChips"></div></div>
-      <div class="row" id="phoneRow"><label class="tg"><input type="checkbox" id="phoneSw"><span class="sw"></span><span class="l">Phone (Flux)<small>Find, send to and watch your phone or tablet through Flux. Off until you switch it on.</small></span></label>
-        <div class="h" id="phoneStat" hidden></div></div>
       <div class="row" id="mailRow"><label class="tg"><input type="checkbox" id="mailSw"><span class="sw"></span><span class="l">Mail<small>Open a board of unread mail, hear a summary of one message and reply with a click. Off until you switch it on. Needs answer boards in nixi mode. Summaries come from a model on this computer.</small></span></label>
         <div id="mailOpts" hidden><div class="t sub">Addresses</div><div class="h">Only the ones you tick are read.</div><div id="mailAccts"></div>
           <div class="t sub">Summary model</div><div class="h">Local models only. None lists and replies without summaries.</div><select id="mailModel"></select></div></div>
@@ -1020,6 +1020,11 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <label class="tg" id="peersRow" hidden style="margin-bottom:8px"><input type="checkbox" id="peersSw"><span class="sw"></span><span class="l">Other machines<small>Let plugins show your other machines' status (load, memory, disks, failed services)</small></span></label>
         <div id="plugCons"></div><div id="plugList"></div><div class="h" id="plugErr" style="color:#e8836f"></div>
         <div class="bar"><button class="btn" id="plugReload">Reload</button></div></div>
+    </div>
+    <!-- ================= PHONE ================= -->
+    <div class="tab" id="panel-phone" role="tabpanel" aria-labelledby="tab-phone" data-tab="phone">
+      <div class="row" id="phoneRow"><label class="tg"><input type="checkbox" id="phoneSw"><span class="sw"></span><span class="l">Phone (Flux)<small>Find, send to and watch your phone or tablet through Flux. Off until you switch it on.</small></span></label>
+        <div class="h" id="phoneStat" hidden></div></div>
     </div>
     <!-- ================= MORE ================= -->
     <div class="tab" id="panel-more" role="tabpanel" aria-labelledby="tab-more" data-tab="more">
@@ -4037,10 +4042,10 @@ function syncLangUI(){
 const TRUST=[['ask','✋','Ask me first','Edits files on his own; asks you (out loud) before running commands or going online.'],
   ['trust','⚡','Just do it','Runs anything without asking. Fast, but you won’t get a say.'],
   ['readonly','👀','Look, don’t touch','Can read and explain things, but changes nothing.']];
-const setEl=$('#set'), TABS=['look','voice','brain','plugins','more'];
+const setEl=$('#set'), TABS=['look','voice','brain','plugins','phone','more'];
 let setResizeFrame=0;
 function setResize(w,h){ setW=w; setH=h; setSyncVars(); setWant=[Math.max(0,w-340+24),Math.max(0,h-460+46)];
-  if(!setResizeFrame) setResizeFrame=requestAnimationFrame(()=>{ setResizeFrame=0; sizeWindow(); sendRegion(true); }); }
+  if(!setResizeFrame) setResizeFrame=requestAnimationFrame(()=>{ setResizeFrame=0; sizeWindow(); sendRegion(true); moveInd(); }); }
 function setSaveSize(){ try{ localStorage.setItem('nixi.setSize',JSON.stringify([setW,setH])); }catch(e){} }
 function setResetSize(){ try{ localStorage.removeItem('nixi.setSize'); }catch(e){} setResize(...setDefaultSize()); }
 for(const grip of $$('#set .sgrip')){
