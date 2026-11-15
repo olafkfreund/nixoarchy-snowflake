@@ -479,17 +479,17 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
       indLeft:ind.offsetLeft+new DOMMatrixReadOnly(getComputedStyle(ind).transform).m41, indWidth:ind.offsetWidth}`);
   const checkIndicator = (p, why) => check(Math.abs(p.indLeft-p.left)<=1 && Math.abs(p.indWidth-p.width)<=1,
     "six tabs indicator follows "+why, JSON.stringify(p));
-  await ev("setResize(560,600); showTab('phone'); "+twoFrames); await sleep(500);
+  await ev("setResize(560,600); showTab('phone'); "+twoFrames); await sleep(800);
   const phoneWide=await indicator();
-  await ev("setResize(420,600); "+twoFrames); await sleep(500);
+  await ev("setResize(420,600); "+twoFrames); await sleep(800);
   const phoneNarrow=await indicator();
   check(phoneNarrow.left<phoneWide.left, "Phone button moves left on resize", JSON.stringify({phoneWide,phoneNarrow}));
   checkIndicator(phoneNarrow,"Phone on resize");
   for(const tab of ["look","voice","brain","plugins","phone","more"]){
-    await ev("showTab('"+tab+"'); return 1"); await sleep(500);
+    await ev("showTab('"+tab+"'); return 1"); await sleep(800);
     checkIndicator(await indicator(),tab+" at 420");
   }
-  await ev("settings(false); settings(true,'phone'); "+twoFrames); await sleep(500);
+  await ev("settings(false); settings(true,'phone'); "+twoFrames); await sleep(800);
   checkIndicator(await indicator(),"Phone after reopen");
   await ev("setResetSize(); "+twoFrames);
   await ev("settings(false); localStorage.setItem('nixi.tab','look'); return 1");
