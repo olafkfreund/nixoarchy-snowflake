@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 91
 spec: spec/2026-11-15-91-react-calm-flake.md
 coders:
