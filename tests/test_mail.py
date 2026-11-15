@@ -78,7 +78,8 @@ class MailBoardTest(_ServerEnv):
         self.events = []
         self.gog = Gog()
         for p in (mock.patch.object(s, "BRIDGED", True), mock.patch.object(s.BUS, "pub", side_effect=lambda **e: self.events.append(e)),
-                  mock.patch.object(s.subprocess, "run", self.gog), mock.patch.object(s.quick, "projects", return_value={})):
+                  mock.patch.object(s.subprocess, "run", self.gog), mock.patch.object(s.quick, "projects", return_value={}),
+                  mock.patch.object(s.Speaker, "available", return_value=True)):
             p.start()
             self.addCleanup(p.stop)
         s.STAGES.clear()

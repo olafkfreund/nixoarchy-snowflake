@@ -1,0 +1,5 @@
+test_bridge.py::BridgeTest.test_1_text_streams_as_delta  # needs the nixi-nixarchy bridge checkout (NIXI_SRC)
+test_bridge.py::BridgeTest.test_2_permission_yes_sends_allow_once  # needs NIXI_SRC, as above
+test_bridge.py::BridgeTest.test_3_stop_proc_cancels_turn  # needs NIXI_SRC, as above
+test_bridge.py::BridgeTest.test_4_dead_bridge_restarts_on_next_prompt  # needs NIXI_SRC, as above
+test_window_webkit.py::WebKitTokenScript.test_right_port_only  # needs a Wayland session; GitHub runners have none
