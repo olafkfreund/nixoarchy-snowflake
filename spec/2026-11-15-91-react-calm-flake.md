@@ -12,7 +12,7 @@ intent: intent/2026-11-15-91-react-calm-flake.md
   (`setEl`), the side panel (`panelEl`) or the approval card (`apEl`). `sendRegion()` calls it first, before its
   `NATIVE` check (`:4670`), so it runs in the test page too. `sendRegion(` appears 41 times, so 40 call sites.
 - **The test fakes calm with the class alone** (`tests/react_fit.mjs:67`, `"calm": "document.body.classList.add('calm')"`).
-  With no panel open, the next `calmCheck()` takes the class back off. Section 1 then waits 60 ms before
+  With no panel open, the next `calmCheck()` takes the class back off. Section 2 (the `blockers` loop, `:70-73`) then waits 60 ms before
   `rxPlay('rain')` (`:71`), so rain plays whenever a `sendRegion()` lands in that window.
 - **The CI failure fits that route, but the exact trigger isn't known.** The log shows only the result
   (`[true,false,{"id":"rain"}]`). The mechanism is shown below by forcing it (Verification).
@@ -49,7 +49,7 @@ In `tests/react_fit.mjs` only:
 2. **Section 3 undoes it the same way.** `undo["calm"]` becomes `"setEl.classList.remove('on'); calmCheck()"`.
 3. **`rxReset()` closes it** (`:33-37`). Add `setEl.classList.remove('on');` before the existing
    `document.body.classList.remove(...)`, so no case or section starts with Settings open.
-4. **Every blocker case shows a clean start, then a gate holding when it played.** In section 1, the case reads
+4. **Every blocker case shows a clean start, then a gate holding when it played.** In section 2 (`:70-73`), the case reads
    `rxBase()` twice: right after `rxReset()` (`base0`), and again just before `rxPlay('rain')`. It returns
    `[ok, empty(), RX, base0, rxBase()]` instead of `[ok, empty(), RX]`, and expects `[false, true, null, true, false]`.
    - `rxBase()` (`:1781`) is false while any of its gates holds. Each blocker in the table maps to one of them
@@ -98,9 +98,12 @@ The checks stay the same otherwise: no longer waits, no looser expectations, no 
 ## Verification
 
 - **Reproduce the race before the fix,** on p620, headless Chromium with `--disable-gpu`, started by the test. Add
-  `sendRegion(true);` at the start of the 60 ms wait in the section 1 case. The calm case must fail every run (3 of 3),
+  `sendRegion(true);` at the start of the 60 ms wait in the section 2 case (after `${js};`, `:71`). The calm case must fail every run (3 of 3),
   with rain playing. That proves the route.
 - **The same forced `sendRegion(true)` with the fix:** the calm case passes 3 of 3.
+- **Section 3, forced the same way:** add `sendRegion(true);` right after `${on};` and right after `${off};` (`:94`,
+  `:96`). With the fix, the calm case passes all three of its checks. These calls are synchronous, so one run proves
+  this route. The repeats only guard against something else going on.
 - Remove the forced call, and check that `git diff` holds only the Design changes.
 - **The whole file through the CI runner:**
 
