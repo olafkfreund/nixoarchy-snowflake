@@ -337,7 +337,9 @@ if (ID === "snowflake" || ID === "robot") {
   for (const [fit, [sit, el, also]] of Object.entries(LOOKS)) if (fits.has(fit)) cases.push({ name: fit, wait: 4800, el, also,
     on: `${clear} await new Promise(r=>setTimeout(r,8500)); __hold=setInterval(()=>{ for(const k of Object.keys(SIT)) if(typeof SIT[k]==='boolean') SIT[k]=false; SIT.${sit}=true; info.look_${sit}=true; info.look_beat=true; beat=1; beatAt=performance.now(); },60);` });
   for (const skin of ["halo", "crown", "sprout", "bow"]) if (fits.has(skin)) cases.push({ name: `skin ${skin}`, wait: 1500, el: "document.getElementById('accFront')", also: "document.getElementById('accBack')",
-    on: `${clear} applyLook({...LOOK, skin:'${skin}'});`, after: "applyLook({...LOOK, skin:'none'});" });
+    on: `${clear} applyLook({...LOOK, skin:'${skin}'});` + (skin === "halo" ? "const h=SKIN_PARTS.halo, set=h.setAttribute.bind(h); window.__haloPins=0;\n      h.setAttribute=(k,v)=>{ if(k==='transform'){ window.__haloPins++; v='translate(0,'+(-HALO_FLOAT)+')'; } return set(k,v); };\n      h.setAttribute('transform','');" : ""),
+    ...(skin === "halo" ? { guard: "const h=SKIN_PARTS.halo; if(!h) return [false,'no halo drawn']; const attr=h.getAttribute('transform'), style=h.style.transform, pins=window.__haloPins; const ok=h.isConnected&&!style&&attr==='translate(0,'+(-HALO_FLOAT)+')'&&pins>1; return [ok,'transform='+attr+', style='+style+', pins='+pins];" } : {}),
+    after: "applyLook({...LOOK, skin:'none'});" });
   for (const [fit, o, el, also] of [["scarf", { cold: 1 }, "SIT_P.sc", null], ["beanie", { cold: 2 }, "SIT_P.bn", null]]) if (fits.has(fit)) cases.push({ name: fit, wait: 4000, el, also, on: `await wxSet(${JSON.stringify(o)});` });
   for (const cat of ["chat", "feed"]) if (fits.has(cat)) cases.push({ name: cat, wait: 1500, el: `SIT_P.${cat}.g`, on: `${clear} propOn={cat:'${cat === "chat" ? "chat" : "video"}',t0:performance.now(),until:performance.now()+60000,n:3};`, after: "propOn=null;" });
   for (const [n, o] of [["rain", { kind: "rain" }], ["clear day", { kind: "clear" }], ["cloudy", { kind: "cloudy" }]]) cases.push({ name: `weather ${n}`, noBounce: true, wait: 100, el: "({getBoundingClientRect:()=>window.__wxU})", after: "WXT=null;",
@@ -365,6 +367,7 @@ if (ID === "snowflake" || ID === "robot") {
     }
     const ok = worst && worst[0] >= 3 && worst[1] >= 3 && worst[2] <= 337 && worst[3] <= 457;
     check(!!ok, `${ID}: ${c.name} fits 340 × 460`, worst ? worst.map(v => v.toFixed(0)).join(",") : "not drawn");
+    if (c.guard) { const [g, d] = await ev(c.guard); check(g, `${ID}: ${c.name} stays pinned at the float's top`, d); }
     if (c.after) await ev(c.after + " return 1");
   }
   await ev("clearInterval(__hold); WXT=null; return 1");
