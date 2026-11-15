@@ -1204,6 +1204,7 @@ const syncEye=syncLook;
 const SVGNS='http://www.w3.org/2000/svg';
 const sv=(tag,at,par)=>{ const e=document.createElementNS(SVGNS,tag); for(const k in at) e.setAttribute(k,at[k]); if(par) par.appendChild(e); return e; };
 const SKIN_LABELS={none:'none',halo:'halo',crown:'crown',sprout:'sprout',bow:'bow'};
+const HALO_FLOAT=2.2;   // the halo's float, ±px; character_fit.mjs pins it at -HALO_FLOAT (#87)
 let SKIN_PARTS={}, SIT_P=null, sitSettled=false, shivAt=0, shivT0=0;
 // situational looks (#133): a tie in meetings, headphones for music. Their own groups, so a skin change never erases one
 // and the skin picker never shows one. Flat paths only; frame() fades and scales them with springs.
@@ -1291,7 +1292,7 @@ function drawSkin(back,front,L,bodyFill='url(#ballG)',character=BODY){
   const prop=(par,anchor,fit)=>sv('g',{class:'anc','data-a':anchor,'data-fit':fit},par);
   switch(L.skin){
     case 'halo': { const g=sv('g',{},prop(front,'head','halo'));
-        sv('ellipse',{cx:0,cy:-114,rx:36,ry:6,fill:'none',stroke:soft,'stroke-width':4},g); parts.halo=g; break; }
+        sv('ellipse',{cx:0,cy:-113,rx:36,ry:6,fill:'none',stroke:soft,'stroke-width':4},g); parts.halo=g; break; }
     case 'crown': { const g=sv('g',{transform:'translate(0 -58) scale(.85) translate(0 68)'},prop(front,'head','crown'));
         sv('path',R({d:'M-22 -68L-26 -94L-11 -80L0 -98L11 -80L26 -94L22 -68Z',fill:soft,stroke:soft,'stroke-width':6}),g); break; }
     case 'sprout': { const g=sv('g',{},prop(front,'head','sprout'));   // in front: the lambdas would hide it
@@ -2429,7 +2430,7 @@ function frame(ts){
   const SP2=SKIN_PARTS||{};
   if(SP2.wob){ const pv=SP2.pivots.wob, w=G.wob.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)+(LOOK.skin==='sprout'?Math.sin(t*1.3)*3:0);
     SP2.wob.setAttribute('transform',`rotate(${w.toFixed(2)} ${pv[0]} ${pv[1]})`); }
-  if(SP2.halo) SP2.halo.setAttribute('transform',`translate(0,${(Math.sin(t*1.6)*2.2).toFixed(2)})`);
+  if(SP2.halo) SP2.halo.setAttribute('transform',`translate(0,${(Math.sin(t*1.6)*HALO_FLOAT).toFixed(2)})`);
   if(SIT_P){ sitStep(ts);       // looks: spring in/out about their anchors; the tie sways like the other hanging skins
     const w=G.sitW.to(clamp(-G.tilt.v*1.6-G.gx.v*1.2-dxp*.08,-28,28),dt)*.6, sp=(S_,on)=>S_.to(on?1:0,dt), skinless=wornSkin(LOOK)==='none';
     const F=document.body.dataset.focus, ambient=F==='ambient', tp=ambient&&skinless&&sitOn.party, tb=ambient&&skinless&&!tp&&sitOn.cold2, tn=ambient&&skinless&&!tp&&!tb&&sitOn.night, ts6=ambient&&sitOn.cold1&&!sitOn.meeting&&!SKIN_PARTS.baseProp;     // top zone: party hat > beanie > nightcap, only with no skin; the scarf yields to the tie and a base prop
