@@ -308,7 +308,7 @@ Settings → Voice → **ElevenLabs**.
 
 - The file path comes from `eleven_key_file` in `~/.config/nixi-companion/config.json`, which defaults to
   `/run/agenix/api-elevenlabs`.
-- Its real path (after resolving symlinks) must live under `/run/agenix`, `/run/agenix.d` or `/run/secrets`.
+- Its real path (after resolving symlinks) must live under `/run/agenix`, `/run/agenix.d`, `/run/secrets` or `/run/secrets.d`.
 - It must be a regular file (`1` to `256` bytes), owned by `root` or by your user, and readable by you.
 - Its contents (trimmed) must be `16` to `128` characters of `A-Z`, `a-z`, `0-9`, `_` or `-`.
 
@@ -324,7 +324,21 @@ Never put the key inline in a `.nix` file: anything in `/nix/store` is world-rea
 }
 ```
 
-sops-nix is not supported yet: its secrets resolve under `/run/secrets.d`, which he refuses.
+With sops-nix (NixOS module), extend an existing setup where `sops.defaultSopsFile` (or a `sopsFile`) already holds a
+key `api-elevenlabs` whose value is the raw API key:
+
+```nix
+{
+  # sops-nix (NixOS module) -> /run/secrets/api-elevenlabs, a file in /run/secrets.d/<generation>/
+  sops.secrets.api-elevenlabs = {
+    owner = "<your-user>";        # sops-nix defaults to root:root 0400, which he can't read
+  };
+}
+```
+
+Then set `"eleven_key_file": "/run/secrets/api-elevenlabs"` in `~/.config/nixi-companion/config.json`. Only the default
+`/run/secrets` mount is supported; `neededForUsers` secrets (`/run/secrets-for-users.d`) and a custom mount point are not.
+The Home Manager sops-nix module, whose secrets live under the user runtime dir, isn't supported either.
 
 **Turning it on:**
 

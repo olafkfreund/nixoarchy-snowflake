@@ -339,7 +339,9 @@ const langTest = await ev(`
   let statusDuring = '', htmlLangDuring = '', plOnDuring = false;
   try {
     document.querySelector('#langChips button[data-lang="pl"]').click();
-    await new Promise(r => setTimeout(r, 200));
+    // wait for the chip to turn on (a fixed 200 ms was too short on a GitHub runner, #63), at most 3 s
+    for (const end = performance.now() + 3000; !document.querySelector('#langChips button[data-lang="pl"]')?.classList.contains('on') && performance.now() < end;)
+      await new Promise(r => setTimeout(r, 50));
     statusDuring = document.getElementById('langStatus')?.textContent || '';
     htmlLangDuring = document.documentElement.lang;
     plOnDuring = document.querySelector('#langChips button[data-lang="pl"]')?.classList.contains('on') || false;

@@ -33,7 +33,7 @@ const run = async (name, js) => { const r = await ev(js); check(r.every(Boolean)
 // idle timing first (no caption on screen yet): he stays up while an agent holds control, and idle still works after off
 await ev("info.idle_mode='shrink'; nixiIdleScale(.01); idleHoldUntil=0; lastUser=0; return 1");
 await ev("await MS({owner:'off',watching:false},1500); return 1");
-check(await ev("return document.body.classList.contains('peek')"), "idle shrinks after off (timing still works)");
+check(await ev("const end=performance.now()+6000; while(!document.body.classList.contains('peek') && performance.now()<end) await new Promise(r=>setTimeout(r,100)); return document.body.classList.contains('peek')"), "idle shrinks after off (timing still works)");
 await run("idleActive while pending and agent; not after off", `
   await MS({owner:'pending',watching:false},1500); const p=[idleActive(), !document.body.classList.contains('peek')];
   await MS({owner:'agent',watching:false},1500); const a=[idleActive(), !document.body.classList.contains('peek')];

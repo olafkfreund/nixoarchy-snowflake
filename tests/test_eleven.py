@@ -80,6 +80,39 @@ class ElevenTest(unittest.TestCase):
         link.symlink_to(home)
         self.assertFalse(eleven.has_key())
 
+    def test_key_from_sops_layout(self):
+        self.assertEqual(eleven.KEY_ROOTS, ("/run/agenix", "/run/agenix.d", "/run/secrets", "/run/secrets.d"))
+        base = Path(os.path.realpath(self.tmp.name))
+        generation = base / "secrets.d/1"
+        generation.mkdir(parents=True)
+        (generation / "api-elevenlabs").write_text(KEY)
+        link = base / "secrets"
+        link.symlink_to(generation)
+        (base / "outside").write_text(KEY)
+        evil = base / "secrets.d-evil/key"
+        evil.parent.mkdir()
+        evil.write_text(KEY)
+        eleven.CFG["eleven_key_file"] = str(link / "api-elevenlabs")
+
+        with mock.patch.dict(os.environ, {"CREDENTIALS_DIRECTORY": ""}):
+            with mock.patch.object(eleven, "KEY_ROOTS", (str(link),)):
+                self.assertFalse(eleven.has_key())
+            with mock.patch.object(eleven, "KEY_ROOTS", (str(link), str(base / "secrets.d"))):
+                self.assertEqual(eleven._key(), KEY)
+                next_generation = base / "secrets.d/2"
+                next_generation.mkdir()
+                next_key = next_generation / "api-elevenlabs"
+                next_key.write_text("new-fake-key-5678abcd")
+                link.unlink()
+                link.symlink_to(next_generation)
+                self.assertEqual(eleven._key(), "new-fake-key-5678abcd")
+                next_key.unlink()
+                next_key.symlink_to(base / "outside")
+                self.assertFalse(eleven.has_key())
+                next_key.unlink()
+                next_key.symlink_to(evil)
+                self.assertFalse(eleven.has_key())
+
     def test_key_checks_fstat_after_nofollow_open(self):
         path = Path(self.tmp.name) / "key"
         path.write_text(KEY)
