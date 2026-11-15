@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 91
 intent: intent/2026-11-15-91-react-calm-flake.md
 ---
