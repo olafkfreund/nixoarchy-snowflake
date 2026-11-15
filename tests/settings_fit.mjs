@@ -363,9 +363,11 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   await view(340, 460);
 }
 
-// 8. Five tabs; Plugins tab (between Brain and More, with puzzle icon) holds #peersRow, #plugCons, #plugList, #plugErr, #plugReload in a .row wrapper, and More does not
-{ const t5 = await ev(`const bs=[...document.querySelectorAll('#tabs button')], ps=[...document.querySelectorAll('#set .tab')];
+// 8. Six tabs; Plugins keeps its IDs and Phone holds the phone row
+{ const t6 = await ev(`const bs=[...document.querySelectorAll('#tabs button')], ps=[...document.querySelectorAll('#set .tab')];
     const plugTab=document.querySelector('#set .tab[data-tab="plugins"]'), moreTab=document.querySelector('#set .tab[data-tab="more"]');
+    const phoneTab=document.querySelector('#set .tab[data-tab="phone"]'), lookTab=document.querySelector('#set .tab[data-tab="look"]');
+    const phoneIds=['phoneRow','phoneSw','phoneStat'];
     const ids=['peersRow','plugCons','plugList','plugErr','plugReload'];
     const inPlug=ids.every(id=>plugTab.contains(document.getElementById(id)) && document.getElementById(id).closest('.row')?.parentElement===plugTab);
     const inMore=ids.some(id=>moreTab.contains(document.getElementById(id)));
@@ -377,17 +379,25 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
       tabRoles: bs.map(b=>b.getAttribute('role')),
       panelRoles: ps.map(p=>p.getAttribute('role')),
       controls: bs.map(b=>document.getElementById(b.getAttribute('aria-controls'))?.dataset?.tab),
+      labelledBy: ps.every(p=>document.getElementById(p.getAttribute('aria-labelledby'))===document.querySelector('#tabs button[data-tab="'+p.dataset.tab+'"]')),
       hasPuzzleSvg: !!pb?.querySelector('svg path'),
+      hasPhoneSvg: !!document.querySelector('#tabs button[data-tab="phone"] svg rect'),
+      tabOrder: TABS.join(),
+      phoneRowParent: document.getElementById('phoneRow')?.parentElement===phoneTab,
+      inPhone: phoneIds.every(id=>phoneTab.contains(document.getElementById(id))),
+      inLook: phoneIds.some(id=>lookTab.contains(document.getElementById(id))),
       inPlug, inMore
     }`);
-  check(t5.tabs.join() === "look,voice,brain,plugins,more"
-    && t5.panels.join() === "look,voice,brain,plugins,more"
-    && t5.tablistRole === "tablist"
-    && t5.tabRoles.every(r => r === "tab")
-    && t5.panelRoles.every(r => r === "tabpanel")
-    && t5.controls.join() === "look,voice,brain,plugins,more"
-    && t5.hasPuzzleSvg && t5.inPlug && !t5.inMore,
-    "five tabs with ARIA roles; Plugins holds the five plugin IDs in .row and More does not", JSON.stringify(t5));
+  check(t6.tabs.join() === "look,voice,brain,plugins,phone,more"
+    && t6.panels.join() === "look,voice,brain,plugins,phone,more"
+    && t6.tablistRole === "tablist"
+    && t6.tabRoles.every(r => r === "tab")
+    && t6.panelRoles.every(r => r === "tabpanel")
+    && t6.controls.join() === "look,voice,brain,plugins,phone,more"
+    && t6.labelledBy && t6.hasPhoneSvg && t6.tabOrder === t6.tabs.join()
+    && t6.phoneRowParent && t6.inPhone && !t6.inLook
+    && t6.hasPuzzleSvg && t6.inPlug && !t6.inMore,
+    "six tabs with ARIA roles; Plugins keeps its IDs and Phone holds the phone row", JSON.stringify(t6));
 }
 
 // 9. ArrowLeft/ArrowRight wrap, Home and End move between tabs, updating aria-selected, roving tabindex, and focus
@@ -402,17 +412,17 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
     key('ArrowLeft'); const s4=state();
     key('Home'); const s5=state();
     return {s0,s1,s2,s3,s4,s5}`);
-  check(nav.s0[0] === "look" && nav.s0[1] === "look" && nav.s0[2] === "look" && nav.s0[3] === "true:0,false:-1,false:-1,false:-1,false:-1"
-    && nav.s1[0] === "more" && nav.s1[1] === "more" && nav.s1[2] === "more" && nav.s1[3] === "false:-1,false:-1,false:-1,false:-1,true:0"
+  check(nav.s0[0] === "look" && nav.s0[1] === "look" && nav.s0[2] === "look" && nav.s0[3] === "true:0,false:-1,false:-1,false:-1,false:-1,false:-1"
+    && nav.s1[0] === "more" && nav.s1[1] === "more" && nav.s1[2] === "more" && nav.s1[3] === "false:-1,false:-1,false:-1,false:-1,false:-1,true:0"
     && nav.s2[0] === "look" && nav.s2[1] === "look" && nav.s2[2] === "look"
     && nav.s3[0] === "more" && nav.s3[1] === "more"
-    && nav.s4[0] === "plugins" && nav.s4[1] === "plugins" && nav.s4[2] === "plugins" && nav.s4[3] === "false:-1,false:-1,false:-1,true:0,false:-1"
+    && nav.s4[0] === "phone" && nav.s4[1] === "phone" && nav.s4[2] === "phone" && nav.s4[3] === "false:-1,false:-1,false:-1,false:-1,true:0,false:-1"
     && nav.s5[0] === "look" && nav.s5[1] === "look",
     "ArrowLeft/ArrowRight wrap and Home/End select, show and focus tabs with roving tabindex", JSON.stringify(nav));
   await ev("settings(false); return 1");
 }
 
-// 10. nixi.tab='bogus' and settings(true,'bogus') fall back to Look, and nixi.tab='plugins' opens Plugins
+// 10. Invalid tabs fall back to Look; saved Plugins and Phone tabs reopen
 { const fb = await ev(`localStorage.setItem('nixi.tab','bogus'); settings(true);
     const a=[document.querySelector('#tabs button.on')?.dataset?.tab, document.querySelector('#set .tab.on')?.dataset?.tab, localStorage.getItem('nixi.tab'), document.activeElement?.dataset?.tab];
     settings(false);
@@ -422,10 +432,68 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
     localStorage.setItem('nixi.tab','plugins'); settings(true);
     const c=[document.querySelector('#tabs button.on')?.dataset?.tab, document.querySelector('#set .tab.on')?.dataset?.tab, document.activeElement?.dataset?.tab];
     settings(false);
+    localStorage.setItem('nixi.tab','phone'); settings(true);
+    const d=[document.querySelector('#tabs button.on')?.dataset?.tab, document.querySelector('#set .tab.on')?.dataset?.tab, document.activeElement?.dataset?.tab];
+    settings(false);
     localStorage.setItem('nixi.tab','look');
-    return {a,b,c}`);
-  check(fb.a.join() === "look,look,look,look" && fb.b.join() === "look,look,look,look" && fb.c.join() === "plugins,plugins,plugins",
-    "nixi.tab='bogus' and settings(true,'bogus') fall back to Look; nixi.tab='plugins' selects Plugins", JSON.stringify(fb));
+    return {a,b,c,d}`);
+  check(fb.a.join() === "look,look,look,look" && fb.b.join() === "look,look,look,look" && fb.c.join() === "plugins,plugins,plugins" && fb.d.join() === "phone,phone,phone",
+    "invalid tabs fall back to Look; saved Plugins and Phone tabs reopen", JSON.stringify(fb));
+}
+
+// 10b. Six tab labels fit at narrow widths, and the indicator tracks resizing and reopening
+{ await view(900, 800); await sleep(100);
+  await ev("settings(true,'look'); await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))); return 1"); await sleep(500);
+  const twoFrames = "await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))); return 1";
+  const fitAt = async w => {
+    await ev("setResize("+w+",600); "+twoFrames); await sleep(500);
+    return ev(`const bar=document.getElementById('tabs'), style=getComputedStyle(bar);
+      return {clientWidth:bar.clientWidth, outerWidth:bar.getBoundingClientRect().width,
+        paddingLeft:parseFloat(style.paddingLeft), paddingRight:parseFloat(style.paddingRight), fitK,
+        tabs:[...bar.querySelectorAll('button')].map(b=>{
+          const node=[...b.childNodes].find(n=>n.nodeType===Node.TEXT_NODE && n.textContent.trim());
+          const range=document.createRange(); range.selectNodeContents(node);
+          return {tab:b.dataset.tab, labelText:node.textContent.trim(), left:b.offsetLeft, width:b.offsetWidth, client:b.clientWidth, scroll:b.scrollWidth,
+            svgShown:getComputedStyle(b.querySelector('svg')).display!=='none',
+            label:range.getBoundingClientRect().width,
+            lines:new Set([...range.getClientRects()].map(r=>Math.round(r.top))).size};
+        })}`);
+  };
+  for(const w of [420,445,446,560]){
+    const fit=await fitAt(w);
+    check(fit.fitK===1, "six tabs fitK is 1 at "+w, JSON.stringify(fit.fitK));
+    for(const b of fit.tabs){
+      const spare=b.width-2-b.label-(b.svgShown?19:0);
+      const detail="width="+w+" tab="+b.labelText+" label="+b.label.toFixed(1)+" button="+b.width+" spare="+spare.toFixed(1);
+      check(b.lines===1, "six tabs label stays on one line", detail+" lines="+b.lines);
+      check(b.scroll<=b.client, "six tabs button does not overflow", detail+" scroll="+b.scroll+" client="+b.client);
+      check(b.left>=fit.paddingLeft && b.left+b.width<=fit.clientWidth-fit.paddingRight+0.5,
+        "six tabs button stays in bar", detail+" left="+b.left+" bar="+fit.clientWidth);
+      check(spare>=0, "six tabs label and icon have spare", detail);
+      check(b.svgShown===(w>=446), "six tabs icons match available width", detail+" svgShown="+b.svgShown);
+    }
+    if(w===560) check(Math.abs(fit.outerWidth-534)<=1, "six tabs bar is 534 px at 560", JSON.stringify(fit.outerWidth));
+  }
+  const indicator = () => ev(`const ind=document.getElementById('tabInd'), b=document.querySelector('#tabs button.on');
+    return {tab:b.dataset.tab, left:b.offsetLeft, width:b.offsetWidth,
+      indLeft:ind.offsetLeft+new DOMMatrixReadOnly(getComputedStyle(ind).transform).m41, indWidth:ind.offsetWidth}`);
+  const checkIndicator = (p, why) => check(Math.abs(p.indLeft-p.left)<=1 && Math.abs(p.indWidth-p.width)<=1,
+    "six tabs indicator follows "+why, JSON.stringify(p));
+  await ev("setResize(560,600); showTab('phone'); "+twoFrames); await sleep(800);
+  const phoneWide=await indicator();
+  await ev("setResize(420,600); "+twoFrames); await sleep(800);
+  const phoneNarrow=await indicator();
+  check(phoneNarrow.left<phoneWide.left, "Phone button moves left on resize", JSON.stringify({phoneWide,phoneNarrow}));
+  checkIndicator(phoneNarrow,"Phone on resize");
+  for(const tab of ["look","voice","brain","plugins","phone","more"]){
+    await ev("showTab('"+tab+"'); return 1"); await sleep(800);
+    checkIndicator(await indicator(),tab+" at 420");
+  }
+  await ev("settings(false); settings(true,'phone'); "+twoFrames); await sleep(800);
+  checkIndicator(await indicator(),"Phone after reopen");
+  await ev("setResetSize(); "+twoFrames);
+  await ev("settings(false); localStorage.setItem('nixi.tab','look'); return 1");
+  await view(340, 460); await sleep(100);
 }
 
 // 11. Opening Settings saves document.activeElement and focuses the selected tab; closing (every path) restores focus if still connected
