@@ -32,18 +32,22 @@ Test-only, in `tests/react_fit.mjs`. No app change.
 
 ## Steps
 
-1. **Reproduce both routes on the unfixed test** (lead, no commit). Use temporary edits to `tests/react_fit.mjs` and
-   run `test_react_fit.py` through the CI runner (Tests). Three runs each:
+1. **Reproduce both routes on the unfixed test** (lead, no commit). First check that `git status --porcelain` is
+   empty, so restoring the file can't throw away other work. Use temporary edits to `tests/react_fit.mjs` and run
+   `test_react_fit.py` through the CI runner (Tests). One route at a time, three runs each, with
+   `git checkout tests/react_fit.mjs` between the routes:
    - **Route 1:** after `${js};` in the section-2 case (`:71`), add `sendRegion(true);`. The calm case must fail
      every run, with `[true,false,{"id":"rain"}]`.
-   - **Route 2:** in the same place, add `if(${JSON.stringify(name)}==='reactions off') await refresh();`. The
-     "reactions off" case must fail every run.
+   - **Route 2:** in the same place, add `if(${JSON.stringify(name)}==='reactions off'){ const i0=info; await refresh(); if(info===i0) return ['refresh did not replace info']; }`.
+     The "reactions off" case must fail every run with `[true,false,{"id":"rain"}]`, meaning rain played. A failure
+     with `["refresh did not replace info"]` means the forcing didn't run (see the trap).
 
    Then `git checkout tests/react_fit.mjs`.
    → verify: 3 red calm runs and 3 red "reactions off" runs, then `git status --porcelain` is empty.
 
-   Trap: if route 2 doesn't fail, check whether `refresh()` returned early: it stops at `staleToken()` when the reply
-   has no `cwd` (`:4627`). Stop and report. Don't change the forcing until it does fail.
+   Trap: `refresh()` can return without replacing `info`. It stops at `staleToken()` when the reply has no `cwd`
+   (`:4627`), and it swallows any error (`:4629`). The identity check above catches both. If it trips, or the run hangs
+   on `tokenReady`, stop and report. Don't change the forcing until rain really plays.
 
 2. **`tests/react_fit.mjs`, the fix** (Codex). The line numbers are from before the edits.
    - **`:27`, the `fetch` shim:** `proactive:true,reactions:true` becomes
@@ -55,8 +59,9 @@ Test-only, in `tests/react_fit.mjs`. No app change.
      `"setEl.classList.add('on'); calmCheck()"`.
    - **`:70-73`, the section-2 loop:**
      - After `rxReset();`, read `const base0=rxBase();`.
-     - Return `[ok, empty(), RX, base0, rxBase()]`. For the calm case only, append
-       `document.body.classList.contains('calm')`.
+     - After the 60 ms wait and just before `rxPlay('rain')`, read `const base1=rxBase();`, and for the calm case
+       `const calm1=document.body.classList.contains('calm');`. Both are read before play, as the spec says.
+     - Return `[ok, empty(), RX, base0, base1]`. For the calm case only, append `calm1`.
      - Expect `[false, true, null, true, false]`, with `true` appended for calm. Compute the expected array in Node
        from `name`. In the browser string, use `${JSON.stringify(name)}` to test the name, never a bare `${name}`.
    - **`:89`, `undo.calm`:** `"document.body.classList.remove('calm')"` becomes
@@ -67,6 +72,9 @@ Test-only, in `tests/react_fit.mjs`. No app change.
    - `git diff --stat` shows only `tests/react_fit.mjs`.
 
    Traps:
+   - Make the edits with the file tools only. Don't stage, commit, push, deploy or restart. The lead commits.
+   - Edit `:27` in place. It holds `/\\/api\\/state/` with doubled backslashes, which Node turns into single ones.
+     Retyped with single backslashes, the page gets `///api//state/`, a comment, and a `SyntaxError`.
    - The page code sits inside Node template literals (`ev(\`…\`)`). Any `${…}` is evaluated by Node, so page names
      (`info`, `setEl`, `rxBase`) must never be inside `${}`. An inner backtick ends the literal.
    - Don't change sections 1, 4 onward, the waits, or any other blocker.
@@ -75,15 +83,17 @@ Test-only, in `tests/react_fit.mjs`. No app change.
 
 3. **Prove the fix against both routes** (lead, no commit). The lead commits step 2 first. On top of it, add the same temporary forcing:
    - **Route 1, section 2:** `sendRegion(true);` after `${js};`
-   - **Route 1, section 3:** `sendRegion(true);` right after `${on};` and right after `${off};` (`:94`, `:96`)
-   - **Route 2:** `if(${JSON.stringify(name)}==='reactions off') await refresh();` after `${js};`
+   - **Route 1, section 3:** `sendRegion(true);` right after `${on};` and right after `${off};` (`:94` and `:96`
+     before step 2; find them by those two strings)
+   - **Route 2:** `if(${JSON.stringify(name)}==='reactions off'){ const i0=info; await refresh(); if(info===i0) return ['refresh did not replace info']; }` after `${js};`. A run that shows
+     `["refresh did not replace info"]` proves nothing: stop and report.
 
    Run `test_react_fit.py` three times. It must be `ok` every run. Then `git checkout tests/react_fit.mjs`.
    → verify: 3 green runs with the forcing, then `git status --porcelain` is empty.
 
 4. **The PR** (lead):
    - Push and open the PR, linking the intent, spec and plan, and saying Codex did step 2. Comment `@codex review`
-     (memory).
+     (memory). The body says `Closes #91`.
    - The PR's CI must have `test` green.
 
 ## Tests
@@ -94,7 +104,8 @@ Test-only, in `tests/react_fit.mjs`. No app change.
   nix develop .#ci -c python3 -B .github/ci/run_tests.py --deadline 1800 test_react_fit.py
   ```
 
-  It must be `ok`. Every section-2 blocker shows its guard values, and section 3's calm cases pass all three checks.
+  It must be `ok`, with no `CUT` lines. `check` and `eq` print only failures, so the guard values don't appear on a
+  green run. They are asserted inside the test.
 - Steps 1 and 3: the forced routes are red before the fix and green after.
 - **The PR's CI:** `test` green.
 
