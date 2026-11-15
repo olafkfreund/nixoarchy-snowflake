@@ -111,7 +111,7 @@ The checks stay the same otherwise: no longer waits, no looser expectations, no 
   nix develop .#ci -c python3 -B .github/ci/run_tests.py --deadline 1800 test_react_fit.py
   ```
 
-  It must be `ok`. The output must show every blocker case with its four values, and the section 3 calm cases
+  It must be `ok`. The output must show every blocker case with its guard values (Design 4), and the section 3 calm cases
   passing.
 - **The poll route, forced:** in the "reactions off" case, call `await refresh()` inside the wait.
   - Before the fix (the shim with `true`s): the case fails 3 of 3.
