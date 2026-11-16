@@ -177,3 +177,12 @@ Expected: all pass. The plugin sandbox run is not needed: nothing touches
 
 Revert the merge commit. No data or config is written: the migration is in
 memory only, so the old hint comes back on the next start.
+
+## Deviations
+
+- Step 2 (after the Opus review): `_names_at` starts at `float("-inf")`, not
+  `0.0`. `time.monotonic()` counts from boot, so `0.0` held off the first
+  refresh for the first minute after boot. Herdr `cwd` is stripped of a
+  trailing `/` before `basename`, as `resolve_session` does, so `/a/proj/`
+  gives `proj` rather than an empty name. Step 3's tests follow both, plus
+  one test for the slash.

@@ -251,7 +251,7 @@ class SttNamesTest(_ServerEnv):
         s.lang.active = "en"
         s._whisper_err = None
         s.lang_status = ""
-        s._names, s._names_at, s._names_busy = [], 0.0, False
+        s._names, s._names_at, s._names_busy = [], float("-inf"), False
         self.threads = []
         threads = self.threads
         target = s._refresh_names
@@ -355,6 +355,9 @@ class SttNamesTest(_ServerEnv):
                            peers=["bad", {"x": 1}, {"name": 7}, {"name": "box"}])
         self.assertEqual(got, ["good", "box"])
 
+    def test_herdr_cwd_with_trailing_slash_keeps_its_name(self):
+        self.assertEqual(self.collect(herdr=[{"cwd": "/a/proj/"}]), ["proj"])
+
     # refresh
 
     def stub_collector(self, result=("A",), error=None):
@@ -424,7 +427,7 @@ class SttNamesTest(_ServerEnv):
         release.set()
         self.s.stt_names()
         self.assertTrue(wait_until(lambda: len(calls) == 1 and not self.s._names_busy))
-        self.assertEqual(self.s._names_at, 0.0)
+        self.assertEqual(self.s._names_at, float("-inf"))
         self.s.stt_names()
         self.assertTrue(wait_until(lambda: len(calls) == 2 and not self.s._names_busy))
 

@@ -3733,14 +3733,14 @@ NAMES_TTL = 60
 NAMES_MAX = 30
 _names_lock = threading.Lock()
 _names = []
-_names_at = 0.0
+_names_at = float("-inf")     # (monotonic counts from boot: 0.0 would hold off the first refresh for a minute)
 _names_busy = False
 
 
 def _collect_names():
     found = []
     try:
-        found.extend(os.path.basename(a["cwd"]) for a in herdr_agents()
+        found.extend(os.path.basename(a["cwd"].rstrip("/")) for a in herdr_agents()
                      if isinstance(a, dict) and isinstance(a.get("cwd"), str))
     except Exception:  # noqa: BLE001
         pass
