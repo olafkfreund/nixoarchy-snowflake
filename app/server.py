@@ -138,6 +138,8 @@ def nixi_conf():
         return {}
 
 
+_OLD_STT_HINT = ("Hey Nixi, Claude, Claude Code, Nixi, git, commit, README, Python, JavaScript, npm, pacman, sudo, Arch Linux, "
+                 "Hyprland, folder, directory, file, terminal, config, server, function, bug, refactor.")
 DEFAULTS = {
     "port": 47777,
     "cwd": "~",
@@ -169,8 +171,8 @@ DEFAULTS = {
     "whisper_model": "auto",
     "whisper_beam": 5,
     # words he should expect (helps with names/jargon)
-    "stt_hint": "Hey Nixi, Claude, Claude Code, Nixi, git, commit, README, Python, JavaScript, npm, pacman, sudo, Arch Linux, "
-                "Hyprland, folder, directory, file, terminal, config, server, function, bug, refactor.",
+    "stt_hint": "Hey Nixi, Claude, Claude Code, Nixi, git, commit, README, Python, JavaScript, nix, flake, NixOS, nixos-rebuild, "
+                "home-manager, herdr, sudo, Hyprland, folder, directory, file, terminal, config, server, function, bug, refactor.",
     "whisper_device": "auto",
     # keep your voice at a level he hears well: boost what the speech detector sees when it comes in quiet, undo that when it clips
     "mic_auto": True,
@@ -281,6 +283,9 @@ def load_config():
             user = json.loads(CONF_PATH.read_text(encoding="utf-8-sig"))   # (-sig: Notepad may add a BOM)
             if user.get("whisper_model") == "base.en":     # the old default → let it pick (GPU gets a better model)
                 user["whisper_model"] = "auto"
+            if user.get("stt_hint") == _OLD_STT_HINT:      # the old default → the new one applies (in memory only)
+                del user["stt_hint"]
+                print("[nixi] stt_hint: old default replaced", file=sys.stderr)
             cfg.update(user)
             if "lang_good" not in user:
                 cfg["lang_good"] = "en"
