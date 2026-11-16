@@ -3729,6 +3729,67 @@ def whisper():
         return _whisper
 
 
+NAMES_TTL = 60
+NAMES_MAX = 30
+_names_lock = threading.Lock()
+_names = []
+_names_at = 0.0
+_names_busy = False
+
+
+def _collect_names():
+    found = []
+    try:
+        found.extend(os.path.basename(a["cwd"]) for a in herdr_agents()
+                     if isinstance(a, dict) and isinstance(a.get("cwd"), str))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        found.extend(quick.projects())
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        found.extend(a["name"] for a in peers.current() if isinstance(a, dict) and "name" in a)
+    except Exception:  # noqa: BLE001
+        pass
+    names, seen = [], set()
+    for name in found:
+        if (isinstance(name, str) and re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_ .-]{1,31}", name, re.ASCII)
+                and name.casefold() not in seen):
+            names.append(name)
+            seen.add(name.casefold())
+            if len(names) == NAMES_MAX:
+                break
+    return names
+
+
+def _refresh_names():
+    global _names, _names_at, _names_busy
+    try:
+        names = _collect_names()
+        with _names_lock:
+            _names, _names_at = names, time.monotonic()
+    finally:
+        with _names_lock:
+            _names_busy = False
+
+
+def stt_names():
+    global _names_busy
+    with _names_lock:
+        names = _names
+        refresh = time.monotonic() - _names_at > NAMES_TTL and not _names_busy
+        if refresh:
+            _names_busy = True
+    if refresh:
+        try:
+            threading.Thread(target=_refresh_names, daemon=True).start()
+        except Exception:  # noqa: BLE001
+            with _names_lock:
+                _names_busy = False
+    return names
+
+
 def run_whisper(audio, beam=None, hint=None) -> str:
     """Transcribe; if the GPU path blows up at run time (missing CUDA libs etc.), drop to CPU for good."""
     global _whisper, _stt, _cpu_stt_ms
@@ -3746,7 +3807,12 @@ def run_whisper(audio, beam=None, hint=None) -> str:
                       "pl": "Nixi, Claude, polski, cześć, stop, cicho, dziękuję."}[code]
         if code != "en" and CFG.get("stt_hint") != DEFAULTS["stt_hint"]:
             local_hint += " " + (CFG.get("stt_hint") or "")
-        prompt = hint if hint is not None else (local_hint if code == "en" else wake + " " + local_hint)
+        base = local_hint if code == "en" else wake + " " + local_hint
+        if hint is None:
+            names = [name for name in stt_names() if name.casefold() not in base.casefold()]
+            prompt = ", ".join(names) + ". " + base if names else base
+        else:
+            prompt = hint
         started = time.monotonic() if device == "cpu" else None
         segs, _ = model.transcribe(
             audio, language=lang.LANGS[code]["whisper"], beam_size=int(beam or CFG.get("whisper_beam") or 5),
