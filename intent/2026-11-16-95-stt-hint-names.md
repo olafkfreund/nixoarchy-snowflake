@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 95
 author: olafkfreund
 ---
@@ -65,11 +65,11 @@ first, then a base list, then names found on the machine.
 
 ## Open questions
 
-1. Hosts: configured peer names from `peers.json`, nothing when none are
-   configured, no hard-coded fleet list? (Proposed: yes; Codex agrees.)
-2. Also do #2 from the Auren review (switch herdr to the agent when Nixi
-   prompts it) in this task, or keep it a separate issue? (Proposed:
-   separate; Codex agrees, since `session_send()` has its own routing.)
+Decided at approval (2026-11-16):
+
+1. Hosts: configured peer names from `peers.json`; nothing when none are
+   configured; no hard-coded fleet list.
+2. Switching herdr to the agent Nixi prompts is a separate issue.
 
 Whether more words in the prompt help or hurt is not proven: Whisper can
 echo hint words on near-silence (`app/server.py:3754`). The spec's
