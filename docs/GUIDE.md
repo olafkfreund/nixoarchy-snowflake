@@ -477,7 +477,7 @@ trust level come from nixi's own config (`agent`, `model`, `reasoningEffort`). U
 | `whisper_device` | `"auto"` | `"cpu"` keeps speech-to-text on the CPU. Anything else uses an NVIDIA GPU when there is one |
 | `whisper_beam` | `5` | Beam size for speech-to-text decoding |
 | `stt_prewarm` | `true` | Load the speech model when he starts, not at your first word (with the wake word on, it loads at start anyway) |
-| `stt_hint` | `"Hey Nixi, Claude, ..."` | Vocabulary hint passed to Whisper (add your project or host names) |
+| `stt_hint` | `"Hey Nixi, Claude, ..."` | Vocabulary hint passed to Whisper. The folders of running herdr agents, saved projects and fleet peers are added on their own; add other names here |
 | `tts` | `"auto"` | Voice engine: `"auto"` (`kokoro` → `piper` → `espeak`), `"kokoro"`, `"piper"`, `"espeak"`, `"elevenlabs"`, `"off"` |
 | `tts_fallback` | `"auto"` | Local fallback engine when ElevenLabs fails or hits the daily cap (`"auto"`, `"kokoro"`, `"piper"`, `"espeak"`) |
 | `voice` | `"girl"` | Voice preset (`"girl"`, `"cute"`, `"guy"`, `"deep"`, `"british"`, `"story"`, `"robot"`) |
