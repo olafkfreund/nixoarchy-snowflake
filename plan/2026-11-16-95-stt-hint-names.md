@@ -85,19 +85,30 @@ here needs the intent or spec to implement.
    `_names_lock` or on the transcription thread. Do not touch `_whisper_lock`.
    No `print` per refresh (the log is user-facing).
 
-3. `tests/test_whisper_switch.py`: new test class `SttNamesTest(_ServerEnv)`
-   plus one change to `test_english_prompt_has_one_wake_phrase` (`:213`),
-   which stubs `stt_names` to return `[]`. Cases:
+3. `tests/test_whisper_switch.py`: new test class `SttNamesTest(_ServerEnv)`.
+   In the existing `WhisperSwitchTest.setUp` (`:13`), patch `stt_names` to
+   `return []` for **every** test (start the patcher in `setUp`, stop it in
+   `tearDown`): its tests call `run_whisper()` (e.g. `:64`, `:210`) and must
+   not start a refresh that reaches live herdr. `SttNamesTest` saves and
+   restores the same globals `WhisperSwitchTest` does (`CFG`, `lang.active`,
+   `_stt`, `_whisper`, `_whisper_err`, `lang_status`), plus the cache state;
+   `_ServerEnv` only isolates HOME per class, not these globals per test. Cases:
    - names before the hint (en); for nb and pl the wake word comes after the
      names; names already in the prompt are left out, including a name with a space;
    - `hint=` callers: the prompt equals the hint exactly, even with names cached;
    - filter: non-str, a trailing `\n`, non-ASCII, a slash, 1 and 33 characters
      → dropped; duplicates differing in case → one; 40 valid → 30;
    - one source raising or giving bad rows leaves the others' names;
-   - concurrency: two stale calls with a collector blocked on an Event start
-     exactly one thread; a call while it is blocked returns the old list at
-     once (under 50 ms); after a collector that raises, the next stale call
-     refreshes;
+   - concurrency, with Events and a `threading.Barrier`, no timing thresholds:
+     the collector is stubbed to set `entered` and wait on `release`. Two
+     callers released by a Barrier both return, and the collector count is 1.
+     While `entered` is set and `release` is not, a third call returns the
+     old list (proved by it returning before `release.set()`, with a bounded
+     `join(timeout=2)` on the caller thread). After a collector that raises,
+     the next stale call refreshes. A patched `threading.Thread` whose
+     `start()` raises leaves `_names_busy` False, and the next call starts one.
+     `addCleanup(release.set)` runs first, so a failed assertion never leaves
+     a worker blocked; workers are joined with `timeout=2` and asserted dead;
    - migration via `load_config()` with a temp `CONF_PATH` file: no hint, the
      exact old default, `""`, a custom hint, and a reload after
      `save_config(volume=…)`;
@@ -106,9 +117,9 @@ here needs the intent or spec to implement.
      tokenizer here: the CI shell has no `faster_whisper`, and CI fails on a
      skip that is not allow-listed (`.github/ci/run_tests.py`). The real
      token count is checked in step 5.
-   `setUp` resets `_names`, `_names_at`, `_names_busy`; `tearDown` joins any
-   refresh thread (keep a reference, or patch `threading.Thread` in tests that
-   start one) before the mocks are removed. Stub `herdr_agents`,
+   `setUp` resets `_names`, `_names_at`, `_names_busy`; cleanup releases any
+   Event, then joins each refresh thread with a timeout (keep references) before
+   the mocks are removed. Stub `herdr_agents`,
    `quick.projects` and `peers.current` with `mock.patch.object`.
    → verify: the single-file run above, then the full suite (see Tests).
    Traps: tests must use `_ServerEnv` (throwaway HOME, `nixi_env` runtime
@@ -124,9 +135,14 @@ here needs the intent or spec to implement.
    --format s16`: 8 names, 2 plain sentences, 2 silent. A script imports the
    built package's `server` under a throwaway HOME (the `_ServerEnv` pattern),
    stubs `stt_names()` to the live list captured once, and runs
-   `run_whisper` on each clip with names off and on. It also encodes the
-   longest real prompt with the model's tokenizer and checks that the last
-   223 tokens hold the whole hint.
+   `run_whisper` on each clip with names off and on.
+   Token checks with the model's own tokenizer: first confirm in the
+   installed `faster_whisper/transcribe.py` that `self.max_length = 448` and
+   that `initial_prompt` tokens are cut to the last `448 // 2 - 1`. Then
+   encode (a) the real names plus the default hint, (b) 30 names of 32
+   characters plus the default hint, and (c) the same plus a custom hint
+   whose own token count is 150 (under 223). For each, the last 223
+   tokens decode to text that ends with the whole hint.
    Pass: names right with names on ≥ off; plain sentences no worse; silent clips give "".
    Done by me.
 
@@ -134,7 +150,11 @@ here needs the intent or spec to implement.
    branch with the test-build recipe:
    `nix build .#default -o <scratch>/result`, then
    `AGENT_BUS_ANNOUNCED=1 systemd-run --user --unit=nixi-pr95 -p RemainAfterExit=yes -E HYPRLAND_INSTANCE_SIGNATURE=<live sig from /run/user/1000/hypr> <scratch>/result/bin/nixi-companion restart`.
-   After 60 s: push-to-talk three agent names and one host; a bare
+   Warm-up: one push-to-talk with a plain sentence (this triggers the first
+   refresh; the wake path does not, it passes its own hint). Then confirm the
+   refresh finished: call `stt_names()` in the running server through a one-off debug
+   check, or, without one, do a second warm-up press 5 s later. Only then score:
+   push-to-talk three agent names and one host; a bare
    "Hey Nixi", then a name; a follow-up reply with a name; three silent
    push-to-talk presses (nothing sent); "Hey Nixi" still wakes him;
    `nixi-companion doctor` mic test passes; `nixi-companion log` shows
@@ -146,6 +166,7 @@ here needs the intent or spec to implement.
 ```bash
 nix develop .#ci -c python3 -B .github/ci/run_tests.py test_whisper_switch.py
 nix develop .#ci -c python3 -B .github/ci/run_tests.py --exclude test_character_fit.py --exclude test_accessories_fit.py
+nix develop .#ci -c python3 -B .github/ci/run_tests.py --deadline 1800 test_character_fit.py test_accessories_fit.py
 nix build -L .#packages.x86_64-linux.default && nix flake check -L
 ```
 
