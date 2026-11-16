@@ -41,8 +41,22 @@ first, then a base list, then names found on the machine.
 
 ## Constraints
 
-- Whisper reads at most ~224 tokens of prompt; the hint must stay short and
-  the user's own words must never be cut.
+- Existing configs hold the old default verbatim: the first run writes every
+  default into `config.json` (`load_config`, `app/server.py:277`), and this
+  machine's config has it. A saved value equal to the old default must be
+  treated as the default (as `load_config` already does for `whisper_model:
+  base.en`), or nobody gets the new hint. A hint the user really edited is kept.
+- Whisper reads at most ~224 tokens of prompt (to verify in the spec); machine
+  names fill only what is left after the user's words and the base list, and
+  are dropped first. A user hint that is itself too long is passed as today.
+- Explicit `hint=` callers keep their exact prompts: the wake check
+  (`app/server.py:4552`) and the mic test (`:4658`). Norwegian and Polish keep
+  their wake words first.
+- Names are folder basenames and saved project keys only: bounded length,
+  no paths, no control characters. A failing source (herdr down, bad JSON)
+  just adds no names.
+- Hosts are the `name` fields of configured peers, read without calling
+  `peers.load()` (it resets polling state); no peers configured → no hosts.
 - Must not slow down a transcription: no herdr call on the hot path that can
   block it (herdr calls already have a 3 s timeout; that is too long here).
 - Window titles and pane text never go into the prompt, only folder, host
@@ -51,7 +65,12 @@ first, then a base list, then names found on the machine.
 
 ## Open questions
 
-1. Hosts: take them from `~/.config/nixi-companion/peers.json` (the fleet
-   board's list), or skip hosts if no peers are configured? (Proposed: peers.json.)
+1. Hosts: configured peer names from `peers.json`, nothing when none are
+   configured, no hard-coded fleet list? (Proposed: yes; Codex agrees.)
 2. Also do #2 from the Auren review (switch herdr to the agent when Nixi
-   prompts it) in this task, or keep it a separate issue? (Proposed: separate.)
+   prompts it) in this task, or keep it a separate issue? (Proposed:
+   separate; Codex agrees, since `session_send()` has its own routing.)
+
+Whether more words in the prompt help or hurt is not proven: Whisper can
+echo hint words on near-silence (`app/server.py:3754`). The spec's
+verification must measure it live, not assume it.
