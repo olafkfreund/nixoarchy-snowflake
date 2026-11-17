@@ -131,11 +131,28 @@ BRIDGED = bridge_argv() is not None            # (tests: set NIXI_BRIDGE, then B
 
 
 def nixi_conf():
+    return {**bridge_shared(), **_read_nixi_conf()}
+
+
+def _read_nixi_conf():
     try:
         c = json.loads(NIXI_CONF.read_text(encoding="utf-8"))
         return c if isinstance(c, dict) else {}
     except (OSError, ValueError):
         return {}
+
+
+def bridge_shared():
+    try:
+        c = json.loads((NIXI_CONF.parent / "nixi-shared.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(c, dict):
+        return {}
+    return {k: v for k, v in c.items() if
+            (k == "trust" and v in ("guide", "mechanic")) or
+            (k == "permissionMode" and v in ("permission", "yolo")) or
+            (k in ("agent", "model", "reasoningEffort") and isinstance(v, str) and len(v) <= 64)}
 
 
 _OLD_STT_HINT = ("Hey Nixi, Claude, Claude Code, Nixi, git, commit, README, Python, JavaScript, npm, pacman, sudo, Arch Linux, "
@@ -275,9 +292,102 @@ DEFAULTS = {
     "mic_cmd": "",
 }
 
+LOCAL_ONLY = frozenset(("port", "cpu_split", "whisper_device", "mic_device", "mic_cmd", "cwd", "claude_bin",
+                        "extra_args", "piper_voice", "projects", "voice_prompt", "quick_actions", "workout",
+                        "mail_accounts", "lang_good", "peers_asked", "root_mode", "permission_mode"))
+SHARED_OK = frozenset(DEFAULTS) - LOCAL_ONLY
+SHARED_RULES = {
+    **{k: ("bool",) for k in (
+        "lean", "partial_messages", "mic_auto", "update_check", "stt_prewarm", "eleven_on", "wake_word",
+        "autostart", "listen_on_show", "barge_in", "auto_compact", "full_text", "sfx", "follow_focus",
+        "answer_stages", "peers_on", "agent_approvals", "step_aside", "ambient_system", "ambient_calendar",
+        "ambient_weather", "proactive", "reactions", "news_watch", "notifications_takeover", "notify_details",
+        "phone_on", "mail_on", "notify_sound", "look_meeting", "look_music", "look_beat",
+        "notify_speak_subject", "look_fullscreen", "react_load", "react_break", "react_welcome",
+        "look_coding", "look_night", "look_weather", "look_party", "react_quips", "notify_done",
+        "popup_done", "code_panel", "hover", "click_through")},
+    **{k: ("int", lo, hi) for k, lo, hi in (
+        ("compact_tokens", 0, 5000000), ("whisper_beam", 1, 20), ("eleven_daily_chars", 1000, 500000),
+        ("speak_max_chars", 1, 10000), ("follow_up", 0, 60), ("live_minutes", 1, 1440))},
+    **{k: ("float", lo, hi) for k, lo, hi in (
+        ("max_cost_usd", 0, 1000), ("compact_at", 0.3, 0.95), ("size", 0.5, 1.25))},
+    **{k: ("enum", values) for k, values in (
+        ("trust", ("ask", "trust", "readonly")), ("effort", ("low", "medium", "high", "xhigh", "max")),
+        ("whisper_model", ("auto", "tiny.en", "base.en", "small.en", "medium.en", "tiny", "base", "small", "medium")),
+        ("presence", ("orb", "bar")), ("bar_edge", ("top", "bottom", "left", "right")),
+        ("language", ("en", "nb", "pl")), ("tts", ("auto", "kokoro", "piper", "espeak", "elevenlabs", "off")),
+        ("tts_fallback", ("auto", "kokoro", "piper", "espeak")),
+        ("voice", ("girl", "cute", "guy", "deep", "british", "story", "robot")),
+        ("pupil_style", ("slit", "circle", "dot")), ("idle_mode", ("off", "shrink", "doze")),
+        ("code_face", ("you", "him")), ("water_every", (0, 45, 60, 90)))},
+    **{k: ("str", length) for k, length in (
+        ("model", 64), ("auto_model", 64), ("stt_hint", 1000), ("ptt_hotkey", 64),
+        ("eleven_voice", 64), ("espeak_voice", 32), ("mail_model", 64))},
+    **{k: ("color",) for k in ("eye_color", "eye_white")},
+    **{k: ("list_str",) for k in ("agent_voice_mute", "notify_speak")},
+    **{k: ("dict_str",) for k in ("voice_by_lang", "voice_by_character")},
+    "look": ("look_dict",),
+}
+
+
+def _shared_value(value, rule):
+    kind = rule[0]
+    if kind == "bool":
+        return type(value) is bool
+    if kind == "int":
+        return type(value) is int and rule[1] <= value <= rule[2]
+    if kind == "float":
+        return type(value) in (int, float) and math.isfinite(value) and rule[1] <= value <= rule[2]
+    if kind == "enum":
+        return type(value) is type(rule[1][0]) and value in rule[1]
+    if kind == "str":
+        return isinstance(value, str) and len(value) <= rule[1]
+    if kind == "color":
+        return isinstance(value, str) and (value == "random" or re.fullmatch(r"#[0-9a-fA-F]{6}", value) is not None)
+    if kind == "list_str":
+        return isinstance(value, list) and all(isinstance(x, str) for x in value)
+    if kind == "dict_str":
+        return isinstance(value, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in value.items())
+    if kind == "look_dict":
+        return isinstance(value, dict) and all(isinstance(k, str) and isinstance(v, str) and
+                                               re.fullmatch(r"#[0-9a-fA-F]{6}", v) for k, v in value.items())
+    return False
+
+
+def load_shared(path):
+    settings, extras, notes = {}, {"plugins_on": [], "private_plugins": [], "voices": {}}, []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return settings, extras, notes
+    except (OSError, ValueError) as e:
+        return settings, extras, [f"Could not read {path}: {e}"]
+    if not isinstance(data, dict):
+        return settings, extras, ["Shared settings must be an object"]
+    plugin_id = re.compile(r"[a-z0-9][a-z0-9_.-]{0,63}")
+    voice_name = re.compile(r"[a-z]{2}_[A-Z]{2}-[a-z0-9_]+-(?:x_low|low|medium|high)")
+    for key, value in data.items():
+        if key in SHARED_RULES and key in SHARED_OK and _shared_value(value, SHARED_RULES[key]):
+            settings[key] = value
+        elif key in ("plugins_on", "private_plugins") and isinstance(value, list) and all(
+                isinstance(x, str) and plugin_id.fullmatch(x) for x in value):
+            extras[key] = value
+        elif key == "voices" and isinstance(value, dict) and all(
+                isinstance(name, str) and voice_name.fullmatch(name) and isinstance(row, dict) and
+                set(row) == {"onnx", "json"} and all(isinstance(sha, str) and re.fullmatch(r"[0-9a-fA-F]{64}", sha)
+                                                       for sha in row.values()) for name, row in value.items()):
+            extras[key] = value
+        else:
+            notes.append(f"Ignored shared setting: {key}")
+    return settings, extras, notes
+
+
+SHARED, SHARED_EXTRAS, SHARED_NOTES = load_shared(CONF_PATH.with_name("shared.json"))
+
 
 def load_config():
     cfg = dict(DEFAULTS)
+    cfg.update(SHARED)
     if CONF_PATH.exists():
         try:
             user = json.loads(CONF_PATH.read_text(encoding="utf-8-sig"))   # (-sig: Notepad may add a BOM)
@@ -296,10 +406,12 @@ def load_config():
         except Exception as e:  # noqa: BLE001
             print(f"[nixi] could not parse {CONF_PATH}: {e}", file=sys.stderr)
     else:
-        cfg["language"] = lang.detect(os.environ)       # first run only: written now, so the next start doesn't re-detect
-        cfg["lang_good"] = "en"
+        first = {"lang_good": "en"}
+        if "language" not in SHARED:
+            first["language"] = lang.detect(os.environ)
+        cfg.update(first)
         CONF_PATH.parent.mkdir(parents=True, exist_ok=True)
-        CONF_PATH.write_text(json.dumps(cfg, indent=2) + "\n")
+        CONF_PATH.write_text(json.dumps(first, indent=2) + "\n")
     return cfg
 
 
@@ -4189,7 +4301,8 @@ def request_language(code, force=False):
                     _stt = (model, code, dev)
                     _whisper, _whisper_err = model, None
                     with _config_lock:
-                        if changed:
+                        if changed and not ("voice" in SHARED and CFG["voice"] == SHARED["voice"] and
+                                            "voice" not in user_file_keys()):
                             save_config(voice_by_lang={**(CFG.get("voice_by_lang") or {}), lang.active: CFG["voice"]})
                         lang.active = code
                         restore_voice(code)
@@ -4995,6 +5108,9 @@ def lang_voice_name(code):
 def restore_voice(code):
     """The switcher calls this when `code` becomes active: the preset last chosen in that language comes back."""
     v = (CFG.get("voice_by_lang") or {}).get(code)
+    if "voice" in SHARED and "voice" not in user_file_keys():
+        CFG["voice"] = v if v in VOICES else SHARED["voice"]
+        return
     if v in VOICES:
         save_config(voice=v)
 
@@ -5902,6 +6018,15 @@ def save_config(**kw):
             NImage.clear()
         CONF_PATH.parent.mkdir(parents=True, exist_ok=True)
         CONF_PATH.write_text(json.dumps(cur, indent=2) + "\n")
+
+
+def user_file_keys():
+    with _config_lock:
+        try:
+            data = json.loads(CONF_PATH.read_text(encoding="utf-8-sig"))
+            return set(data) if isinstance(data, dict) else set()
+        except (OSError, ValueError):
+            return set()
 
 
 # ---------------------------------------------------------------- claude code
@@ -8452,6 +8577,7 @@ def state_info():
     eng = tts_engine(True)
     by_character = CFG.get("voice_by_character")
     return {
+        "shared": SHARED, "overrides": sorted(user_file_keys() & SHARED.keys()),
         "bridge": BRIDGED, "theme": THEME,
         "version": VERSION, "update": Updates.status(), "update_check": bool(CFG.get("update_check", True)),
         "platform": "linux", "ptt_hotkey": CFG.get("ptt_hotkey", "") or "",
@@ -8825,6 +8951,41 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": "off in nixi mode"}, 403)
                 Updates.install()
                 return self._json(Updates.status())
+            if p == "/api/settings/reset":
+                b = json.loads(self._body() or b"{}")
+                key = b.get("key") if isinstance(b, dict) else None
+                if not isinstance(key, str) or key not in SHARED:
+                    return self._json({"error": "not a shared setting"}, 400)
+                with _config_lock:
+                    try:
+                        cur = json.loads(CONF_PATH.read_text(encoding="utf-8-sig"))
+                    except (OSError, ValueError):
+                        return self._json({"error": "could not read settings"}, 500)
+                    if not isinstance(cur, dict):
+                        return self._json({"error": "invalid settings file"}, 500)
+                    cur.pop(key, None)
+                    if key == "voice":
+                        by_lang = cur.get("voice_by_lang")
+                        if isinstance(by_lang, dict):
+                            by_lang.pop(lang.active, None)
+                            cur["voice_by_lang"] = by_lang
+                    fd, tmp = tempfile.mkstemp(dir=CONF_PATH.parent, prefix=".config-", suffix=".tmp")
+                    try:
+                        with os.fdopen(fd, "w", encoding="utf-8") as f:
+                            json.dump(cur, f, indent=2)
+                            f.write("\n")
+                        os.replace(tmp, CONF_PATH)
+                    finally:
+                        if os.path.exists(tmp):
+                            os.unlink(tmp)
+                    if key == "voice":
+                        CFG["voice_by_lang"] = {**(SHARED.get("voice_by_lang") or {}), **(by_lang or {})} if isinstance(by_lang, dict) else dict(SHARED.get("voice_by_lang") or {})
+                    CFG[key] = SHARED[key]
+                    if key == "notify_details" and SHARED[key] is False:
+                        NImage.clear()
+                subprocess.Popen(["nixi-companion", "restart"], start_new_session=True, env=os.environ.copy(),
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return self._json({"ok": True, "restart": True})
             if p == "/api/settings":
                 b = json.loads(self._body() or b"{}")
                 upd = {}
