@@ -360,6 +360,10 @@ Changed from the spec, to be approved with this plan (Codex plan review):
      - A second `FileView` reads and watches `nixi-shared.json`. The
        `agent`, `model` and `reasoningEffort` defaults come from it when
        `nixi.json` lacks them.
+     - *Deviation (Codex review, Quickshell 0.3.2):* the `FileView` watch
+       misses a deploy's symlink swap, so `open()` also calls
+       `sharedSettingsFile.reload()`. A deployed change reaches the card on
+       its next open, not live.
      - The card keeps a set of keys you changed in this run, filled where
        each card setting is changed by the user.
      - `writeSettings` (`:225-230`) merges only those keys over the disk
