@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 99
 intent: intent/2026-11-17-99-nixi-settings-sync.md
 ---
