@@ -186,3 +186,9 @@ memory only, so the old hint comes back on the next start.
   trailing `/` before `basename`, as `resolve_session` does, so `/a/proj/`
   gives `proj` rather than an empty name. Step 3's tests follow both, plus
   one test for the slash.
+- Step 5: the owner's clips were not recorded, so the twelve lines were
+  spoken by two installed piper voices (en_US-amy-medium, en_GB-alan-medium),
+  resampled to 16 kHz mono, with two near-silent noise clips. Names heard
+  right: old 3/8 → new 6/8 (amy), old 4/8 → new 6/8 (alan); plain sentences
+  unchanged; silent clips "" both ways. The owner's own voice is left to the
+  step 6 live test.
