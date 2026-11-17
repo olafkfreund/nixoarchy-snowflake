@@ -39,7 +39,6 @@ so this spec makes Nixi look in every running session first (part 1).
   - `herdr --session <s> agent list`
   - `herdr --session <s> agent read …`
   - `herdr --session <s> agent focus <pane>`, for `show_agent`
-  
 
   `<s>` must match `SESSION_RE`. Everything else is still refused.
 - `herdr_read(pane, session)` and `session_status` read with the agent's
