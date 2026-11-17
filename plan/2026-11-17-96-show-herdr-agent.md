@@ -62,6 +62,9 @@ opening.
 
 ## Steps
 
+Steps 1 and 2 both edit `session_send`, so they run in order. Step 2
+starts only after step 1 is in the worktree.
+
 1. **`app/server.py`: agents from every session (spec part 1).** By the
    coder.
    - At `:6325`, next to `PANE_RE`, add `SESSION_RE`.
@@ -82,7 +85,15 @@ opening.
      agent's session.
    - `attach_argv(pane, session)` (`:6416`):
      `[…, "herdr", "--session", session, "agent", "attach", pane]`, with
-     the session checked. Update `session_show` (`:6425`) to pass it.
+     the session checked. Update both callers:
+     - `session_show` (`:6425`);
+     - the desk's "open session" action in `stage_act` (`:7869`,
+       `attach_argv(got[1]["pane"])`).
+     
+     The desk's status rows (`:6597`) must carry `"session": a["session"]`
+     next to `"pane"`, so the stored action has it. Check `app/stages.py`
+     `status_stage` for where the token's payload is built, and pass
+     `session` through unchanged.
    - `session_send` (`:6441`): validate the session, and make the command
      `herdr --session {session} agent prompt {pane} {shlex.quote(text)}`.
      Keep the wording otherwise.
@@ -94,9 +105,14 @@ opening.
      allowlist).
    - Traps:
      - `_collect_names` (#95) calls `herdr_agents()` and needs no change.
-     - `tests/test_no_herdr_writes.py` guards that the companion never runs
-       a herdr write itself. `focus` isn't a write, but check that test's
-       rule and extend it to allow exactly `agent focus` if it needs that.
+     - `tests/test_no_herdr_writes.py` exempts only the last `return` in
+       `session_send` that contains an f-string (`_prompt_span`, `:25-31`).
+       Keep the prompt, with the `agent prompt` command, built inside that
+       one `return` statement. Step 2 records it by wrapping that same
+       return, not by moving the f-string out. If the shape has to change,
+       narrow `_prompt_span` to the new single statement and keep every
+       negative check. `focus` is in neither `WRITE` nor `VERBS` (`:10-11`),
+       so it needs no exemption.
      - Tests must not import server.py under the real HOME (#176): use
        `_ServerEnv` and `nixi_env`.
 
@@ -107,31 +123,55 @@ opening.
        lock.
      - `TURN = 0`.
      - In `State.__init__` (`:383-400`): `self.send_watch = None`.
-   - `session_send`: after building the ask prompt, store
-     `SENDS[prompt] = {"command", "session", "pane", "at": time.monotonic()}`.
-     Drop expired entries and the oldest beyond 8.
+   - `session_send`: record the ask prompt without moving the f-string out
+     of its `return` (see step 1's trap). For example:
+     `return (None, _record_send(<the f-string>, command, session, pane))`,
+     where `_record_send` stores
+     `SENDS[prompt] = {"command", "session", "pane", "at": time.monotonic()}`
+     and returns `prompt`. It drops expired entries and the oldest beyond 8.
    - `ask()` (`:9175`), where the turn starts (`:9363-9365`, next to
      `ST.stage_run, ST.stage_run_tok = run_cmd, tok`):
-     - `TURN += 1`, and keep `turn = TURN` for this request.
-     - `ST.send_watch = SENDS.pop(said, None)` under the lock, adding
-       `"turn": turn`, `"id": None` and `"armed": False`.
+     - Order matters: under one `WATCH_LOCK`, first `TURN += 1`, keeping
+       `turn = TURN`, and only then run the existing
+       `ST.stopped = False` (`:9363`). An old focus thread must never see its
+       own turn number with `stopped` cleared.
+     - Under the same lock, `rec = SENDS.pop(said, None)`. It is used only
+       if `time.monotonic() - rec["at"] <= 900`, because expiry is checked
+       when the record is used too, not only on insert. Then
+       `ST.send_watch = {**rec, "turn": turn, "id": None, "armed": False}`,
+       or `None`.
      - Where `ST.stage_run = ST.stage_run_tok = None` (`:9395`), also clear
        `ST.send_watch = None`.
    - `run_bridge` (`:6464`):
      - The `tool` branch (`:6525`) reads `o.get("toolCallId")`.
-     - The `approve` worker (`:6470`), after the `stage_run` check:
-       - It looks at a permission only when it sees all of these:
-         - `w = ST.send_watch` is set and not armed;
-         - `o.get("confirm") == "click"`;
-         - `o.get("command") == w["command"]`;
-         - `o.get("toolCallId")` is a non-empty string.
-       - After `pick` comes back:
-         - its option kind starts with `allow`: set `w["id"]` and
-           `w["armed"] = True`;
-         - otherwise: `ST.send_watch = None`.
+     - `run_bridge` captures `my_turn = TURN` when it starts. Its `approve`
+       worker (`:6470`) captures `w = ST.send_watch` when the permission
+       event arrives. It does that in the reader loop before starting the
+       thread (`:6528`), and passes `w` in, so a worker that starts late
+       can't grab a newer turn's watch.
+     - The worker looks at a permission only when it sees all of these:
+       - `w` is set, and `w["turn"] == my_turn`;
+       - `o.get("confirm") == "click"`;
+       - `o.get("command") == w["command"]`;
+       - `o.get("toolCallId")` is a non-empty string.
+     - After `pick` comes back, and before
+       `BRIDGE.send({"type":"permission",…})`, one atomic step runs under
+       `WATCH_LOCK`. It proceeds only when all of these hold:
+       - `ST.send_watch is w`;
+       - `not w["armed"]`;
+       - `TURN == my_turn`;
+       - `not ST.stopped`;
+       - `BRIDGE.proc is p`.
        
-       Look up the picked option's kind in `opts` by id.
-     - In the `tool` branch, when `w` is armed and
+       If they do, it looks up the picked option's kind in `opts` by id:
+       - a kind starting with `allow`: set `w["id"]` and
+         `w["armed"] = True`;
+       - anything else: `ST.send_watch = None`.
+       
+       A second worker for the same command finds the watch armed, or gone,
+       and changes nothing.
+     - In the `tool` branch, under `WATCH_LOCK`, when
+       `w = ST.send_watch` is armed, `w["turn"] == my_turn`, and
        `o.get("toolCallId") == w["id"]`:
        - `completed`: `ST.send_watch = None`, then start one daemon
          `threading.Thread(target=show_agent, args=(w["session"], w["pane"], w["turn"]))`;
@@ -166,8 +206,8 @@ opening.
      Then run the new test file from step 3 once it exists.
    - Traps:
      - The `approve` worker runs on its own thread, and `ST.send_watch` can
-       change under it. Read it into a local `w` once, and only clear it if
-       `ST.send_watch is w`.
+       change under it. Every read-and-change happens under `WATCH_LOCK`,
+       with `ST.send_watch is w` and the turn checked again.
      - Never focus on a `result`/`done` event: only on the armed id's
        `completed`.
      - `run_bridge` can be retried up to 3 times per turn (`:9368`). The
@@ -198,6 +238,17 @@ opening.
      - An unrelated denied permission between the click and `completed`
        still focuses.
      - The turn's end clears `ST.send_watch`.
+     - Two workers for the same command, one allowed and one declined, in
+       either order: one arms it, and the other changes nothing. Drive this
+       deterministically with Events.
+     - A worker from an old turn, answered after a new turn installed an
+       identical-command watch: the new watch is untouched.
+     - A record older than 15 minutes, used without any send in between,
+       gives no watch.
+     - An old `show_agent` paused exactly at the turn boundary (counter
+       bumped, `stopped` reset) doesn't focus.
+   - The desk's "open session" action attaches with the row's session.
+     Duplicate pane ids in two sessions open the right one.
    - `show_agent`:
      - The pane gone: no focus.
      - `ST.stopped` set after the herdr focus: no `hyprctl dispatch`.
@@ -222,13 +273,15 @@ opening.
    coder, in `/mnt/code/Source-home/GitHub/nixi-nixarchy` on a new branch
    `feat/96-tool-call-ids` off `origin/main`.
    - `:486-490`, the `tool` emit: add `toolCallId: update.toolCallId`.
-   - `:575-578`, the `permission` emit: add
+   - `:578`, the `permission` emit (its `command` field is at `:582`): add
      `toolCallId: params.toolCall?.toolCallId`. Add it only when it is a
      non-empty string, as the `command` field is.
    - `bridge/herdr-bridge.test.js`: one test that a herdr send's card and
      its tool updates carry the same `toolCallId` as the fake agent's.
-     Check `bridge/testing/` for the fake agent's ids, and extend it
-     minimally if it sends none.
+     The fake agent already gives the herdr tool call id `"t5"`
+     (`bridge/testing/fake-agent.js:146`), but sends no tool updates after
+     the permission. Extend it minimally so an allowed herdr send emits a
+     `tool_call_update` with `toolCallId: "t5"` and `status: "completed"`.
    - Verify with:
      ```bash
      cd bridge && node --test
@@ -255,18 +308,40 @@ opening.
 6. **Lead: review, build, live test, PRs.**
    - A fresh Opus review gets only this plan and both diffs. Codex reviews
      with `review --base main` in each repo.
-   - Builds:
-     - Run the full suite, the fit tests and `nix flake check` here.
-     - Run `node --test` there.
-     - `nix build` of the companion, and of nixi with the bridge change,
-       where nixi-nixarchy's flake allows it.
+   - Builds and tests:
+     - Here:
+       ```bash
+       nix develop .#ci -c python3 -B .github/ci/run_tests.py --exclude test_character_fit.py --exclude test_accessories_fit.py
+       nix develop .#ci -c python3 -B .github/ci/run_tests.py --deadline 1800 test_character_fit.py test_accessories_fit.py
+       nix flake check
+       nix build
+       ```
+       The last one builds the companion package.
+     - In nixi-nixarchy:
+       ```bash
+       cd bridge && node --test
+       ```
+       Also run `nix build` at its root, which builds the nixi package with
+       the bridge.
    - Live on p620:
      - Post on the agent bus first. Start a test build with `systemd-run`
        and `RemainAfterExit`, using the live Hypr signature from
        `/run/user/1000/hypr`.
-     - Run the spec's live checks. If the installed nixi is the old bridge,
-       the focus check waits until the new nixi is deployed; say so in the
-       PR.
+     - Live checks:
+       - By voice, "what is factory-gitops doing": Nixi finds the agent in
+         `Devlopment-Local` and answers about it, instead of "no herdr".
+       - By voice, send a prompt to an agent in `Devlopment-Local` and
+         click allow. herdr's tab switches to that agent, and its kitty
+         window (class `org.omarchy.herdr`, child
+         `herdr --session Devlopment-Local`) comes to the front.
+       - Decline a send card: nothing moves.
+       - Send to an agent whose pane has just closed: nothing moves.
+       - Stop the turn before clicking: nothing moves.
+       - "Show me factory-gitops" opens that agent's pane in
+         `Devlopment-Local`.
+     - The focus checks need the bridge with ids. If the installed nixi has
+       the old bridge, run them once the new nixi is deployed too, and say so
+       in the PR.
    - PRs in both repos, each commented "@codex review". Deploy is the
      usual nixos_config input bump, and only on the owner's OK.
 
@@ -283,12 +358,7 @@ opening.
   cd bridge && node --test
   ```
   It must all pass.
-- Live: the spec's checks:
-  - status found;
-  - send, then tab and window;
-  - decline, then nothing;
-  - pane gone, then nothing;
-  - stop before click, then nothing.
+- Live: the six checks in step 6.
 
 ## Rollback
 
