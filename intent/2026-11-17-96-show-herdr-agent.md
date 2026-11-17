@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 96
 author: olafkfreund
 ---
@@ -75,6 +75,9 @@ The idea comes from kvm404/Auren's `show_agent`. It was split out of #95.
   call the real herdr or hyprctl.
 
 ## Open questions
+
+Decided at approval (2026-11-17): both recommendations below.
+
 
 1. **Raise the window, or only switch herdr's tab?** Raising it moves you to
    another workspace in the middle of whatever you were doing. Switching the
