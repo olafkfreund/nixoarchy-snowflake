@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 99
 author: olafkfreund
 ---
@@ -105,6 +105,9 @@ Nothing keeps them identical:
 - **Opt-in.** Without a shared declaration, Nixi works exactly as today.
 
 ## Open questions
+
+Decided at approval (2026-11-17): the recommendations below (1a, 2, 3, 4).
+
 
 1. **Where does the shared truth live?**
    - **a. Shared defaults declared in nixos_config (recommended).** The
