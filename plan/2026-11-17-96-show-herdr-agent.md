@@ -99,7 +99,7 @@ starts only after step 1 is in the worktree.
      Keep the wording otherwise.
    - Verify with:
      ```bash
-     nix develop .#ci -c python3 -B .github/ci/run_tests.py tests/test_sessions.py tests/test_no_herdr_writes.py tests/test_desk_stages.py tests/test_whisper_switch.py
+     nix develop .#ci -c python3 -B .github/ci/run_tests.py test_sessions.py test_no_herdr_writes.py test_desk_stages.py test_whisper_switch.py
      ```
      Fix the expectations that change (the `--session` argv and the
      allowlist).
@@ -201,7 +201,7 @@ starts only after step 1 is in the worktree.
        defaulting to `"/proc"`, so tests can pass a fake tree.
    - Verify with:
      ```bash
-     nix develop .#ci -c python3 -B .github/ci/run_tests.py tests/test_sessions.py tests/test_whisper_switch.py
+     nix develop .#ci -c python3 -B .github/ci/run_tests.py test_sessions.py tests/test_whisper_switch.py
      ```
      Then run the new test file from step 3 once it exists.
    - Traps:
@@ -263,7 +263,7 @@ starts only after step 1 is in the worktree.
      sleeps over 0.2 s (#95's pattern in `tests/test_whisper_switch.py`).
    - Verify with:
      ```bash
-     nix develop .#ci -c python3 -B .github/ci/run_tests.py tests/test_show_agent.py
+     nix develop .#ci -c python3 -B .github/ci/run_tests.py test_show_agent.py
      ```
      It must pass with 0 skips. Then run the full suite.
    - Traps: CI fails on skips that aren't on the allow-list. Never run the
@@ -300,7 +300,7 @@ starts only after step 1 is in the worktree.
      session.
    - Verify with:
      ```bash
-     nix develop .#ci -c python3 -B .github/ci/run_tests.py tests/test_docs*.py
+     nix develop .#ci -c python3 -B .github/ci/run_tests.py test_docs*.py
      ```
      Run it if such tests exist; otherwise skip this check.
    - Traps: none.
@@ -366,3 +366,11 @@ Revert the PR in each repo; they are independent. Reverting only the bridge
 leaves cross-session sends working, with no focus. Reverting only the
 companion ignores the new bridge fields. Then bump the nixos_config inputs
 back and redeploy.
+
+## Deviations
+
+- Step 1, by the coder:
+  - `run_tests.py` takes bare file names (`test_sessions.py`), not
+    `tests/…`, so the commands above now use bare names.
+  - `stage_act`'s desk "open session" also catches `KeyError`, so a stale
+    token without a session answers "couldn't open it" instead of raising.

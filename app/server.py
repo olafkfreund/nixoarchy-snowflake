@@ -6323,6 +6323,7 @@ BRIDGE = Bridge()
 # The companion may READ herdr locally (agent list, agent read) and nothing else. It never writes to a session:
 # every send goes through nixi's bridge and its card.
 PANE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9:_.-]{0,63}")      # (no leading dash: a pane id is never an option)
+SESSION_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")    # (no leading dash: a session named "--help" exists)
 SECRET_LINE = re.compile(
     r"-----BEGIN|AKIA[0-9A-Z]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|\bsk-[A-Za-z0-9_-]{16,}|xox[bap]-[A-Za-z0-9-]{10,}"
     r"|AIza[0-9A-Za-z_-]{20,}|Bearer\s+[A-Za-z0-9._~+/=-]{10,}|(?:password|passwd|token|secret|api[_-]?key)\s*[=:]"
@@ -6335,7 +6336,13 @@ READ_CAP = 4096
 
 def _herdr(argv):
     """Run one allowlisted herdr command; stdout, or None on any failure."""
-    if argv[:3] not in (["herdr", "agent", "list"], ["herdr", "agent", "read"]):
+    ok = argv == ["herdr", "session", "list", "--json"]
+    if not ok and len(argv) >= 5 and argv[:2] == ["herdr", "--session"] and isinstance(argv[2], str) and SESSION_RE.fullmatch(argv[2]):
+        rest = argv[3:]
+        ok = (rest == ["agent", "list"]
+              or (rest[:2] in (["agent", "read"], ["agent", "focus"]) and len(rest) >= 3 and isinstance(rest[2], str) and PANE_RE.fullmatch(rest[2])
+                  and (rest[1] == "read" or len(rest) == 3)))
+    if not ok:
         raise ValueError("herdr command not allowed")
     try:
         r = subprocess.run(argv, capture_output=True, text=True, timeout=3)
@@ -6344,13 +6351,29 @@ def _herdr(argv):
     return r.stdout if r.returncode == 0 else None
 
 
-def herdr_agents():
-    out = _herdr(["herdr", "agent", "list"])
+def herdr_sessions():
+    """Names of the running herdr sessions; [] on any failure. (Nixi has no HERDR_* env, so the default session alone is usually empty.)"""
+    out = _herdr(["herdr", "session", "list", "--json"])
     try:
-        agents = json.loads(out)["result"]["agents"] if out else []
-    except (ValueError, KeyError, TypeError):
+        data = json.loads(out)["sessions"] if out else []
+        return [s["name"] for s in data if isinstance(s, dict) and s.get("running") is True
+                and isinstance(s.get("name"), str) and SESSION_RE.fullmatch(s["name"])]
+    except (ValueError, KeyError, TypeError, AttributeError):
         return []
-    return [a for a in agents if isinstance(a, dict)] if isinstance(agents, list) else []
+
+
+def herdr_agents():
+    """Agents of every running session, each dict carrying its "session"; a session that fails is skipped."""
+    found = []
+    for s in herdr_sessions():
+        out = _herdr(["herdr", "--session", s, "agent", "list"])
+        try:
+            agents = json.loads(out)["result"]["agents"] if out else []
+        except (ValueError, KeyError, TypeError):
+            continue
+        if isinstance(agents, list):
+            found += [{**a, "session": s} for a in agents if isinstance(a, dict)]
+    return found
 
 
 def resolve_session(name, agents, exact_only=False):
@@ -6367,10 +6390,10 @@ def resolve_session(name, agents, exact_only=False):
     return exact if exact or exact_only else [a for a in agents if any(want in f for f in fields(a))]
 
 
-def herdr_read(pane):
-    if not isinstance(pane, str) or not PANE_RE.fullmatch(pane):
+def herdr_read(pane, session):
+    if not isinstance(pane, str) or not PANE_RE.fullmatch(pane) or not isinstance(session, str) or not SESSION_RE.fullmatch(session):
         raise ValueError("bad pane id")
-    return _herdr(["herdr", "agent", "read", pane, "--source", "recent", "--lines", "40", "--format", "text"])
+    return _herdr(["herdr", "--session", session, "agent", "read", pane, "--source", "recent", "--lines", "40", "--format", "text"])
 
 
 def redact_session(text):
@@ -6407,17 +6430,17 @@ def session_status(name, loose=False):
         return (None, None) if loose else (lang.t("session.not_found", name=name), None)
     if len(hits) > 1:
         return (lang.t("session.which", names=", ".join(_title(a) for a in hits[:4])), None)
-    out = herdr_read(hits[0].get("pane_id"))
+    out = herdr_read(hits[0].get("pane_id"), hits[0].get("session"))
     if out is None:
         return (lang.t("session.no_read"), None)
     return (None, status_prompt(hits[0], redact_session(out)))
 
 
-def attach_argv(pane):
+def attach_argv(pane, session):
     """The window for "show me": attach, never --takeover, so closing it leaves the session running."""
-    if not isinstance(pane, str) or not PANE_RE.fullmatch(pane):
+    if not isinstance(pane, str) or not PANE_RE.fullmatch(pane) or not isinstance(session, str) or not SESSION_RE.fullmatch(session):
         raise ValueError("bad pane id")
-    base = ["xdg-terminal-exec", "herdr", "agent", "attach", pane]
+    base = ["xdg-terminal-exec", "herdr", "--session", session, "agent", "attach", pane]
     return ["setsid", "uwsm-app", "--"] + base if shutil.which("uwsm-app") else base
 
 
@@ -6431,7 +6454,7 @@ def session_show(name):
     if len(hits) > 1:
         return lang.t("session.which", names=", ".join(_title(a) for a in hits[:4]))
     try:
-        subprocess.Popen(attach_argv(hits[0].get("pane_id")), start_new_session=True,
+        subprocess.Popen(attach_argv(hits[0].get("pane_id"), hits[0].get("session")), start_new_session=True,
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except (OSError, ValueError):
         return lang.t("session.open_failed")
@@ -6453,11 +6476,12 @@ def session_send(name, text):
     if len(hits) > 1:
         return (lang.t("session.which", names=", ".join(_title(a) for a in hits[:4])), None)
     pane = hits[0].get("pane_id")
-    if not isinstance(pane, str) or not PANE_RE.fullmatch(pane):
+    session = hits[0].get("session")
+    if not isinstance(pane, str) or not PANE_RE.fullmatch(pane) or not isinstance(session, str) or not SESSION_RE.fullmatch(session):
         return (lang.t("session.bad_id"), None)
     title = _title(hits[0])
     return (None, "Start your reply with exactly this: " + lang.t("session.send_say", text=text, title=title) + " "
-                  f"Then run exactly this one command and nothing else: herdr agent prompt {pane} {shlex.quote(text)}\n"
+                  f"Then run exactly this one command and nothing else: herdr --session {session} agent prompt {pane} {shlex.quote(text)}\n"
                   f"(Why: the user asked by voice to send that text to the \"{title}\" session.)")
 
 
@@ -6594,7 +6618,7 @@ def desk_stage(st):
         on = CFG.get("ambient_calendar")
         return stages.calendar_stage(stages.calendar_rows(Ambient.cal_items, now) if on else None, label(Ambient.cal_at))
     if k == "status":
-        sessions = [{"title": _title(a), "status": _clean(a.get("agent_status"), 30) or "unknown", "pane": a["pane_id"]}
+        sessions = [{"title": _title(a), "status": _clean(a.get("agent_status"), 30) or "unknown", "pane": a["pane_id"], "session": a["session"]}
                     for a in herdr_agents() if isinstance(a.get("pane_id"), str) and PANE_RE.fullmatch(a["pane_id"])]
         on = CFG.get("ambient_system", True)
         return stages.status_stage(sessions, [str(u)[:60] for u in Ambient.data["sys"]] if on else [], on)
@@ -7866,10 +7890,10 @@ def stage_act(token, act):
         got = None
     if act in ("session", "terminal") and got and got[0] == act:    # the desk: a herdr session's window, or a fresh terminal
         try:
-            argv = attach_argv(got[1]["pane"]) if act == "session" else ["xdg-terminal-exec"]
+            argv = attach_argv(got[1]["pane"], got[1]["session"]) if act == "session" else ["xdg-terminal-exec"]
             subprocess.Popen(argv, start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return {"ok": True}
-        except (OSError, ValueError):
+        except (OSError, ValueError, KeyError):
             return {"ok": False, "error": "couldn't open it"}
     if act == "copy" and got:
         text = got[1].get("cmd") or got[1].get("text")

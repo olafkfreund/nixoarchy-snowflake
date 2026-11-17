@@ -11,11 +11,11 @@ import nixi_env
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 AGENTS = [
-    {"agent": "claude", "agent_status": "done", "cwd": "/mnt/code/Source-home/GitHub/Factory", "pane_id": "w1A:p1",
+    {"agent": "claude", "agent_status": "done", "cwd": "/mnt/code/Source-home/GitHub/Factory", "pane_id": "w1A:p1", "session": "Dev-A",
      "terminal_title_stripped": "triage-aifactory-open-issues"},
-    {"agent": "claude", "agent_status": "idle", "cwd": "/mnt/code/Source-home/nixarchy", "pane_id": "w2:pA",
+    {"agent": "claude", "agent_status": "idle", "cwd": "/mnt/code/Source-home/nixarchy", "pane_id": "w2:pA", "session": "Dev-A",
      "terminal_title_stripped": "edge-takes-quattro"},
-    {"agent": "codex", "agent_status": "idle", "cwd": "/home/o/.config/nixos", "pane_id": "w1:p3",
+    {"agent": "codex", "agent_status": "idle", "cwd": "/home/o/.config/nixos", "pane_id": "w1:p3", "session": "Dev-B",
      "terminal_title_stripped": "Claude Code"},
 ]
 
@@ -54,21 +54,51 @@ class SessionsTest(unittest.TestCase):
     def test_argv_allowlist_and_pane_validation(self):
         with mock.patch.object(self.server.subprocess, "run") as run:
             run.return_value = mock.Mock(returncode=0, stdout="hi")
-            self.server.herdr_read("w1A:p1")
-            self.assertEqual(run.call_args[0][0], ["herdr", "agent", "read", "w1A:p1", "--source", "recent",
+            self.server.herdr_read("w1A:p1", "Dev-A")
+            self.assertEqual(run.call_args[0][0], ["herdr", "--session", "Dev-A", "agent", "read", "w1A:p1", "--source", "recent",
                                                    "--lines", "40", "--format", "text"])
             self.assertEqual(run.call_args[1]["timeout"], 3)
             for bad in ("", "x y", "p1;rm -rf", "$(id)", "a" * 65, None):
                 with self.assertRaises(ValueError):
-                    self.server.herdr_read(bad)
-            with self.assertRaises(ValueError):
-                self.server._herdr(["herdr", "agent", "prompt", "w1:p1", "hi"])
-            with self.assertRaises(ValueError):
-                self.server._herdr(["herdr", "pane", "send-text", "w1:p1", "hi"])
+                    self.server.herdr_read(bad, "Dev-A")
+            for bad in ("", "--help", "-x", "a b", "a" * 65, None):
+                with self.assertRaises(ValueError):
+                    self.server.herdr_read("w1:p1", bad)
+            for argv in (["herdr", "agent", "list"], ["herdr", "agent", "read", "w1:p1"],
+                         ["herdr", "--session", "Dev-A", "agent", "prompt", "w1:p1", "hi"],
+                         ["herdr", "--session", "Dev-A", "pane", "send-text", "w1:p1", "hi"],
+                         ["herdr", "--session", "--help", "agent", "list"],
+                         ["herdr", "--session", "Dev-A", "agent", "focus", "--x"],
+                         ["herdr", "--session", "Dev-A", "agent", "focus", "w1:p1", "extra"],
+                         ["herdr", "--session", "Dev-A", "agent", "list", "x"],
+                         ["herdr", "session", "list"], ["herdr", "session", "stop", "Dev-A"]):
+                with self.assertRaises(ValueError):
+                    self.server._herdr(argv)
+            for argv in (["herdr", "session", "list", "--json"], ["herdr", "--session", "Dev-A", "agent", "list"],
+                         ["herdr", "--session", "Dev-A", "agent", "focus", "w1:p1"]):
+                self.assertEqual(self.server._herdr(argv), "hi")
+
+    def test_sessions_and_agents_across_sessions(self):
+        s = self.server
+        listing = ('{"sessions":[{"name":"default","running":true},{"name":"--help","running":false},{"name":"--evil","running":true},'
+                   '{"name":"A","running":true},{"name":"B","running":true},{"name":"C","running":true},{"name":"Z","running":false}]}')
+        agents = lambda p: '{"result":{"agents":[{"pane_id":"%s"}]}}' % p
+
+        def fake(argv):
+            if argv == ["herdr", "session", "list", "--json"]:
+                return listing
+            return {"A": agents("p1"), "B": None, "C": agents("p1"), "default": '{"result":{"agents":[]}}'}.get(argv[2])
+        with mock.patch.object(s, "_herdr", side_effect=fake) as h:
+            self.assertEqual(s.herdr_sessions(), ["default", "A", "B", "C"])
+            self.assertEqual([(a["session"], a["pane_id"]) for a in s.herdr_agents()], [("A", "p1"), ("C", "p1")])
+            self.assertNotIn("Z", [c[0][0][2] for c in h.call_args_list if len(c[0][0]) > 2])
+        for out in (None, "nope", "{}", '{"sessions": 3}'):
+            with mock.patch.object(s, "_herdr", return_value=out):
+                self.assertEqual(s.herdr_sessions(), [])
 
     def test_bad_herdr_output_is_empty(self):
         for out in (None, "not json", '{"result": {}}', '{"result": {"agents": 3}}'):
-            with mock.patch.object(self.server, "_herdr", return_value=out):
+            with mock.patch.object(self.server, "herdr_sessions", return_value=["A"]), mock.patch.object(self.server, "_herdr", return_value=out):
                 self.assertEqual(self.server.herdr_agents(), [])
 
     def test_redaction_and_cap(self):
@@ -99,17 +129,19 @@ class SessionsTest(unittest.TestCase):
     def test_show_me_argv_and_window(self):
         s = self.server
         with mock.patch.object(s.shutil, "which", return_value="/bin/uwsm-app"):
-            self.assertEqual(s.attach_argv("w1A:p1"),
-                             ["setsid", "uwsm-app", "--", "xdg-terminal-exec", "herdr", "agent", "attach", "w1A:p1"])
+            self.assertEqual(s.attach_argv("w1A:p1", "Dev-A"),
+                             ["setsid", "uwsm-app", "--", "xdg-terminal-exec", "herdr", "--session", "Dev-A", "agent", "attach", "w1A:p1"])
         with mock.patch.object(s.shutil, "which", return_value=None):
-            self.assertEqual(s.attach_argv("w1A:p1"), ["xdg-terminal-exec", "herdr", "agent", "attach", "w1A:p1"])
-        with self.assertRaises(ValueError):
-            s.attach_argv("w1; id")
+            self.assertEqual(s.attach_argv("w1A:p1", "Dev-A"), ["xdg-terminal-exec", "herdr", "--session", "Dev-A", "agent", "attach", "w1A:p1"])
+        for pane, sess in (("w1; id", "Dev-A"), ("w1:p1", "--help"), ("w1:p1", None)):
+            with self.assertRaises(ValueError):
+                s.attach_argv(pane, sess)
         with mock.patch.object(s, "herdr_agents", return_value=AGENTS), \
                 mock.patch.object(s.shutil, "which", return_value=None), \
                 mock.patch.object(s.subprocess, "Popen") as popen:
             self.assertEqual(s.session_show("factory"), "Opening the triage-aifactory-open-issues session.")
             argv = popen.call_args[0][0]
+            self.assertEqual(argv[-5:], ["--session", "Dev-A", "agent", "attach", "w1A:p1"])
             self.assertNotIn("--takeover", argv)
             self.assertTrue(popen.call_args[1]["start_new_session"])
             popen.reset_mock()
@@ -125,10 +157,10 @@ class SessionsTest(unittest.TestCase):
                 mock.patch.object(s, "nixi_conf", return_value={}):
             say, ask = s.session_send("factory", nasty)
             self.assertIsNone(say)
-            self.assertIn("herdr agent prompt w1A:p1 " + s.shlex.quote(nasty), ask)
+            self.assertIn("herdr --session Dev-A agent prompt w1A:p1 " + s.shlex.quote(nasty), ask)
             self.assertIn("check the card", ask)
             self.assertEqual(s.session_send("zzz", "hi")[1], None)
-            self.assertEqual(s.shlex.split(ask.split("nothing else: ")[1].split("\n")[0])[4], nasty)
+            self.assertEqual(s.shlex.split(ask.split("nothing else: ")[1].split("\n")[0])[6], nasty)
         with mock.patch.object(s, "BRIDGED", True), mock.patch.object(s, "herdr_agents", return_value=AGENTS), \
                 mock.patch.object(s, "nixi_conf", return_value={"agent": "codex"}):
             self.assertEqual(s.session_send("factory", "hi"),
@@ -165,9 +197,9 @@ class SessionsTest(unittest.TestCase):
     def test_pane_id_cannot_be_an_option(self):
         for bad in ("--takeover", "-x"):
             with self.assertRaises(ValueError):
-                self.server.herdr_read(bad)
+                self.server.herdr_read(bad, "Dev-A")
             with self.assertRaises(ValueError):
-                self.server.attach_argv(bad)
+                self.server.attach_argv(bad, "Dev-A")
 
     def test_redaction_keeps_shas_and_store_paths_drops_tokens(self):
         keep = ["commit " + "a1b2c3d4" * 5, "/nix/store/" + "x" * 32 + "-hello-2.12/bin/hello"]
