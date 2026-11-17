@@ -398,6 +398,7 @@ class State:
         self.last_you = ""                         # the last request, for "continue in nixi" (nixi mode keeps no history)
         self.stage_run_tok = None                  # …and the item it belongs to, so a denial can say which one
         self.stage_run = None                      # the one command a stage's Run may ask for (#144): any other permission is denied
+        self.send_watch = None
 
     def save(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -6320,7 +6321,7 @@ BRIDGE = Bridge()
 
 
 # ---------------------------------------------------------------- agent sessions (#95)
-# The companion may READ herdr locally (agent list, agent read) and nothing else. It never writes to a session:
+# The companion may read and focus herdr locally. It never writes to a session:
 # every send goes through nixi's bridge and its card.
 PANE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9:_.-]{0,63}")      # (no leading dash: a pane id is never an option)
 SESSION_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")    # (no leading dash: a session named "--help" exists)
@@ -6332,6 +6333,22 @@ PLAIN = re.compile(r"/nix/store/\S+|\b[0-9a-f]{40,64}\b")        # git SHAs and 
 CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")                # (\n and \t stay)
 MARKER = re.compile(r"<<<\s*SESSION-OUTPUT|SESSION-OUTPUT\s*>>>")
 READ_CAP = 4096
+WATCH_LOCK = threading.Lock()
+SENDS = {}
+TURN = 0
+
+
+def _record_send(command, prompt, session, pane):
+    with WATCH_LOCK:
+        now = time.monotonic()
+        for key, rec in list(SENDS.items()):
+            if now - rec["at"] > 900:
+                del SENDS[key]
+        SENDS.pop(prompt, None)
+        SENDS[prompt] = {"command": command, "session": session, "pane": pane, "at": now}
+        if len(SENDS) > 8:
+            del SENDS[next(iter(SENDS))]
+    return prompt
 
 
 def _herdr(argv):
@@ -6480,20 +6497,74 @@ def session_send(name, text):
     if not isinstance(pane, str) or not PANE_RE.fullmatch(pane) or not isinstance(session, str) or not SESSION_RE.fullmatch(session):
         return (lang.t("session.bad_id"), None)
     title = _title(hits[0])
-    return (None, "Start your reply with exactly this: " + lang.t("session.send_say", text=text, title=title) + " "
-                  f"Then run exactly this one command and nothing else: herdr --session {session} agent prompt {pane} {shlex.quote(text)}\n"
-                  f"(Why: the user asked by voice to send that text to the \"{title}\" session.)")
+    return (None, _record_send(
+        f"herdr --session {session} agent prompt {pane} {shlex.quote(text)}",
+        "Start your reply with exactly this: " + lang.t("session.send_say", text=text, title=title) + " "
+        f"Then run exactly this one command and nothing else: herdr --session {session} agent prompt {pane} {shlex.quote(text)}\n"
+        f"(Why: the user asked by voice to send that text to the \"{title}\" session.)", session, pane))
+
+
+def herdr_window_pid(session, proc="/proc"):
+    if not isinstance(session, str) or not SESSION_RE.fullmatch(session):
+        return None
+    try:
+        clients = json.loads(_run(["hyprctl", "clients", "-j"], timeout=3).stdout)
+        windows = {c["pid"] for c in clients if isinstance(c, dict) and c.get("class") == "org.omarchy.herdr"
+                   and type(c.get("pid")) is int and c["pid"] > 0}
+        matched = set()
+        for child in Path(proc).iterdir():
+            if not child.name.isdecimal():
+                continue
+            try:
+                ppid = int(child.joinpath("stat").read_text().rsplit(") ", 1)[1].split()[1])
+                if ppid not in windows:
+                    continue
+                argv = child.joinpath("cmdline").read_bytes().split(b"\0")
+                if argv[-1] == b"":
+                    argv.pop()
+                argv = [a.decode() for a in argv]
+                if len(argv) == 3 and os.path.basename(argv[0]) == "herdr" and argv[1:] == ["--session", session]:
+                    matched.add(ppid)
+            except (OSError, ValueError, IndexError, UnicodeDecodeError):
+                continue
+        return next(iter(matched)) if len(matched) == 1 else None
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+
+
+def show_agent(session, pane, turn):
+    alive = lambda: not ST.stopped and TURN == turn
+    try:
+        if not isinstance(session, str) or not SESSION_RE.fullmatch(session) or not isinstance(pane, str) or not PANE_RE.fullmatch(pane):
+            return
+        if not alive():
+            return
+        out = _herdr(["herdr", "--session", session, "agent", "list"])
+        agents = json.loads(out)["result"]["agents"] if out else []
+        if not any(isinstance(a, dict) and a.get("pane_id") == pane for a in agents):
+            return
+        if not alive() or _herdr(["herdr", "--session", session, "agent", "focus", pane]) is None:
+            return
+        if not alive():
+            return
+        pid = herdr_window_pid(session)
+        if alive() and pid:
+            _run(["hyprctl", "dispatch", "focuswindow", f"pid:{pid}"], timeout=3)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def run_bridge(prompt, emit):
     """One turn through nixi's bridge; the events are mapped as in the plan. Returns "done"."""
+    with WATCH_LOCK:
+        my_turn = TURN
     try:
         p = BRIDGE.start()
     except OSError as e:
         emit(t="error", text=f"Couldn't start the nixi bridge: {e}")
         return "done"
 
-    def approve(o):                                      # (a worker: the card waits for you, the reader goes on)
+    def approve(o, w):                                   # (a worker: the card waits for you, the reader goes on)
         opts = [x for x in o.get("options") or [] if isinstance(x, dict)]
         if ST.stage_run is not None and o.get("command") != ST.stage_run:    # byte-exact; no `command` field = not it (fail closed)
             emit(t="stage_status", state="other", token=ST.stage_run_tok)
@@ -6506,6 +6577,15 @@ def run_bridge(prompt, emit):
             return
         pick = APPROVALS.ask_bridge(str(o.get("title") or "Use a tool"), opts, str(o.get("detail") or ""),
                                     confirm=o.get("confirm"), summary=o.get("summary"))      # "click": a send, voice cannot answer it (#95)
+        if (w and w["turn"] == my_turn and o.get("confirm") == "click" and o.get("command") == w["command"]
+                and isinstance(o.get("toolCallId"), str) and o["toolCallId"]):
+            with WATCH_LOCK:
+                if ST.send_watch is w and not w["armed"] and TURN == my_turn and not ST.stopped and BRIDGE.proc is p:
+                    kind = next((x.get("kind") for x in opts if x.get("id") == pick), None)
+                    if isinstance(kind, str) and kind.startswith("allow"):
+                        w["id"], w["armed"] = o["toolCallId"], True
+                    else:
+                        ST.send_watch = None
         if BRIDGE.proc is p:                             # (ids restart per bridge: never answer a newer one's request)
             BRIDGE.send({"type": "permission", "id": o.get("id"), "optionId": pick})
 
@@ -6547,9 +6627,21 @@ def run_bridge(prompt, emit):
             mid = o.get("messageId")
             emit(t="delta", text=str(o.get("text") or ""))
         elif ty == "tool":
+            focus = None
+            with WATCH_LOCK:
+                w = ST.send_watch
+                if (w and w["armed"] and w["turn"] == my_turn and o.get("toolCallId") == w["id"]
+                        and o.get("status") in ("completed", "failed")):
+                    ST.send_watch = None
+                    if o["status"] == "completed":
+                        focus = (w["session"], w["pane"], w["turn"])
+            if focus:
+                threading.Thread(target=show_agent, args=focus, daemon=True).start()
             emit(t="tool", name=str(o.get("title") or "tool"), detail="", id="", input=None, status=str(o.get("status") or ""))
         elif ty == "permission":
-            threading.Thread(target=approve, args=(o,), daemon=True).start()
+            with WATCH_LOCK:
+                w = ST.send_watch
+            threading.Thread(target=approve, args=(o, w), daemon=True).start()
         elif ty in ("notice", "status"):
             emit(t="status", text=str(o.get("text") or ""))
         elif ty == "done":
@@ -9384,7 +9476,14 @@ class Handler(BaseHTTPRequestHandler):
                     alive[0] = False
                     stop_proc()
 
-            ST.stopped = False
+            global TURN
+            with WATCH_LOCK:
+                TURN += 1
+                turn = TURN
+                ST.stopped = False
+                watch = SENDS.pop(said, None)
+                ST.send_watch = ({**watch, "turn": turn, "id": None, "armed": False}
+                                 if watch and time.monotonic() - watch["at"] <= 900 else None)
             partial = bool(CFG["partial_messages"])
             ST.stage_run, ST.stage_run_tok = run_cmd, tok
             if run_cmd is not None:
@@ -9417,6 +9516,8 @@ class Handler(BaseHTTPRequestHandler):
             emit(t="done")
         finally:
             ST.stage_run = ST.stage_run_tok = None
+            with WATCH_LOCK:
+                ST.send_watch = None
             ST.lock.release()
         if CFG.get("auto_compact", True) and ST.ctx_used >= ctx_scale() * float(CFG.get("compact_at") or 0.7):
             threading.Thread(target=auto_compact, daemon=True).start()
