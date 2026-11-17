@@ -38,10 +38,14 @@ so this spec makes Nixi look in every running session first (part 1).
   - `herdr session list --json`
   - `herdr --session <s> agent list`
   - `herdr --session <s> agent read …`
+  - `herdr --session <s> agent focus <pane>`, for `show_agent`
   
+
   `<s>` must match `SESSION_RE`. Everything else is still refused.
 - `herdr_read(pane, session)` and `session_status` read with the agent's
-  session.
+  session. `session_show`'s `attach_argv(pane, session)` becomes
+  `herdr --session <s> agent attach <pane>`, so "show me" opens the right
+  session's pane. Today it would attach through the default session.
 - `session_send` tells nixi's agent to run
   `herdr --session <s> agent prompt <pane> <text>`. The bridge already treats
   any command that mentions herdr as a click-only send (`isHerdrWrite`, and
@@ -70,40 +74,68 @@ focuses. It fails closed.
 
 ### Part 3: focus after a confirmed send (`app/server.py`)
 
-- `session_send` records the send it is about to ask for:
-  `SEND_PENDING = {"command": <the exact command string>, "session", "pane",
-  "at": monotonic}`. One at a time; a newer send replaces it, and it expires
-  after 15 minutes. The 600 s approval wait fits inside that.
-- In `run_bridge`, the `approve` worker checks three things: the permission
-  has `confirm == "click"`, its `command` equals `SEND_PENDING["command"]`
-  byte for byte, and the chosen option's kind starts with `allow`. If all
-  three hold, it stores that permission's `toolCallId` in this
-  `run_bridge` call's own state. Any other answer, or no id, clears it.
-- On a `tool` event whose `toolCallId` equals the stored id:
-  - `completed`: start one daemon thread `show_agent(session, pane, turn)`
-    and clear the id.
-  - `failed`: clear the id and do nothing.
-- When `run_bridge` returns (done, error, fatal or stopped), the stored id
-  and `SEND_PENDING` are dropped.
-- `turn` is a module counter that `run_bridge` increments when it starts.
-  `show_agent` gives up if `ST.stopped` is set or a newer turn has started.
-  It checks both before every step that changes the desktop.
-- `show_agent`:
-  1. Lists that session's agents again. If the pane is gone, it stops.
-  2. Finds the window. It looks at Hyprland clients with class
-     `org.omarchy.herdr`, and for each one reads its child processes from
-     `/proc`. A window matches when a child's argv is exactly
-     `herdr --session <s>`, or `herdr` alone for the default session.
-     Exactly one match gives that window's pid. Zero or several give no pid.
-  3. Calls the existing `_attention_focus({"herdr": {"pane", "session"},
-     "pids": [pid] or []})`. That runs `herdr --session <s> agent focus
-     <pane>`, then `hyprctl dispatch focuswindow pid:<pid>`. With no pid,
-     herdr's tab switches but no window is raised.
+The send's record is tied to its turn, used once, and checked before every
+step.
+
+- **Record the send.** `session_send` builds the ask prompt it returns
+  (unchanged wording, with the `--session` command). It also stores
+  `SENDS[ask_prompt] = {"command", "session", "pane", "at"}`.
+  - At most 8 records; each expires after 15 minutes, which covers the 600 s
+    approval wait.
+  - The key is the exact prompt, so two quick sends in a row get two records.
+    A second `/api/quick` while a turn is busy no longer replaces the first
+    one's state (the page calls `/api/quick` before its `busy` check,
+    `index.html:3634-3636`).
+- **Bind it to the turn.** In `ask()` (`:9175`), when the turn's `said`
+  equals a key in `SENDS`, that record is popped. It becomes this turn's
+  `ST.send_watch`, set next to `ST.stage_run` (`:9363`) and cleared with it
+  when the turn ends. Nothing else ever reads `SENDS`. `run_bridge`'s
+  retries (`:9368`) share the one `ST.send_watch`.
+- **Arm it on the click.** In `run_bridge`'s `approve` worker, only a
+  permission that matches all three of these is looked at:
+  - `confirm == "click"`;
+  - its `command` equals `ST.send_watch["command"]` byte for byte;
+  - it carries a `toolCallId`.
+  
+  If the chosen option's kind starts with `allow`, the watch takes that id
+  and becomes armed. A declined matching permission ends the watch. Other
+  permissions never touch it, so an unrelated tool that is denied can't
+  clear an approved send. The watch arms once: a second identical command in
+  the same turn, under a new id, can't arm it again.
+- **Fire on success.** On a `tool` event whose `toolCallId` equals the armed
+  id:
+  - `completed`: the watch ends, and one daemon thread
+    `show_agent(session, pane, turn)` starts.
+  - `failed`: the watch ends, and nothing happens.
+  
+  Other events change nothing.
+- **Same id on both sides.** The adapter uses one id for both events. The
+  Claude adapter builds the permission request's tool call from the same
+  `toolUseID` as its `tool_call` updates
+  (claude-agent-acp 0.100.0 `permissions/presentation.js:39`,
+  `tool-calls/renderer.js:115`). It marks a tool `failed` exactly when its
+  result is an error (`renderer.js:81`), which a non-zero Bash exit is.
+- **Turn identity.** `turn` is a module counter that `ask()` increments when
+  a turn starts. `alive()` means `not ST.stopped and TURN == turn`.
+- **`show_agent`.** Its own sequence, so that it can check `alive()` before
+  every step. It doesn't call `_attention_focus`, whose three commands run
+  without a check in between.
+  1. `alive()`? List that session's agents again. If the pane is gone, stop.
+  2. `alive()`? Run `herdr --session <s> agent focus <pane>`. This switches
+     herdr's tab.
+  3. `alive()`? Find the window. It looks at Hyprland clients with class
+     `org.omarchy.herdr`, and reads each one's child processes from `/proc`.
+     A window matches only when a child's argv is exactly
+     `["herdr", "--session", s]`. A bare `herdr` never matches, because
+     `HERDR_SESSION` in its environment can name any session (Codex checked
+     this live). Exactly one match gives a pid. Zero or several give none.
+  4. `alive()`, with a pid? Run `hyprctl dispatch focuswindow pid:<pid>`.
   
   Every error is caught and ignored. Nothing is spoken and nothing types.
-- Spoken and typed sends both reach `session_send` through `/api/quick`
-  from the page's one submit path (`app/static/index.html:3634`), so both get
-  this, as decided at intent approval.
+  Every argv is built from `SESSION_RE`/`PANE_RE`-checked values.
+- **Spoken and typed both count.** Both reach `session_send` through
+  `/api/quick` from the page's one submit path (`app/static/index.html:3634`),
+  as decided at intent approval.
 
 ## Alternatives rejected
 
@@ -138,9 +170,13 @@ focuses. It fails closed.
   carries the session, so a pane is never looked up without one.
 - **Focus moves you to herdr's workspace.** That is intended, as approved.
   It never happens for a declined, failed or stopped send.
-- **Window shapes the matcher doesn't know**, such as `herdr session attach
-  <s>` or a herdr desktop app. Those windows don't match, so only herdr's tab
-  switches. That is safe, and a shape can be added when one shows up.
+- **Window shapes the matcher doesn't know**, such as a bare `herdr`,
+  `herdr session attach <s>` or a herdr desktop app. Those windows don't
+  match, so only herdr's tab switches. That is safe, and a shape can be added
+  when one shows up.
+- **The adapter's ids could change in a later version** (verified in
+  claude-agent-acp 0.100.0). If they stop matching, the effect is that
+  focus never happens. Nothing is ever sent wrongly.
 - **Hosts.** p620 only. Razer has no herdr sessions running Nixi sends today.
 
 ## Verification
@@ -156,15 +192,22 @@ focuses. It fails closed.
     `SEND_PENDING`.
   - Focus:
     - Confirmed, then `completed`, focuses exactly once.
-    - Declined, `failed`, no id, a different command, a different id, a
-      stopped turn, a newer turn, or the pane gone: no focus.
-    - The `run_bridge` return path clears the pending send.
+    - None of these focus: declined, `failed`, no id, a different command,
+      a different id, a stopped turn, a newer turn, or the pane gone.
+    - A second identical command with a new id doesn't focus again.
+    - Two `/api/quick` sends in a row keep two records.
+    - Turn end clears `ST.send_watch`.
+    - An unrelated permission that is denied, landing between the click and
+      the `completed`, doesn't stop the focus.
+    - A stop between herdr's focus and the raise means no raise.
   - The window matcher with fake `/proc` trees:
-    - one match gives its pid;
-    - two matches, or a `session attach` window, give no pid;
-    - the default session matches a bare `herdr`.
+    - one `herdr --session s` match gives its pid;
+    - two matches, a bare `herdr`, or a `session attach` window give no pid.
+  - `session_show` attaches with the agent's session. Duplicate pane ids in
+    two sessions stay apart everywhere.
 - **Bridge test** (nixi-nixarchy `bridge/herdr-bridge.test.js`): `tool` and
-  `permission` events carry `toolCallId`.
+  `permission` events carry the adapter's `toolCallId` unchanged. A herdr
+  send's permission and its `completed` update carry the same id.
 - **Full suite** with `.github/ci/run_tests.py`, `nix flake check`, and the
   bridge's `node --test` in nixi-nixarchy.
 - **Live on p620**, after posting on the agent bus, on a test build of both
