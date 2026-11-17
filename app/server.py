@@ -6504,13 +6504,18 @@ def session_send(name, text):
         f"(Why: the user asked by voice to send that text to the \"{title}\" session.)", session, pane))
 
 
-def herdr_window_pid(session, proc="/proc"):
+def herdr_window(session, proc="/proc"):
+    """The Hyprland address of the one herdr window showing `session`, else None. A terminal process can own several
+    windows (kitty single-instance), so the match must be exactly one window, not one pid."""
     if not isinstance(session, str) or not SESSION_RE.fullmatch(session):
         return None
     try:
         clients = json.loads(_run(["hyprctl", "clients", "-j"], timeout=3).stdout)
-        windows = {c["pid"] for c in clients if isinstance(c, dict) and c.get("class") == "org.omarchy.herdr"
-                   and type(c.get("pid")) is int and c["pid"] > 0}
+        addrs = {}                                       # pid -> addresses of every window that process owns
+        for c in clients:
+            if isinstance(c, dict) and type(c.get("pid")) is int and c["pid"] > 0 and isinstance(c.get("address"), str):
+                addrs.setdefault(c["pid"], []).append((c["address"], c.get("class")))
+        windows = {pid for pid, ws in addrs.items() if any(cls == "org.omarchy.herdr" for _, cls in ws)}
         matched = set()
         for child in Path(proc).iterdir():
             if not child.name.isdecimal():
@@ -6527,8 +6532,12 @@ def herdr_window_pid(session, proc="/proc"):
                     matched.add(ppid)
             except (OSError, ValueError, IndexError, UnicodeDecodeError):
                 continue
-        return next(iter(matched)) if len(matched) == 1 else None
-    except (OSError, ValueError, TypeError, KeyError):
+        if len(matched) != 1:
+            return None
+        ws = addrs[next(iter(matched))]
+        addr = ws[0][0] if len(ws) == 1 else None
+        return addr if addr and re.fullmatch(r"0x[0-9a-fA-F]{1,16}", addr) else None
+    except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError):
         return None
 
 
@@ -6547,9 +6556,9 @@ def show_agent(session, pane, turn):
             return
         if not alive():
             return
-        pid = herdr_window_pid(session)
-        if alive() and pid:
-            _run(["hyprctl", "dispatch", "focuswindow", f"pid:{pid}"], timeout=3)
+        addr = herdr_window(session)
+        if alive() and addr:
+            _run(["hyprctl", "dispatch", "focuswindow", f"address:{addr}"], timeout=3)
     except Exception:  # noqa: BLE001
         pass
 

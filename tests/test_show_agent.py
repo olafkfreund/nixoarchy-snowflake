@@ -209,6 +209,9 @@ class ShowAgentTest(_ServerEnv):
         sent, shown = self.drive([self.perm(), ("await", 1), self.perm("t2", 8, "T2"), ("await", 2), self.tool("completed", "T2"), self.tool("completed", "T1")],
                                  {"t1": (ALLOW, False), "t2": (ALLOW, False)})
         self.assertEqual(len(shown), 1)                         # only T1's completion; T2 never armed it
+        sent, shown = self.drive([self.perm(), ("await", 1), self.perm("t2", 8, "T2"), ("await", 2), self.tool("completed", "T2")],
+                                 {"t1": (ALLOW, False), "t2": (ALLOW, False)})
+        self.assertEqual(shown, [])                             # T2's own completion focuses nothing: it never re-armed the watch
 
     def test_unrelated_denied_permission_between_click_and_completed_still_focuses(self):
         sent, shown = self.drive([self.perm(), ("await", 1), self.perm("t2", 8, "T9", command="ls"), ("await", 2), self.tool("completed")],
@@ -217,7 +220,7 @@ class ShowAgentTest(_ServerEnv):
 
     def test_two_workers_same_command_one_arms_either_order(self):
         for first, second in (("t1", "t2"), ("t2", "t1")):
-            for answers, armed in (({"t1": (ALLOW, True), "t2": (DECLINE, True)}, True),):
+            for answers in ({"t1": (ALLOW, True), "t2": (DECLINE, True)},):
                 with self.subTest(first=first):
                     steps = [self.perm("t1", 7, "T1"), self.perm("t2", 8, "T2"), ("release", first), ("await", 1), ("release", second), ("await", 2),
                              self.tool("completed", "T1"), self.tool("completed", "T2")]
@@ -245,15 +248,15 @@ class ShowAgentTest(_ServerEnv):
     def test_show_agent_focuses_then_raises_the_window(self):
         s = self.s
         with mock.patch.object(s, "_herdr", side_effect=lambda a: self.listing() if a[-1] == "list" else "") as h, \
-                mock.patch.object(s, "herdr_window_pid", return_value=4242) as wp, mock.patch.object(s, "_run") as run:
+                mock.patch.object(s, "herdr_window", return_value="0xabc") as wp, mock.patch.object(s, "_run") as run:
             s.show_agent("Dev-A", "p1", s.TURN)
         self.assertEqual(h.call_args_list[-1][0][0], ["herdr", "--session", "Dev-A", "agent", "focus", "p1"])
         wp.assert_called_once_with("Dev-A")
-        self.assertEqual(run.call_args[0][0], ["hyprctl", "dispatch", "focuswindow", "pid:4242"])
+        self.assertEqual(run.call_args[0][0], ["hyprctl", "dispatch", "focuswindow", "address:0xabc"])
 
     def test_show_agent_pane_gone_stops_stale_turn_and_bad_ids(self):
         s = self.s
-        with mock.patch.object(s, "_herdr", return_value=self.listing(("p2",))) as h, mock.patch.object(s, "herdr_window_pid") as wp, mock.patch.object(s, "_run") as run:
+        with mock.patch.object(s, "_herdr", return_value=self.listing(("p2",))) as h, mock.patch.object(s, "herdr_window") as wp, mock.patch.object(s, "_run") as run:
             s.show_agent("Dev-A", "p1", s.TURN)
             self.assertEqual(h.call_count, 1)                   # the list, no focus
             s.show_agent("Dev-A", "p1", s.TURN - 1)             # an old turn
@@ -285,7 +288,7 @@ class ShowAgentTest(_ServerEnv):
                 return self.listing()
             s.ST.stopped = True
             return ""
-        with mock.patch.object(s, "_herdr", side_effect=herdr), mock.patch.object(s, "herdr_window_pid") as wp, mock.patch.object(s, "_run") as run:
+        with mock.patch.object(s, "_herdr", side_effect=herdr), mock.patch.object(s, "herdr_window") as wp, mock.patch.object(s, "_run") as run:
             s.show_agent("Dev-A", "p1", s.TURN)
         wp.assert_not_called()
         run.assert_not_called()
@@ -312,13 +315,18 @@ class ShowAgentTest(_ServerEnv):
         s = self.s
         out = mock.Mock(stdout=json.dumps(clients).encode())
         with mock.patch.object(s, "_run", return_value=out):
-            return s.herdr_window_pid(session, self.tree(procs))
+            return s.herdr_window(session, self.tree(procs))
 
     def test_window_matcher(self):
-        win = lambda pid, cls="org.omarchy.herdr": {"class": cls, "pid": pid}
+        win = lambda pid, cls="org.omarchy.herdr", addr=None: {"class": cls, "pid": pid, "address": addr or hex(pid)}
         h = ["herdr", "--session", "Dev-A"]
-        self.assertEqual(self.pid_of({101: (100, h)}, [win(100)]), 100)
-        self.assertEqual(self.pid_of({101: (100, ["/nix/store/x/bin/herdr", "--session", "Dev-A"])}, [win(100)]), 100)
+        self.assertEqual(self.pid_of({101: (100, h)}, [win(100)]), "0x64")
+        self.assertEqual(self.pid_of({101: (100, ["/nix/store/x/bin/herdr", "--session", "Dev-A"])}, [win(100)]), "0x64")
+        # one terminal process owning two windows (kitty single-instance): the pid alone can't say which one
+        self.assertIsNone(self.pid_of({101: (100, h), 102: (100, ["herdr", "--session", "Dev-B"])},
+                                      [win(100, addr="0xa1"), win(100, addr="0xa2")]))
+        self.assertIsNone(self.pid_of({101: (100, h)}, [win(100, addr="0xa1"), win(100, "kitty", "0xa2")]))
+        self.assertIsNone(self.pid_of({101: (100, h)}, [win(100, addr="not-an-address")]))
         self.assertIsNone(self.pid_of({101: (100, h), 201: (200, h)}, [win(100), win(200)]))          # two windows: no raise
         self.assertIsNone(self.pid_of({101: (100, ["herdr"])}, [win(100)]))                           # a bare herdr never counts
         self.assertIsNone(self.pid_of({101: (100, ["herdr", "session", "attach", "Dev-A"])}, [win(100)]))

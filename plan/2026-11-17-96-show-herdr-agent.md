@@ -374,3 +374,24 @@ back and redeploy.
     `tests/…`, so the commands above now use bare names.
   - `stage_act`'s desk "open session" also catches `KeyError`, so a stale
     token without a session answers "couldn't open it" instead of raising.
+- Step 2, after the Opus review:
+  - **Match by window address.** The window matcher is now
+    `herdr_window(session)`. It returns the Hyprland address of exactly one
+    window, and `show_agent` raises it with `focuswindow address:<addr>`,
+    instead of a pid. One terminal process can own several windows (kitty
+    single-instance), so one pid didn't prove one window. On p620 today,
+    each herdr window has its own kitty process.
+  - **Smaller fixes in the same change:**
+    - the address is checked as `0x` plus hex;
+    - `subprocess.SubprocessError` is caught;
+    - when `herdr agent focus` fails, `show_agent` stops and raises no
+      window, which fails closed.
+  - **Two workers for one command.** A decline that arrives first ends the
+    watch (step 2), so a later allow finds no watch and nothing focuses.
+    That fails closed, and the "either order" test in step 3 checks exactly
+    that.
+- Step 3, after the Opus review: the "second identical command" test also
+  completes only the second id and asserts no focus. The earlier version
+  couldn't catch a wrong re-arm.
+- Step 4: nixi-nixarchy's default branch is `master`, so the bridge branch
+  is cut from `origin/master`, not `origin/main`.
