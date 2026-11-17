@@ -1,4 +1,6 @@
 """Language switches keep speech recognition and speech output on one active language."""
+import contextlib
+import io
 import threading
 import time
 import json
@@ -7,6 +9,8 @@ from types import SimpleNamespace
 from unittest import mock
 
 from test_speakable import _ServerEnv
+
+RealThread = threading.Thread
 
 
 class WhisperSwitchTest(_ServerEnv):
@@ -28,8 +32,11 @@ class WhisperSwitchTest(_ServerEnv):
         self.s._whisper = self.old
         self.s._whisper_err = None
         self.s.lang_status = ""
+        self.names_patch = mock.patch.object(self.s, "stt_names", return_value=[])   # never start a refresh that reaches live herdr
+        self.names_patch.start()
 
     def tearDown(self):
+        self.names_patch.stop()
         self.s.CFG.clear()
         self.s.CFG.update(self.old_cfg)
         self.s.lang.active = self.old_active
@@ -230,6 +237,251 @@ class WhisperSwitchTest(_ServerEnv):
             self.s.lang.active = "pl"
             self.assertEqual(self.s.quip("done"), "Polski")
             self.assertEqual(self.s.quip("break"), "Stretch")  # English event fallback
+
+
+class SttNamesTest(_ServerEnv):
+    def setUp(self):
+        self.s = self.server
+        s = self.s
+        self.old_cfg = dict(s.CFG)
+        self.old_active, self.old_stt, self.old_whisper = s.lang.active, s._stt, s._whisper
+        self.old_err, self.old_status = s._whisper_err, s.lang_status
+        self.old_cache = (s._names, s._names_at, s._names_busy)
+        s.CFG.update(language="en", whisper_model="auto", stt_hint="Nixi")
+        s.lang.active = "en"
+        s._whisper_err = None
+        s.lang_status = ""
+        s._names, s._names_at, s._names_busy = [], float("-inf"), False
+        self.threads = []
+        threads = self.threads
+        target = s._refresh_names
+
+        class Rec(RealThread):
+            def __init__(self, *a, **kw):
+                super().__init__(*a, **kw)
+                if kw.get("target") is target:
+                    threads.append(self)
+        patch = mock.patch.object(s.threading, "Thread", Rec)
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.addCleanup(self.restore)
+        self.addCleanup(self.join_refreshes)
+
+    def restore(self):
+        s = self.s
+        s.CFG.clear()
+        s.CFG.update(self.old_cfg)
+        s.lang.active, s._stt, s._whisper = self.old_active, self.old_stt, self.old_whisper
+        s._whisper_err, s.lang_status = self.old_err, self.old_status
+        s._names, s._names_at, s._names_busy = self.old_cache
+
+    def join_refreshes(self):
+        for t in self.threads:
+            t.join(timeout=2)
+            self.assertFalse(t.is_alive())
+
+    def prompt(self, code="en", names=(), hint=None):
+        model = FakeModel("base")
+        self.s._stt = (model, code, "cpu")
+        self.s._whisper = model
+        with mock.patch.object(self.s, "stt_names", return_value=list(names)):
+            self.s.run_whisper("audio", hint=hint)
+        return model.prompts[-1]
+
+    def collect(self, herdr=(), projects=(), peers=()):
+        s = self.s
+        with mock.patch.object(s, "herdr_agents", return_value=list(herdr)), \
+             mock.patch.object(s.quick, "projects", return_value=dict.fromkeys(projects, "/p")), \
+             mock.patch.object(s.peers, "current", return_value=list(peers)):
+            return s._collect_names()
+
+    # prompt
+
+    def test_names_come_before_hint(self):
+        self.assertEqual(self.prompt(names=["alpha", "beta"]), "alpha, beta. Nixi")
+
+    def test_names_come_before_wake_word_for_nb_and_pl(self):
+        self.s.CFG["stt_hint"] = self.s.DEFAULTS["stt_hint"]
+        self.assertTrue(self.prompt("nb", ["alpha"]).startswith("alpha. Hei Nixi. "))
+        self.assertTrue(self.prompt("pl", ["alpha"]).startswith("alpha. Hej Nixi. "))
+
+    def test_names_already_in_prompt_are_left_out(self):
+        self.s.CFG["stt_hint"] = "Nixi, home manager"
+        self.assertEqual(self.prompt(names=["nixi", "Home Manager", "zed"]), "zed. Nixi, home manager")
+        self.assertEqual(self.prompt(names=["nixi"]), "Nixi, home manager")
+
+    def test_explicit_hint_is_exact_even_with_names(self):
+        self.assertEqual(self.prompt(names=["alpha"], hint="Hey Nixi."), "Hey Nixi.")
+
+    def test_prompt_ends_with_whole_base_under_name_budget(self):
+        names = ["n%02d" % i + "x" * 28 for i in range(30)]
+        self.assertTrue(all(len(n) == 31 for n in names))
+        names = [n + "y" for n in names]
+        for hint in (self.s.DEFAULTS["stt_hint"], " ".join("w%d" % i for i in range(150))):
+            self.s.CFG["stt_hint"] = hint
+            p = self.prompt(names=names)
+            self.assertTrue(p.endswith(". " + hint), hint[:20])
+            self.assertTrue(p.startswith(", ".join(names) + ". "))
+
+    # collection
+
+    def test_filter_and_dedup(self):
+        got = self.collect(
+            herdr=[{"cwd": "/x/Foo"}, {"cwd": "/x/trail\n"}, {"cwd": "/x/caf\u00e9"}, {"cwd": "/x/a"}, {"cwd": "/x/" + "a" * 33}],
+            projects=["foo", "a/b", 5, None, "ok-proj"],
+            peers=[{"name": "FOO"}, {"name": "box"}])
+        self.assertEqual(got, ["Foo", "ok-proj", "box"])
+
+    def test_boundary_lengths_kept(self):
+        self.assertEqual(self.collect(projects=["ab", "a" * 32]), ["ab", "a" * 32])
+
+    def test_cap_at_30(self):
+        got = self.collect(projects=["name%02d" % i for i in range(40)])
+        self.assertEqual(got, ["name%02d" % i for i in range(30)])
+
+    def test_one_source_raising_keeps_the_others(self):
+        s = self.s
+        with mock.patch.object(s, "herdr_agents", side_effect=RuntimeError), \
+             mock.patch.object(s.quick, "projects", return_value={"proj": "/p"}), \
+             mock.patch.object(s.peers, "current", return_value=[{"name": "box"}]):
+            self.assertEqual(s._collect_names(), ["proj", "box"])
+        with mock.patch.object(s, "herdr_agents", return_value=[{"cwd": "/a/good"}]), \
+             mock.patch.object(s.quick, "projects", side_effect=AttributeError), \
+             mock.patch.object(s.peers, "current", side_effect=RuntimeError):
+            self.assertEqual(s._collect_names(), ["good"])
+
+    def test_bad_rows_keep_the_good_ones(self):
+        got = self.collect(herdr=[None, {"cwd": 5}, "x", {"cwd": "/a/good"}],
+                           peers=["bad", {"x": 1}, {"name": 7}, {"name": "box"}])
+        self.assertEqual(got, ["good", "box"])
+
+    def test_herdr_cwd_with_trailing_slash_keeps_its_name(self):
+        self.assertEqual(self.collect(herdr=[{"cwd": "/a/proj/"}]), ["proj"])
+
+    # refresh
+
+    def stub_collector(self, result=("A",), error=None):
+        s = self.s
+        entered, release, calls = threading.Event(), threading.Event(), []
+        self.addCleanup(release.set)       # runs before the joins: a failed assertion never leaves a worker blocked
+
+        def collector():
+            calls.append(1)
+            entered.set()
+            release.wait(2)
+            if error:
+                raise error
+            return list(result)
+        patch = mock.patch.object(s, "_collect_names", collector)
+        patch.start()
+        self.addCleanup(patch.stop)
+        return entered, release, calls
+
+    def test_first_call_returns_empty_then_cached_names(self):
+        entered, release, calls = self.stub_collector()
+        self.assertEqual(self.s.stt_names(), [])
+        self.assertTrue(entered.wait(2))
+        release.set()
+        self.assertTrue(wait_until(lambda: self.s._names == ["A"] and not self.s._names_busy))
+        self.assertEqual(self.s.stt_names(), ["A"])     # fresh: no new refresh
+        self.assertEqual(len(calls), 1)
+
+    def test_two_concurrent_callers_start_one_refresh(self):
+        entered, release, calls = self.stub_collector()
+        barrier, results = threading.Barrier(2), []
+
+        def caller():
+            barrier.wait(2)
+            results.append(self.s.stt_names())
+        callers = [RealThread(target=caller, daemon=True) for _ in range(2)]
+        for t in callers:
+            t.start()
+        for t in callers:
+            t.join(timeout=2)
+            self.assertFalse(t.is_alive())
+        self.assertEqual(results, [[], []])
+        self.assertTrue(entered.wait(2))
+        self.assertEqual(len(calls), 1)
+        release.set()
+        self.assertTrue(wait_until(lambda: not self.s._names_busy))
+        self.assertEqual(len(calls), 1)
+
+    def test_call_during_refresh_does_not_block(self):
+        entered, release, calls = self.stub_collector(result=("new",))
+        self.s._names = ["old"]
+        self.assertEqual(self.s.stt_names(), ["old"])
+        self.assertTrue(entered.wait(2))
+        out = []
+        t = RealThread(target=lambda: out.append(self.s.stt_names()), daemon=True)
+        t.start()
+        t.join(timeout=2)
+        self.assertFalse(t.is_alive())      # returned while the collector still waits on release
+        self.assertFalse(release.is_set())
+        self.assertEqual(out, [["old"]])
+        self.assertEqual(len(calls), 1)
+        release.set()
+        self.assertTrue(wait_until(lambda: self.s._names == ["new"]))
+
+    def test_failed_collector_does_not_wedge_refresh(self):
+        entered, release, calls = self.stub_collector(error=RuntimeError("boom"))
+        release.set()
+        self.s.stt_names()
+        self.assertTrue(wait_until(lambda: len(calls) == 1 and not self.s._names_busy))
+        self.assertEqual(self.s._names_at, float("-inf"))
+        self.s.stt_names()
+        self.assertTrue(wait_until(lambda: len(calls) == 2 and not self.s._names_busy))
+
+    def test_thread_start_failure_releases_claim(self):
+        entered, release, calls = self.stub_collector()
+        bad = mock.Mock()
+        bad.return_value.start.side_effect = RuntimeError("no threads")
+        with mock.patch.object(self.s.threading, "Thread", bad):
+            self.assertEqual(self.s.stt_names(), [])
+        self.assertFalse(self.s._names_busy)
+        self.assertEqual(calls, [])
+        release.set()
+        self.s.stt_names()                  # the real Thread again: a refresh starts
+        self.assertTrue(entered.wait(2))
+        self.assertTrue(wait_until(lambda: self.s._names == ["A"] and not self.s._names_busy))
+
+    # migration
+
+    def load(self, content=None):
+        path = Path(self.tmp) / (self.id().split(".")[-1] + ".json")
+        if content is not None:
+            path.write_text(json.dumps(content) if not isinstance(content, str) else content)
+        err = io.StringIO()
+        with mock.patch.object(self.s, "CONF_PATH", path), contextlib.redirect_stderr(err):
+            cfg = self.s.load_config()
+        return cfg, err.getvalue(), path
+
+    def test_migration_cases(self):
+        s = self.s
+        new = s.DEFAULTS["stt_hint"]
+        self.assertNotEqual(new, s._OLD_STT_HINT)
+        cfg, err, _ = self.load({"language": "en"})
+        self.assertEqual(cfg["stt_hint"], new)
+        self.assertNotIn("old default", err)
+        cfg, err, path = self.load({"stt_hint": s._OLD_STT_HINT})
+        self.assertEqual(cfg["stt_hint"], new)
+        self.assertEqual(err.count("[nixi] stt_hint: old default replaced"), 1)
+        self.assertEqual(json.loads(path.read_text())["stt_hint"], s._OLD_STT_HINT)   # file untouched
+        cfg, err, _ = self.load({"stt_hint": ""})
+        self.assertEqual(cfg["stt_hint"], "")
+        self.assertNotIn("old default", err)
+        cfg, err, _ = self.load({"stt_hint": "my words"})
+        self.assertEqual(cfg["stt_hint"], "my words")
+        self.assertNotIn("old default", err)
+
+    def test_migration_survives_save_config_reload(self):
+        s = self.s
+        path = Path(self.tmp) / "reload.json"
+        path.write_text(json.dumps({"stt_hint": s._OLD_STT_HINT}))
+        with mock.patch.object(s, "CONF_PATH", path), contextlib.redirect_stderr(io.StringIO()):
+            s.save_config(volume=0.5)
+            cfg = s.load_config()
+        self.assertEqual(cfg["stt_hint"], s.DEFAULTS["stt_hint"])
+        self.assertEqual(cfg["volume"], 0.5)
 
 
 class FakeModel:
