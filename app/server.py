@@ -398,6 +398,7 @@ class State:
         self.last_you = ""                         # the last request, for "continue in nixi" (nixi mode keeps no history)
         self.stage_run_tok = None                  # …and the item it belongs to, so a denial can say which one
         self.stage_run = None                      # the one command a stage's Run may ask for (#144): any other permission is denied
+        self.send_watch = None
 
     def save(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -6320,9 +6321,10 @@ BRIDGE = Bridge()
 
 
 # ---------------------------------------------------------------- agent sessions (#95)
-# The companion may READ herdr locally (agent list, agent read) and nothing else. It never writes to a session:
+# The companion may read and focus herdr locally. It never writes to a session:
 # every send goes through nixi's bridge and its card.
 PANE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9:_.-]{0,63}")      # (no leading dash: a pane id is never an option)
+SESSION_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")    # (no leading dash: a session named "--help" exists)
 SECRET_LINE = re.compile(
     r"-----BEGIN|AKIA[0-9A-Z]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|\bsk-[A-Za-z0-9_-]{16,}|xox[bap]-[A-Za-z0-9-]{10,}"
     r"|AIza[0-9A-Za-z_-]{20,}|Bearer\s+[A-Za-z0-9._~+/=-]{10,}|(?:password|passwd|token|secret|api[_-]?key)\s*[=:]"
@@ -6331,11 +6333,33 @@ PLAIN = re.compile(r"/nix/store/\S+|\b[0-9a-f]{40,64}\b")        # git SHAs and 
 CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")                # (\n and \t stay)
 MARKER = re.compile(r"<<<\s*SESSION-OUTPUT|SESSION-OUTPUT\s*>>>")
 READ_CAP = 4096
+WATCH_LOCK = threading.Lock()
+SENDS = {}
+TURN = 0
+
+
+def _record_send(command, prompt, session, pane):
+    with WATCH_LOCK:
+        now = time.monotonic()
+        for key, rec in list(SENDS.items()):
+            if now - rec["at"] > 900:
+                del SENDS[key]
+        SENDS.pop(prompt, None)
+        SENDS[prompt] = {"command": command, "session": session, "pane": pane, "at": now}
+        if len(SENDS) > 8:
+            del SENDS[next(iter(SENDS))]
+    return prompt
 
 
 def _herdr(argv):
     """Run one allowlisted herdr command; stdout, or None on any failure."""
-    if argv[:3] not in (["herdr", "agent", "list"], ["herdr", "agent", "read"]):
+    ok = argv == ["herdr", "session", "list", "--json"]
+    if not ok and len(argv) >= 5 and argv[:2] == ["herdr", "--session"] and isinstance(argv[2], str) and SESSION_RE.fullmatch(argv[2]):
+        rest = argv[3:]
+        ok = (rest == ["agent", "list"]
+              or (rest[:2] in (["agent", "read"], ["agent", "focus"]) and len(rest) >= 3 and isinstance(rest[2], str) and PANE_RE.fullmatch(rest[2])
+                  and (rest[1] == "read" or len(rest) == 3)))
+    if not ok:
         raise ValueError("herdr command not allowed")
     try:
         r = subprocess.run(argv, capture_output=True, text=True, timeout=3)
@@ -6344,13 +6368,29 @@ def _herdr(argv):
     return r.stdout if r.returncode == 0 else None
 
 
-def herdr_agents():
-    out = _herdr(["herdr", "agent", "list"])
+def herdr_sessions():
+    """Names of the running herdr sessions; [] on any failure. (Nixi has no HERDR_* env, so the default session alone is usually empty.)"""
+    out = _herdr(["herdr", "session", "list", "--json"])
     try:
-        agents = json.loads(out)["result"]["agents"] if out else []
-    except (ValueError, KeyError, TypeError):
+        data = json.loads(out)["sessions"] if out else []
+        return [s["name"] for s in data if isinstance(s, dict) and s.get("running") is True
+                and isinstance(s.get("name"), str) and SESSION_RE.fullmatch(s["name"])]
+    except (ValueError, KeyError, TypeError, AttributeError):
         return []
-    return [a for a in agents if isinstance(a, dict)] if isinstance(agents, list) else []
+
+
+def herdr_agents():
+    """Agents of every running session, each dict carrying its "session"; a session that fails is skipped."""
+    found = []
+    for s in herdr_sessions():
+        out = _herdr(["herdr", "--session", s, "agent", "list"])
+        try:
+            agents = json.loads(out)["result"]["agents"] if out else []
+        except (ValueError, KeyError, TypeError):
+            continue
+        if isinstance(agents, list):
+            found += [{**a, "session": s} for a in agents if isinstance(a, dict)]
+    return found
 
 
 def resolve_session(name, agents, exact_only=False):
@@ -6367,10 +6407,10 @@ def resolve_session(name, agents, exact_only=False):
     return exact if exact or exact_only else [a for a in agents if any(want in f for f in fields(a))]
 
 
-def herdr_read(pane):
-    if not isinstance(pane, str) or not PANE_RE.fullmatch(pane):
+def herdr_read(pane, session):
+    if not isinstance(pane, str) or not PANE_RE.fullmatch(pane) or not isinstance(session, str) or not SESSION_RE.fullmatch(session):
         raise ValueError("bad pane id")
-    return _herdr(["herdr", "agent", "read", pane, "--source", "recent", "--lines", "40", "--format", "text"])
+    return _herdr(["herdr", "--session", session, "agent", "read", pane, "--source", "recent", "--lines", "40", "--format", "text"])
 
 
 def redact_session(text):
@@ -6407,17 +6447,17 @@ def session_status(name, loose=False):
         return (None, None) if loose else (lang.t("session.not_found", name=name), None)
     if len(hits) > 1:
         return (lang.t("session.which", names=", ".join(_title(a) for a in hits[:4])), None)
-    out = herdr_read(hits[0].get("pane_id"))
+    out = herdr_read(hits[0].get("pane_id"), hits[0].get("session"))
     if out is None:
         return (lang.t("session.no_read"), None)
     return (None, status_prompt(hits[0], redact_session(out)))
 
 
-def attach_argv(pane):
+def attach_argv(pane, session):
     """The window for "show me": attach, never --takeover, so closing it leaves the session running."""
-    if not isinstance(pane, str) or not PANE_RE.fullmatch(pane):
+    if not isinstance(pane, str) or not PANE_RE.fullmatch(pane) or not isinstance(session, str) or not SESSION_RE.fullmatch(session):
         raise ValueError("bad pane id")
-    base = ["xdg-terminal-exec", "herdr", "agent", "attach", pane]
+    base = ["xdg-terminal-exec", "herdr", "--session", session, "agent", "attach", pane]
     return ["setsid", "uwsm-app", "--"] + base if shutil.which("uwsm-app") else base
 
 
@@ -6431,7 +6471,7 @@ def session_show(name):
     if len(hits) > 1:
         return lang.t("session.which", names=", ".join(_title(a) for a in hits[:4]))
     try:
-        subprocess.Popen(attach_argv(hits[0].get("pane_id")), start_new_session=True,
+        subprocess.Popen(attach_argv(hits[0].get("pane_id"), hits[0].get("session")), start_new_session=True,
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except (OSError, ValueError):
         return lang.t("session.open_failed")
@@ -6453,23 +6493,87 @@ def session_send(name, text):
     if len(hits) > 1:
         return (lang.t("session.which", names=", ".join(_title(a) for a in hits[:4])), None)
     pane = hits[0].get("pane_id")
-    if not isinstance(pane, str) or not PANE_RE.fullmatch(pane):
+    session = hits[0].get("session")
+    if not isinstance(pane, str) or not PANE_RE.fullmatch(pane) or not isinstance(session, str) or not SESSION_RE.fullmatch(session):
         return (lang.t("session.bad_id"), None)
     title = _title(hits[0])
-    return (None, "Start your reply with exactly this: " + lang.t("session.send_say", text=text, title=title) + " "
-                  f"Then run exactly this one command and nothing else: herdr agent prompt {pane} {shlex.quote(text)}\n"
-                  f"(Why: the user asked by voice to send that text to the \"{title}\" session.)")
+    return (None, _record_send(
+        f"herdr --session {session} agent prompt {pane} {shlex.quote(text)}",
+        "Start your reply with exactly this: " + lang.t("session.send_say", text=text, title=title) + " "
+        f"Then run exactly this one command and nothing else: herdr --session {session} agent prompt {pane} {shlex.quote(text)}\n"
+        f"(Why: the user asked by voice to send that text to the \"{title}\" session.)", session, pane))
+
+
+def herdr_window(session, proc="/proc"):
+    """The Hyprland address of the one herdr window showing `session`, else None. A terminal process can own several
+    windows (kitty single-instance), so the match must be exactly one window, not one pid."""
+    if not isinstance(session, str) or not SESSION_RE.fullmatch(session):
+        return None
+    try:
+        clients = json.loads(_run(["hyprctl", "clients", "-j"], timeout=3).stdout)
+        addrs = {}                                       # pid -> addresses of every window that process owns
+        for c in clients:
+            if isinstance(c, dict) and type(c.get("pid")) is int and c["pid"] > 0 and isinstance(c.get("address"), str):
+                addrs.setdefault(c["pid"], []).append((c["address"], c.get("class")))
+        windows = {pid for pid, ws in addrs.items() if any(cls == "org.omarchy.herdr" for _, cls in ws)}
+        matched = set()
+        for child in Path(proc).iterdir():
+            if not child.name.isdecimal():
+                continue
+            try:
+                ppid = int(child.joinpath("stat").read_text().rsplit(") ", 1)[1].split()[1])
+                if ppid not in windows:
+                    continue
+                argv = child.joinpath("cmdline").read_bytes().split(b"\0")
+                if argv[-1] == b"":
+                    argv.pop()
+                argv = [a.decode() for a in argv]
+                if len(argv) == 3 and os.path.basename(argv[0]) == "herdr" and argv[1:] == ["--session", session]:
+                    matched.add(ppid)
+            except (OSError, ValueError, IndexError, UnicodeDecodeError):
+                continue
+        if len(matched) != 1:
+            return None
+        ws = addrs[next(iter(matched))]
+        addr = ws[0][0] if len(ws) == 1 else None
+        return addr if addr and re.fullmatch(r"0x[0-9a-fA-F]{1,16}", addr) else None
+    except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError):
+        return None
+
+
+def show_agent(session, pane, turn):
+    alive = lambda: not ST.stopped and TURN == turn
+    try:
+        if not isinstance(session, str) or not SESSION_RE.fullmatch(session) or not isinstance(pane, str) or not PANE_RE.fullmatch(pane):
+            return
+        if not alive():
+            return
+        out = _herdr(["herdr", "--session", session, "agent", "list"])
+        agents = json.loads(out)["result"]["agents"] if out else []
+        if not any(isinstance(a, dict) and a.get("pane_id") == pane for a in agents):
+            return
+        if not alive() or _herdr(["herdr", "--session", session, "agent", "focus", pane]) is None:
+            return
+        if not alive():
+            return
+        addr = herdr_window(session)
+        if alive() and addr:
+            _run(["hyprctl", "dispatch", "focuswindow", f"address:{addr}"], timeout=3)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def run_bridge(prompt, emit):
     """One turn through nixi's bridge; the events are mapped as in the plan. Returns "done"."""
+    with WATCH_LOCK:
+        my_turn = TURN
     try:
         p = BRIDGE.start()
     except OSError as e:
         emit(t="error", text=f"Couldn't start the nixi bridge: {e}")
         return "done"
 
-    def approve(o):                                      # (a worker: the card waits for you, the reader goes on)
+    def approve(o, w):                                   # (a worker: the card waits for you, the reader goes on)
         opts = [x for x in o.get("options") or [] if isinstance(x, dict)]
         if ST.stage_run is not None and o.get("command") != ST.stage_run:    # byte-exact; no `command` field = not it (fail closed)
             emit(t="stage_status", state="other", token=ST.stage_run_tok)
@@ -6482,6 +6586,15 @@ def run_bridge(prompt, emit):
             return
         pick = APPROVALS.ask_bridge(str(o.get("title") or "Use a tool"), opts, str(o.get("detail") or ""),
                                     confirm=o.get("confirm"), summary=o.get("summary"))      # "click": a send, voice cannot answer it (#95)
+        if (w and w["turn"] == my_turn and o.get("confirm") == "click" and o.get("command") == w["command"]
+                and isinstance(o.get("toolCallId"), str) and o["toolCallId"]):
+            with WATCH_LOCK:
+                if ST.send_watch is w and not w["armed"] and TURN == my_turn and not ST.stopped and BRIDGE.proc is p:
+                    kind = next((x.get("kind") for x in opts if x.get("id") == pick), None)
+                    if isinstance(kind, str) and kind.startswith("allow"):
+                        w["id"], w["armed"] = o["toolCallId"], True
+                    else:
+                        ST.send_watch = None
         if BRIDGE.proc is p:                             # (ids restart per bridge: never answer a newer one's request)
             BRIDGE.send({"type": "permission", "id": o.get("id"), "optionId": pick})
 
@@ -6523,9 +6636,21 @@ def run_bridge(prompt, emit):
             mid = o.get("messageId")
             emit(t="delta", text=str(o.get("text") or ""))
         elif ty == "tool":
+            focus = None
+            with WATCH_LOCK:
+                w = ST.send_watch
+                if (w and w["armed"] and w["turn"] == my_turn and o.get("toolCallId") == w["id"]
+                        and o.get("status") in ("completed", "failed")):
+                    ST.send_watch = None
+                    if o["status"] == "completed":
+                        focus = (w["session"], w["pane"], w["turn"])
+            if focus:
+                threading.Thread(target=show_agent, args=focus, daemon=True).start()
             emit(t="tool", name=str(o.get("title") or "tool"), detail="", id="", input=None, status=str(o.get("status") or ""))
         elif ty == "permission":
-            threading.Thread(target=approve, args=(o,), daemon=True).start()
+            with WATCH_LOCK:
+                w = ST.send_watch
+            threading.Thread(target=approve, args=(o, w), daemon=True).start()
         elif ty in ("notice", "status"):
             emit(t="status", text=str(o.get("text") or ""))
         elif ty == "done":
@@ -6594,7 +6719,7 @@ def desk_stage(st):
         on = CFG.get("ambient_calendar")
         return stages.calendar_stage(stages.calendar_rows(Ambient.cal_items, now) if on else None, label(Ambient.cal_at))
     if k == "status":
-        sessions = [{"title": _title(a), "status": _clean(a.get("agent_status"), 30) or "unknown", "pane": a["pane_id"]}
+        sessions = [{"title": _title(a), "status": _clean(a.get("agent_status"), 30) or "unknown", "pane": a["pane_id"], "session": a["session"]}
                     for a in herdr_agents() if isinstance(a.get("pane_id"), str) and PANE_RE.fullmatch(a["pane_id"])]
         on = CFG.get("ambient_system", True)
         return stages.status_stage(sessions, [str(u)[:60] for u in Ambient.data["sys"]] if on else [], on)
@@ -7866,10 +7991,10 @@ def stage_act(token, act):
         got = None
     if act in ("session", "terminal") and got and got[0] == act:    # the desk: a herdr session's window, or a fresh terminal
         try:
-            argv = attach_argv(got[1]["pane"]) if act == "session" else ["xdg-terminal-exec"]
+            argv = attach_argv(got[1]["pane"], got[1]["session"]) if act == "session" else ["xdg-terminal-exec"]
             subprocess.Popen(argv, start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return {"ok": True}
-        except (OSError, ValueError):
+        except (OSError, ValueError, KeyError):
             return {"ok": False, "error": "couldn't open it"}
     if act == "copy" and got:
         text = got[1].get("cmd") or got[1].get("text")
@@ -9360,7 +9485,14 @@ class Handler(BaseHTTPRequestHandler):
                     alive[0] = False
                     stop_proc()
 
-            ST.stopped = False
+            global TURN
+            with WATCH_LOCK:
+                TURN += 1
+                turn = TURN
+                ST.stopped = False
+                watch = SENDS.pop(said, None)
+                ST.send_watch = ({**watch, "turn": turn, "id": None, "armed": False}
+                                 if watch and time.monotonic() - watch["at"] <= 900 else None)
             partial = bool(CFG["partial_messages"])
             ST.stage_run, ST.stage_run_tok = run_cmd, tok
             if run_cmd is not None:
@@ -9393,6 +9525,8 @@ class Handler(BaseHTTPRequestHandler):
             emit(t="done")
         finally:
             ST.stage_run = ST.stage_run_tok = None
+            with WATCH_LOCK:
+                ST.send_watch = None
             ST.lock.release()
         if CFG.get("auto_compact", True) and ST.ctx_used >= ctx_scale() * float(CFG.get("compact_at") or 0.7):
             threading.Thread(target=auto_compact, daemon=True).start()

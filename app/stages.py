@@ -389,7 +389,7 @@ def calendar_stage(events, at):
 
 
 def status_stage(sessions, failed, sys_on):
-    """sessions [{title,status,pane}], failed = unit names, sys_on = the system list is being kept (else 'not checked')."""
+    """sessions [{title,status,pane,session}], failed = unit names, sys_on = the system list is being kept (else 'not checked')."""
     return {"v": 1, "kind": "status", "sessions": sessions[:5], "failed": failed[:5], "failed_n": len(failed), "sys_on": bool(sys_on)}
 
 
@@ -497,7 +497,7 @@ class Store:
             toks[page["term"]] = ("terminal", {})
             for x in stage["sessions"]:
                 t = secrets.token_urlsafe(12)
-                toks[t] = ("session", {"pane": x["pane"]})
+                toks[t] = ("session", {"pane": x["pane"], "session": x["session"]})
                 page["sessions"].append({"title": x["title"], "status": x["status"], "open": t})
         elif stage["kind"] == "gauges":
             page["token"] = secrets.token_urlsafe(12)

@@ -185,14 +185,14 @@ class DeskStagesTest(unittest.TestCase):
             self.assertFalse(po.called)
 
     # ---- status
-    AGENTS = [{"pane_id": "p_1", "cwd": "/home/u/proj", "agent": "claude", "agent_status": "working"},
-              {"pane_id": "bad id; rm", "cwd": "/x", "agent": "claude"}]
+    AGENTS = [{"pane_id": "p_1", "session": "Dev-1", "cwd": "/home/u/proj", "agent": "claude", "agent_status": "working"},
+              {"pane_id": "bad id; rm", "session": "Dev-1", "cwd": "/x", "agent": "claude"}]
 
     def test_status_from_herdr_and_the_failed_unit_list(self):
         with mock.patch.object(self.s, "herdr_agents", return_value=self.AGENTS), mock.patch.dict(self.s.Ambient.data, {"sys": ["foo.service"]}), \
                 mock.patch.dict(self.s.CFG, {"ambient_system": True}):
             st = self.s.desk_stage({"v": 1, "kind": "status"})
-        self.assertEqual(st["sessions"], [{"title": "proj", "status": "working", "pane": "p_1"}])        # a bad pane id is dropped
+        self.assertEqual(st["sessions"], [{"title": "proj", "status": "working", "pane": "p_1", "session": "Dev-1"}])        # a bad pane id is dropped
         self.assertEqual((st["failed"], st["sys_on"]), (["foo.service"], True))
 
     def test_status_with_the_system_list_off_is_not_checked(self):
@@ -201,11 +201,11 @@ class DeskStagesTest(unittest.TestCase):
         self.assertEqual((st["failed"], st["sys_on"]), ([], False))
 
     def test_open_session_attaches_by_pane_and_open_terminal(self):
-        page = self.s.STAGES.put(self.st.status_stage([{"title": "proj", "status": "idle", "pane": "p_1"}], [], True))
+        page = self.s.STAGES.put(self.st.status_stage([{"title": "proj", "status": "idle", "pane": "p_1", "session": "Dev-2"}], [], True))
         self.assertNotIn("p_1", json.dumps(page))
         with mock.patch.object(self.s.subprocess, "Popen") as po:
             self.assertTrue(self.s.stage_act(page["sessions"][0]["open"], "session")["ok"])
-            self.assertIn("p_1", po.call_args[0][0])
+            self.assertEqual(po.call_args[0][0][-5:], ["--session", "Dev-2", "agent", "attach", "p_1"])
             self.assertIn("xdg-terminal-exec", po.call_args[0][0])
             self.assertTrue(self.s.stage_act(page["term"], "terminal")["ok"])
             self.assertEqual(po.call_args[0][0], ["xdg-terminal-exec"])

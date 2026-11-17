@@ -180,6 +180,9 @@ UserPromptSubmit                      … attention --from codex --hook  (timeou
   asking in its own terminal.
 - **Click only.** A yes needs a real click on the card: Y, Enter and the voice never approve, and there is no "always".
   No or Esc denies. Nixi's own send and herdr-write cards need the same click.
+- **Sends reach every herdr session.** By voice or typed, a send finds the agent in any running herdr session. After
+  you click allow and the send succeeds, herdr switches to that agent's tab, and its window comes to the front when
+  exactly one herdr window shows that session.
 - **60 s.** Nixi waits 60 s (the hook timeout is 75 s), then the card goes and the agent asks in its own terminal as
   usual. "Answer in the terminal" hands it back at once. With the setting off, the agent asks as before.
 - **Result.** After you approve, a line says "Codex ran it ✓" (Codex reports no exit code, so a command that ran
