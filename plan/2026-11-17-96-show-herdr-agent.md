@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 96
 spec: spec/2026-11-17-96-show-herdr-agent.md
 coders:
