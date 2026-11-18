@@ -261,6 +261,10 @@ Changed from the spec, to be approved with this plan (Codex plan review):
      that has no entry. A real entry, on or off, always wins.
    - **The three constructors** (`server.py:2411`, `:2547`, `:2585`) pass
      `plugins_on=SHARED_EXTRAS["plugins_on"]`.
+   - *Deviation (Codex PR review):* `Plug.review` no longer writes an
+     entry for a Nix plugin that's on only through `plugins_on`. Nix
+     plugins need no hash consent, and an automatic entry would keep the
+     plugin on after a later deploy drops it from `plugins_on`.
    - **Note:** `Plug.review` already writes an entry with the hash for an
      enabled Nix plugin (`plugins.py:1009-1013`). That's expected: it
      records "on", and an explicit off is never turned on.
@@ -333,6 +337,8 @@ Changed from the spec, to be approved with this plan (Codex plan review):
      calling Python, because the Python helper's own command line matches
      `SRV_RE`. Python then waits (excluding its own pid) and restarts Nixi
      in a `finally`.
+   - *Deviation (Codex PR review):* the printed undo command also moves
+     the plugin folders back from `<backup>/plugins/`.
    - Verify with:
      ```bash
      nix develop .#ci -c python3 -B .github/ci/run_tests.py test_shared_settings.py
@@ -400,6 +406,11 @@ Changed from the spec, to be approved with this plan (Codex plan review):
        misses a deploy's symlink swap, so `open()` also calls
        `sharedSettingsFile.reload()`. A deployed change reaches the card on
        its next open, not live.
+     - *Deviation (Codex PR review):* both open paths, `open()` and
+       `toggle()`, call `refreshSharedSettings()` before
+       `createConversation`. It's a blocking re-read (`blockAllReads`), so
+       the first conversation after a deploy already has the deployed
+       agent, model and effort.
      - The card keeps a set of keys you changed in this run, filled where
        each card setting is changed by the user.
      - `writeSettings` (`:225-230`) merges only those keys over the disk
