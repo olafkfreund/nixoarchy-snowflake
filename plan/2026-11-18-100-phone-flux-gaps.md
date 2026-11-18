@@ -365,6 +365,11 @@ The steps run in order, because most of them edit `app/server.py`.
      ```bash
      nix develop .#ci -c python3 -B .github/ci/run_tests.py test_phone_flux_more.py test_phone.py test_phone_fit.py
      ```
+   - *Deviations (step 3, Codex review):* each row also has `status`, the
+     translated `_phone_where(d)`, so the page never hard-codes "online".
+     `phone_pub` builds its message, then publishes under `PHONE_LOCK`
+     only if `PHONE_GEN` is unchanged, so a reset's empty event always
+     comes last.
    - **Traps:**
      - `phone_status()` stays the one-line summary.
      - The plugin feed gets no device rows.

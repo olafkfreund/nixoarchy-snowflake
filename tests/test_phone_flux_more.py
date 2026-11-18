@@ -342,5 +342,58 @@ class NoteTest(_ServerEnv):
         self.assertIsNone(s.PHONE_WHEN_DONE)
 
 
+class PhoneTabTest(_ServerEnv):
+    def setUp(self):
+        s = self.s = self.server
+        saved = dict(s.CFG)
+        self.addCleanup(lambda: (s.CFG.clear(), s.CFG.update(saved)))
+        s.CFG["phone_on"] = True
+        d1 = dev("pixel", "Pixel 7 +4790000000 code 123456")
+        d1.update(fingerprint="ab:cd:ef:01:23", ip="10.0.0.5", notifications=[{"text": "secret text"}])
+        d2 = dev("tab", "Tab", online=False, last=time.time() - 120)
+        self.p = StubPhone([d1, d2])
+        patcher = mock.patch.object(s, "Phone", self.p)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_rows_have_exactly_the_listed_keys_and_no_content(self):
+        rows = self.s.phone_devices()
+        keys = {"name", "online", "last_seen_ago", "charge", "charging", "fingerprint", "ip", "status", "hint"}
+        self.assertTrue(all(set(r) == keys for r in rows))
+        self.assertEqual((rows[0]["fingerprint"], rows[0]["ip"]), ("abcd ef01 23", "10.0.0.5"))
+        blob = json.dumps(rows)
+        for secret in ("secret text", "4790000000", "123456"):
+            self.assertNotIn(secret, blob)
+
+    def test_hint_only_when_offline(self):
+        rows = self.s.phone_devices()
+        self.assertEqual((rows[0]["hint"], rows[1]["hint"]), ("", self.s.lang.t("phone.offline_hint")))
+        self.assertTrue(rows[1]["last_seen_ago"])
+
+    def test_status_is_translated(self):
+        rows = self.s.phone_devices()
+        self.assertEqual(rows[0]["status"], self.s.lang.t("phone.online"))
+        self.assertNotEqual(rows[1]["status"], rows[0]["status"])
+
+    def test_pub_dropped_when_reset_runs_meanwhile(self):
+        s = self.s
+        sent = []
+        orig = s.phone_devices
+        def devs():
+            r = orig()
+            s.PHONE_GEN += 1                  # a reset lands after the rows were built
+            return r
+        with mock.patch.object(s, "phone_devices", devs), mock.patch.object(s.BUS, "pub", lambda **k: sent.append(k)):
+            s.phone_pub()
+        self.assertEqual(sent, [])
+
+    def test_empty_when_off_or_disconnected(self):
+        self.s.CFG["phone_on"] = False
+        self.assertEqual(self.s.phone_devices(), [])
+        self.s.CFG["phone_on"] = True
+        self.p.connected = False
+        self.assertEqual(self.s.phone_devices(), [])
+
+
 if __name__ == "__main__":
     unittest.main()

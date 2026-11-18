@@ -7207,8 +7207,28 @@ def phone_status():
     return lang.t("phone.connected", names=", ".join(d["name"] for d in devs) or "-")
 
 
+def phone_devices():
+    """One row per paired device for the Phone tab: names and fixed facts only, never numbers, texts or notifications."""
+    if not CFG.get("phone_on") or not Phone.connected:
+        return []
+    rows = []
+    for d in Phone.devices():
+        b = d.get("battery") or {}
+        fp = re.sub(r"[^0-9A-Za-z]", "", str(d.get("fingerprint") or ""))
+        rows.append({"name": mail_scrub([mail_clean(d["name"], 60)])[0], "online": bool(d["online"]),
+                     "last_seen_ago": _phone_ago(d["lastSeen"]) if d.get("lastSeen") else "",
+                     "charge": b.get("charge"), "charging": bool(b.get("charging")),
+                     "fingerprint": " ".join(fp[i:i + 4] for i in range(0, len(fp), 4)), "ip": str(d.get("ip") or ""),
+                     "status": _phone_where(d), "hint": "" if d["online"] else lang.t("phone.offline_hint")})
+    return rows
+
+
 def phone_pub():
-    BUS.pub(t="phone", status=phone_status(), devices=[{"online": d["online"]} for d in Phone.devices()] if CFG.get("phone_on") and Phone.connected else [])
+    gen = PHONE_GEN
+    msg = dict(t="phone", status=phone_status(), devices=phone_devices())
+    with PHONE_LOCK:                      # (a reset in between voids this: its own empty event must come last)
+        if gen == PHONE_GEN:
+            BUS.pub(**msg)
 
 
 PHONE_BATT = {}                       # device id -> its last charge seen
@@ -8575,7 +8595,7 @@ def state_info():
         "projects": quick.projects(),
         **{k: bool(CFG.get(k, k == "notify_sound")) for k in NOTIFY_FLAGS}, "notify_speak": CFG.get("notify_speak", ["meeting"]),
         "phone_on": CFG.get("phone_on") is True, "phone_status": phone_status(),
-        "phone_devices": [{"online": d["online"]} for d in Phone.devices()] if CFG.get("phone_on") and Phone.connected else [],
+        "phone_devices": phone_devices(),
         "mail_on": CFG.get("mail_on") is True, "mail_accounts": CFG.get("mail_accounts") or [], "mail_model": CFG.get("mail_model") or "",
         "agent_voice_mute": CFG.get("agent_voice_mute") or [],
         "workout": CFG.get("workout") or [], "water_every": CFG.get("water_every") or 0,
