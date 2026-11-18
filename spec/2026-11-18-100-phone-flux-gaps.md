@@ -8,217 +8,292 @@ intent: intent/2026-11-18-100-phone-flux-gaps.md
 
 ## Design
 
-Four features. They share one Flux client change and one set of privacy
-rules. Line numbers are `origin/main` at `e352682`.
+The work is four features, plus one Flux-client change and one set of
+lifecycle and privacy rules shared by all of them. Line numbers refer to
+`origin/main` at `e352682`.
 
-### 0. Shared: the Flux client (`app/phone.py`)
+### 0. Shared
+
+**The Flux client (`app/phone.py`)**
 
 - **`Phone.METHODS`** (`:19-20`) gains exactly `notify.send`, `sms.thread`
-  and `notification.reply`. A test asserts the full set, so nothing else
-  can slip in.
-- **`devices()`** (`:113-130`) adds `fingerprint`, `ip` and `addresses` to
-  each row.
-- **A new `notifications(device)`** returns the paired device's phone
-  notifications from the snapshot. Each row has `id`, `app`, `title`,
-  `text`, `time` and `can_reply` (`bool(replyId)`). `replyId` itself and
-  `actions` aren't returned.
-- **`sms_threads()`** already passes each conversation through
-  (`:136-139`). Its `thread` field (`internal/core/sms.go:90`) is used as
-  is.
+  and `notification.reply`. A test asserts the full set.
+- **`devices()`** (`:113-130`) adds `fingerprint` and `ip` to each row.
+- **New `notifications(device)`** returns the paired device's phone
+  notifications from the snapshot:
+  - each row is `{id, app, title, text, time, can_reply}`, with
+    `can_reply = bool(replyId)`;
+  - each row also gets `rev`, the sha256 of `app`, `title`, `text` and
+    `replyId`, joined with NULs. Flux replaces a notification under the
+    same ID when its text or reply target changes
+    (`internal/core/notifications.go:257-277`), so `rev` catches that;
+  - `replyId` and `actions` themselves never leave the module.
+- **`sms_threads()`** (`:136-139`) already passes each conversation's
+  `thread` field through (`internal/core/sms.go:90`).
+
+**The device chooser.** Every target goes through `phone_choose`
+(`app/server.py:7384`) with a new capability, `note`:
+- it means "paired and online", with no plugin needed. `notify.send` is
+  checked by Flux (`internal/core/telephony.go:255`), and `share` is the
+  wrong gate;
+- several online devices with no name given get the existing
+  `phone_pick_card` (`:7529`), never a silent first pick. The 📱 button
+  behaves the same.
+
+**Lifecycle: off means off, for asynchronous work too**
+- Every path checks `CFG.get("phone_on")`, `Phone.connected` and
+  `PHONE_GEN` at entry.
+- It checks `PHONE_GEN` again under `PHONE_LOCK`:
+  - right before each `Phone.call` that sends (`notify.send`,
+    `notification.reply`);
+  - right before each `STAGES.put`/`BUS.pub` of phone content (the
+    `sms.thread` reply, which can take up to 8 s, `sms.go:263`).
+- `phone_reset` increments `PHONE_GEN` under `PHONE_LOCK` before
+  `Phone.stop()` (as today, `:7646-7690`). So once reset holds the lock,
+  no new send starts and no late reply is shown. A socket write that
+  already started can't be recalled. That's the same accepted limit as
+  `sms.send` today.
+- Tests block each operation, then switch Phone off and on, and assert
+  nothing is sent or shown.
+
+**Privacy, for every new view**
+- **What's scrubbed:** every phone-derived field that's shown, meaning
+  names, app, title, bodies and draft headers. Each goes through
+  `mail_clean` plus `mail_scrub`, as `phone_read_messages` does (`:7558`).
+- **New stage kinds:** `phone_thread`, `phone_notes` and
+  `phone_note_draft`.
+  - All three join `phone_on_screen()` (`:7073`), so they're never spoken.
+  - All three are marked `from_phone`, so `phone_reset` closes the current
+    and previous views (`:7681`).
+- **The page's caption fallback** `stageText()` (`index.html:3381`)
+  returns `''` for any `from_phone` stage, not only `mail` and
+  `phone_pick`. A stage that can't show never leaks its title into the
+  caption.
+- **Nowhere else:**
+  - nothing new reaches the status line, the plugin feed or the logs (only
+    exception type names, as today);
+  - `phone_pub` gains only the device rows in §2;
+  - agent prompts never see phone content: stages are page-only.
+- **Endpoints:** every new one needs the window token. A test asserts that
+  `TOOL_TOKEN` is refused on each (route check `:8641`).
 
 ### 1. "Tell my phone" (`notify.send`)
 
-- **Phrases** (`app/quick.py` `_phone`, and new lang `phrases` keys in every
-  language file that has the phone phrases):
-  - `phone_note`: "tell my phone {text}", "send my phone a note: {text}".
-    The text is case-kept and at most 200 characters, like `phone_reply`
-    (`:376-385`).
-  - `phone_when_done`: "tell my phone when (this is|it's) done", "ping my
-    phone when you're done".
-  - Neither collides with "tell the X session:", whose regex needs
-    `session` (`:364`).
-- **Now** (`phone_note`):
-  - `phone_choose(name, "share")` picks the device. A "can't" or "offline"
-    reply is spoken as today.
-  - Nixi calls `notify.send(device, title="Nixi", body=text)`. The text is
-    your own words. It isn't scrubbed, but is capped at 200 characters.
-  - `not_supported` gives "Update Flux on {name} to get notes".
-- **When done** (`phone_when_done`):
-  - The quick path runs outside the turn lock (`/api/quick`,
-    `app/server.py:8979`), so it works mid-turn.
-  - With no turn running (`not ST.lock.locked()`), the reply is "Nothing is
-    running right now."
-  - Otherwise it sets `PHONE_WHEN_DONE = {"turn": TURN, "device": id,
-    "gen": PHONE_GEN, "at": monotonic}`. That's one slot, so a newer
-    request replaces it. The reply is "I'll tell {name} when it's done."
-  - **The click:** a 📱 button on the page's busy indicator posts
-    `/api/phone/when-done` (window token) and does the same.
-- **Firing**: in the chat handler's `finally` (`app/server.py:~9527`, after
-  `emit(t="done")`), when `PHONE_WHEN_DONE["turn"] == turn`:
-  1. Take the slot under `PHONE_LOCK` (consume first).
-  2. Drop it if any of these holds:
-     - `gen != PHONE_GEN` or `phone_on` is off;
-     - it's more than 30 minutes old;
-     - the device is no longer paired, or is offline. An offline device
-       gets a desktop `note`: "{name} was offline, so I didn't send it".
-  3. Otherwise send one generic body from a background thread: "Your agent
-     turn finished", "… stopped" or "… failed", by outcome. Never the
-     answer or any output.
-  4. `NotSent` and `TimeoutError` aren't retried. A timeout gets "I
-     couldn't confirm {name} got it".
-- **The agent can't send one.** `/api/phone/when-done` needs the window
-  token, not `TOOL_TOKEN`. `notify.send` is reachable only from these two
-  paths. The agent policy's refusal of `flux-cli` and the socket is
-  unchanged.
+**Parsing** (`app/quick.py`)
+- The new phrases are parsed where `phone_reply` is (`:376-385`), on the
+  case-kept text and before the 120-character guard (`:386`). The order
+  is fixed:
+  1. **`phone_when_done`**, exact phrases: "tell my phone when (this
+     is|it's) done", "ping my phone when you're done", plus each
+     language's own.
+  2. **`phone_note`**: "tell my phone {text}", "send my phone a note:
+     {text}". The text is case-kept, at most 200 characters, and
+     non-empty.
+- "tell the X session:" (`:364`) needs `session`, so it doesn't collide.
+- Tests: the overlap ("tell my phone when this is done" arms; it doesn't
+  send the text "when this is done") and a 200-character mixed-case body.
 
-### 2. The Phone tab (`app/static/index.html`, `phone_status`)
+**Now** (`phone_note`)
+- Choose the device (§0). Under the `PHONE_GEN` recheck, call
+  `notify.send(device, title="Nixi", body=text)`.
+- The text is your own words, so it isn't scrubbed.
+- `not_supported` answers "Update Flux on {name} to get notes". A timeout
+  answers "I couldn't confirm {name} got it", with no retry.
 
-- **`state_info`** and the `phone` bus event (`phone_pub`, `:7207`) add
-  `phone_devices`, one row per paired device:
-  - `name`, `online`, `last_seen_ago` (`_phone_ago`), and the battery
-    `charge` and `charging`;
+**When done: an explicit active-turn identity**
+- **One lock, `WATCH_LOCK`** (it already guards `TURN`, `:9488`):
+  - the chat handler sets `ST.active_turn = turn` where it increments
+    `TURN`;
+  - in its `finally` (`:~9527`) it reads, clears and consumes the
+    completion slot, then sets `ST.active_turn = None`.
+- **Arming** (`/api/phone/when-done`, or the phrase through
+  `/api/quick`):
+  - Choose the device first, outside the lock.
+  - Then, under `WATCH_LOCK`: if `ST.active_turn is None`, the reply is
+    "Nothing is running right now." Otherwise store
+    `PHONE_WHEN_DONE = {"turn": ST.active_turn, "device": id, "gen":
+    PHONE_GEN, "at": monotonic}`.
+  - There's one slot, and a newer request replaces it.
+  - A request in the few milliseconds between the lock and `TURN`'s
+    increment sees no active turn and is refused, never bound to the old
+    turn.
+- **Firing** (in the `finally`, with the slot consumed under
+  `WATCH_LOCK`):
+  - Drop it if any of these holds:
+    - `gen != PHONE_GEN` or Phone is off;
+    - it's older than 30 minutes;
+    - the device isn't paired or isn't online. An offline device gets the
+      desktop note "{name} was offline, so I didn't send it".
+  - Otherwise, a background thread rechecks `PHONE_GEN` (§0) and sends
+    one generic body by outcome ("Your agent turn finished", "… stopped",
+    "… failed"). The body is never the answer or any output.
+  - `NotSent` and `TimeoutError` are never retried.
+- **The device disappears.** `phone_state` (`:7296`) drops the slot when
+  a snapshot shows its device no longer paired. A device that is unpaired
+  and paired again can't receive it.
+- **The 📱 button** sits on the page's busy indicator and posts
+  `/api/phone/when-done` (window token).
+- **The agent can't send.** `notify.send` is reached only by these paths,
+  all of which need the window token. The agent policy's refusal of
+  `flux-cli` and the socket is unchanged.
+
+### 2. The Phone tab
+
+- `state_info` and `phone_pub` (`:7207`) add `phone_devices`, one row per
+  paired device:
+  - `name` (scrubbed), `online` and `last_seen_ago` (`_phone_ago`);
+  - battery `charge` and `charging`;
   - `fingerprint`, formatted `ABCD EF01 2345 6789`;
-  - `ip`, the last link's address, shown only in the tab;
-  - `hint` when offline: "Not reachable now. Same network, or Tailscale
+  - `ip`, the last link's address;
+  - when offline, `hint`: "Not reachable now. Same network, or Tailscale
     on?". It's a check to try, never a diagnosis.
-
-  No numbers, notifications or texts. `phone_status()` stays the one-line
+- No numbers, notifications or texts. `phone_status()` stays the one-line
   summary.
-- **`renderPhone()`** (`:4159`) lists the rows under the switch, as
-  `.note`-style lines. With Phone off or no devices, nothing more is shown.
+- `renderPhone()` (`index.html:4159`) lists the rows under the switch.
+  With Phone off or no devices, it shows nothing more.
 
 ### 3. A conversation's latest 100 texts (`sms.thread`)
 
-- **Opening it:** each row of the `phone_sms` stage (`phone_read_messages`,
-  `:7540`) gets **Open**. The button posts `/api/phone/thread {stage,
-  index}`. The server finds the row in the stage it holds (`STAGES.get`),
-  never in what the page sends, and calls `sms.thread(device, thread)`.
-  The thread is the conversation's `thread` field, stored in the row
-  server-side and not sent to the page.
-- **The `phone_thread` stage:**
-  - up to 100 messages, oldest first, each with name, time and an
-    outgoing flag;
-  - each body goes through `mail_clean(…, 500)` and `mail_scrub` (the same
-    scrubbing as `phone_read_messages`, `:7558`);
-  - a **Reply** button reuses the existing `phone_reply` → `phone_draft`
-    path;
-  - marked `from_phone`, so `phone_reset` closes it (`:7681`).
-- **Never spoken**, and `phone_thread` joins the kinds in
-  `phone_on_screen()` (`:7073`).
+**Opening a thread**
+- Each `phone_sms` row (`:7540`) gets **Open**, which posts
+  `/api/phone/thread {stage, index}`.
+- The server finds the row in the stage it holds (`STAGES.get`), with
+  `device` and `thread` kept server-side and never sent to the page. It
+  then calls `sms.thread(device, thread)`.
+
+**The `phone_thread` stage**
+- Before the stage is shown, `PHONE_GEN` is checked again (§0).
+- It shows up to 100 messages, oldest first.
+- Each message's name and body are scrubbed (§0), and the body is cut to
+  500 characters.
+- Each message is marked outgoing or not.
+- **Reply** reuses `phone_reply` → `phone_draft` (`:7078-7099`).
 
 ### 4. Answering a phone notification (`notification.reply`)
 
-- **What Nixi adds.** Flux's own desktop notification already carries a
-  reply field when the phone allows it (`docs/features.md:364-366`). Nixi
-  adds a voice path and a card you can come back to, with the same
-  click-to-send rule.
-- **Phrases:**
-  - `phone_notes` ("show my phone notifications") opens the `phone_notes`
-    stage. It lists up to 10 recent notifications per device: app, title,
-    and `text` through `mail_clean(…, 300)` and `mail_scrub`. **Reply**
-    appears only where `can_reply`.
-  - `phone_notify_reply` ("answer {name} on my phone: {text}") matches
-    notifications whose title equals `{name}`, case-folded, and that can
-    reply. One match opens a draft with the text. Several open the list
-    with the text carried. None gives "I don't see a notification from
-    {name} you can answer."
-- **The draft.** `PHONE_NOTE_DRAFT` mirrors `PHONE_DRAFT` (`:7078-7129`):
-  - `{id: token_urlsafe(18), device, nid, app, title, gen, created}`;
-  - one at a time;
-  - it lives 10 minutes;
-  - it's consumed before Flux is called;
-  - it's restored only on `NotSent`.
-- **Sending** (`POST /api/phone/note-reply {draft, text}`, window token,
-  keyed by a click like `phone_send`):
-  - Before the call, the server checks the latest snapshot. That device
-    must still have a notification with `nid`, and the same `app` and
-    `title`. If not, the draft is dropped with "That notification is gone
-    from your phone."
-  - Then `notification.reply(device, id=nid, message=text)`, with text of
-    1–1000 characters.
-- **Not spoken.** The `phone_notes` and `phone_note_draft` stages join
-  `phone_on_screen()`, are marked `from_phone`, and are cleared by
-  `phone_reset`, along with `PHONE_NOTE_DRAFT` and `PHONE_WHEN_DONE`.
+**What Nixi adds.** Flux's own desktop notification already has a reply
+field when the phone allows it (`docs/features.md:359`). Nixi adds a voice
+path and a card you can come back to. Sending is still a click.
 
-### Privacy rules (all four)
+**Phrases**
+- **`phone_notes`** ("show my phone notifications") opens `phone_notes`:
+  - up to 10 recent notifications per device: app, title, and text cut to
+    300 characters, all scrubbed;
+  - **Reply** where `can_reply`.
+- **`phone_notify_reply`** ("answer {name} on my phone: {text}") is parsed
+  like `phone_reply`. It matches reply-capable notifications whose title
+  equals `{name}` (case-folded):
+  - one match opens the draft with the text filled in;
+  - several open the list, carrying the text;
+  - none gives "I don't see a notification from {name} you can answer".
 
-- No new text reaches:
-  - the status line;
-  - `phone_pub`, apart from the device rows above;
-  - the plugin feed (`plugins.forget` on reset, as today);
-  - logs (only exception type names are printed, as today);
-  - agent prompts. Stages are page-only; a stage Run never carries phone
-    content.
-- Off means off: every new path starts with `CFG.get("phone_on")` and
-  `Phone.connected`, and each draft and slot carries `PHONE_GEN`.
+**The draft.** `PHONE_NOTE_DRAFT` follows `PHONE_DRAFT` (`:7078-7129`):
+- It's `{id: token_urlsafe(18), device, nid, rev, app, title, gen,
+  created}`, one at a time, and lives 10 minutes.
+- It's restored only on `NotSent`.
+
+**Sending** (`POST /api/phone/note-reply {draft, text}`, window token,
+`keyed` click as `phone_send`)
+- Under `PHONE_LOCK`, the server takes the draft. It must match the id,
+  generation and age, and the latest snapshot must still hold a
+  notification with that `nid` and the **same `rev`**. On a match it
+  consumes that exact draft. On a mismatch it drops the draft and answers
+  "That notification changed or is gone. Open it again".
+- Then it sends `notification.reply(device, id=nid, message=text)`, with
+  text of 1–1000 characters, after the `PHONE_GEN` recheck.
+
+> [!WARNING]
+> **Remaining limit, for approval.** Flux takes the reply target from the
+> notification ID at the moment it handles the call
+> (`internal/core/notifications.go:488`), and `notification.reply` accepts
+> no expected revision (`internal/core/api.go:478`). A change on the phone
+> in the moments between Nixi's check and Flux's lookup can't be caught
+> from Nixi. Nixi catches every change it can see. The full guarantee
+> needs a Flux change, a `notification.reply` with an expected revision,
+> filed with olafkfreund/nixarchy-flux#77's follow-up.
 
 ### Two desktops
 
-Each desktop has its own slots and drafts. A note is sent only by the
-desktop you asked. Both desktops can answer the same notification, with one
-click each. That's accepted.
+Each desktop keeps its own slots and drafts. A note is sent only by the
+desktop where you asked. Both desktops can answer the same notification,
+with one click each. That's accepted.
 
 ## Alternatives rejected
 
-- **Let the agent send phone notes as a tool.** That breaks "the agent
-  can't send one by itself". It also puts model-chosen text on the phone.
-- **Put the agent's answer in the "when done" note.** It can hold secrets
-  or code.
-- **A queued note when the phone is offline.** That's the indefinite
-  replay the intent rules out.
-- **Show notification reply only through Flux's own popup.** It's there
-  already. Nixi's value is the voice path and the card, so both stay.
-- **Pass the page's device and number for thread and reply.** That's
-  trusting the client. The server keeps them in the stage it holds.
-- **`transfer.open` and incoming-file captions, and clipboard pause.**
-  Out of scope by the approved intent. Clipboard pause waits on
-  olafkfreund/nixarchy-flux#77.
+- **An agent tool that sends phone notes.** It breaks "the agent can't send
+  one by itself" and puts model-chosen text on the phone.
+- **The agent's answer in the "when done" note.** It can hold secrets or
+  code.
+- **Queueing a note for an offline phone.** That's the indefinite replay
+  the intent rules out.
+- **Binding the turn by reading `ST.lock.locked()` and `TURN`.** That
+  races with turn start and end. The explicit `active_turn` under
+  `WATCH_LOCK` replaces it.
+- **Binding a reply draft to only ID, app and title.** Flux replaces the
+  content under the same ID, so `rev` is needed.
+- **Trusting the page's device, number or thread.** The server keeps them
+  in the stage it holds.
+- **Gating notes on `share`.** That's the wrong capability.
+- **Out of scope by the approved intent:** `transfer.open` captions and
+  clipboard pause (waiting on olafkfreund/nixarchy-flux#77).
 
 ## Risks
 
-- **Flux versions:**
-  - An older Flux on the phone answers `notify.send` with `not_supported`.
-    That's handled with a spoken line.
-  - An older `fluxd` may lack `sms.thread` or `notification.reply`, giving
-    a `RuntimeError` like the other calls. It's handled as `phone.failed`.
-- **Notification IDs change.** The phone resends notifications on
-  reconnect (`docs/features.md:375`), so an ID can change. The check
-  before sending drops a draft whose notification is gone. You open a new
-  one.
-- **The busy-indicator button** is new UI in a crowded spot. The fit
-  tests must still pass.
+- **Older Flux.** An old Android app answers `notify.send` with
+  `not_supported`, which gets a spoken line. An old `fluxd` without
+  `sms.thread` or `notification.reply` gives a `RuntimeError`, handled as
+  `phone.failed`.
+- **The phone resends its notifications on reconnect**
+  (`docs/features.md:374`). An ID can change, and then the `rev`/ID check
+  drops the draft.
+- **The 📱 button** is new UI in a crowded spot. The fit tests must pass.
+- **The remaining notification-reply window** (the warning above) is a
+  known limitation until Flux supports an expected revision.
 - **Hosts:** p620 and razer, through the usual deploy. Nothing on p510.
 
 ## Verification
 
-- **Unit tests** (new `tests/test_phone_flux_more.py`, under
-  `_ServerEnv`/`nixi_env`, with a fake `Phone.call` and no socket):
-  - the exact `METHODS` set;
-  - note now;
-  - when-done:
-    - armed mid-turn;
-    - refused with no turn;
-    - fired once on `done`, `stopped` and `failed`, with the generic body;
-    - dropped on generation change, age, offline and unpaired;
-    - no retry on timeout;
-  - the thread:
-    - built from the held stage, not the request;
-    - scrubbed;
-    - closed by `phone_reset`;
-  - the notification reply:
-    - the draft is single-use;
-    - expiry;
-    - dropped when the notification is gone or changed;
-    - restored only on `NotSent`;
-    - text bounds;
-  - every new stage kind is in `phone_on_screen()`;
-  - the Phone tab rows carry no texts or numbers.
-- **Existing phone tests** pass unchanged: `ls tests | grep -i phone`.
-- **The full suite** and the fit tests.
-- **Live on p620,** with the phone:
-  - "tell my phone buy milk" shows on the phone;
-  - "tell my phone when this is done" during a turn gives one note at the
-    end;
-  - the Phone tab shows the device and its fingerprint;
-  - **Open** on a conversation shows its thread;
-  - "show my phone notifications" lists one, and **Reply** answers it.
+**Unit tests** go in `tests/test_phone_flux_more.py`, under
+`_ServerEnv`/`nixi_env`, with a fake `Phone.call` and no socket:
+
+- **Methods:** the exact `METHODS` set.
+- **Parsing:** "when done" takes precedence over a note; a 200-character
+  mixed-case body is kept as typed.
+- **A note now:** the device is chosen; with several devices, the pick
+  card appears; `not_supported`; a timeout isn't retried.
+- **When done:**
+  - it's refused with no active turn, including during turn start;
+  - armed mid-turn, it fires once each on `done`, `stopped` and `failed`,
+    with the generic body;
+  - arming at the same moment as a finishing turn ends with neither a lost
+    slot nor a double send;
+  - it's dropped on a generation change, at 30 minutes, when offline, and
+    when the device is unpaired, including unpaired and then paired again;
+  - a disable and re-enable while the send is blocked sends nothing.
+- **A thread:**
+  - built from the held stage, never from the request;
+  - names and bodies scrubbed;
+  - a late reply after Phone is switched off isn't shown;
+  - closed by `phone_reset`.
+- **A notification reply:**
+  - the draft is single-use: parallel clicks send once;
+  - it expires;
+  - it's dropped when its notification is gone or changed (`rev`);
+  - it's restored only on `NotSent`;
+  - text length is bounded.
+- **Privacy:**
+  - the new kinds are in `phone_on_screen()`;
+  - `stageText` gives `''` for `from_phone` stages;
+  - the Phone tab rows carry no numbers or texts;
+  - `TOOL_TOKEN` is refused on every new endpoint.
+
+**Then:**
+- the existing phone tests, unchanged (`ls tests | grep -i phone`);
+- the full suite and the fit tests.
+
+**Live on p620, with the phone:**
+- a note now;
+- "when done" during a turn gives one note at its end;
+- the Phone tab shows the device and its fingerprint;
+- **Open** shows a thread;
+- **Reply** answers a notification.
