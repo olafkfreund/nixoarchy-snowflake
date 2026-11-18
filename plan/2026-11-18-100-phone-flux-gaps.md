@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 100
 spec: spec/2026-11-18-100-phone-flux-gaps.md
 coders:
