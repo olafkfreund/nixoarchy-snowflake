@@ -332,6 +332,17 @@ class PluginsOnTest(_ServerEnv):
         self.assertFalse(st.get("news")["enabled"])
 
 
+    def test_inherited_nix_plugin_keeps_following_the_shared_list(self):
+        plugins = self.server.plugins
+        st = self.state()
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        (d / "plugin.json").write_text("{}")
+        p = mock.Mock(id="news", source="nix", error=None, manifest={"stage": {}}, dir=d)
+        plugins.review([p], st)
+        self.assertNotIn("news", st.data)          # no local entry: dropping it from plugins_on turns it off
+
+
 class MigrateTest(_SharedBase):
     def setUp(self):
         super().setUp()
@@ -428,11 +439,15 @@ class MigrateTest(_SharedBase):
         self.assertEqual([p.read_text() for p in (self.path, self.nixi, self.state)], before)
 
     def test_superseded_plugin_moves_and_private_stays(self):
-        self.run_migrate(drop_all=True)
+        out = io.StringIO()
+        with mock.patch("sys.stdout", out):
+            self.run_migrate(drop_all=True)
         (b,) = self.backups.glob("migrate-*")
         self.assertTrue((b / "plugins" / "news").is_dir())
         self.assertFalse((self.data / "plugins" / "news").exists())
         self.assertTrue((self.data / "plugins" / "you").is_dir())
+        undo = next(l for l in out.getvalue().splitlines() if l.startswith("undo"))
+        self.assertIn(f"mv {b / 'plugins' / 'news'} {self.data / 'plugins' / 'news'}", undo)
 
     def test_did_not_stop_changes_nothing(self):
         self.idle.return_value = False

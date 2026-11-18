@@ -4916,7 +4916,8 @@ def settings_migrate(keep=(), drop_all=False, ask=None, backup_root=None):
         if moved:
             print("plugin copies moved to the backup: " + ", ".join(moved))
         print(f"backup: {backup}")
-        undo = " && ".join(f"cp -p {shlex.quote(str(backup / n))} {shlex.quote(str(files[n]))}" for n in new)
+        undo = " && ".join([f"cp -p {shlex.quote(str(backup / n))} {shlex.quote(str(files[n]))}" for n in new] +
+                           [f"mv {shlex.quote(str(backup / 'plugins' / pid))} {shlex.quote(str(DATA_DIR / 'plugins' / pid))}" for pid in moved])
         print(f"undo (with Nixi stopped): {undo}")
         return 0
     finally:

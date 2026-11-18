@@ -1010,7 +1010,7 @@ def review(found, st):
         if h and h == rec["sha256"]:
             continue
         if p.source == "nix":
-            if h:
+            if h and p.id in st.data:      # (on only through plugins_on: no entry written, so it keeps following the shared list)
                 st.set(p.id, True, h)
                 if rec["sha256"]:
                     notes[p.id] = "Updated"
