@@ -102,11 +102,17 @@ class PhraseTest(_ServerEnv):
         self.assertEqual(self.h("answer Ann on my phone: On my way"),
                          {"phone": {"do": "notify_reply", "text": "On my way", "name": "Ann"}})
 
+    def test_sms_read_flag_only_on_explicit_sms(self):
+        for code, phrase in (("nb", "sjekk sms"), ("pl", "przeczytaj moje smsy"), ("pl", "sprawdź smsy")):
+            self.server.lang.active = code
+            self.assertEqual(self.h(phrase), {"phone": {"do": "read", "sms": True}}, phrase)
+        self.assertEqual(self.h("przeczytaj moje wiadomości"), {"phone": {"do": "read"}})
+
     def test_session_send_still_wins(self):
         self.assertEqual(self.h("tell the build session: x"), {"session_send": ["build", "x"]})
 
     def test_each_language_parses(self):
-        for code, say in (("nb", "si fra til telefonen min når dette er ferdig"), ("pl", "powiedz mojemu telefonowi, gdy skończysz")):
+        for code, say in (("nb", "si fra til telefonen min når dette er ferdig"), ("pl", "powiadom mój telefon, gdy skończysz")):
             self.server.lang.active = code
             self.assertEqual(self.h(say), {"phone": {"do": "when_done", "name": None}}, code)
         self.server.lang.active = "nb"
@@ -134,7 +140,88 @@ class DispatchGuardTest(_ServerEnv):
         with mock.patch.object(s, "Phone", StubPhone([dev("pixel", "Pixel")])), mock.patch.object(s, "phone_share") as share:
             for do in ("bogus",):
                 self.assertIsNone(s.phone_quick({"do": do, "text": "x", "name": None}), do)
+            s.CFG["phone_on"] = False
+            self.assertEqual(s.phone_quick({"do": "note", "text": "private"})["say"], s.lang.t("phone.off"))
+            self.assertEqual(s.phone_quick({"do": "read", "sms": True})["say"], s.lang.t("phone.off"))
+            self.assertIsNone(s.phone_quick({"do": "read"}))
             share.assert_not_called()
+
+    def _off(self, phone_on, connected):
+        s = self.server
+        saved = dict(s.CFG)
+        self.addCleanup(lambda: (s.CFG.clear(), s.CFG.update(saved)))
+        s.CFG["phone_on"] = phone_on
+        stub = StubPhone([dev("pixel", "Pixel")])
+        stub.connected = connected
+        return s, stub
+
+    def test_phone_off_answers_for_phone_only_actions(self):
+        for phone_on, connected, key in ((False, True, "phone.off"), (True, False, "phone.not_running")):
+            s, stub = self._off(phone_on, connected)
+            with mock.patch.object(s, "Phone", stub), mock.patch.object(s, "phone_share") as share, \
+                    mock.patch.object(s, "phone_note") as note:
+                for r in ({"do": "note", "text": "private"}, {"do": "when_done"}, {"do": "notes"},
+                          {"do": "notify_reply", "name": "Ann", "text": "private"},
+                          {"do": "reply", "sms": True, "name": "Ann", "text": "private"}, {"do": "read", "sms": True},
+                          {"do": "ring", "generic": True}):
+                    got = s.phone_quick(r)
+                    self.assertEqual(got["say"], s.lang.t(key), r)
+                    self.assertNotIn("private", got["say"])
+                    self.assertNotIn("Pixel", got["say"])
+                share.assert_not_called()
+                note.assert_not_called()
+            self.assertEqual(stub.calls, [])
+
+    def test_phone_off_lets_other_phrases_fall_through(self):
+        for phone_on, connected in ((False, True), (True, False)):
+            s, stub = self._off(phone_on, connected)
+            with mock.patch.object(s, "Phone", stub), mock.patch.object(s, "phone_share") as share:
+                for r in ({"do": "reply", "name": "Ann", "text": "x"}, {"do": "read"}, {"do": "ring", "name": "Pixel"},
+                          {"do": "bogus", "sms": True, "generic": True}):
+                    self.assertIsNone(s.phone_quick(r), r)
+                share.assert_not_called()
+            self.assertEqual(stub.calls, [])
+
+    def test_phrases_reach_the_phone_off_line_end_to_end(self):
+        s, stub = self._off(False, True)
+        self.addCleanup(setattr, s.lang, "active", s.lang.active)
+        with mock.patch.object(s, "Phone", stub), mock.patch.object(s, "phone_share") as share:
+            for code, said in (("en", "tell my phone buy milk"), ("en", "show my phone notifications"),
+                               ("en", "answer Ann on my phone: On my way"), ("nb", "si til telefonen min Hei"),
+                               ("nb", "vis varslene på telefonen min"), ("pl", "powiedz mojemu telefonowi Cześć"),
+                               ("pl", "pokaż powiadomienia z mojego telefonu"),
+                               ("nb", "svar Ola på telefonen min: Ja"), ("pl", "odpowiedz Ola na moim telefonie: Tak")):
+                s.lang.active = code
+                r = s.quick.handle(said)
+                self.assertIn(r["phone"]["do"], ("note", "notes", "notify_reply"), said)
+                self.assertEqual(s.phone_quick(r["phone"])["say"], s.lang.t("phone.off"), said)
+            s.lang.active = "en"
+            self.assertEqual(s.quick.handle("tell the build session: x"), {"session_send": ["build", "x"]})
+            self.assertNotEqual((s.quick.handle("tell my phone " + "Ab" * 101) or {}).get("phone", {}).get("do"), "note")
+            for code, said, sms in (("en", "read my texts", False), ("nb", "sjekk sms", True), ("nb", "sjekk meldingene mine", False),
+                                    ("pl", "przeczytaj smsy", True), ("pl", "przeczytaj moje smsy", True),
+                                    ("pl", "przeczytaj moje wiadomości", False)):
+                s.lang.active = code
+                r = s.quick.handle(said)["phone"]
+                self.assertEqual((r["do"], r.get("sms", False)), ("read", sms), said)
+            share.assert_not_called()
+
+    def test_new_wording_in_nb_and_pl(self):
+        s = self.server
+        want = {"nb": {"phone.when_done_button": "Si fra til telefonen når Nixi er ferdig",
+                       "phone.turn_failed": "Nixi støtte på et problem.",
+                       "phone.notify_none": "Jeg finner ikke noe varsel fra den avsenderen som du kan svare på."},
+                "pl": {"phone.note_sent": "Przekazałem telefonowi.", "phone.fingerprint": "odcisk klucza",
+                       "phone.nothing_running": "Nic teraz nie działa."}}
+        for code, lines in want.items():
+            have = s.lang.load(code)["lines"]
+            for k, v in lines.items():
+                self.assertEqual(have[k], v, (code, k))
+        self.addCleanup(setattr, s.lang, "active", s.lang.active)
+        s.lang.active = "pl"
+        for said in ("powiadom mój telefon, gdy to będzie gotowe", "powiadom mój telefon, gdy skończysz",
+                     "daj znać mojemu telefonowi, gdy skończysz"):
+            self.assertEqual(s.quick.handle(said)["phone"]["do"], "when_done", said)
 
 
 class NoteTest(_ServerEnv):
@@ -234,6 +321,19 @@ class NoteTest(_ServerEnv):
             r, _ = s.phone_pick_note(token)
             self.assertEqual(r["say"], s.lang.t("phone.nothing_running"))
             self.assertIsNone(s.PHONE_WHEN_DONE)
+
+    def test_no_chooser_when_nothing_is_running(self):
+        s = self.s
+        self.p._devices.append(dev("ipad", "iPad"))
+        with mock.patch.object(s, "BRIDGED", True), mock.patch.object(s, "stages_on", return_value=True), mock.patch.object(s.BUS, "pub") as pub:
+            s.ST.active_turn = None
+            before = s.STAGES.current()
+            r = s.phone_quick({"do": "when_done"})
+            self.assertEqual(r["say"], s.lang.t("phone.nothing_running"))
+            pub.assert_not_called()
+            self.assertEqual(s.STAGES.current(), before)
+            s.ST.active_turn = 12
+            self.assertIn("devices", s.phone_quick({"do": "when_done"}) and s.STAGES.current())
 
     def test_when_done_outcomes_and_cancellation(self):
         s = self.s

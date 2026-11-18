@@ -8243,9 +8243,10 @@ def phone_quick(r):
     if do not in ("ring", "clip", "shot", "status", "read", "reply", "note", "when_done", "notes", "notify_reply"):   # an unknown action must never fall through to phone_share
         return None
     if not CFG.get("phone_on") or not Phone.connected:
-        if do in ("ring", "clip", "shot", "status") and r.get("generic"):
-            return {"say": lang.t("phone.off" if not CFG.get("phone_on") else "phone.not_running"), "mood": "curious"}
-        return None
+        ours = (do in ("ring", "clip", "shot", "status") and r.get("generic")) \
+            or do in ("note", "when_done", "notes", "notify_reply") \
+            or (do in ("reply", "read") and r.get("sms"))
+        return {"say": lang.t("phone.off" if not CFG.get("phone_on") else "phone.not_running"), "mood": "curious"} if ours else None
     if do == "read":
         return phone_read_messages()
     if do == "notes":
@@ -8264,6 +8265,8 @@ def phone_quick(r):
             return phone_note(devs[0], r.get("text") or "", gen) if do == "note" else phone_when_done(devs[0], gen=gen)
         with WATCH_LOCK:
             turn = ST.active_turn
+        if do == "when_done" and turn is None:
+            return {"say": lang.t("phone.nothing_running"), "mood": "curious"}
         return phone_pick_card(devs, do, {"gen": gen, **({"text": r.get("text") or ""} if do == "note" else {"turn": turn})}, gen)
     return phone_ring(devs[0]) if do == "ring" and len(devs) == 1 else phone_share(devs[0], do) if len(devs) == 1 else phone_pick_card(devs, do, gen=gen)
 

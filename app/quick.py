@@ -348,7 +348,7 @@ def _phone(t):
     if t in lang.load(lang.active).get("phrases", {}).get("phone_notes", []) or t in lang.load("en").get("phrases", {}).get("phone_notes", []):
         return {"phone": {"do": "notes"}}
     if t in lang.load(lang.active).get("phrases", {}).get("phone_read", []) or t in lang.load("en").get("phrases", {}).get("phone_read", []):
-        return {"phone": {"do": "read"}}
+        return {"phone": {"do": "read", **({"sms": True} if re.search(r"\bsms", t) else {})}}
     for key, do in (("phone_find", "ring"), ("phone_send", "clip"), ("phone_send_shot", "shot"), ("phone_status", "status")):
         name = _phone_phrase(t, key)
         if name is not None:
