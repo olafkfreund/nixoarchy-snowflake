@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 100
 author: olafkfreund
 ---
@@ -102,6 +102,9 @@ Two items from the review are **not** taken up here:
   click.
 
 ## Open questions
+
+Decided at approval (2026-11-18): the recommendations below (1, 2).
+
 
 1. **"When done" for shell commands too** (the `commandDone` hook)?
    Recommendation: not now. Agent turns first, `commandDone` later once a
