@@ -102,6 +102,12 @@ class PhraseTest(_ServerEnv):
         self.assertEqual(self.h("answer Ann on my phone: On my way"),
                          {"phone": {"do": "notify_reply", "text": "On my way", "name": "Ann"}})
 
+    def test_sms_read_flag_only_on_explicit_sms(self):
+        for code, phrase in (("nb", "sjekk sms"), ("pl", "przeczytaj moje smsy"), ("pl", "sprawdź smsy")):
+            self.server.lang.active = code
+            self.assertEqual(self.h(phrase), {"phone": {"do": "read", "sms": True}}, phrase)
+        self.assertEqual(self.h("przeczytaj moje wiadomości"), {"phone": {"do": "read"}})
+
     def test_session_send_still_wins(self):
         self.assertEqual(self.h("tell the build session: x"), {"session_send": ["build", "x"]})
 
@@ -134,6 +140,10 @@ class DispatchGuardTest(_ServerEnv):
         with mock.patch.object(s, "Phone", StubPhone([dev("pixel", "Pixel")])), mock.patch.object(s, "phone_share") as share:
             for do in ("bogus",):
                 self.assertIsNone(s.phone_quick({"do": do, "text": "x", "name": None}), do)
+            s.CFG["phone_on"] = False
+            self.assertEqual(s.phone_quick({"do": "note", "text": "private"})["say"], s.lang.t("phone.off"))
+            self.assertEqual(s.phone_quick({"do": "read", "sms": True})["say"], s.lang.t("phone.off"))
+            self.assertIsNone(s.phone_quick({"do": "read"}))
             share.assert_not_called()
 
 

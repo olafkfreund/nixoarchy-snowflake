@@ -8243,9 +8243,10 @@ def phone_quick(r):
     if do not in ("ring", "clip", "shot", "status", "read", "reply", "note", "when_done", "notes", "notify_reply"):   # an unknown action must never fall through to phone_share
         return None
     if not CFG.get("phone_on") or not Phone.connected:
-        if do in ("ring", "clip", "shot", "status") and r.get("generic"):
-            return {"say": lang.t("phone.off" if not CFG.get("phone_on") else "phone.not_running"), "mood": "curious"}
-        return None
+        ours = (do in ("ring", "clip", "shot", "status") and r.get("generic")) \
+            or do in ("note", "when_done", "notes", "notify_reply") \
+            or (do in ("reply", "read") and r.get("sms"))
+        return {"say": lang.t("phone.off" if not CFG.get("phone_on") else "phone.not_running"), "mood": "curious"} if ours else None
     if do == "read":
         return phone_read_messages()
     if do == "notes":
