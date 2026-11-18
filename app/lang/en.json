@@ -115,7 +115,28 @@
     "phone.text_failed": "That text didn't go.",
     "phone.draft_gone": "That text thread is gone.",
     "phone.draft_open_failed": "Couldn't open the draft.",
-    "phone.text_length": "Write 1–1000 characters."
+    "phone.text_length": "Write 1–1000 characters.",
+    "phone.note_sent": "Told your phone.",
+    "phone.note_update": "Your Flux is too old for notes. Update it.",
+    "phone.note_unsure": "I'm not sure that reached your phone.",
+    "phone.note_offline": "Your {name} is offline, so I didn't send the note.",
+    "phone.nothing_running": "Nothing is running right now.",
+    "phone.when_done_set": "I'll tell your phone when this is done.",
+    "phone.when_done_button": "Tell my phone when done",
+    "phone.turn_done": "Nixi is done.",
+    "phone.turn_stopped": "Nixi was stopped.",
+    "phone.turn_failed": "Nixi hit a problem.",
+    "phone.offline_hint": "Not reachable now. Same network, or Tailscale on?",
+    "phone.fingerprint": "fingerprint",
+    "phone.open_button": "Open",
+    "phone.thread_title": "Conversation",
+    "phone.thread_empty": "No messages in this conversation",
+    "phone.notes_title": "Phone notifications",
+    "phone.notes_empty": "No notifications on your phone",
+    "phone.notify_none": "I don't see a notification from that sender you can answer.",
+    "phone.notify_changed": "That notification changed. Open the list again.",
+    "phone.notify_sent": "Reply sent.",
+    "phone.notify_draft_title": "Notification reply"
   },
   "phrases": {
     "phone_generic": [
@@ -164,6 +185,24 @@
     "phone_reply": [
       "reply to {name}, {text}",
       "text {name} {text}"
+    ],
+    "phone_when_done": [
+      "tell my phone when this is done",
+      "tell my phone when it's done",
+      "tell my phone when you're done",
+      "ping my phone when you're done",
+      "ping my phone when this is done",
+      "ping my phone when it's done"
+    ],
+    "phone_note": [
+      "tell my phone {text}",
+      "send my phone a note: {text}"
+    ],
+    "phone_notes": [
+      "show my phone notifications"
+    ],
+    "phone_notify_reply": [
+      "answer {name} on my phone: {text}"
     ]
   }
 }

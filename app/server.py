@@ -7617,6 +7617,8 @@ def phone_reply_quick(name, text, sms=False):
 def phone_quick(r):
     """quick.handle matched a phone phrase {do: ring|clip|shot|status, name} -> the reply, or None if it isn't for the phone."""
     do, name = r.get("do"), r.get("name")
+    if do not in ("ring", "clip", "shot", "status", "read", "reply"):   # an unknown action must never fall through to phone_share
+        return None
     if not CFG.get("phone_on") or not Phone.connected:
         if do in ("ring", "clip", "shot", "status") and r.get("generic"):
             return {"say": lang.t("phone.off" if not CFG.get("phone_on") else "phone.not_running"), "mood": "curious"}

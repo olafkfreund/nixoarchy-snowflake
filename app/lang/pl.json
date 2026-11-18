@@ -176,7 +176,28 @@
     "phone.text_failed": "Nie udało się wysłać wiadomości.",
     "phone.draft_gone": "Ten wątek wiadomości zniknął.",
     "phone.draft_open_failed": "Nie udało się otworzyć szkicu.",
-    "phone.text_length": "Wpisz 1–1000 znaków."
+    "phone.text_length": "Wpisz 1–1000 znaków.",
+    "phone.note_sent": "Powiedziałem telefonowi.",
+    "phone.note_update": "Twój Flux jest za stary na notatki. Zaktualizuj go.",
+    "phone.note_unsure": "Nie jestem pewien, czy to dotarło do telefonu.",
+    "phone.note_offline": "{name} jest offline, więc nie wysłałem notatki.",
+    "phone.nothing_running": "Nic się teraz nie wykonuje.",
+    "phone.when_done_set": "Dam znać telefonowi, gdy to się skończy.",
+    "phone.when_done_button": "Powiadom telefon po zakończeniu",
+    "phone.turn_done": "Nixi skończył.",
+    "phone.turn_stopped": "Nixi został zatrzymany.",
+    "phone.turn_failed": "Nixi napotkał problem.",
+    "phone.offline_hint": "Brak połączenia. Ta sama sieć albo Tailscale włączony?",
+    "phone.fingerprint": "odcisk",
+    "phone.open_button": "Otwórz",
+    "phone.thread_title": "Rozmowa",
+    "phone.thread_empty": "Brak wiadomości w tej rozmowie",
+    "phone.notes_title": "Powiadomienia z telefonu",
+    "phone.notes_empty": "Brak powiadomień na telefonie",
+    "phone.notify_none": "Nie widzę powiadomienia od tego nadawcy, na które można odpowiedzieć.",
+    "phone.notify_changed": "To powiadomienie się zmieniło. Otwórz listę ponownie.",
+    "phone.notify_sent": "Odpowiedź wysłana.",
+    "phone.notify_draft_title": "Odpowiedź na powiadomienie"
   },
   "phrases": {
     "phone_generic": [
@@ -232,6 +253,21 @@
       "odpisz {name} {text}",
       "napisz do {name} {text}",
       "wyślij sms do {name} {text}"
+    ],
+    "phone_when_done": [
+      "powiedz mojemu telefonowi, gdy to będzie gotowe",
+      "powiedz mojemu telefonowi, gdy skończysz",
+      "daj znać mojemu telefonowi, gdy skończysz"
+    ],
+    "phone_note": [
+      "powiedz mojemu telefonowi {text}",
+      "wyślij mojemu telefonowi notatkę: {text}"
+    ],
+    "phone_notes": [
+      "pokaż powiadomienia z mojego telefonu"
+    ],
+    "phone_notify_reply": [
+      "odpowiedz {name} na moim telefonie: {text}"
     ]
   },
   "_review": [

@@ -1,6 +1,7 @@
 """The narrow Flux socket client used by Nixi's phone features."""
 
 import concurrent.futures
+import hashlib
 import json
 import os
 import socket
@@ -17,7 +18,8 @@ class NotSent(ConnectionError):
 
 class Phone:
     METHODS = frozenset({"ring", "share.url", "share.text", "share.files", "clipboard.send",
-                         "sms.refresh", "sms.send", "dnd.set"})
+                         "sms.refresh", "sms.send", "dnd.set", "notify.send", "sms.thread",
+                         "notification.reply"})
 
     def __init__(self):
         self.snap = {}
@@ -120,7 +122,7 @@ class Phone:
                 can = {name for plugin, name in (("findmyphone", "ring"), ("share", "share"),
                                                   ("sms", "sms"), ("dnd", "dnd"))
                        if plugin in d.get("plugins", [])}
-                row = {key: d.get(key) for key in ("id", "name", "online", "lastSeen", "battery")}
+                row = {key: d.get(key) for key in ("id", "name", "online", "lastSeen", "battery", "fingerprint", "ip")}
                 row["can"] = can
                 if "approvals" in self.snap:
                     for key in ("call", "missedCall", "dnd"):
@@ -128,6 +130,17 @@ class Phone:
                             row[key] = d[key]
                 result.append(row)
             return result
+
+    def notifications(self, device):
+        """A paired device's phone notifications; replyId and actions never leave here, `rev` stands in for them."""
+        with self._lock:
+            row = next((d for d in self.snap.get("devices", []) if d.get("id") == device and d.get("paired")), None)
+            out = []
+            for n in (row or {}).get("notifications") or []:
+                parts = [str(n.get(k) or "") for k in ("app", "title", "text", "replyId")]
+                out.append({"id": n.get("id"), "app": parts[0], "title": parts[1], "text": parts[2], "time": n.get("time"),
+                            "can_reply": bool(parts[3]), "rev": hashlib.sha256(json.dumps(parts).encode()).hexdigest()})
+            return out
 
     def approvals(self):
         with self._lock:

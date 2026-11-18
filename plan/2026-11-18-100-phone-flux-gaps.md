@@ -137,7 +137,7 @@ The steps run in order, because most of them edit `app/server.py`.
      - returns `[{id, app, title, text, time, can_reply, rev}]` for that
        paired device;
      - `can_reply = bool(n.get("replyId"))`;
-     - `rev = sha256("\0".join([app, title, text, replyId]))`;
+     - `rev = sha256(json.dumps([app, title, text, replyId]))`;
      - never returns `replyId` or `actions`.
    - **Dispatch guard:** `phone_quick` (`server.py:7617-7633`) dispatches
      an explicit set, `{"ring", "clip", "shot", "status", "read",
@@ -182,6 +182,18 @@ The steps run in order, because most of them edit `app/server.py`.
      ```bash
      nix develop .#ci -c python3 -B .github/ci/run_tests.py test_phone_flux_more.py test_phone.py test_sessions.py test_stage_actions.py
      ```
+   - *Deviations (step 1):*
+     - `rev` hashes `json.dumps(parts)`, not a NUL join, because a NUL in
+       a field could make two notifications collide (Codex review).
+     - The new phrase block is parsed *before* the `phone_reply` loop.
+       Nynorsk's `svar {name} {text}` would otherwise turn "svar Ola på
+       telefonen min: Ja" into a plain reply. The order among the three
+       new phrases is kept.
+     - `when_done` matching ignores trailing `.!?` and curly apostrophes.
+       Notes keep their punctuation.
+     - `tests/test_phone.py`'s "refused method" example changes from
+       `notification.reply` (now allowed) to `notification.dismiss`.
+     - The nb and pl wording is the coder's own and needs a native check.
    - **Traps:**
      - Tests use `_ServerEnv`/`nixi_env`, never the real HOME (#176), and
        open no socket.
