@@ -7060,6 +7060,7 @@ PHONE_GEN = 0
 PHONE_LOCK = threading.Lock()
 PHONE_SEND_LOCK = threading.Lock()
 PHONE_DRAFT = None
+PHONE_NOTE_DRAFT = None
 PHONE_WHEN_DONE = None
 PHONE_MISSED = {}                 # record key -> missed call waiting for a safe moment
 PHONE_SHOWN = set()
@@ -7075,7 +7076,7 @@ def phone_play_ok(queued):
 
 def phone_on_screen():
     cur = STAGES.current()
-    return bool(cur and cur.get("kind") in ("phone_sms", "phone_draft", "phone_missed", "phone_threads", "phone_thread"))
+    return bool(cur and cur.get("kind") in ("phone_sms", "phone_draft", "phone_missed", "phone_threads", "phone_thread", "phone_notes", "phone_note_draft"))
 
 
 def phone_draft_item(item):
@@ -7717,6 +7718,104 @@ def phone_thread_open(token):
     return {"ok": True}, 200
 
 
+def phone_notification_rows():
+    rows = []
+    for dev in Phone.devices():
+        for n in sorted(Phone.notifications(dev["id"]), key=lambda x: x.get("time") or 0, reverse=True)[:10]:
+            app, title, body = mail_scrub([mail_clean(n["app"], 60), mail_clean(n["title"], 100), mail_clean(n["text"], 300)])
+            rows.append({"device": dev["id"], "nid": n["id"], "rev": n["rev"], "app": app,
+                         "title": title, "text": body, "can_reply": n["can_reply"]})
+    return rows
+
+
+def phone_notes_stage(text=None, only=None):
+    gen = PHONE_GEN
+    if not CFG.get("phone_on") or not Phone.connected:
+        return {"say": lang.t("phone.not_running"), "mood": "sad"}
+    if not BRIDGED or not stages_on():
+        return {"say": lang.t("phone.open_messages"), "mood": "curious"}
+    rows = phone_notification_rows()
+    if only is not None:
+        rows = [r for r in rows if (r["device"], r["nid"]) in only]
+    with PHONE_LOCK:
+        if gen != PHONE_GEN or not CFG.get("phone_on") or not Phone.connected:
+            return {"say": lang.t("phone.off"), "mood": "curious"}
+        page = STAGES.put({"v": 1, "kind": "phone_notes", "title": lang.t("phone.notes_title"), "rows": rows,
+                           "text": text, "empty": lang.t("phone.notes_empty"), "reply_label": lang.t("phone.reply_button"),
+                           "draft_gone": lang.t("phone.draft_gone"), "draft_error": lang.t("phone.draft_open_failed"),
+                           "from_phone": True})
+        BUS.pub(t="stage", **stage_event(page))
+    return {"say": lang.t("phone.notes_title"), "mood": "curious"}
+
+
+def phone_note_draft_item(item, gen):
+    global PHONE_NOTE_DRAFT
+    with PHONE_LOCK:
+        if gen != PHONE_GEN or not CFG.get("phone_on") or not Phone.connected or not stages_on():
+            return {"ok": False, "say": lang.t("phone.draft_gone")}
+        PHONE_NOTE_DRAFT = {"id": secrets.token_urlsafe(18), "device": item["device"], "nid": item["nid"],
+                            "rev": item["rev"], "app": item["app"], "title": item["title"],
+                            "gen": gen, "created": time.monotonic()}
+        page = STAGES.put({"v": 1, "kind": "phone_note_draft", "title": lang.t("phone.notify_draft_title"),
+                           "draft": PHONE_NOTE_DRAFT["id"], "app": item["app"], "app_title": item["title"],
+                           "text": item.get("text") or "", "send_label": lang.t("phone.send_button"),
+                           "length_error": lang.t("phone.text_length"), "send_error": lang.t("phone.failed"),
+                           "from_phone": True})
+        BUS.pub(t="stage", **stage_event(page))
+    return {"ok": True}
+
+
+def phone_note_draft(token):
+    gen = PHONE_GEN
+    got = STAGES.get(token) if isinstance(token, str) else None
+    return phone_note_draft_item(got[1], gen) if got and got[0] == "phone_note_reply" else {"ok": False, "say": lang.t("phone.draft_gone")}
+
+
+def phone_note_reply(draft_id, text, keyed):
+    global PHONE_NOTE_DRAFT
+    if not keyed:
+        return {"ok": False}
+    try:
+        with PHONE_SEND_LOCK:                              # (phone_reset waits here, so a checked reply leaves before the client stops)
+            with PHONE_LOCK:
+                draft = PHONE_NOTE_DRAFT
+                if not draft or draft_id != draft["id"]:   # (a stale click must not clear the current draft)
+                    return {"ok": False, "say": lang.t("phone.notify_changed")}
+                if (draft["gen"] != PHONE_GEN or
+                        not CFG.get("phone_on") or not Phone.connected or time.monotonic() - draft["created"] >= 600 or
+                        not isinstance(text, str) or not text.strip() or len(text) > 1000 or
+                        not any(d["id"] == draft["device"] and d["online"] for d in Phone.devices()) or
+                        not any(n["id"] == draft["nid"] and n["rev"] == draft["rev"]
+                                for n in Phone.notifications(draft["device"]))):
+                    PHONE_NOTE_DRAFT = None
+                    return {"ok": False, "say": lang.t("phone.notify_changed")}
+                PHONE_NOTE_DRAFT = None
+            Phone.call("notification.reply", device=draft["device"], id=draft["nid"], message=text)
+    except phone.NotSent:
+        with PHONE_LOCK:
+            if PHONE_NOTE_DRAFT is None and draft["gen"] == PHONE_GEN and CFG.get("phone_on"):
+                PHONE_NOTE_DRAFT = draft
+        return {"ok": False, "say": lang.t("phone.failed")}
+    except (TimeoutError, RuntimeError, ConnectionError):
+        return {"ok": False, "say": lang.t("phone.failed")}
+    return {"ok": True, "say": lang.t("phone.notify_sent")}
+
+
+def phone_notify_reply_quick(name, text):
+    gen = PHONE_GEN
+    if not CFG.get("phone_on") or not Phone.connected:
+        return None
+    if not BRIDGED or not stages_on():
+        return {"say": lang.t("phone.open_messages"), "mood": "curious"}
+    matches = [r for r in phone_notification_rows() if r["can_reply"] and r["title"].casefold() == name.casefold()]
+    if not matches:
+        return {"say": lang.t("phone.notify_none"), "mood": "curious"}
+    if len(matches) > 1:
+        return phone_notes_stage(text, {(r["device"], r["nid"]) for r in matches})
+    r = phone_note_draft_item({**matches[0], "text": text}, gen)
+    return {"say": lang.t("phone.notify_draft_title") if r["ok"] else r["say"], "mood": "curious"}
+
+
 def phone_reply_quick(name, text, sms=False):
     if not CFG.get("phone_on") or not Phone.connected:
         return None
@@ -7754,7 +7853,7 @@ def phone_quick(r):
     """quick.handle matched a phone phrase {do: ring|clip|shot|status, name} -> the reply, or None if it isn't for the phone."""
     do, name = r.get("do"), r.get("name")
     gen = PHONE_GEN
-    if do not in ("ring", "clip", "shot", "status", "read", "reply", "note", "when_done"):   # an unknown action must never fall through to phone_share
+    if do not in ("ring", "clip", "shot", "status", "read", "reply", "note", "when_done", "notes", "notify_reply"):   # an unknown action must never fall through to phone_share
         return None
     if not CFG.get("phone_on") or not Phone.connected:
         if do in ("ring", "clip", "shot", "status") and r.get("generic"):
@@ -7762,6 +7861,10 @@ def phone_quick(r):
         return None
     if do == "read":
         return phone_read_messages()
+    if do == "notes":
+        return phone_notes_stage()
+    if do == "notify_reply":
+        return phone_notify_reply_quick(name or "", r.get("text") or "")
     if do == "reply":
         return phone_reply_quick(name or "", r.get("text") or "", r.get("sms", False))
     if do == "status":
@@ -7790,10 +7893,11 @@ def phone_pick_act(dev_id, what):
 
 def phone_reset():
     """Phone switched off: void work in flight, close the client, delete the files waiting to be sent."""
-    global PHONE_GEN, PHONE_DRAFT, PHONE_WHEN_DONE
+    global PHONE_GEN, PHONE_DRAFT, PHONE_NOTE_DRAFT, PHONE_WHEN_DONE
     with PHONE_LOCK:
         PHONE_GEN += 1
         PHONE_DRAFT = None
+        PHONE_NOTE_DRAFT = None
         PHONE_MISSED.clear()
         PHONE_SHOWN.clear()
         PHONE_OUTBOX.clear()
@@ -9181,6 +9285,13 @@ class Handler(BaseHTTPRequestHandler):
                 b = json.loads(self._body() or b"{}")
                 r, code = phone_thread_open(b.get("token") if isinstance(b, dict) else None)
                 return self._json(r, code)
+            if p == "/api/phone/note-draft":
+                b = json.loads(self._body() or b"{}")
+                return self._json(phone_note_draft(b.get("token")) if isinstance(b, dict) else {"ok": False})
+            if p == "/api/phone/note-reply":
+                b = json.loads(self._body() or b"{}")
+                r = phone_note_reply(b.get("draft"), b.get("text"), click_ok(self.headers.get("X-Nixi-Click") or "")) if isinstance(b, dict) else {"ok": False}
+                return self._json(r, 200 if r.get("ok") else 403)
             if p == "/api/phone/when-done":
                 self._body()
                 r = phone_quick({"do": "when_done"})

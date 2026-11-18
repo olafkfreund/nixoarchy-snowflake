@@ -117,7 +117,7 @@ class DispatchGuardTest(_ServerEnv):
         self.addCleanup(lambda: (s.CFG.clear(), s.CFG.update(saved)))
         s.CFG["phone_on"] = True
         with mock.patch.object(s, "Phone", StubPhone([dev("pixel", "Pixel")])), mock.patch.object(s, "phone_share") as share:
-            for do in ("notes", "notify_reply", "bogus"):
+            for do in ("bogus",):
                 self.assertIsNone(s.phone_quick({"do": do, "text": "x", "name": None}), do)
             share.assert_not_called()
 
@@ -511,6 +511,185 @@ class ThreadTest(_ServerEnv):
         i = page.index("function stageText(ev){")
         self.assertIn("if(ev.from_phone) return '';", page[i:i + 80])
         self.assertIn("'/api/phone/thread'", page)
+
+
+class NotificationTest(_ServerEnv):
+    def setUp(self):
+        s = self.s = self.server
+        self.saved = dict(s.CFG), s.PHONE_GEN, s.PHONE_NOTE_DRAFT
+        s.CFG["phone_on"] = True
+        self.p = StubPhone([dev("pixel", "Pixel"), dev("tab", "Tab", online=False)])
+        self.rows = {"pixel": [{"id": "n1", "app": "Chat", "title": "Verification", "text": "123456", "time": 3,
+                                "can_reply": True, "rev": "a"},
+                               {"id": "n2", "app": "Chat", "title": "Ann", "text": "Hi", "time": 2,
+                                "can_reply": True, "rev": "b"}],
+                     "tab": [{"id": "n3", "app": "Chat", "title": "Ann", "text": "Offline", "time": 1,
+                              "can_reply": True, "rev": "c"}]}
+        self.p.notifications = lambda device: self.rows.get(device, [])
+        for pt in (mock.patch.object(s, "Phone", self.p), mock.patch.object(s, "BRIDGED", True),
+                   mock.patch.object(s, "stages_on", lambda: True), mock.patch.object(s.BUS, "pub")):
+            pt.start()
+            self.addCleanup(pt.stop)
+        s.STAGES.close()
+        self.addCleanup(self.restore)
+
+    def restore(self):
+        s = self.s
+        s.CFG.clear()
+        s.CFG.update(self.saved[0])
+        s.PHONE_GEN, s.PHONE_NOTE_DRAFT = self.saved[1:]
+        s.STAGES.close()
+
+    def draft(self, row=0):
+        self.s.phone_quick({"do": "notes"})
+        page = self.s.STAGES.current()
+        self.assertEqual(page["kind"], "phone_notes")
+        self.assertTrue(self.s.phone_on_screen())
+        self.assertTrue(self.s.phone_note_draft(page["rows"][row]["reply"])["ok"])
+        return self.s.STAGES.current()["draft"]
+
+    def test_list_draft_send_and_scrub(self):
+        s = self.s
+        s.phone_quick({"do": "notes"})
+        listing = s.STAGES.current()
+        self.assertEqual(len(listing["rows"]), 3)  # offline devices are still listed
+        self.assertNotIn("123456", json.dumps(listing))
+        self.assertNotIn("pixel", json.dumps(listing))
+        draft = self.draft()
+        page = s.STAGES.current()
+        self.assertEqual(page["kind"], "phone_note_draft")
+        self.assertTrue(page["from_phone"])
+        self.assertNotIn("123456", str(s.BUS.pub.call_args_list))
+        self.assertNotIn("pixel", json.dumps(page))
+        self.assertEqual(s.phone_note_reply(draft, "Yes", True), {"ok": True, "say": s.lang.t("phone.notify_sent")})
+        self.assertEqual(self.p.calls[-1], ("notification.reply", {"device": "pixel", "id": "n1", "message": "Yes"}))
+        self.assertFalse(s.phone_note_reply(draft, "Again", True)["ok"])
+        self.assertEqual(len(self.p.calls), 1)
+
+    def test_dictated_one_and_several(self):
+        s = self.s
+        s.phone_quick({"do": "notify_reply", "name": "verification", "text": "Ready"})
+        self.assertEqual(s.STAGES.current()["text"], "Ready")
+        draft = s.STAGES.current()["draft"]
+        self.assertTrue(s.phone_note_reply(draft, "Ready", True)["ok"])
+        s.phone_quick({"do": "notify_reply", "name": "ann", "text": "On my way"})
+        page = s.STAGES.current()
+        self.assertEqual(len(page["rows"]), 2)
+        self.assertNotIn("On my way", json.dumps(page))
+        self.assertTrue(s.phone_note_draft(page["rows"][0]["reply"])["ok"])
+        self.assertEqual(s.STAGES.current()["text"], "On my way")
+        self.assertTrue(s.phone_note_reply(s.STAGES.current()["draft"], "On my way", True)["ok"])
+        self.assertEqual(s.phone_quick({"do": "notify_reply", "name": "Nobody", "text": "Hi"})["say"], s.lang.t("phone.notify_none"))
+
+    def test_parallel_clicks_and_changed_or_expired(self):
+        s = self.s
+        draft = self.draft(1)
+        results = []
+        threads = [threading.Thread(target=lambda: results.append(s.phone_note_reply(draft, "Hi", True))) for _ in range(2)]
+        for t in threads: t.start()
+        for t in threads: t.join()
+        self.assertEqual(sum(r["ok"] for r in results), 1)
+        self.assertEqual(len(self.p.calls), 1)
+        for change in (lambda: self.rows["pixel"][1].update(rev="new"),
+                       lambda: self.rows["pixel"].pop(1)):
+            draft = self.draft(1)
+            change()
+            self.assertEqual(s.phone_note_reply(draft, "Hi", True)["say"], s.lang.t("phone.notify_changed"))
+            self.assertIsNone(s.PHONE_NOTE_DRAFT)
+            self.rows["pixel"] = [{"id": "n1", "app": "Chat", "title": "Verification", "text": "123456", "time": 3,
+                                   "can_reply": True, "rev": "a"}, {"id": "n2", "app": "Chat", "title": "Ann", "text": "Hi", "time": 2,
+                                   "can_reply": True, "rev": "b"}]
+        draft = self.draft(1)
+        s.PHONE_NOTE_DRAFT["created"] -= 600
+        self.assertFalse(s.phone_note_reply(draft, "Hi", True)["ok"])
+        self.assertEqual(len(self.p.calls), 1)
+
+    def test_failure_restore_bounds_and_reset(self):
+        s = self.s
+        draft = self.draft(1)
+        for text in ("", "  ", "x" * 1001):
+            self.assertFalse(s.phone_note_reply(draft, text, True)["ok"])
+            draft = self.draft(1)
+        self.p.errors["notification.reply"] = phone.NotSent("offline")
+        self.assertFalse(s.phone_note_reply(draft, "Hi", True)["ok"])
+        self.assertEqual(s.PHONE_NOTE_DRAFT["id"], draft)
+        self.p.errors["notification.reply"] = TimeoutError()
+        self.assertFalse(s.phone_note_reply(draft, "Hi", True)["ok"])
+        self.assertIsNone(s.PHONE_NOTE_DRAFT)
+        self.draft(1)
+        s.phone_reset()
+        self.assertIsNone(s.PHONE_NOTE_DRAFT)
+        self.assertIsNone(s.STAGES.current())
+
+    def test_stale_draft_id_keeps_current_draft(self):
+        s = self.s
+        draft = self.draft(1)
+        self.assertFalse(s.phone_note_reply("old-id", "Hi", True)["ok"])
+        self.assertEqual(s.PHONE_NOTE_DRAFT["id"], draft)
+        self.assertTrue(s.phone_note_reply(draft, "Hi", True)["ok"])
+
+    def test_reset_waits_for_reply_past_its_check(self):
+        s = self.s
+        draft = self.draft(1)
+        inside, go = threading.Event(), threading.Event()
+        def call(method, **kw):
+            inside.set()
+            go.wait(2)
+            self.p.calls.append((method, kw))
+        with mock.patch.object(self.p, "call", side_effect=call):
+            t = threading.Thread(target=s.phone_note_reply, args=(draft, "Hi", True))
+            t.start()
+            self.assertTrue(inside.wait(2))
+            got = []
+            with mock.patch.object(self.p, "stop", side_effect=lambda: got.append(len(self.p.calls))):
+                r = threading.Thread(target=s.phone_reset)
+                r.start()
+                time.sleep(0.1)
+                self.assertEqual(got, [])
+                go.set()
+                t.join(2)
+                r.join(2)
+            self.assertEqual(got, [1])
+
+    def test_list_is_newest_ten_per_device_and_offline_cannot_send(self):
+        s = self.s
+        self.rows["pixel"] = [{"id": str(i), "app": "Chat", "title": "Ann", "text": str(i),
+                               "time": i, "can_reply": True, "rev": str(i)} for i in range(12)]
+        s.phone_quick({"do": "notes"})
+        self.assertEqual([r["text"] for r in s.STAGES.current()["rows"][:10]], [str(i) for i in range(11, 1, -1)])
+        draft = self.draft(10)
+        self.assertEqual(s.phone_note_reply(draft, "Hi", True)["say"], s.lang.t("phone.notify_changed"))
+        self.assertEqual(self.p.calls, [])
+
+    def test_window_routes_and_page(self):
+        s = self.s
+        self.assertNotIn("/api/phone/note-draft", s.TOOL_PATHS)
+        self.assertNotIn("/api/phone/note-reply", s.TOOL_PATHS)
+        h = s.Handler.__new__(s.Handler)
+        h._host_ok = lambda: True
+        h._json = mock.Mock()
+        h.headers = {"X-Nixi-Token": s.TOOL_TOKEN}
+        for route in ("/api/phone/note-draft", "/api/phone/note-reply"):
+            h.path = route
+            h.do_POST()
+            self.assertEqual(h._json.call_args.args[1], 403)
+        s.phone_quick({"do": "notes"})
+        token = s.STAGES.current()["rows"][1]["reply"]
+        h.headers = {"X-Nixi-Token": s.TOKEN, "X-Nixi-Click": "test"}
+        h._body = lambda: json.dumps({"token": token}).encode()
+        h.path = "/api/phone/note-draft"
+        h.do_POST()
+        self.assertTrue(h._json.call_args.args[0]["ok"])
+        h._body = lambda: json.dumps({"draft": s.STAGES.current()["draft"], "text": "Hi"}).encode()
+        h.path = "/api/phone/note-reply"
+        with mock.patch.object(s, "click_ok", return_value=True):
+            h.do_POST()
+        self.assertTrue(h._json.call_args.args[0]["ok"])
+        self.assertEqual(self.p.calls[-1], ("notification.reply", {"device": "pixel", "id": "n2", "message": "Hi"}))
+        page = (REPO_ROOT / "app/static/index.html").read_text()
+        self.assertIn("'/api/phone/note-draft'", page)
+        self.assertIn("'/api/phone/note-reply'", page)
+        self.assertIn("CLICKKEY.hdr()", page[page.index('function stagePhoneNoteDraft'):page.index('function stagePhoneMissed')])
 
 
 if __name__ == "__main__":

@@ -427,7 +427,7 @@ class Store:
     @staticmethod
     def _keep(e):
         """Private mail and phone stages, and stale choosers, never come back."""
-        return None if e and e[0].get("kind") in ("mail", "phone_pick", "phone_sms", "phone_threads", "phone_draft", "phone_missed", "phone_thread") else e
+        return None if e and e[0].get("kind") in ("mail", "phone_pick", "phone_sms", "phone_threads", "phone_draft", "phone_missed", "phone_thread", "phone_notes", "phone_note_draft") else e
 
     def put(self, stage, refresh=None):
         """-> the stage for the page: items (or the stage) carry a token, nothing else added."""
@@ -487,6 +487,16 @@ class Store:
             if stage.get("number"):
                 page["reply"] = secrets.token_urlsafe(12)
                 toks[page["reply"]] = ("phone_reply", {"device": stage["device"], "number": stage["number"], "name": stage["name"], "text": ""})
+        elif stage["kind"] == "phone_notes":
+            page.pop("text", None)
+            page["rows"] = []
+            for row in stage["rows"]:
+                r = {k: row[k] for k in ("app", "title", "text")}
+                if row["can_reply"]:
+                    r["reply"] = secrets.token_urlsafe(12)
+                    toks[r["reply"]] = ("phone_note_reply", {"device": row["device"], "nid": row["nid"], "rev": row["rev"],
+                                                            "app": row["app"], "title": row["title"], "text": stage.get("text") or ""})
+                page["rows"].append(r)
         elif stage["kind"] == "phone_missed":
             page.pop("number", None)
             if stage.get("number"):
@@ -495,7 +505,7 @@ class Store:
                                                        "name": stage["name"], "text": stage.get("text", "")})
             page.pop("device", None)
             page.pop("text", None)
-        elif stage["kind"] == "phone_draft":
+        elif stage["kind"] in ("phone_draft", "phone_note_draft"):
             pass
         elif stage["kind"] == "weather":    # read-only: nothing to press
             pass

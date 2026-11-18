@@ -502,6 +502,13 @@ The steps run in order, because most of them edit `app/server.py`.
      ```bash
      nix develop .#ci -c python3 -B .github/ci/run_tests.py test_phone_flux_more.py test_phone.py test_phone_fit.py test_stage_actions.py
      ```
+   - *Deviations (step 5, Codex review):*
+     - `phone_note_reply` holds `PHONE_SEND_LOCK` across the check, the
+       consume and `Phone.call`, as `phone_note` does. A reset therefore
+       waits for a reply that passed its check.
+     - A missing draft, or a mismatched draft id, answers
+       `phone.notify_changed` without clearing the current draft, so a
+       stale click can't delete a newer one.
    - **Traps:**
      - The draft is consumed before Flux is called.
      - Only `NotSent` restores it.

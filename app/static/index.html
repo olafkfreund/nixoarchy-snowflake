@@ -3103,6 +3103,8 @@ function stageBuild(ev){
   else if(ev.kind==='phone_pick') stagePhone(ev,bd,acts,fn);
   else if(ev.kind==='phone_sms'||ev.kind==='phone_threads') stagePhoneMessages(ev,bd,fn);
   else if(ev.kind==='phone_thread') stagePhoneThread(ev,bd,acts,fn);
+  else if(ev.kind==='phone_notes') stagePhoneNotes(ev,bd,fn);
+  else if(ev.kind==='phone_note_draft') stagePhoneNoteDraft(ev,bd,fn);
   else if(ev.kind==='phone_missed') stagePhoneMissed(ev,bd,acts,fn);
   else if(ev.kind==='phone_draft') stagePhoneDraft(ev,bd,fn);
   else if(gau) stageGauges(ev,bd,acts,fn);
@@ -3156,6 +3158,24 @@ function stagePhoneThread(ev,bd,acts,fn){
     tx.appendChild(hx('div','lb',(m.outgoing?'\u2192 ':'')+m.name)); tx.appendChild(hx('div','vm',m.body));
     row.appendChild(tx); bd.appendChild(row); });
   if(ev.reply) acts.appendChild(stageBtn(ev.reply_label,()=>phoneOpenDraft(ev,ev.reply,fn)));
+}
+function stagePhoneNotes(ev,bd,fn){
+  if(!(ev.rows||[]).length) bd.appendChild(hx('div','pt1',ev.empty||''));
+  (ev.rows||[]).forEach(r=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab');
+    tx.appendChild(hx('div','lb',r.title)); tx.appendChild(hx('div','vm',r.app)); tx.appendChild(hx('div','vm',r.text));
+    if(r.reply) ab.appendChild(stageBtn(ev.reply_label,()=>{ post('/api/phone/note-draft',{token:r.reply}).then(x=>x.json()).then(j=>{ if(!j.ok) fn.textContent=j.say||ev.draft_gone||''; }).catch(()=>{ fn.textContent=ev.draft_error||''; }); }));
+    row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
+}
+function stagePhoneNoteDraft(ev,bd,fn){
+  const card=hx('div','mcard'), ta=hx('textarea'), msg=hx('div','mmsg'), act=hx('div','mact');
+  card.appendChild(hx('div','mln',ev.app+' · '+ev.app_title)); ta.rows=4; ta.value=ev.text||''; card.appendChild(ta);
+  const send=hx('button','sb',ev.send_label); send.type='button';
+  send.addEventListener('click',e=>{ e.stopPropagation(); if(!e.isTrusted||!['mouse','pen','touch'].includes(e.pointerType)) return;
+    if(!ta.value.trim()||ta.value.length>1000){ msg.textContent=ev.length_error; return; }
+    send.disabled=true; stgUse=performance.now();
+    post('/api/phone/note-reply',{draft:ev.draft,text:ta.value},{headers:hdr(Object.assign({'Content-Type':'application/json'},CLICKKEY.hdr()))})
+      .then(r=>r.json()).then(j=>{ msg.textContent=j.say||ev.send_error; if(!j.ok) send.disabled=false; }).catch(()=>{ msg.textContent=ev.send_error; send.disabled=false; }); });
+  act.appendChild(send); card.appendChild(act); card.appendChild(msg); bd.appendChild(card); ta.focus();
 }
 function stagePhoneMissed(ev,bd,acts,fn){
   bd.appendChild(hx('div','pt1',ev.name||''));
