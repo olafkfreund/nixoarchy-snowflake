@@ -543,7 +543,9 @@ The steps run in order, because most of them edit `app/server.py`.
    - *Deviations (Opus branch review):*
      - A `phone_note` whose text starts with a time clause (when, once,
        after, as soon as, når, etter, gdy, kiedy, po) arms "when done"
-       instead of sending.
+       instead of sending. (Codex PR review) This applies only to the
+       ambiguous phrases without a colon. An explicit "send my phone a
+       note: …" keeps its words.
      - Number-like message names in a thread are blanked, so no number
        reaches the page.
      - The offline and failure notes check the generation and publish

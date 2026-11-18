@@ -384,7 +384,7 @@ def handle(text):
                 if not m:
                     continue
                 text, name = (m.groupdict().get("text") or "").strip(), (m.groupdict().get("name") or "").strip()
-                if do == "note" and re.match(r"(?:when|once|after|as soon as|når|etter|gdy|kiedy|po)\b", text, re.I):
+                if do == "note" and ":" not in phrase and re.match(r"(?:when|once|after|as soon as|når|etter|gdy|kiedy|po)\b", text, re.I):   # (only the ambiguous "tell my phone …" form: an explicit "note: …" keeps its words)
                     do = "when_done"
                 if do == "when_done":
                     return {"phone": {"do": do, "name": None}}

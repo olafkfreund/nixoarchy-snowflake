@@ -76,6 +76,12 @@ class PhraseTest(_ServerEnv):
         self.assertEqual(self.h("tell my phone when this is done"), {"phone": {"do": "when_done", "name": None}})
         self.assertEqual(self.h("Nixi, ping my phone when you're done!")["phone"]["do"], "when_done")
 
+    def test_explicit_note_keeps_a_leading_time_word(self):
+        from quick import handle
+        for said, text in (("send my phone a note: After work buy milk", "After work buy milk"),
+                           ("send my phone a note: When is the meeting?", "When is the meeting?")):
+            self.assertEqual(handle(said), {"phone": {"do": "note", "text": text}})
+
     def test_time_clause_is_not_a_note(self):
         when = {"phone": {"do": "when_done", "name": None}}
         self.assertEqual(self.h("Tell my phone when the build finishes"), when)
