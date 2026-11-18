@@ -114,6 +114,10 @@ README plugin-sandbox run is not needed (the PR says so).
    starts with a comma, so it does not match. After this step's phrase edits
    the test would fail, so change that phrase to "powiadom mój telefon, gdy
    skończysz" in this same step's commit (it is the `when_done` phrase 2).
+   *Deviation (Opus branch review):* the claim above is wrong. The note pattern
+   needs a space before `{text}`, so "powiedz mojemu telefonowi, gdy skończysz"
+   parses to `None`, not a note; no junk note reaches the phone. The test phrase
+   change stands, because the old phrase no longer parses as `when_done`.
 
 3. `tests/test_phone_flux_more.py` (`DispatchGuardTest` at `:128`, `PhraseTest`
    at `:67`, new tests in the same file): add the tests listed under Tests (the `test_each_language_parses` phrase
