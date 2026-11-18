@@ -384,6 +384,8 @@ def handle(text):
                 if not m:
                     continue
                 text, name = (m.groupdict().get("text") or "").strip(), (m.groupdict().get("name") or "").strip()
+                if do == "note" and re.match(r"(?:when|once|after|as soon as|når|etter|gdy|kiedy|po)\b", text, re.I):
+                    do = "when_done"
                 if do == "when_done":
                     return {"phone": {"do": do, "name": None}}
                 if text and (do != "note" or len(text) <= 200):

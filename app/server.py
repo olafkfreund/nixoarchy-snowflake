@@ -7598,7 +7598,9 @@ def phone_fire(slot, outcome):
     if not dev:
         return
     if not dev["online"]:
-        BUS.pub(t="note", text=lang.t("phone.note_offline", name=slot["name"]))
+        with PHONE_LOCK:                               # (BUS.pub only enqueues; a reset between check and publish publishes nothing)
+            if slot["gen"] == PHONE_GEN and CFG.get("phone_on"):
+                BUS.pub(t="note", text=lang.t("phone.note_offline", name=slot["name"]))
         return
     threading.Thread(target=phone_note_say, args=(dev, lang.t("phone.turn_" + outcome), slot["gen"]), daemon=True).start()
 
@@ -7606,8 +7608,10 @@ def phone_fire(slot, outcome):
 def phone_note_say(dev, text, gen):
     """phone_note off the turn: a failed send is told, unless the phone was switched off meanwhile."""
     r = phone_note(dev, text, gen)
-    if r["mood"] != "happy" and gen == PHONE_GEN and CFG.get("phone_on"):
-        BUS.pub(t="note", text=r["say"])
+    if r["mood"] != "happy":
+        with PHONE_LOCK:
+            if gen == PHONE_GEN and CFG.get("phone_on"):
+                BUS.pub(t="note", text=r["say"])
 
 
 def phone_pick_card(devs, do, pending=None, gen=None):
@@ -7702,7 +7706,9 @@ def phone_thread_open(token):
     msgs = []
     for m in (res.get("messages") or [])[-100:] if isinstance(res, dict) else []:
         if isinstance(m, dict):
-            name, body = mail_scrub([mail_clean(m.get("name") or "", 100), mail_clean(m.get("body") or "", 500)])
+            name = mail_clean(m.get("name") or "", 100)
+            name = "" if re.fullmatch(r"[+\d][\d\s().-]{4,}", name) else name   # (Flux names an unsaved contact by its number)
+            name, body = mail_scrub([name, mail_clean(m.get("body") or "", 500)])
             msgs.append({"name": name, "body": body, "outgoing": bool(m.get("outgoing")), "time": m.get("time") if isinstance(m.get("time"), (int, float)) else 0})
     with PHONE_LOCK:                                   # (the show-content check, then put: a reset can't leave this on screen)
         if gen != PHONE_GEN or not CFG.get("phone_on"):
@@ -7724,7 +7730,7 @@ def phone_notification_rows():
         for n in sorted(Phone.notifications(dev["id"]), key=lambda x: x.get("time") or 0, reverse=True)[:10]:
             app, title, body = mail_scrub([mail_clean(n["app"], 60), mail_clean(n["title"], 100), mail_clean(n["text"], 300)])
             rows.append({"device": dev["id"], "nid": n["id"], "rev": n["rev"], "app": app,
-                         "title": title, "text": body, "can_reply": n["can_reply"]})
+                         "title": title, "text": body, "can_reply": bool(n["can_reply"] and dev["online"])})
     return rows
 
 

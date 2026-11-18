@@ -76,6 +76,15 @@ class PhraseTest(_ServerEnv):
         self.assertEqual(self.h("tell my phone when this is done"), {"phone": {"do": "when_done", "name": None}})
         self.assertEqual(self.h("Nixi, ping my phone when you're done!")["phone"]["do"], "when_done")
 
+    def test_time_clause_is_not_a_note(self):
+        when = {"phone": {"do": "when_done", "name": None}}
+        self.assertEqual(self.h("Tell my phone when the build finishes"), when)
+        self.assertEqual(self.h("tell my phone buy milk"), {"phone": {"do": "note", "text": "buy milk"}})
+        self.server.lang.active = "nb"
+        self.assertEqual(self.h("si til telefonen min når bygget er ferdig"), when)
+        self.server.lang.active = "pl"
+        self.assertEqual(self.h("powiedz mojemu telefonowi gdy skończy się build"), when)
+
     def test_note_keeps_case_and_is_bounded(self):
         text = ("Ab" * 100)
         self.assertEqual(self.h("tell my phone " + text), {"phone": {"do": "note", "text": text}})
@@ -287,6 +296,9 @@ class NoteTest(_ServerEnv):
             self.assertIsNone(s.ST.active_turn)
             self.assertIsNone(s.ST.send_watch)
             self.assertIsNone(s.PHONE_WHEN_DONE)
+            fire.assert_called_once()
+            slot = fire.call_args.args[0]
+            self.assertEqual(slot["turn"], seen[0])
             self.assertEqual(fire.call_args.args[1], expected)
 
     def test_page_and_window_token_routes(self):
@@ -322,6 +334,52 @@ class NoteTest(_ServerEnv):
             s.phone_state()
         self.assertIsNone(s.PHONE_WHEN_DONE)
         self.p._devices.append(dev("pixel", "Pixel"))
+        with mock.patch.object(s, "phone_battery_check"), mock.patch.object(s, "phone_call_sync"), \
+             mock.patch.object(s, "phone_approvals_sync"), mock.patch.object(s, "phone_pub"):
+            s.phone_state()
+        self.assertIsNone(s.PHONE_WHEN_DONE)
+        self.assertEqual(self.p.calls, [])
+
+    def test_arm_during_turn_then_finish_notifies_once(self):
+        s = self.s
+        h = s.Handler.__new__(s.Handler)
+        h.wfile = io.BytesIO()
+        h.send_response = h.send_header = h.end_headers = mock.Mock()
+        h._body = lambda: b'{"prompt":"hello"}'
+        h._json = mock.Mock()
+        def bridge(prompt, emit, *_):
+            s.phone_when_done(self.p.devices()[0])
+            emit(t="result", is_error=False)
+        with mock.patch.object(s, "BRIDGED", True), mock.patch.object(s, "run_bridge", side_effect=bridge), \
+             mock.patch.object(s, "hist_add"), mock.patch.object(s, "pick_auto", return_value=None), \
+             mock.patch.dict(s.CFG, {"auto_compact": False}), \
+             mock.patch.object(s.threading, "Thread", side_effect=lambda *, target, args, daemon: mock.Mock(start=lambda: target(*args))):
+            h.ask()
+        self.assertEqual([c[0] for c in self.p.calls], ["notify.send"])
+
+    def test_reset_clears_when_done(self):
+        s = self.s
+        s.ST.active_turn = 3
+        s.phone_when_done(self.p.devices()[0])
+        self.assertIsNotNone(s.PHONE_WHEN_DONE)
+        s.phone_reset()
+        self.assertIsNone(s.PHONE_WHEN_DONE)
+
+    def test_gen_bump_between_send_and_publish_publishes_nothing(self):
+        s = self.s
+        s.ST.active_turn = 4
+        s.phone_when_done(self.p.devices()[0])
+        slot = s.PHONE_WHEN_DONE
+        self.p._devices[0]["online"] = False
+        with mock.patch.object(s.BUS, "pub") as pub:
+            s.PHONE_GEN += 1
+            s.phone_fire(slot, "done")
+            pub.assert_not_called()
+        self.p._devices[0]["online"] = True
+        self.p.errors["notify.send"] = RuntimeError("other")
+        with mock.patch.object(s.BUS, "pub") as pub, mock.patch.object(s, "phone_note", return_value={"say": "x", "mood": "sad"}):
+            s.phone_note_say(self.p.devices()[0], "t", s.PHONE_GEN - 1)
+            pub.assert_not_called()
 
     def test_arm_and_finish_are_atomic(self):
         s = self.s
@@ -424,6 +482,12 @@ class ThreadTest(_ServerEnv):
         page = self.s.STAGES.current()
         self.assertNotIn("thread", json.dumps(page["rows"]))
         return page["rows"][0]["open"]
+
+    def test_number_named_message_is_blanked(self):
+        self.p.results["sms.thread"] = {"messages": [{"name": "+4791234567", "body": "hi", "outgoing": False, "time": 1}]}
+        self.s.phone_thread_open(self.open_token())
+        page = self.s.STAGES.current()
+        self.assertNotIn("4791234567", json.dumps(page))
 
     def test_thread_comes_from_token_scrubbed_and_hidden_ids(self):
         s = self.s
@@ -548,6 +612,10 @@ class NotificationTest(_ServerEnv):
         self.assertTrue(self.s.phone_note_draft(page["rows"][row]["reply"])["ok"])
         return self.s.STAGES.current()["draft"]
 
+    def test_offline_rows_cannot_reply(self):
+        rows = {(r["device"], r["nid"]): r["can_reply"] for r in self.s.phone_notification_rows()}
+        self.assertEqual((rows[("pixel", "n1")], rows[("tab", "n3")]), (True, False))
+
     def test_list_draft_send_and_scrub(self):
         s = self.s
         s.phone_quick({"do": "notes"})
@@ -572,9 +640,11 @@ class NotificationTest(_ServerEnv):
         self.assertEqual(s.STAGES.current()["text"], "Ready")
         draft = s.STAGES.current()["draft"]
         self.assertTrue(s.phone_note_reply(draft, "Ready", True)["ok"])
+        self.rows["pixel"].append({"id": "n4", "app": "Chat", "title": "Ann", "text": "Again", "time": 4,
+                                   "can_reply": True, "rev": "d"})
         s.phone_quick({"do": "notify_reply", "name": "ann", "text": "On my way"})
         page = s.STAGES.current()
-        self.assertEqual(len(page["rows"]), 2)
+        self.assertEqual(len(page["rows"]), 2)  # the offline device's Ann is not offered
         self.assertNotIn("On my way", json.dumps(page))
         self.assertTrue(s.phone_note_draft(page["rows"][0]["reply"])["ok"])
         self.assertEqual(s.STAGES.current()["text"], "On my way")
@@ -657,8 +727,7 @@ class NotificationTest(_ServerEnv):
                                "time": i, "can_reply": True, "rev": str(i)} for i in range(12)]
         s.phone_quick({"do": "notes"})
         self.assertEqual([r["text"] for r in s.STAGES.current()["rows"][:10]], [str(i) for i in range(11, 1, -1)])
-        draft = self.draft(10)
-        self.assertEqual(s.phone_note_reply(draft, "Hi", True)["say"], s.lang.t("phone.notify_changed"))
+        self.assertNotIn("reply", s.STAGES.current()["rows"][10])  # the offline device's row has no Reply
         self.assertEqual(self.p.calls, [])
 
     def test_window_routes_and_page(self):
@@ -692,13 +761,13 @@ class NotificationTest(_ServerEnv):
         self.assertIn("CLICKKEY.hdr()", page[page.index('function stagePhoneNoteDraft'):page.index('function stagePhoneMissed')])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class BranchReviewFixes(unittest.TestCase):
     def test_missed_call_waits_for_a_notification_draft_and_button_takes_clicks(self):
         src = (Path(__file__).resolve().parent.parent / "app" / "server.py").read_text()
         assert '"phone_draft", "phone_missed", "phone_note_draft"' in src
         page = (Path(__file__).resolve().parent.parent / "app" / "static" / "index.html").read_text()
         assert "add($('#phoneDone'),4)" in page[page.index("function sendRegion"):]
+
+
+if __name__ == "__main__":
+    unittest.main()

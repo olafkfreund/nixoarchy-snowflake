@@ -540,6 +540,16 @@ The steps run in order, because most of them edit `app/server.py`.
      reply being written. `sendRegion()` adds `#phoneDone` when it's shown,
      so the button takes clicks with click-through on.
 
+   - *Deviations (Opus branch review):*
+     - A `phone_note` whose text starts with a time clause (when, once,
+       after, as soon as, når, etter, gdy, kiedy, po) arms "when done"
+       instead of sending.
+     - Number-like message names in a thread are blanked, so no number
+       reaches the page.
+     - The offline and failure notes check the generation and publish
+       together under `PHONE_LOCK`.
+     - An offline device's notifications are listed without **Reply**.
+
 ### Lead, after step 6
 
 - **Reviews:**
