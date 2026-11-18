@@ -96,8 +96,8 @@ A single worker thread asks Flux for an owned pause, so the notification path ne
   some technical notifications. Either one pauses sharing for 2 min. The 5-request bound limits the cost. Accepted.
 - **False negatives.** Codes the regexes miss are not paused. It is a mitigation.
 - **A Flux version with `clipboardPauses` but different semantics.** Only the #77 build has that key.
-- **On both p620 and razer:** the flux bump changes Flux from `6eb6347` to `8267293`. That includes other merged
-  Flux work, which I will list in the nixos_config PR.
+- **On both p620 and razer:** the flux bump `6eb6347` → `8267293` carries only #77 and a CI-only commit (`70d109c`).
+  Restarting `fluxd` drops any pause and reconnects the phone.
 
 ## Verification
 
