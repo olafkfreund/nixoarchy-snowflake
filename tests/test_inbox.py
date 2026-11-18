@@ -119,6 +119,40 @@ class InboxTest(_ServerEnv):
         for txt in ("Lunch at 12?", "Ana sent 3 photos", "Build 2026 passed"):
             self.assertEqual(S.Inbox.rows(json.dumps([self.row(summary=txt, body="")]))[0]["summary"], txt, txt)
 
+    def test_full_text_code_is_blanked_before_display(self):
+        S = self.server
+        S.CFG["notify_details"] = True
+        row = self.row(summary="123456 " + "hello " * 22 + "sign-in code")
+        with mock.patch.object(S.CodePause, "seen") as seen:
+            out = S.Inbox.rows(json.dumps([row]))
+        self.assertEqual((out[0]["summary"], out[0]["body"]), ("", ""))
+        seen.assert_called_once_with("nabc12")
+
+    def test_code_hook_sees_all_raw_fields_and_discarded_cards(self):
+        S = self.server
+        cases = (
+            (self.row(body="Your code is 482910"), False),
+            (self.row(body="password=example"), True),
+            (self.rich_row(summary="Your code is 482910"), True),
+            (self.row(rich="a " * 301 + "Your code is 482910"), True),
+            (self.rich_row(actions=[{"id": "a", "text": "Your code is 482910"}]), True),
+        )
+        for row, details in cases:
+            with self.subTest(row=row), mock.patch.object(S.CodePause, "seen") as seen, mock.patch.object(S.Inbox, "call") as call:
+                S.CFG["notify_details"] = details
+                S.Inbox.rows(json.dumps([row]))
+                seen.assert_called_once_with("nabc12")
+                if row.get("actions") and details:
+                    call.assert_called_once_with("showKey", "nabc12")
+
+    def test_clean_row_has_no_pause_or_new_fields(self):
+        S = self.server
+        S.CFG["notify_details"] = True
+        with mock.patch.object(S.CodePause, "seen") as seen, mock.patch.object(S.Icons, "lookup", return_value=None):
+            out = S.Inbox.rows(json.dumps([self.row()]))
+        self.assertEqual(out, [{"key": "nabc12", "app": "teams", "source": "", "category": "chat", "summary": "Ana", "body": "hi"}])
+        seen.assert_not_called()
+
     def test_want_false_while_asleep(self):
         S = self.server
         with mock.patch.object(S.BUS, "subs", [object()]), mock.patch.object(S.Wake, "asleep", False):

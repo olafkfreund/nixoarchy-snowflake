@@ -3179,6 +3179,12 @@ def phone_call_row(x):
         return False
 
 
+class CodePause:
+    @staticmethod
+    def seen(key):
+        pass
+
+
 class Inbox:
     """Notifications the shell hands to the companion (#133), only while this thread holds a lease on the shell's IPC
     socket (renewed every second). Row text is never logged, written to disk or sent to the agent."""
@@ -3188,6 +3194,7 @@ class Inbox:
     MAIL = re.compile(r"(?i)\bomamail\b|outlook")                                  # Outlook through the Omamail plug-in or a web app
     CHAT = re.compile(r"(?i)web\.whatsapp\.com|\bwhatsapp\b|messenger\.com")         # chats the shell files under "other"
     # a code word and something shaped like a code (digits, spaced digit groups, a 6-10 char mix with 2+ digits) in one text
+    # (match, not search: the lookaheads already scan the whole text; search retries every offset, quadratic)
     OTP = re.compile(r"(?=.*\b(?:codes?|otp|verif\w*|log[- ]?in|passcode|pin|one[- ]?time|security|sign[- ]?in|mfa|2fa|auth\w*)\b)"
                      r"(?=.*(?:\b\d{4,10}\b|\b\d{2,4}(?:[ -]\d{2,4}){1,3}\b|\b(?=[A-Za-z0-9]{6,10}\b)(?:[A-Za-z]*\d){2}[A-Za-z0-9]*\b))", re.I | re.S)
     CAP = 1024 * 1024
@@ -3315,9 +3322,16 @@ class Inbox:
                 x["category"] = "mail" if cls.MAIL.search(who) else "chat" if cls.CHAT.search(who) else "video" if cls.FEED.search(who) else Plug.category(str(x.get("app") or ""), str(x.get("source") or ""))
             if not isinstance(x, dict) or not isinstance(x.get("key"), str) or not cls.KEY.fullmatch(x["key"]) or x.get("category") not in cls.CATS:
                 continue
+            parts = [str(x.get(k) or "") for k in ("summary", "body", "rich")]
+            if isinstance(x.get("actions"), list):
+                parts.extend(a["text"] for a in x["actions"] if isinstance(a, dict) and isinstance(a.get("text"), str))
+            text = "\n".join(parts)
+            hit = bool(cls.OTP.match(text) or SECRET_LINE.search(text))
+            if hit:
+                CodePause.seen(x["key"])
             summary, body = str(x.get("summary") or "")[:120], str(x.get("body") or "")[:120]
             flux_call = phone_call_row(x)                            # (from the raw title: before the details are blanked)
-            if not CFG.get("notify_details") or SECRET_LINE.search(summary + "\n" + body) or cls.OTP.search(summary + "\n" + body):
+            if not CFG.get("notify_details") or hit or SECRET_LINE.search(summary + "\n" + body) or cls.OTP.match(summary + "\n" + body):
                 summary = body = ""
             row = {"key": x["key"], "app": str(x.get("app") or "")[:60], "source": str(x.get("source") or "")[:80],
                    "category": x["category"], "summary": summary, "body": body}
@@ -3328,7 +3342,7 @@ class Inbox:
             if buttons or image:                                 # a card: markup, then the gate over all of it, then the image, then the buttons
                 runs, labels = cls.runs(x.get("rich")), [a["text"][:40] for a in buttons]
                 whole = "\n".join([str(x.get("summary") or ""), "".join(r["t"] for r in runs), *labels])
-                if not CFG.get("notify_details") or SECRET_LINE.search(whole) or cls.OTP.search(whole):
+                if not CFG.get("notify_details") or hit or SECRET_LINE.search(whole) or cls.OTP.match(whole):
                     if buttons:                                  # the shell keeps the row, with its buttons
                         cls.call("showKey", row["key"])
                         continue
@@ -7244,7 +7258,7 @@ def mail_clean(text, limit):
 
 
 def mail_otp(fields):
-    return bool(Inbox.OTP.search("\n".join(fields)))
+    return bool(Inbox.OTP.match("\n".join(fields)))
 
 
 def mail_scrub(fields, otp=None):
