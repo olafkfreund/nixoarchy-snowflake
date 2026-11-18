@@ -18,7 +18,7 @@ author: olafkfreund
 ## Proposed outcome
 
 - **The pause:** when Nixi sees a notification that `Inbox.OTP` or `SECRET_LINE` flags, it asks Flux for an owned clipboard pause under its own label, for a short time.
-  - "Short" is a proposal, not decided: about 2 minutes.
+  - "Short" is 120 s.
   - A *new* code during the pause renews it. An update or repeat of the same notification is not a new code.
   - Renewal is bounded on Nixi's side too, so a storm of matching notifications can't keep sharing paused indefinitely. Flux's cap covers only one continuous hold, and a fresh hold may start after it expires.
   - Detection is its own check, separate from the display gate. Today's gate stops early when details are off (`:3320`), so it can't be reused as it is.
@@ -29,13 +29,13 @@ author: olafkfreund
 - **When nothing happens:** with Phone off, Flux not running, or an older Flux without the new methods, Nixi simply does not pause.
   - There is no error card, and this feature adds no retry loop. Flux's own reconnect logic is unchanged.
   - At most one line goes to the log.
-- **What you see:** you may see a short line that sharing is paused for the code, without the code itself. Whether to show it is an open question.
+- **What you see:** one short line that sharing is paused for the code, without the code itself, once Flux confirms.
 - **nixos_config** moves its `nixarchy-flux` input to a Flux with owned pauses, for p620 and razer.
 
 ## Affected users and systems
 
 - **Nixi companion:**
-  - `app/phone.py`: the allowed methods grow by `clipboard.pauseOwned`, and maybe `clipboard.resumeOwned`.
+  - `app/phone.py`: the allowed methods grow by `clipboard.pauseOwned` only.
   - `app/server.py`: the notification path, where `Inbox.rows` runs.
 - **nixos_config:** the `nixarchy-flux` input bump. It restarts `fluxd` on p620 and razer.
   - p510 doesn't run Flux, so no owner OK is needed.
@@ -63,9 +63,13 @@ author: olafkfreund
   - Copying the same value again after the pause may not sync.
 - **No new setting unless needed.** It follows the existing Phone switch.
 
+## Decisions (approver, 2026-11-18: Codex's suggestions taken)
+
+1. **Duration:** 120 s.
+2. **Ending early:** no. Nixi never calls `resumeOwned`; its pause only expires. A dismissal doesn't mean the clipboard is safe.
+3. **Showing the pause:** one short line ("Clipboard sharing paused for the code"), without the code, shown only after Flux confirms. A renewal updates the line instead of repeating it.
+4. **Mail codes:** notifications only. Reopening the mail board can rediscover old codes, and `mail_otp` (`app/server.py:7246`) also serves the scrubbers.
+
 ## Open questions
 
-1. **Duration:** 2 minutes, or another value? Flux allows 1 s to 1 h. Codex suggests 120 s.
-2. **Ending early:** should Nixi end its pause early (`resumeOwned`) when the code's notification is dismissed? Or only let it expire, which is simpler? Codex suggests letting it expire: a dismissal doesn't mean the clipboard is safe.
-3. **Showing the pause:** show a short line ("Clipboard sharing paused for the code"), or stay silent? Codex suggests one line, without the code, after Flux confirms. A renewal updates the line instead of repeating it.
-4. **Mail codes:** also pause when the mail board finds a code (`mail_otp`, `app/server.py:7246`)? Or only for notifications? Codex suggests notifications only. Reopening the mail board can rediscover old codes, and `mail_otp` also serves the scrubbers.
+None.
