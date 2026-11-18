@@ -4305,7 +4305,8 @@ def request_language(code, force=False):
                     _stt = (model, code, dev)
                     _whisper, _whisper_err = model, None
                     with _config_lock:
-                        if changed and not ("voice" in SHARED and "voice" not in user_file_keys()):
+                        mine = user_file_keys()
+                        if changed and not any(k in SHARED and k not in mine for k in ("voice", "voice_by_lang")):
                             save_config(voice_by_lang={**(CFG.get("voice_by_lang") or {}), lang.active: CFG["voice"]})
                         lang.active = code
                         restore_voice(code)
@@ -4869,8 +4870,12 @@ def settings_migrate(keep=(), drop_all=False, ask=None, backup_root=None):
         keep = set(keep)
         new, report = {}, {}
         if read["config.json"][0] is not None:
-            new["config.json"], report["config.json"] = _decide(read["config.json"][0], SHARED, DEFAULTS, keep, drop_all, ask,
+            local = read["config.json"][0]
+            new["config.json"], report["config.json"] = _decide(local, SHARED, DEFAULTS, keep, drop_all, ask,
                                                                 only=set(DEFAULTS) - LOCAL_ONLY)
+            if "trust" in local and local.get("permission_mode") and "trust" not in SHARED:   # else load_config re-derives trust from it
+                new["config.json"]["trust"] = local["trust"]
+                report["config.json"] = [k for k in report["config.json"] if k != "trust"]
         if read["nixi.json"][0] is not None:
             new["nixi.json"], report["nixi.json"] = _decide(read["nixi.json"][0], bridge_shared(), BRIDGE_DEFAULTS, keep, drop_all, ask,
                                                             only=set(BRIDGE_KEYS))
@@ -10031,8 +10036,12 @@ def main():
     if CFG["stt_prewarm"] or CFG.get("wake_word"):
         threading.Thread(target=lambda: _try(whisper), daemon=True).start()
     _wire_quick()
-    threading.Thread(target=warm_tts, daemon=True).start()
-    threading.Thread(target=lambda: [fetch_voice(v) for v in SHARED_EXTRAS["voices"]], daemon=True).start()
+    def _voices_then_warm():                     # warm_tts caches a loaded model by path: check pinned voices first
+        for v in SHARED_EXTRAS["voices"]:
+            if not voice_ok(v):
+                fetch_voice_sync(v)
+        warm_tts()
+    threading.Thread(target=_voices_then_warm, daemon=True).start()
     Wake.ensure()
     Ambient.start()
     Mirror.start()

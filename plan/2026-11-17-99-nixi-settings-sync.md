@@ -209,6 +209,14 @@ Changed from the spec, to be approved with this plan (Codex plan review):
        replies ok with `restart: false`, and the panel says to restart Nixi.
      - `migrate` waits only for the server process. The bridge is its
        child; matching `bridge.js` also hit editors and the card's bridge.
+   - *Deviations (Codex review):*
+     - `migrate` keeps an explicit `trust` while the legacy
+       `permission_mode` stays and `trust` isn't shared. Otherwise
+       `load_config` re-derives trust from it.
+     - A language switch also leaves a shared `voice_by_lang` unsaved when
+       `voice` isn't shared.
+     - At start, listed voices are checked and fetched before `warm_tts`,
+       which caches a loaded model by path.
 
 2. **`app/server.py`: voices.** By the coder.
    - **Pinned downloads.** Add the `PIPER_REV` constant. `fetch_voice` and

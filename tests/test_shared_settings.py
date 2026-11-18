@@ -197,6 +197,16 @@ class SharedLayerFixesTest(_SharedBase):
         self.assertNotIn("voice_by_lang", saved)
         self.assertNotIn("voice", saved)
 
+    def test_shared_voice_by_lang_alone_is_not_saved_on_switch(self):
+        s = self.s
+        self.keep_lang_state()
+        s.lang.active = "en"
+        self.path.write_text("{}")
+        s.CFG.update(voice="girl", voice_by_lang={"en": "guy"})
+        with mock.patch.object(s, "SHARED", {"voice_by_lang": {"en": "guy"}}):
+            self.switch("pl")
+        self.assertNotIn("voice_by_lang", json.loads(self.path.read_text()))
+
     def test_failed_switch_with_shared_language_is_not_saved(self):
         s = self.s
         self.keep_lang_state()
@@ -366,6 +376,16 @@ class MigrateTest(_SharedBase):
         (b,) = self.backups.glob("migrate-*")
         self.assertEqual([(b / n).read_text() for n in ("config.json", "nixi.json", "plugins-state.json")], before)
         self.start.assert_called_once()
+
+    def test_explicit_trust_stays_while_legacy_permission_mode_does(self):
+        s = self.s
+        self.path.write_text(json.dumps({"trust": s.DEFAULTS["trust"], "permission_mode": "bypassPermissions"}))
+        with mock.patch.object(s, "SHARED", {}):
+            self.assertEqual(self.run_migrate(drop_all=True), 0)
+            saved = self.j(self.path)
+            self.assertEqual(saved["trust"], s.DEFAULTS["trust"])
+            mock.patch.object(s, "CONF_PATH", self.path).start()
+            self.assertEqual(s.load_config()["trust"], s.DEFAULTS["trust"])   # not re-derived as "trust"
 
     def test_keep_and_questions(self):
         asked = []
