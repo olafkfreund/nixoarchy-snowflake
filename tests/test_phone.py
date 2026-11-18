@@ -1171,7 +1171,7 @@ class Silence(_PhoneEnv, _FluxCase):
         self.flag.unlink()
         self.assertTrue(wait_for(lambda: len([m for m in self.flux.methods() if m == "dnd.set"]) == 2, 2))
         self.assertEqual(self.flux.requests[-1]["params"], {"device": "pixel", "on": False})
-        self.assertEqual(client.silenced, {})
+        self.assertTrue(wait_for(lambda: client.silenced == {}, 2))   # (tick clears it after the call returns: CI raced this)
 
     def test_end_with_later_at_does_nothing(self):
         client = self.start({"on": False, "by": "phone", "at": 1})

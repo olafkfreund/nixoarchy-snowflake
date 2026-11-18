@@ -549,6 +549,7 @@ select:focus,.pn input[type=text]:focus,.pn textarea:focus{border-color:var(--ed
 .note{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);margin-bottom:6px;user-select:text;-webkit-user-select:text}
 .note span{flex:1;color:var(--text)}
 .note button{background:none;border:0;color:var(--dim);cursor:pointer} .note button:hover{color:#ff9b9b}
+#sharedList{margin-bottom:8px} #sharedList .note button,#sharedList .note button:hover{color:var(--text);text-decoration:underline}
 .qa{display:flex;flex-direction:column;gap:6px}
 .qa button{text-align:left;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;transition:all .2s}
 .qa button:hover{border-color:var(--hot);background:var(--deep)}
@@ -886,6 +887,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
     <i class="ind" id="tabInd"></i>
   </div>
   <div class="bd">
+    <div id="sharedList" hidden></div>
     <!-- ================= LOOK ================= -->
     <div class="tab on" id="panel-look" role="tabpanel" aria-labelledby="tab-look" data-tab="look">
       <div class="row lookrow">
@@ -4191,6 +4193,9 @@ function renderBreakSettings(){
 }
 function workoutCopy(){ return (info.workout||[]).map(e=>({days:[...e.days],at:e.at})); }
 function renderSettings(){
+  { const sl=$('#sharedList'); if(sl){ const ov=info.overrides||[]; sl.replaceChildren(); sl.hidden=!ov.length;
+    for(const k of ov){ const d=hx('div','note'), b=hx('button',null,'Use shared'); b.type='button'; b.dataset.useShared=k;
+      d.append(hx('span',null,k.replace(/_/g,' ')+' differs from your NixOS config'),b); sl.appendChild(d); } } }
   { const rr=$('#rootSw').closest('.row'); if(rr) rr.style.display=info.root_ok===false?'none':''; }
   { const pr=$('#peersRow'); if(pr) pr.hidden=!info.peers_configured; }
   const cur=(info.model||'default');
@@ -4493,6 +4498,8 @@ setEl.addEventListener('click',e=>{
   const wr=e.target.closest('[data-workout-remove]'); if(wr){ if(!info.react_break) return;
     const entries=workoutCopy(); entries.splice(Number(wr.dataset.workoutRemove),1); return setSetting({workout:entries}); }
   const g=k=>e.target.closest(`[data-${k}]`);
+  const bsh=g('use-shared'); if(bsh){ bsh.disabled=true; bsh.textContent='Restarting Nixi\u2026';
+    return post('/api/settings/reset',{key:bsh.dataset.useShared}).then(async r=>{ if(!r.ok) throw new Error(r.statusText); const j=await r.json().catch(()=>({})); if(j.restart===false){ bsh.textContent='Reset \u2014 restart Nixi to apply'; } }).catch(()=>{ bsh.disabled=false; bsh.textContent='Use shared'; tick('couldn\u2019t reset that setting',true); }); }
   const be=g('eff'); if(be) return setSetting({effort:be.dataset.eff}).then(()=>tick('effort → '+be.dataset.eff));
   const bz=g('size'); if(bz) return setSetting({size:Number(bz.dataset.size)/100}).then(ok=>{ if(ok) native('zoom:'+info.size); });
   const bn=g('ns'); if(bn){ const l=info.notify_speak||[], c=bn.dataset.ns; return setSetting({notify_speak:l.includes(c)?l.filter(x=>x!==c):[...l,c]}); }

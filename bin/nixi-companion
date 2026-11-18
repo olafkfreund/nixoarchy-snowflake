@@ -164,10 +164,12 @@ try:
     data = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
     config = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
     rt = json.load(open(os.path.join(data, "nixi-companion", "runtime.json")))
-    try:
-        current = json.load(open(os.path.join(config, "nixi-companion", "config.json"))).get("size", 0.75)
-    except (OSError, ValueError, AttributeError):
-        current = 0.75
+    current = 0.75
+    for name in ("shared.json", "config.json"):          # the local file wins over the shared one
+        try:
+            current = json.load(open(os.path.join(config, "nixi-companion", name))).get("size", current)
+        except (OSError, ValueError, AttributeError):
+            pass
     value = step(current, sys.argv[2])
     req = u.Request("http://127.0.0.1:%s/api/settings" % rt["port"], json.dumps({"size": value}).encode(),
                     {"Content-Type": "application/json", "X-Nixi-Token": rt["token"]})
@@ -219,6 +221,8 @@ case "${1:-}" in
   theme-changed) up 2>/dev/null && "$PY" "$APP/server.py" --theme-changed || true; exit 0 ;;   # the omarchy theme hook: recolour the running Nixi
   stop)    stop; quitwin; echo "Nixi stopped"; exit 0 ;;
   stress)  exec "$PY" "$APP/server.py" --stress-voice "${@:2}" ;;
+  settings) case "${2:-}" in migrate|reset-bridge) stop; quitwin ;; esac      # the helper waits for the stop, then starts Nixi again
+           "$PY" "$APP/server.py" --settings "${@:2}"; exit $? ;;
   diagnostics) exec "$PY" "$APP/server.py" --diagnostics ;;
   see)     exec "$PY" "$APP/server.py" --see "${2:-window}" ;;            # view-only picture of your screen (for Claude)     # speak under heavy load, report any stutter
   doctor)  echo "── window ──"

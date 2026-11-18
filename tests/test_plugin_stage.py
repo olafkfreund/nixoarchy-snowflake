@@ -38,7 +38,7 @@ class RunnerTest(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp()
         plugins._cache.clear()
-        for t, v in (("bwrap_ok", lambda: True), ("State", lambda *a: STATE), ("sandbox_argv", lambda d, st, *a: [sys.executable, str(Path(d) / st["argv"][0])])):
+        for t, v in (("bwrap_ok", lambda: True), ("State", lambda *a, **k: STATE), ("sandbox_argv", lambda d, st, *a: [sys.executable, str(Path(d) / st["argv"][0])])):
             mock.patch.object(plugins, t, v).start()
         self.addCleanup(mock.patch.stopall)
 
@@ -422,7 +422,7 @@ class StageServerTest(_ServerEnv):
         S = self.server
         self.root = Path(tempfile.mkdtemp(dir=self.tmp))
         self.state = plugins.State(self.root / "st.json")
-        for target, val in (("plugin_dirs", lambda: [self.root / "nix", self.root / "user"]), ("State", lambda *a: self.state), ("bwrap_ok", lambda: True), ("_in_store", lambda d: True)):
+        for target, val in (("plugin_dirs", lambda: [self.root / "nix", self.root / "user"]), ("State", lambda *a, **k: self.state), ("bwrap_ok", lambda: True), ("_in_store", lambda d: True)):
             mock.patch.object(S.plugins, target, val).start()
         self.addCleanup(mock.patch.stopall)
         self.addCleanup(lambda: setattr(S.Plug, "loaded", None))

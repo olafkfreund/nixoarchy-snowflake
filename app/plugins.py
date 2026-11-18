@@ -425,8 +425,9 @@ def sha256_of(d):
 class State:
     """plugins-state.json: {id: {enabled, sha256}}, written atomically."""
 
-    def __init__(self, path=None):
+    def __init__(self, path=None, plugins_on=()):
         self.path = Path(path or DATA_DIR / "plugins-state.json")
+        self.plugins_on = frozenset(plugins_on)      # ids Nix turns on; a real entry here, on or off, always wins
         try:
             d = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -435,7 +436,9 @@ class State:
 
     def get(self, pid):
         v = self.data.get(pid)
-        return v if isinstance(v, dict) else {"enabled": False, "sha256": None}
+        if isinstance(v, dict):
+            return v
+        return {"enabled": pid in self.plugins_on, "sha256": None}
 
     def set(self, pid, enabled, sha256=None):
         self.data[pid] = {"enabled": bool(enabled), "sha256": sha256}
@@ -1007,7 +1010,7 @@ def review(found, st):
         if h and h == rec["sha256"]:
             continue
         if p.source == "nix":
-            if h:
+            if h and p.id in st.data:      # (on only through plugins_on: no entry written, so it keeps following the shared list)
                 st.set(p.id, True, h)
                 if rec["sha256"]:
                     notes[p.id] = "Updated"

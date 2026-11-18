@@ -131,11 +131,28 @@ BRIDGED = bridge_argv() is not None            # (tests: set NIXI_BRIDGE, then B
 
 
 def nixi_conf():
+    return {**bridge_shared(), **_read_nixi_conf()}
+
+
+def _read_nixi_conf():
     try:
         c = json.loads(NIXI_CONF.read_text(encoding="utf-8"))
         return c if isinstance(c, dict) else {}
     except (OSError, ValueError):
         return {}
+
+
+def bridge_shared():
+    try:
+        c = json.loads((NIXI_CONF.parent / "nixi-shared.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(c, dict):
+        return {}
+    return {k: v for k, v in c.items() if
+            (k == "trust" and v in ("guide", "mechanic")) or
+            (k == "permissionMode" and v in ("permission", "yolo")) or
+            (k in ("agent", "model", "reasoningEffort") and isinstance(v, str) and len(v) <= 64)}
 
 
 _OLD_STT_HINT = ("Hey Nixi, Claude, Claude Code, Nixi, git, commit, README, Python, JavaScript, npm, pacman, sudo, Arch Linux, "
@@ -275,9 +292,106 @@ DEFAULTS = {
     "mic_cmd": "",
 }
 
+LOCAL_ONLY = frozenset(("port", "cpu_split", "whisper_device", "mic_device", "mic_cmd", "cwd", "claude_bin",
+                        "extra_args", "piper_voice", "projects", "voice_prompt", "quick_actions", "workout",
+                        "mail_accounts", "lang_good", "peers_asked", "root_mode", "permission_mode"))
+SHARED_OK = frozenset(DEFAULTS) - LOCAL_ONLY
+SHARED_RULES = {
+    **{k: ("bool",) for k in (
+        "lean", "partial_messages", "mic_auto", "update_check", "stt_prewarm", "eleven_on", "wake_word",
+        "autostart", "listen_on_show", "barge_in", "auto_compact", "full_text", "sfx", "follow_focus",
+        "answer_stages", "peers_on", "agent_approvals", "step_aside", "ambient_system", "ambient_calendar",
+        "ambient_weather", "proactive", "reactions", "news_watch", "notifications_takeover", "notify_details",
+        "phone_on", "mail_on", "notify_sound", "look_meeting", "look_music", "look_beat",
+        "notify_speak_subject", "look_fullscreen", "react_load", "react_break", "react_welcome",
+        "look_coding", "look_night", "look_weather", "look_party", "react_quips", "notify_done",
+        "popup_done", "code_panel", "hover", "click_through")},
+    **{k: ("int", lo, hi) for k, lo, hi in (
+        ("compact_tokens", 0, 5000000), ("whisper_beam", 1, 20), ("eleven_daily_chars", 1000, 500000),
+        ("speak_max_chars", 1, 10000), ("follow_up", 0, 60), ("live_minutes", 1, 1440))},
+    **{k: ("float", lo, hi) for k, lo, hi in (
+        ("max_cost_usd", 0, 1000), ("compact_at", 0.3, 0.95), ("size", 0.5, 1.25))},
+    **{k: ("enum", values) for k, values in (
+        ("trust", ("ask", "trust", "readonly")), ("effort", ("low", "medium", "high", "xhigh", "max")),
+        ("whisper_model", ("auto", "tiny.en", "base.en", "small.en", "medium.en", "tiny", "base", "small", "medium")),
+        ("presence", ("orb", "bar")), ("bar_edge", ("top", "bottom", "left", "right")),
+        ("language", ("en", "nb", "pl")), ("tts", ("auto", "kokoro", "piper", "espeak", "elevenlabs", "off")),
+        ("tts_fallback", ("auto", "kokoro", "piper", "espeak")),
+        ("voice", ("girl", "cute", "guy", "deep", "british", "story", "robot")),
+        ("pupil_style", ("slit", "circle", "dot")), ("idle_mode", ("off", "shrink", "doze")),
+        ("code_face", ("you", "him")), ("water_every", (0, 45, 60, 90)))},
+    **{k: ("str", length) for k, length in (
+        ("model", 64), ("auto_model", 64), ("stt_hint", 1000), ("ptt_hotkey", 64),
+        ("eleven_voice", 64), ("espeak_voice", 32), ("mail_model", 64))},
+    **{k: ("color",) for k in ("eye_color", "eye_white")},
+    **{k: ("list_str",) for k in ("agent_voice_mute", "notify_speak")},
+    **{k: ("dict_str",) for k in ("voice_by_lang", "voice_by_character")},
+    "look": ("look_dict",),
+}
+
+
+def _shared_value(value, rule):
+    kind = rule[0]
+    if kind == "bool":
+        return type(value) is bool
+    if kind == "int":
+        return type(value) is int and rule[1] <= value <= rule[2]
+    if kind == "float":
+        return type(value) in (int, float) and math.isfinite(value) and rule[1] <= value <= rule[2]
+    if kind == "enum":
+        return type(value) is type(rule[1][0]) and value in rule[1]
+    if kind == "str":
+        return isinstance(value, str) and len(value) <= rule[1]
+    if kind == "color":
+        return isinstance(value, str) and (value == "random" or re.fullmatch(r"#[0-9a-fA-F]{6}", value) is not None)
+    if kind == "list_str":
+        return isinstance(value, list) and all(isinstance(x, str) for x in value)
+    if kind == "dict_str":
+        return isinstance(value, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in value.items())
+    if kind == "look_dict":
+        hexc = lambda v: isinstance(v, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", v) is not None   # noqa: E731
+        ok = {**{k: hexc for k in ("body", "pupL", "pupR", "whiteL", "whiteR")},
+              "skinColor": lambda v: v == "" or hexc(v),
+              **{k: (lambda v: type(v) is bool) for k in ("link", "random", "follow_theme")},
+              **{k: (lambda v: isinstance(v, str) and len(v) <= 64) for k in ("skin", "character")}}
+        return isinstance(value, dict) and all(k in ok and ok[k](v) for k, v in value.items())
+    return False
+
+
+def load_shared(path):
+    settings, extras, notes = {}, {"plugins_on": [], "private_plugins": [], "voices": {}}, []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return settings, extras, notes
+    except (OSError, ValueError) as e:
+        return settings, extras, [f"Could not read {path}: {e}"]
+    if not isinstance(data, dict):
+        return settings, extras, ["Shared settings must be an object"]
+    plugin_id = re.compile(r"[a-z0-9][a-z0-9_.-]{0,63}")
+    voice_name = re.compile(r"[a-z]{2}_[A-Z]{2}-[a-z0-9_]+-(?:x_low|low|medium|high)")
+    for key, value in data.items():
+        if key in SHARED_RULES and key in SHARED_OK and _shared_value(value, SHARED_RULES[key]):
+            settings[key] = value
+        elif key in ("plugins_on", "private_plugins") and isinstance(value, list) and all(
+                isinstance(x, str) and plugin_id.fullmatch(x) for x in value):
+            extras[key] = value
+        elif key == "voices" and isinstance(value, dict) and all(
+                isinstance(name, str) and voice_name.fullmatch(name) and isinstance(row, dict) and
+                set(row) == {"onnx", "json"} and all(isinstance(sha, str) and re.fullmatch(r"[0-9a-fA-F]{64}", sha)
+                                                       for sha in row.values()) for name, row in value.items()):
+            extras[key] = value
+        else:
+            notes.append(f"Ignored shared setting: {key}")
+    return settings, extras, notes
+
+
+SHARED, SHARED_EXTRAS, SHARED_NOTES = load_shared(CONF_PATH.with_name("shared.json"))
+
 
 def load_config():
     cfg = dict(DEFAULTS)
+    cfg.update(SHARED)
     if CONF_PATH.exists():
         try:
             user = json.loads(CONF_PATH.read_text(encoding="utf-8-sig"))   # (-sig: Notepad may add a BOM)
@@ -291,15 +405,17 @@ def load_config():
                 cfg["lang_good"] = "en"
             if lang.norm(cfg["language"]) != "en" and str(cfg.get("whisper_model", "")).endswith(".en"):
                 cfg["whisper_model"] = "auto"
-            if "trust" not in user and user.get("permission_mode"):
+            if "trust" not in user and "trust" not in SHARED and user.get("permission_mode"):
                 cfg["trust"] = {"bypassPermissions": "trust", "plan": "readonly"}.get(user["permission_mode"], "ask")
         except Exception as e:  # noqa: BLE001
             print(f"[nixi] could not parse {CONF_PATH}: {e}", file=sys.stderr)
     else:
-        cfg["language"] = lang.detect(os.environ)       # first run only: written now, so the next start doesn't re-detect
-        cfg["lang_good"] = "en"
+        first = {"lang_good": "en"}
+        if "language" not in SHARED:
+            first["language"] = lang.detect(os.environ)
+        cfg.update(first)
         CONF_PATH.parent.mkdir(parents=True, exist_ok=True)
-        CONF_PATH.write_text(json.dumps(cfg, indent=2) + "\n")
+        CONF_PATH.write_text(json.dumps(first, indent=2) + "\n")
     return cfg
 
 
@@ -2408,7 +2524,7 @@ class Plug:
 
     @classmethod
     def reload(cls):
-        st = plugins.State()
+        st = plugins.State(plugins_on=SHARED_EXTRAS["plugins_on"])
         found = plugins.scan(plugins.plugin_dirs())
         cls.review(found, st)                                   # (a changed Folder plugin is switched off here)
         plugins.forget()                                        # (a result from before a reload or a switch-off is never shown again)
@@ -2544,7 +2660,7 @@ def _config_note(p):
 
 def plugins_api(error=None, **extra):
     """Settings → Plugins: every plugin found, working or broken."""
-    st = plugins.State()
+    st = plugins.State(plugins_on=SHARED_EXTRAS["plugins_on"])
     items, found = [], plugins.scan(plugins.plugin_dirs())
     notes = Plug.review(found, st)                             # (a folder plugin changed since you allowed it is switched off, with a note)
     if any(k in Plug.stage for k in notes):
@@ -2582,7 +2698,7 @@ def plugins_act(b):
         return plugins_api("no such plugin")
     if p.error and on:                                         # (a broken plugin can still be switched off)
         return plugins_api("it is broken: " + p.error)
-    st, stg = plugins.State(), (p.manifest or {}).get("stage")
+    st, stg = plugins.State(plugins_on=SHARED_EXTRAS["plugins_on"]), (p.manifest or {}).get("stage")
     if not stg:
         st.set(pid, on)
     elif not on:
@@ -4189,7 +4305,8 @@ def request_language(code, force=False):
                     _stt = (model, code, dev)
                     _whisper, _whisper_err = model, None
                     with _config_lock:
-                        if changed:
+                        mine = user_file_keys()
+                        if changed and not any(k in SHARED and k not in mine for k in ("voice", "voice_by_lang")):
                             save_config(voice_by_lang={**(CFG.get("voice_by_lang") or {}), lang.active: CFG["voice"]})
                         lang.active = code
                         restore_voice(code)
@@ -4199,7 +4316,10 @@ def request_language(code, force=False):
             with _switch_lock:
                 if generation == sg:
                     if changed:
-                        save_config(language=lang.active)
+                        if "language" in SHARED and "language" not in user_file_keys():
+                            CFG["language"] = lang.active
+                        else:
+                            save_config(language=lang.active)
                     lang_status = str(e)[:200]
 
     threading.Thread(target=prepare, daemon=True).start()
@@ -4661,8 +4781,215 @@ class Wake:
                 BUS.pub(t="wake", text=said, follow=True, path="follow", media=media)
 
 
+BRIDGE_KEYS = ("trust", "permissionMode", "agent", "model", "reasoningEffort")
+BRIDGE_DEFAULTS = {"trust": "guide", "permissionMode": "permission"}
+
+
+def _nixi_running():
+    """Pids of a companion server (its bridge is its child), not counting this process."""
+    out = subprocess.run(["pgrep", "-f", r"python[^ ]* [^ ]*nixi-companion/app/server\.py"], capture_output=True, text=True).stdout.split()
+    return {int(x) for x in out if x.isdigit()} - {os.getpid()}
+
+
+def _nixi_idle(timeout=10):
+    end = time.monotonic() + timeout
+    while _nixi_running():
+        if time.monotonic() > end:
+            return False
+        time.sleep(0.3)
+    return True
+
+
+def _launcher():
+    return shutil.which("nixi-companion") or str(Path.home() / ".local/bin/nixi-companion")
+
+
+def _nixi_start():
+    subprocess.run([_launcher(), "show"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                   stderr=subprocess.DEVNULL, check=False)
+
+
+def _write_json_atomic(path, data, tmp):
+    tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _read_obj(path):
+    """(object or None when the file is missing, mtime_ns or None); ValueError when it isn't a JSON object."""
+    try:
+        st = path.stat()
+        d = json.loads(path.read_text(encoding="utf-8-sig"))
+    except FileNotFoundError:
+        return None, None
+    except OSError as e:
+        raise ValueError(f"{path}: {e}")
+    if not isinstance(d, dict):
+        raise ValueError(f"{path} isn't a JSON object")
+    return d, st.st_mtime_ns
+
+
+def _decide(local, shared, defaults, keep, drop_all, ask, only=None):
+    """The local file's new content: keys equal to the shared value (or the default) go; differing shared ones
+    are kept or dropped as asked. Returns (new, dropped)."""
+    new, dropped = {}, []
+    for k, v in local.items():
+        if only is not None and k not in only:
+            new[k] = v
+        elif k in shared and v != shared[k]:
+            if k in keep or not drop_all and ask(f"{k}: {v!r} differs from shared {shared[k]!r}. Keep as local override? [y/N] "):
+                new[k] = v
+            else:
+                dropped.append(k)
+        elif k in shared or (k in defaults and v == defaults[k]):
+            dropped.append(k)
+        else:
+            new[k] = v
+    return new, dropped
+
+
+def settings_migrate(keep=(), drop_all=False, ask=None, backup_root=None):
+    """Drop what the local files only repeat from the shared layer, all or nothing. Returns an exit code."""
+    ask = ask or (lambda q: input(q).strip().lower() in ("y", "yes"))
+    state = DATA_DIR / "plugins-state.json"
+    files = {"config.json": CONF_PATH, "nixi.json": NIXI_CONF, "plugins-state.json": state}
+    try:
+        if not _nixi_idle():
+            print("Nixi didn't stop; nothing was changed.", file=sys.stderr)
+            return 1
+        try:
+            read = {n: _read_obj(f) for n, f in files.items()}
+        except ValueError as e:
+            print(f"Nothing changed: {e}", file=sys.stderr)
+            return 1
+        stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        backup = Path(backup_root or Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "nixi-companion") / f"migrate-{stamp}"
+        backup.mkdir(parents=True, exist_ok=True)
+        for n, f in files.items():
+            if read[n][0] is not None:
+                shutil.copy2(f, backup / n)
+        keep = set(keep)
+        new, report = {}, {}
+        if read["config.json"][0] is not None:
+            local = read["config.json"][0]
+            new["config.json"], report["config.json"] = _decide(local, SHARED, DEFAULTS, keep, drop_all, ask,
+                                                                only=set(DEFAULTS) - LOCAL_ONLY)
+            if "trust" in local and local.get("permission_mode") and "trust" not in SHARED:   # else load_config re-derives trust from it
+                new["config.json"]["trust"] = local["trust"]
+                report["config.json"] = [k for k in report["config.json"] if k != "trust"]
+        if read["nixi.json"][0] is not None:
+            new["nixi.json"], report["nixi.json"] = _decide(read["nixi.json"][0], bridge_shared(), BRIDGE_DEFAULTS, keep, drop_all, ask,
+                                                            only=set(BRIDGE_KEYS))
+        on, private = set(SHARED_EXTRAS["plugins_on"]), set(SHARED_EXTRAS["private_plugins"])
+        nix_ids = {p.id for p in plugins.scan(plugins.plugin_dirs()[:1]) if not p.error} & on - private
+        if read["plugins-state.json"][0] is not None:
+            old = read["plugins-state.json"][0]
+            new["plugins-state.json"] = {k: v for k, v in old.items() if not (k in nix_ids and isinstance(v, dict) and v.get("enabled") is True)}
+            report["plugins-state.json"] = sorted(set(old) - set(new["plugins-state.json"]))
+        tmps = {n: files[n].with_name(files[n].name + ".migrate.tmp") for n in new}
+        try:
+            for n, data in new.items():
+                tmps[n].write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+            if any(_read_obj(files[n])[1] != read[n][1] for n in new):
+                print("A settings file changed while migrating; nothing was changed.", file=sys.stderr)
+                return 1
+            failed = None
+            try:
+                for failed in new:
+                    os.replace(tmps[failed], files[failed])
+            except OSError as e:
+                for n in new:
+                    shutil.copy2(backup / n, files[n])
+                print(f"Replacing {failed} failed ({e}); all files restored.", file=sys.stderr)
+                return 1
+        finally:
+            for t in tmps.values():
+                t.unlink(missing_ok=True)
+        moved = []
+        for pid in sorted(nix_ids):
+            d = DATA_DIR / "plugins" / pid
+            if d.is_dir():
+                (backup / "plugins").mkdir(exist_ok=True)
+                shutil.move(str(d), str(backup / "plugins" / pid))
+                moved.append(pid)
+        for n, keys in report.items():
+            print(f"{n}: dropped {', '.join(keys) or 'nothing'}")
+        if moved:
+            print("plugin copies moved to the backup: " + ", ".join(moved))
+        print(f"backup: {backup}")
+        undo = " && ".join([f"cp -p {shlex.quote(str(backup / n))} {shlex.quote(str(files[n]))}" for n in new] +
+                           [f"mv {shlex.quote(str(backup / 'plugins' / pid))} {shlex.quote(str(DATA_DIR / 'plugins' / pid))}" for pid in moved])
+        print(f"undo (with Nixi stopped): {undo}")
+        return 0
+    finally:
+        _nixi_start()
+
+
+def settings_reset_bridge():
+    try:
+        if not _nixi_idle():
+            print("Nixi didn't stop; nothing was changed.", file=sys.stderr)
+            return 1
+        try:
+            cur, _ = _read_obj(NIXI_CONF)
+        except ValueError as e:
+            print(f"Nothing changed: {e}", file=sys.stderr)
+            return 1
+        if cur is not None:
+            _write_json_atomic(NIXI_CONF, {k: v for k, v in cur.items() if k not in BRIDGE_KEYS},
+                               NIXI_CONF.with_name(NIXI_CONF.name + ".tmp"))
+        print("The bridge settings now follow the shared ones.")
+        return 0
+    finally:
+        _nixi_start()
+
+
+def settings_cli(argv):
+    ap = argparse.ArgumentParser(prog="nixi-companion settings")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    m = sub.add_parser("migrate", help="drop local settings that only repeat the shared ones (backs up first)")
+    m.add_argument("--keep", default="", help="comma list of differing keys to keep as local overrides")
+    m.add_argument("--drop-all", action="store_true", help="drop every differing key too")
+    sub.add_parser("reset-bridge", help="remove the bridge's local overrides")
+    a = ap.parse_args(argv)
+    if a.cmd == "migrate":
+        return settings_migrate([k for k in a.keep.split(",") if k], a.drop_all)
+    return settings_reset_bridge()
+
+
+def doctor_shared():
+    print("── shared settings ──")
+    for path in (CONF_PATH.with_name("shared.json"), NIXI_CONF.parent / "nixi-shared.json"):
+        try:
+            json.loads(path.read_text(encoding="utf-8"))
+            state = "ok"
+        except FileNotFoundError:
+            state = "not there"
+        except (OSError, ValueError) as e:
+            state = f"doesn't parse ({e})"
+        print(f"  {path}: {state}")
+    for note in SHARED_NOTES:
+        print(f"  {note}")
+    try:
+        mine = json.loads(CONF_PATH.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        mine = {}
+    for k in sorted(set(mine) & set(SHARED)):
+        print(f"  override {k}: " + ("differs" if k == "look" else f"{mine[k]!r} → {SHARED[k]!r}"))
+    bs, bl = bridge_shared(), _read_nixi_conf()
+    for k in sorted(set(bs) & set(bl)):
+        print(f"  bridge override {k}: {bl[k]!r} → {bs[k]!r}")
+    for pid in SHARED_EXTRAS["private_plugins"]:
+        if not (DATA_DIR / "plugins" / pid).is_dir():
+            print(f"  private plugin missing: {pid} (copy it to {DATA_DIR / 'plugins'})")
+    for name in SHARED_EXTRAS["voices"]:
+        if not voice_ok(name):
+            print(f"  voice {name}: " + ("stale" if voice_file(name).exists() else "missing"))
+    print()
+
+
 def doctor():
     print(f"Nixi doctor (version {VERSION})\n")
+    doctor_shared()
     if shutil.which("pactl"):
         out = subprocess.run(["pactl", "list", "short", "sources"], capture_output=True, text=True).stdout
         dflt = subprocess.run(["pactl", "get-default-source"], capture_output=True, text=True).stdout.strip()
@@ -4995,6 +5322,9 @@ def lang_voice_name(code):
 def restore_voice(code):
     """The switcher calls this when `code` becomes active: the preset last chosen in that language comes back."""
     v = (CFG.get("voice_by_lang") or {}).get(code)
+    if ("voice" in SHARED or "voice_by_lang" in SHARED) and "voice" not in user_file_keys():   # (inherited: never written back)
+        CFG["voice"] = v if v in VOICES else SHARED.get("voice", DEFAULTS["voice"])
+        return
     if v in VOICES:
         save_config(voice=v)
 
@@ -5081,23 +5411,79 @@ def voice_file(name):
     return DATA_DIR / "voices" / f"{name}.onnx"
 
 
+PIPER_REV = "0ca208afc2a2ee102b1e961e72e0a7e4907be3d0"
+_voice_sha_cache = {}
+
+
+def _file_sha_ok(path, want):
+    try:
+        st = path.stat()
+    except OSError:
+        return False
+    key = (str(path), st.st_size, st.st_mtime_ns)
+    if key not in _voice_sha_cache:
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        _voice_sha_cache[key] = h.hexdigest()
+    return _voice_sha_cache[key] == want.lower()
+
+
+def voice_ok(name):
+    """A listed voice (shared.json) must match its pinned sha256s; any other voice just has to exist."""
+    row = SHARED_EXTRAS["voices"].get(name)
+    if not row:
+        return voice_file(name).exists()
+    f = voice_file(name)
+    return _file_sha_ok(f, row["onnx"]) and _file_sha_ok(f.with_name(f.name + ".json"), row["json"])
+
+
+def _voice_download(name, end):
+    """Fetch both files of a voice from the pinned revision; a listed voice that fails its hashes is not kept."""
+    loc, spk, q = name.split("-")
+    base = f"https://huggingface.co/rhasspy/piper-voices/resolve/{PIPER_REV}/{loc.split('_')[0]}/{loc}/{spk}/{q}/{name}"
+    d = DATA_DIR / "voices"
+    d.mkdir(parents=True, exist_ok=True)
+    listed = name in SHARED_EXTRAS["voices"]
+    if listed and not voice_ok(name):
+        stale = d / ".stale" / f"{time.strftime('%Y%m%dT%H%M%S')}-{time.time_ns() % 10**6}"
+        for f in (voice_file(name), d / f"{name}.onnx.json"):
+            if f.exists():
+                stale.mkdir(parents=True, exist_ok=True)
+                os.replace(f, stale / f.name)
+    files = [d / f"{name}.onnx.json", voice_file(name)]
+    try:
+        for ext, dest in ((".onnx.json", files[0]), (".onnx", files[1])):
+            part = dest.with_name(dest.name + ".part")
+            with urllib.request.urlopen(base + ext, timeout=30) as r, open(part, "wb") as f:
+                while True:
+                    if time.monotonic() > end:
+                        raise TimeoutError("timed out")
+                    chunk = r.read(1 << 16)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+            os.replace(part, dest)
+        if listed and not voice_ok(name):
+            raise ValueError("the download doesn't match its pinned sha256")
+        _PIPER.pop(str(voice_file(name)), None)           # (a model loaded from the old file is not used again)
+    except Exception:
+        for f in files + [f.with_name(f.name + ".part") for f in files]:
+            f.unlink(missing_ok=True)
+        raise
+
+
 def fetch_voice(name):
     """Download a piper voice in the background (same source the installer uses)."""
     with _download_lock:
-        if name in _downloading or voice_file(name).exists():
+        if name in _downloading or voice_ok(name):
             return
         _downloading.add(name)
 
     def go():
-        import urllib.request
         try:
-            loc, spk, q = name.split("-")
-            base = f"https://huggingface.co/rhasspy/piper-voices/resolve/main/{loc.split('_')[0]}/{loc}/{spk}/{q}/{name}"
-            d = DATA_DIR / "voices"
-            d.mkdir(parents=True, exist_ok=True)
-            urllib.request.urlretrieve(base + ".onnx.json", d / f"{name}.onnx.json")
-            urllib.request.urlretrieve(base + ".onnx", d / f"{name}.onnx.part")
-            (d / f"{name}.onnx.part").rename(d / f"{name}.onnx")
+            _voice_download(name, time.monotonic() + 600)
             print(f"[nixi] voice {name} ready", file=sys.stderr)
         except Exception as e:  # noqa: BLE001
             print(f"[nixi] voice download {name} failed: {e}", file=sys.stderr)
@@ -5111,7 +5497,7 @@ def fetch_voice_sync(name, timeout=300):
     """Download a piper voice in this thread → (ok, reason). Waits for a download already running instead of starting a second."""
     end = time.monotonic() + timeout
     with _download_lock:
-        ready = voice_file(name).exists()
+        ready = voice_ok(name)
         pending = name in _downloading
         if not ready and not pending:
             _downloading.add(name)
@@ -5123,23 +5509,9 @@ def fetch_voice_sync(name, timeout=300):
                 if name not in _downloading:
                     break
             time.sleep(0.5)
-        return (True, "") if voice_file(name).exists() else (False, "The voice download didn't finish")
+        return (True, "") if voice_ok(name) else (False, "The voice download didn't finish")
     try:
-        import urllib.request
-        loc, spk, q = name.split("-")
-        base = f"https://huggingface.co/rhasspy/piper-voices/resolve/main/{loc.split('_')[0]}/{loc}/{spk}/{q}/{name}"
-        d = DATA_DIR / "voices"
-        d.mkdir(parents=True, exist_ok=True)
-        for ext, dest in ((".onnx.json", d / f"{name}.onnx.json"), (".onnx", d / f"{name}.onnx.part")):
-            with urllib.request.urlopen(base + ext, timeout=30) as r, open(dest, "wb") as f:
-                while True:
-                    if time.monotonic() > end:
-                        raise TimeoutError("timed out")
-                    chunk = r.read(1 << 16)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-        (d / f"{name}.onnx.part").rename(d / f"{name}.onnx")
+        _voice_download(name, end)
         return True, ""
     except Exception as e:  # noqa: BLE001
         return False, f"Couldn't download the voice {name}: {e}"[:200]
@@ -5843,7 +6215,7 @@ def synth(text: str, engine=None, local=False):
         model = None
         pinned = CFG["piper_voice"] if lang.active == "en" else ""         # (a pinned voice is the user's English one)
         if eng == "piper" and not vp.get("espeak") and not pinned:
-            if voice_file(vp["piper"]).exists():
+            if voice_ok(vp["piper"]):                 # (a pinned voice must match its sha256, not only exist)
                 model = str(voice_file(vp["piper"]))
             else:
                 fetch_voice(vp["piper"])          # use whatever we have until it lands
@@ -5902,6 +6274,15 @@ def save_config(**kw):
             NImage.clear()
         CONF_PATH.parent.mkdir(parents=True, exist_ok=True)
         CONF_PATH.write_text(json.dumps(cur, indent=2) + "\n")
+
+
+def user_file_keys():
+    with _config_lock:
+        try:
+            data = json.loads(CONF_PATH.read_text(encoding="utf-8-sig"))
+            return set(data) if isinstance(data, dict) else set()
+        except (OSError, ValueError):
+            return set()
 
 
 # ---------------------------------------------------------------- claude code
@@ -8452,6 +8833,7 @@ def state_info():
     eng = tts_engine(True)
     by_character = CFG.get("voice_by_character")
     return {
+        "shared": SHARED, "overrides": sorted(user_file_keys() & SHARED.keys()),
         "bridge": BRIDGED, "theme": THEME,
         "version": VERSION, "update": Updates.status(), "update_check": bool(CFG.get("update_check", True)),
         "platform": "linux", "ptt_hotkey": CFG.get("ptt_hotkey", "") or "",
@@ -8825,6 +9207,56 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": "off in nixi mode"}, 403)
                 Updates.install()
                 return self._json(Updates.status())
+            if p == "/api/settings/reset":
+                b = json.loads(self._body() or b"{}")
+                key = b.get("key") if isinstance(b, dict) else None
+                if not isinstance(key, str) or key not in SHARED:
+                    return self._json({"error": "not a shared setting"}, 400)
+                with _config_lock:
+                    try:
+                        cur = json.loads(CONF_PATH.read_text(encoding="utf-8-sig"))
+                    except (OSError, ValueError):
+                        return self._json({"error": "could not read settings"}, 500)
+                    if not isinstance(cur, dict):
+                        return self._json({"error": "invalid settings file"}, 500)
+                    cur.pop(key, None)
+                    if key == "trust":
+                        cur.pop("root_mode", None)               # (as a panel trust change does: shared trust never leaves root on)
+                    if key == "voice":
+                        by_lang = cur.get("voice_by_lang")
+                        if isinstance(by_lang, dict):
+                            by_lang.pop(lang.active, None)
+                            if by_lang:
+                                cur["voice_by_lang"] = by_lang
+                            else:
+                                cur.pop("voice_by_lang", None)       # (an empty local map would hide the shared one after the restart)
+                    fd, tmp = tempfile.mkstemp(dir=CONF_PATH.parent, prefix=".config-", suffix=".tmp")
+                    try:
+                        with os.fdopen(fd, "w", encoding="utf-8") as f:
+                            json.dump(cur, f, indent=2)
+                            f.write("\n")
+                        os.replace(tmp, CONF_PATH)
+                    finally:
+                        if os.path.exists(tmp):
+                            os.unlink(tmp)
+                    if key == "voice":
+                        CFG["voice_by_lang"] = {**(SHARED.get("voice_by_lang") or {}), **(by_lang or {})} if isinstance(by_lang, dict) else dict(SHARED.get("voice_by_lang") or {})
+                    CFG[key] = SHARED[key]
+                    if key == "notify_details" and SHARED[key] is False:
+                        NImage.clear()
+                    if key == "trust":
+                        CFG["root_mode"] = False
+                if key == "trust":
+                    AskPass.forget()
+                if key == "autostart":
+                    sync_autostart()                 # (the login entries follow the reset, as a panel change does)
+                try:
+                    subprocess.Popen([_launcher(), "restart"], start_new_session=True, env=os.environ.copy(),
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    restart = True
+                except OSError:
+                    restart = False                     # the file is already reset; the next start picks it up
+                return self._json({"ok": True, "restart": restart})
             if p == "/api/settings":
                 b = json.loads(self._body() or b"{}")
                 upd = {}
@@ -9554,6 +9986,7 @@ def main():
     ap.add_argument("--print-port", action="store_true")
     ap.add_argument("--doctor", action="store_true")
     ap.add_argument("--diagnostics", action="store_true", help="print the report that 'Copy diagnostics' copies")
+    ap.add_argument("--settings", nargs=argparse.REMAINDER, help="`nixi-companion settings migrate|reset-bridge`")
     ap.add_argument("--warm", action="store_true", help="download/load the speech model and exit")
     ap.add_argument("--sync-autostart", action="store_true", help="add/remove login startup to match the config")
     ap.add_argument("--stress-voice", action="store_true", help="test the voice for stutters under heavy load")
@@ -9587,6 +10020,8 @@ def main():
         sync_autostart()
         print("autostart:", "on" if CFG.get("autostart") else "off")
         return None
+    if args.settings is not None:
+        sys.exit(settings_cli(args.settings))
     if args.doctor:
         return doctor()
     if args.diagnostics:
@@ -9611,10 +10046,17 @@ def main():
         return
     if lang.norm(CFG.get("language")) != lang.active:
         request_language(lang.norm(CFG["language"]))
+    elif ("voice" in SHARED or "voice_by_lang" in SHARED) and "voice" not in user_file_keys():
+        restore_voice(lang.active)                   # (no switch at start: the inherited language voice applies now, in memory)
     if CFG["stt_prewarm"] or CFG.get("wake_word"):
         threading.Thread(target=lambda: _try(whisper), daemon=True).start()
     _wire_quick()
-    threading.Thread(target=warm_tts, daemon=True).start()
+    def _voices_then_warm():                     # warm_tts caches a loaded model by path: check pinned voices first
+        for v in SHARED_EXTRAS["voices"]:
+            if not voice_ok(v):
+                fetch_voice_sync(v)
+        warm_tts()
+    threading.Thread(target=_voices_then_warm, daemon=True).start()
     Wake.ensure()
     Ambient.start()
     Mirror.start()
