@@ -44,7 +44,7 @@ class SandboxTest(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
         plugins._cache.clear()
-        mock.patch.object(plugins, "State", lambda *a: STATE).start()
+        mock.patch.object(plugins, "State", lambda *a, **k: STATE).start()
         self.addCleanup(mock.patch.stopall)
         self.addCleanup(shutil.rmtree, self.root, True)
 

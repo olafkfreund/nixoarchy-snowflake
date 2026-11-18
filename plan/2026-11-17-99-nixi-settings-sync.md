@@ -192,6 +192,23 @@ Changed from the spec, to be approved with this plan (Codex plan review):
      - Grep `app/` and `bin/` for `CONF_PATH` and `NIXI_CONF`: every reader
        must go through `CFG`/`nixi_conf()`, `load_config` or `save_config`.
      - Nothing in `SHARED_RULES` may call a function defined after `:306`.
+   - *Deviations (Opus review, before rollout):*
+     - `look`'s rule takes the real shape: hex colours, `skinColor` hex or
+       empty, `link`/`random`/`follow_theme` bools, `skin`/`character`
+       strings. Hex-only dropped every real `look`.
+     - `request_language` and `restore_voice` never save `voice`,
+       `voice_by_lang` or `language` while those come only from the shared
+       layer, so a language switch (or a failed one at start) can't create
+       an override.
+     - The legacy `permission_mode` → `trust` migration is skipped when
+       `trust` is shared.
+     - `window.py` `saved_size()` and the CLI's `size up|down` read
+       `shared.json` under `config.json` (they read the file directly).
+     - The restart uses `shutil.which("nixi-companion")` or
+       `~/.local/bin/nixi-companion`. If it can't start, reset still
+       replies ok with `restart: false`, and the panel says to restart Nixi.
+     - `migrate` waits only for the server process. The bridge is its
+       child; matching `bridge.js` also hit editors and the card's bridge.
 
 2. **`app/server.py`: voices.** By the coder.
    - **Pinned downloads.** Add the `PIPER_REV` constant. `fetch_voice` and
@@ -220,6 +237,9 @@ Changed from the spec, to be approved with this plan (Codex plan review):
      - a mismatching download isn't kept;
      - the pending-download path checks too;
      - unlisted voices behave as today.
+   - *Deviation (coder):* both download paths share one helper,
+     `_voice_download`, so the pinned URL, `.part` files and the hash check
+     live in one place. `fetch_voice` now uses `urlopen`, not `urlretrieve`.
      
      Patch `urllib.request.urlopen`: no network.
    - Verify with:
@@ -301,6 +321,10 @@ Changed from the spec, to be approved with this plan (Codex plan review):
      - the doctor section.
      
      Patch the stop/start and process checks.
+   - *Deviation (coder):* the shell case runs `stop; quitwin` before
+     calling Python, because the Python helper's own command line matches
+     `SRV_RE`. Python then waits (excluding its own pid) and restarts Nixi
+     in a `finally`.
    - Verify with:
      ```bash
      nix develop .#ci -c python3 -B .github/ci/run_tests.py test_shared_settings.py
@@ -313,6 +337,10 @@ Changed from the spec, to be approved with this plan (Codex plan review):
      `/api/settings/reset {key}`, shows "Restarting Nixi…", and leaves the
      rest to the restart.
    - With `info.shared` empty, nothing changes.
+   - *Deviation (coder):* the overrides are listed in one block at the top
+     of the settings panel (`#sharedList`), one note and **Use shared**
+     button per key, rather than next to each setting: several settings
+     have no single row to attach to.
    - Verify with:
      ```bash
      nix develop .#ci -c python3 -B .github/ci/run_tests.py --deadline 1800 test_character_fit.py test_accessories_fit.py

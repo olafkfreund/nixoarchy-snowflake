@@ -138,10 +138,13 @@ def window_size(raw):
 
 
 def saved_size():
-    try:
-        return window_size(json.load(open(CONF_FILE)).get("size", 0.75))
-    except (OSError, ValueError):
-        return 0.75
+    size = 0.75
+    for f in (os.path.join(os.path.dirname(CONF_FILE), "shared.json"), CONF_FILE):     # local over shared
+        try:
+            size = json.load(open(f)).get("size", size)
+        except (OSError, ValueError, AttributeError):
+            pass
+    return window_size(size)
 
 POS_FILE = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "nixi-companion", "pos.json")
 

@@ -14,7 +14,7 @@ class PluginMapsTest(_ServerEnv):
         self.root = Path(tempfile.mkdtemp(dir=self.tmp))
         self.addCleanup(lambda: (setattr(S.Plug, "loaded", None), S.Quips.bags.clear()))
         self.state = S.plugins.State(self.root / "st.json")
-        for target, val in (("plugin_dirs", lambda: [self.root / "pk"]), ("State", lambda *a: self.state)):
+        for target, val in (("plugin_dirs", lambda: [self.root / "pk"]), ("State", lambda *a, **k: self.state)):
             p = mock.patch.object(S.plugins, target, val)
             p.start()
             self.addCleanup(p.stop)
