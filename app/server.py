@@ -3180,9 +3180,110 @@ def phone_call_row(x):
 
 
 class CodePause:
-    @staticmethod
-    def seen(key):
-        pass
+    OWNER, SECS, MAX, KEEP, FORGET = "nixi-otp", 120, 5, 64, 600
+    lock = threading.Lock()
+    wake = threading.Event()
+    keys = {}
+    pending = 0
+    sent = 0
+    until = 0.0
+    logged = False
+    thread = None
+
+    @classmethod
+    def _log(cls, kind):
+        with cls.lock:
+            if cls.logged:
+                return
+            cls.logged = True
+        print(f"[nixi] code pause: {kind.__name__}", file=sys.stderr)
+
+    @classmethod
+    def seen(cls, key):
+        with cls.lock:
+            now = time.monotonic()
+            for old, at in list(cls.keys.items()):
+                if now - at >= cls.FORGET:
+                    del cls.keys[old]
+            if key in cls.keys:
+                return
+            cls.keys[key] = now
+            if len(cls.keys) > cls.KEEP:
+                del cls.keys[min(cls.keys, key=cls.keys.get)]
+            cls.pending += 1
+        cls.wake.set()
+
+    @classmethod
+    def turn(cls):
+        with cls.lock:
+            now = time.time()
+            if not cls.pending:
+                return
+            if cls.until <= now:
+                cls.sent = 0
+            if cls.sent >= cls.MAX:
+                cls.pending = 0
+                return
+            cls.pending = 0
+            cls.sent += 1
+            g = Phone.session
+        if not (CFG.get("phone_on") is True and Phone.connected and "clipboardPauses" in Phone.snap):
+            with cls.lock:
+                cls.sent -= 1
+            return
+        start = time.time()
+        try:
+            reply = Phone.call("clipboard.pauseOwned", owner=cls.OWNER, expires=cls.SECS)
+        except phone.NotSent as e:
+            with cls.lock:
+                cls.sent -= 1
+            cls._log(type(e))
+            return
+        except (TimeoutError, ConnectionError) as e:
+            with cls.lock:
+                cls.until = max(cls.until, start + cls.SECS)
+            cls._log(type(e))
+            return
+        except (RuntimeError, ValueError) as e:
+            cls._log(type(e))
+            return
+        if not (isinstance(reply, dict) and type(reply.get("expires")) is int and reply["expires"] > time.time() + 1):
+            with cls.lock:
+                cls.until = max(cls.until, start + cls.SECS)
+            cls._log(ValueError)
+            return
+        with cls.lock:
+            if Phone.session != g:
+                cls.until = max(cls.until, start + cls.SECS)
+                changed = True
+            else:
+                cls.until = max(cls.until, reply["expires"])
+                changed = False
+        if changed:
+            cls._log(ConnectionError)
+        else:
+            BUS.pub(t="toast", text=lang.t("phone.clip_paused"))
+
+    @classmethod
+    def loop(cls):
+        while True:
+            cls.wake.wait()
+            cls.wake.clear()
+            try:
+                cls.turn()
+            except Exception as e:  # noqa: BLE001  (the worker must survive malformed replies)
+                cls._log(type(e))
+            with cls.lock:
+                more = cls.pending > 0
+            if more:
+                cls.wake.set()
+
+    @classmethod
+    def start(cls):
+        with cls.lock:
+            if cls.thread is None:
+                cls.thread = threading.Thread(target=cls.loop, daemon=True)
+                cls.thread.start()
 
 
 class Inbox:
@@ -3450,6 +3551,7 @@ class Inbox:
         if not cls.thread:
             cls.thread = threading.Thread(target=cls.loop, daemon=True)
             cls.thread.start()
+        CodePause.start()
 
 
 class Icons:
