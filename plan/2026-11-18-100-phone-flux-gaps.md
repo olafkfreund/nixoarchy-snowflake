@@ -319,6 +319,22 @@ The steps run in order, because most of them edit `app/server.py`.
      ```bash
      nix develop .#ci -c python3 -B .github/ci/run_tests.py test_phone_flux_more.py test_phone.py test_show_agent.py test_phone_fit.py
      ```
+   - *Deviations (step 2):*
+     - **`PHONE_SEND_LOCK`** (Codex review). `phone_note` holds it across
+       its generation check and `Phone.call`. `phone_reset` takes it once,
+       after bumping `PHONE_GEN` and before `Phone.stop()`. So a note past
+       its check leaves on the old connection, and none crosses a reset.
+       The lock order is send lock, then `PHONE_LOCK`. Reset never holds
+       both, so there's no cycle. A reset can wait up to the 10 s call
+       timeout.
+     - **`phone_pick_card(devs, do, pending, gen)`** checks `gen` and
+       `phone_on` before publishing the chooser.
+     - **`phone_note_say`** publishes a failed when-done send as a desktop
+       note.
+     - **Online-only `phone_devices`** go out in `phone_pub` already, for
+       the 📱 button. Step 3 adds the full rows.
+     - **The 📱 button** is also hidden in the bar, peek and hover modes,
+       where the chip hides.
    - **Traps:**
      - `WATCH_LOCK` is also taken in `run_bridge` (`:6592`, `:6652`).
        Never call out while holding it.

@@ -422,6 +422,8 @@ input[type=range]{accent-color:var(--acc)}
   background:color-mix(in srgb,var(--panel) 87%,transparent);border:1px solid var(--edge);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;z-index:9;
   opacity:0;transform:translate(-50%,-6px) scale(.94);transition:opacity .5s var(--ease),transform .7s var(--ease)}
 #chip.on{opacity:1;transform:translate(-50%,0)}
+#phoneDone{position:absolute;top:10px;right:10px;z-index:10;pointer-events:auto;background:var(--panel);color:var(--text);border:1px solid var(--edge);border-radius:999px;cursor:pointer}
+#phoneDone[hidden]{display:none} body.bar #phoneDone,body.peek #phoneDone,body.hover #phoneDone{display:none}   /* (where the chip hides, so does its button) */
 #musChip{position:absolute;left:296px;top:196px;z-index:9;width:30px;height:26px;padding:0;border-radius:999px;font:14px var(--mono);color:var(--tint);cursor:pointer;background:color-mix(in srgb,var(--panel) 87%,transparent);border:1px solid var(--edge)}
 #musCard{position:absolute;top:150px;width:210px;z-index:9;padding:8px 10px;border-radius:12px;font:12px var(--mono);color:var(--text);background:var(--panel);border:1px solid var(--edge)}
 #musCard .mh{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px} #musCard .mt{flex:1;min-height:16px;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden}   /* (three lines at most: the buttons stay inside the 460px window) */
@@ -857,6 +859,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
 
 <div id="code"><div class="tb"><div class="dots"><i></i><i></i><i></i></div><b></b><span></span></div><div class="lines"></div><i class="rootb" title="Root mode: Claude can run anything, incl. sudo">ROOT</i></div>
 <div id="chip"></div>
+<button id="phoneDone" type="button" hidden></button>
 <button id="musChip" type="button" aria-label="Music controls" hidden>♪</button>
 <div id="musCard" role="dialog" aria-label="Music controls" hidden><div class="mh"><span class="mt"></span><button class="mx" type="button" aria-label="Close">×</button></div>
   <div class="mbs"><button type="button" class="mp" data-p="pause">Pause</button><button type="button" data-p="next song">Next</button><button type="button" data-p="quieter">Quieter</button><button type="button" data-p="louder">Louder</button></div></div>
@@ -2814,7 +2817,7 @@ async function agentTick(){
 setInterval(()=>agentTick().catch(()=>{ agentCheck=false; }),250);
 function onEvent(ev){
   if(ev.t==='mirror'){ mirSet(ev); return; }
-  if(ev.t==='phone'){ info.phone_status=ev.status; renderPhone(); return; }
+  if(ev.t==='phone'){ info.phone_status=ev.status; info.phone_devices=ev.devices||[]; renderPhone(); workChip(); return; }
   if(ev.t==='theme'){ info.theme=ev.theme; lookShown=''; syncLook(); if(setEl.classList.contains('on')) renderSettings(); return; }
   if(ev.t==='beat'){ beat=Math.max(beat,+ev.v||0); beatAt=performance.now(); return; }   // the music's kick (look_beat)
   if(ev.t==='saw'){ poke('looking',1800); wake(); return; }   // Claude took a look at your screen (`nixi-companion see`)
@@ -3132,7 +3135,8 @@ function stagePhone(ev,bd,acts,fn){
   (ev.devices||[]).forEach(d=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab');
     tx.appendChild(hx('div','lb',d.name));
     ab.appendChild(stageBtn(ev.do==='ring'?ev.ring_label:ev.send_label,b=>{ b.disabled=true;
-      post(ev.do==='ring'?'/api/phone/ring':'/api/phone/share',{id:d.id,what:ev.do}).then(x=>x.json()).then(j=>{ msg.textContent=j.say||j.error||''; }).catch(()=>{ msg.textContent=ev.error_label; }).finally(()=>{ b.disabled=false; }); }));
+      post(ev.do==='note'||ev.do==='when_done'?'/api/phone/pick':ev.do==='ring'?'/api/phone/ring':'/api/phone/share',
+        ev.do==='note'||ev.do==='when_done'?{token:d.pick}:{id:d.id,what:ev.do}).then(x=>x.json()).then(j=>{ msg.textContent=j.say||j.error||''; }).catch(()=>{ msg.textContent=ev.error_label; }).finally(()=>{ b.disabled=false; }); }));
     row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
   bd.appendChild(msg); }
 function phoneOpenDraft(ev,token,fn){ post('/api/phone/draft',{token}).then(r=>r.json()).then(j=>{ if(!j.ok) fn.textContent=ev.draft_gone||''; }).catch(()=>{ fn.textContent=ev.draft_error||''; }); }
@@ -3458,11 +3462,15 @@ chip.addEventListener('click',()=>{ if(!chip.classList.contains('act')) return; 
 let chipT=null; function tick(t,bad){ chip.textContent=t; chip.dataset.w=''; chip.className='on'+(bad?' bad':''); clearTimeout(chipT);
   chipT=setTimeout(()=>{ chipT=null; chip.className=''; workChip(); },bad?6500:3400); }
 // while Claude works: "⟳ reading app.py · 0:12" stays up top the whole time
-function workChip(){ if(chipT) return;
+function workChip(){
+  const done=$('#phoneDone'); done.hidden=!(busy&&info.phone_on&&(info.phone_devices||[]).some(d=>d.online));
+  done.textContent=pageLine('phone.when_done_button','📱');
+  if(chipT) return;
   if(!busy){ if(chip.classList.contains('work')) chip.className=''; return; }
   const s=Math.floor((performance.now()-workT0)/1000), txt=`${workWhat||'thinking'} · ${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
   if(chip.dataset.w!==txt){ chip.dataset.w=txt; chip.innerHTML='<i class="spin"></i>'; chip.appendChild(document.createTextNode(txt)); }
   if(chip.className!=='on work') chip.className='on work'; }
+$('#phoneDone').addEventListener('click',()=>{ post('/api/phone/when-done',{}).then(r=>r.json()).then(j=>{ if(j.say) tick(j.say); }).catch(()=>{}); });
 function say(t,follow){ const reply=nextReply(); capShow(); setYou(''); if(voiced()){ himSet(''); enqueue(t,{cap:true,fresh:true,follow,reply}); } else { himSet(t); enqueue(t,{follow,reply}); } capQuiet(); }
 function sayAside(t){ if(SIT.meeting||SIT.phone_call){ capShow(); himSet(t); capQuiet(); return; } say(t,false); }   // (in a meeting: words on screen only)   // said unasked: no follow-up window (#133)
 function fail(t){ capShow(); himSet(t,true); errorUntil=performance.now()+2200; capQuiet(); }

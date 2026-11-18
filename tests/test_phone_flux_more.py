@@ -1,6 +1,10 @@
-"""#100: more of Flux from Nixi's phone feature. Step 1: the client, the dispatch guard, strings and phrases."""
+"""#100: more of Flux from Nixi's phone feature. Steps 1–2: client, phrases and notes."""
 
+import io
+import json
 import sys
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -113,9 +117,229 @@ class DispatchGuardTest(_ServerEnv):
         self.addCleanup(lambda: (s.CFG.clear(), s.CFG.update(saved)))
         s.CFG["phone_on"] = True
         with mock.patch.object(s, "Phone", StubPhone([dev("pixel", "Pixel")])), mock.patch.object(s, "phone_share") as share:
-            for do in ("note", "when_done", "notes", "notify_reply", "bogus"):
+            for do in ("notes", "notify_reply", "bogus"):
                 self.assertIsNone(s.phone_quick({"do": do, "text": "x", "name": None}), do)
             share.assert_not_called()
+
+
+class NoteTest(_ServerEnv):
+    def setUp(self):
+        s = self.s = self.server
+        self.saved = (dict(s.CFG), s.PHONE_GEN, s.PHONE_WHEN_DONE, s.ST.active_turn)
+        s.CFG["phone_on"] = True
+        self.p = StubPhone([dev("pixel", "Pixel", can=())])
+        self.patcher = mock.patch.object(s, "Phone", self.p)
+        self.patcher.start()
+        self.addCleanup(self.patcher.stop)
+        self.addCleanup(self.restore)
+        s.STAGES.close()
+
+    def restore(self):
+        s = self.s
+        s.CFG.clear()
+        s.CFG.update(self.saved[0])
+        s.PHONE_GEN, s.PHONE_WHEN_DONE, s.ST.active_turn = self.saved[1:]
+        s.STAGES.close()
+
+    def test_note_now_and_errors(self):
+        s = self.s
+        self.assertEqual(s.phone_quick({"do": "note", "text": "Buy Milk"})["say"], s.lang.t("phone.note_sent"))
+        self.assertEqual(self.p.calls, [("notify.send", {"device": "pixel", "title": "Nixi", "body": "Buy Milk"})])
+        for exc, key in ((RuntimeError("not_supported"), "phone.note_update"), (RuntimeError("other"), "phone.failed"),
+                         (TimeoutError(), "phone.note_unsure"), (phone.NotSent(), "phone.not_running")):
+            self.p.errors["notify.send"] = exc
+            before = len(self.p.calls)
+            self.assertEqual(s.phone_note(self.p.devices()[0], "x", s.PHONE_GEN)["say"], s.lang.t(key))
+            self.assertEqual(len(self.p.calls), before + 1)
+        self.p.errors.clear()
+        s.PHONE_GEN += 1
+        self.assertEqual(s.phone_note(self.p.devices()[0], "x", s.PHONE_GEN - 1)["mood"], "sad")
+        self.assertEqual(len(self.p.calls), 5)
+
+    def test_reset_waits_for_note_past_its_check(self):
+        s = self.s
+        inside, go = threading.Event(), threading.Event()
+        def call(method, **kw):
+            inside.set()
+            go.wait(2)
+            self.p.calls.append((method, kw))
+        with mock.patch.object(self.p, "call", side_effect=call):
+            t = threading.Thread(target=s.phone_note, args=(self.p.devices()[0], "x", s.PHONE_GEN))
+            t.start()
+            self.assertTrue(inside.wait(2))
+            got = []
+            with mock.patch.object(self.p, "stop", side_effect=lambda: got.append(len(self.p.calls))):
+                r = threading.Thread(target=s.phone_reset)
+                r.start()
+                time.sleep(0.1)
+                self.assertEqual(got, [])
+                go.set()
+                t.join(2)
+                r.join(2)
+            self.assertEqual(got, [1])
+
+    def test_chooser_not_published_after_reset_and_failed_send_is_told(self):
+        s = self.s
+        self.p._devices.append(dev("ipad", "iPad"))
+        with mock.patch.object(s, "BRIDGED", True), mock.patch.object(s, "stages_on", return_value=True), mock.patch.object(s.BUS, "pub") as pub:
+            r = s.phone_pick_card(self.p.devices(), "note", {"gen": s.PHONE_GEN - 1, "text": "x"}, s.PHONE_GEN - 1)
+            self.assertEqual(r["mood"], "sad")
+            self.assertIsNone(s.STAGES.current())
+            pub.assert_not_called()
+            self.p.errors["notify.send"] = TimeoutError()
+            s.phone_note_say(self.p.devices()[0], "x", s.PHONE_GEN)
+            pub.assert_called_once_with(t="note", text=s.lang.t("phone.note_unsure"))
+            pub.reset_mock()
+            s.phone_note_say(self.p.devices()[0], "x", s.PHONE_GEN - 1)
+            pub.assert_not_called()
+
+    def test_chooser_token_hides_text_and_turn_and_rejects_stale_turn(self):
+        s = self.s
+        self.p._devices.append(dev("ipad", "iPad"))
+        with mock.patch.object(s, "BRIDGED", True), mock.patch.object(s, "stages_on", return_value=True), mock.patch.object(s.BUS, "pub"):
+            s.phone_quick({"do": "note", "text": "Private note"})
+            page = s.STAGES.current()
+            self.assertNotIn("Private note", json.dumps(page))
+            self.assertNotIn("pending", page)
+            self.assertEqual(set(page["devices"][0]), {"name", "pick"})
+            h = s.Handler.__new__(s.Handler)
+            h.path = "/api/phone/pick"
+            h.headers = {"X-Nixi-Token": s.TOKEN}
+            h._host_ok = lambda: True
+            h._body = lambda: json.dumps({"token": page["devices"][1]["pick"], "device": "pixel"}).encode()
+            h._json = mock.Mock()
+            h.do_POST()
+            r, code = h._json.call_args.args
+            self.assertEqual((r["ok"], code), (True, 200))
+            self.assertEqual(self.p.calls[-1], ("notify.send", {"device": "ipad", "title": "Nixi", "body": "Private note"}))
+            s.ST.active_turn = 12
+            s.phone_quick({"do": "when_done"})
+            token = s.STAGES.current()["devices"][0]["pick"]
+            s.ST.active_turn = 13
+            r, _ = s.phone_pick_note(token)
+            self.assertEqual(r["say"], s.lang.t("phone.nothing_running"))
+            self.assertIsNone(s.PHONE_WHEN_DONE)
+
+    def test_when_done_outcomes_and_cancellation(self):
+        s = self.s
+        self.assertEqual(s.phone_when_done(self.p.devices()[0])["say"], s.lang.t("phone.nothing_running"))
+        for outcome in ("done", "stopped", "failed"):
+            s.ST.active_turn = 5
+            s.phone_when_done(self.p.devices()[0])
+            slot = s.PHONE_WHEN_DONE
+            sent = threading.Event()
+            def call(method, **kw):
+                self.p.calls.append((method, kw))
+                sent.set()
+            with mock.patch.object(self.p, "call", side_effect=call):
+                s.phone_fire(slot, outcome)
+                self.assertTrue(sent.wait(2))
+            self.assertEqual(self.p.calls[-1][1]["body"], s.lang.t("phone.turn_" + outcome))
+        slot = {**slot, "at": time.monotonic() - 1800}
+        s.phone_fire(slot, "done")
+        self.assertEqual(len(self.p.calls), 3)
+        slot["at"] = time.monotonic()
+        self.p._devices[0]["online"] = False
+        with mock.patch.object(s.BUS, "pub") as pub:
+            s.phone_fire(slot, "done")
+            pub.assert_called_once()
+        self.p._devices.clear()
+        s.phone_fire(slot, "done")
+        s.PHONE_GEN += 1
+        self.p._devices.append(dev("pixel", "Pixel"))
+        s.phone_fire(slot, "done")
+        self.assertEqual(len(self.p.calls), 3)
+
+    def test_reset_before_queued_send_drops_it(self):
+        s = self.s
+        s.ST.active_turn = 5
+        s.phone_when_done(self.p.devices()[0])
+        slot = s.PHONE_WHEN_DONE
+        queued = []
+        def thread(*, target, args, daemon):
+            return mock.Mock(start=lambda: queued.append((target, args)))
+        with mock.patch.object(s.threading, "Thread", side_effect=thread):
+            s.phone_fire(slot, "done")
+        self.assertEqual(len(queued), 1)
+        s.PHONE_GEN += 1
+        queued[0][0](*queued[0][1])
+        self.assertEqual(self.p.calls, [])
+
+    def test_ask_tracks_turn_and_fires_once(self):
+        s = self.s
+        h = s.Handler.__new__(s.Handler)
+        h.wfile = io.BytesIO()
+        h.send_response = h.send_header = h.end_headers = mock.Mock()
+        h._body = lambda: b'{"prompt":"hello"}'
+        h._json = mock.Mock()
+        for event, expected in (({"t": "result", "is_error": False}, "done"),
+                                ({"t": "stopped"}, "stopped"), ({"t": "error"}, "failed")):
+            seen = []
+            def bridge(prompt, emit, *_):
+                seen.append(s.ST.active_turn)
+                s.phone_when_done(self.p.devices()[0])
+                emit(**event)
+            with mock.patch.object(s, "BRIDGED", True), mock.patch.object(s, "run_bridge", side_effect=bridge), \
+                 mock.patch.object(s, "phone_fire") as fire, mock.patch.object(s, "hist_add"), \
+                 mock.patch.object(s, "pick_auto", return_value=None), mock.patch.dict(s.CFG, {"auto_compact": False}):
+                h.ask()
+            self.assertIsNotNone(seen[0])
+            self.assertIsNone(s.ST.active_turn)
+            self.assertIsNone(s.ST.send_watch)
+            self.assertIsNone(s.PHONE_WHEN_DONE)
+            self.assertEqual(fire.call_args.args[1], expected)
+
+    def test_page_and_window_token_routes(self):
+        page = (REPO_ROOT / "app/static/index.html").read_text()
+        self.assertLess(page.index('<div id="chip"></div>'), page.index('<button id="phoneDone"'))
+        self.assertIn("'/api/phone/pick'", page)
+        self.assertIn("'/api/phone/when-done'", page)
+        self.assertNotIn("/api/phone/pick", self.s.TOOL_PATHS)
+        self.assertNotIn("/api/phone/when-done", self.s.TOOL_PATHS)
+        h = self.s.Handler.__new__(self.s.Handler)
+        h.headers = {"X-Nixi-Token": self.s.TOOL_TOKEN}
+        h._host_ok = lambda: True
+        h._json = mock.Mock()
+        for route in ("/api/phone/pick", "/api/phone/when-done"):
+            h.path = route
+            h.do_POST()
+            self.assertEqual(h._json.call_args.args[1], 403)
+        h.headers = {"X-Nixi-Token": self.s.TOKEN}
+        h._body = lambda: b"{}"
+        self.s.ST.active_turn = 44
+        h.path = "/api/phone/when-done"
+        h.do_POST()
+        self.assertTrue(h._json.call_args.args[0]["ok"])
+        self.assertEqual(self.s.PHONE_WHEN_DONE["turn"], 44)
+
+    def test_unpair_clears_slot_even_if_device_returns(self):
+        s = self.s
+        s.ST.active_turn = 8
+        s.phone_when_done(self.p.devices()[0])
+        self.p._devices.clear()
+        with mock.patch.object(s, "phone_battery_check"), mock.patch.object(s, "phone_call_sync"), \
+             mock.patch.object(s, "phone_approvals_sync"), mock.patch.object(s, "phone_pub"):
+            s.phone_state()
+        self.assertIsNone(s.PHONE_WHEN_DONE)
+        self.p._devices.append(dev("pixel", "Pixel"))
+
+    def test_arm_and_finish_are_atomic(self):
+        s = self.s
+        s.ST.active_turn = 9
+        start = threading.Event()
+        armed = threading.Event()
+        def arm():
+            start.wait(2)
+            s.phone_when_done(self.p.devices()[0])
+            armed.set()
+        t = threading.Thread(target=arm)
+        t.start()
+        with s.WATCH_LOCK:
+            start.set()
+            s.ST.active_turn = None
+        self.assertTrue(armed.wait(2))
+        t.join(2)
+        self.assertIsNone(s.PHONE_WHEN_DONE)
 
 
 if __name__ == "__main__":

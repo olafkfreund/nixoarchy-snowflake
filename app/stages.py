@@ -463,7 +463,13 @@ class Store:
                     toks[row["reply"]] = ("mail_reply", {"account": r["account"], "id": r["id"], "thread": r["thread"]})
                 page["rows"].append(row)
         elif stage["kind"] == "phone_pick":  # device names and ids only; the buttons post to /api/phone/ring or /share (#231)
-            pass
+            if stage.get("do") in ("note", "when_done"):
+                page.pop("pending", None)
+                page["devices"] = []
+                for d in stage["devices"]:
+                    token = secrets.token_urlsafe(12)
+                    toks[token] = ("phone_pick_note", {"device": d["id"], "do": stage["do"], **stage["pending"]})
+                    page["devices"].append({"name": d["name"], "pick": token})
         elif stage["kind"] in ("phone_sms", "phone_threads"):
             page["rows"] = []
             page.pop("text", None)
