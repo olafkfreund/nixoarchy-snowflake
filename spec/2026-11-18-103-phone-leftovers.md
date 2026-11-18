@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 103
 intent: intent/2026-11-18-103-phone-leftovers.md
 ---
