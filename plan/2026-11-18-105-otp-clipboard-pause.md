@@ -236,3 +236,11 @@ reviewers:
 - **Flux:** move `nixarchy-flux` back to `6eb6347`. #77 only adds methods, so the old Nixi works on the new Flux and the
   reverse.
 - Re-deploy p620 and razer.
+
+## Deviations
+
+- **Step 1:** `tests/test_phone_flux_more.py:30` pins the exact `METHODS` set, so it gained `clipboard.pauseOwned`.
+- **Step 2:** `Inbox.OTP` is now applied with `match`, not `search`, everywhere, including `mail_otp`.
+  - Its lookaheads start with `.*` under `re.S`, so the result is identical.
+  - `search` retried at every offset: 2.8 s on 10k characters of clean text, which would stall the 1 s inbox loop.
+  - With `match`, a 1 MB reply (the shell's cap) takes about 0.06 s for `OTP` and 0.25 s for `SECRET_LINE`.
