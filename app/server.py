@@ -9239,6 +9239,8 @@ class Handler(BaseHTTPRequestHandler):
                     CFG[key] = SHARED[key]
                     if key == "notify_details" and SHARED[key] is False:
                         NImage.clear()
+                if key == "autostart":
+                    sync_autostart()                 # (the login entries follow the reset, as a panel change does)
                 try:
                     subprocess.Popen([_launcher(), "restart"], start_new_session=True, env=os.environ.copy(),
                                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -10035,6 +10037,8 @@ def main():
         return
     if lang.norm(CFG.get("language")) != lang.active:
         request_language(lang.norm(CFG["language"]))
+    elif ("voice" in SHARED or "voice_by_lang" in SHARED) and "voice" not in user_file_keys():
+        restore_voice(lang.active)                   # (no switch at start: the inherited language voice applies now, in memory)
     if CFG["stt_prewarm"] or CFG.get("wake_word"):
         threading.Thread(target=lambda: _try(whisper), daemon=True).start()
     _wire_quick()

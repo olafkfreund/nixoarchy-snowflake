@@ -221,6 +221,10 @@ Changed from the spec, to be approved with this plan (Codex plan review):
        `voice_by_lang` in memory only. Speech uses a pinned voice only
        when `voice_ok`, and a replaced voice file drops its cached
        `_PIPER` model.
+     - (Codex PR review, round 3) At start, with no language switch, an
+       inherited language voice is applied in memory (`restore_voice`).
+       Resetting `autostart` runs `sync_autostart()`, as a panel change
+       does.
 
 2. **`app/server.py`: voices.** By the coder.
    - **Pinned downloads.** Add the `PIPER_REV` constant. `fetch_voice` and

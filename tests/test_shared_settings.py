@@ -126,6 +126,13 @@ class ResetSharedSettingsTest(SharedSettingsTest):
         self.assertNotIn("notify_details", json.loads(self.path.read_text()))
         clear.assert_called_once()
 
+    def test_reset_autostart_syncs_login_entries(self):
+        s = self.s
+        self.path.write_text('{"autostart":true}')
+        with mock.patch.object(s, "SHARED", {"autostart": False}), mock.patch.object(s, "sync_autostart") as sync:
+            self.assertEqual(self.post("autostart")[0], 200)
+        sync.assert_called_once()
+
     def test_reset_still_ok_when_restart_cannot_start(self):
         self.path.write_text('{"trust":"ask"}')
         self.popen.side_effect = OSError("no launcher")
