@@ -319,6 +319,29 @@ class CallList(_FluxCase):
                 client.call(method)
         self.assertEqual([m for m in self.flux.methods() if m != "subscribe"], [])
 
+    def test_pause_owned_only_with_its_params(self):
+        client = self.client()
+        self.assertTrue(wait_for(lambda: client.connected))
+        self.flux.results["clipboard.pauseOwned"] = {"expires": 123}
+        self.assertEqual(client.call("clipboard.pauseOwned", owner="nixi-otp", expires=120), {"expires": 123})
+        sent = [r for r in self.flux.requests if r["method"] == "clipboard.pauseOwned"]
+        self.assertEqual([r["params"] for r in sent], [{"owner": "nixi-otp", "expires": 120}])
+        for method in ("clipboard.resumeOwned", "clipboard.pause", "clipboard.resume"):
+            with self.subTest(method=method), self.assertRaises(ValueError):
+                client.call(method)
+
+    def test_session_rises_per_connection_not_per_snapshot(self):
+        client = self.client()
+        self.assertTrue(wait_for(lambda: client.connected))
+        self.flux.push_state(snapshot())
+        self.assertTrue(wait_for(lambda: client.session == 1))
+        self.flux.push_state(snapshot())
+        self.assertTrue(wait_for(lambda: client.modern))
+        time.sleep(0.2)
+        self.assertEqual(client.session, 1)
+        self.flux.close_client()
+        self.assertTrue(wait_for(lambda: client.session == 2, 5))
+
     def test_share_files_refuses_unregistered_paths(self):
         client = self.client()
         base = Path(self.flux.dir) / "outgoing"

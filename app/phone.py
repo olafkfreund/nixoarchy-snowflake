@@ -19,7 +19,7 @@ class NotSent(ConnectionError):
 class Phone:
     METHODS = frozenset({"ring", "share.url", "share.text", "share.files", "clipboard.send",
                          "sms.refresh", "sms.send", "dnd.set", "notify.send", "sms.thread",
-                         "notification.reply"})
+                         "notification.reply", "clipboard.pauseOwned"})
 
     def __init__(self):
         self.snap = {}
@@ -41,6 +41,7 @@ class Phone:
         self._version = 0
         self._first = True
         self._connected = False
+        self._session = 0
         self._has_snapshot = False
         self._snap_at = 0.0
         self._error_logged = False
@@ -100,6 +101,11 @@ class Phone:
     def connected(self):
         with self._lock:
             return self._connected
+
+    @property
+    def session(self):
+        with self._lock:
+            return self._session
 
     @property
     def modern(self):
@@ -259,6 +265,7 @@ class Phone:
                         with self._lock:
                             if not self._connected:
                                 self._connected = True
+                                self._session += 1
                                 self._wake.set()
                             if msg.get("event") == "state" and isinstance(msg.get("data"), dict):
                                 self.snap = msg["data"]
