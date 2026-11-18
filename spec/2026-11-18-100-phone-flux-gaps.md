@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 100
 intent: intent/2026-11-18-100-phone-flux-gaps.md
 ---
@@ -203,7 +203,7 @@ path and a card you can come back to. Sending is still a click.
   text of 1–1000 characters, after the `PHONE_GEN` recheck.
 
 > [!WARNING]
-> **Remaining limit, for approval.** Flux takes the reply target from the
+> **Remaining limit, accepted at approval (2026-11-18).** Flux takes the reply target from the
 > notification ID at the moment it handles the call
 > (`internal/core/notifications.go:488`), and `notification.reply` accepts
 > no expected revision (`internal/core/api.go:478`). A change on the phone
