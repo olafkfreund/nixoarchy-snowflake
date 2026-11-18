@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 103
 author: olafkfreund
 ---
@@ -48,6 +48,17 @@ Follow-up to `plan/2026-11-18-100-phone-flux-gaps.md`. Two small gaps remain.
    gets `phone.nothing_running` at once, with no chooser card. With a
    running turn, nothing changes.
 
+3. **Norwegian and Polish wording** (added at approval, 2026-11-18). Seven
+   phone strings and phrases from #100 read as literal translations. Owner
+   approved these replacements; neither reviewer was a native speaker:
+   - nb `phone.when_done_button`: "Si fra til telefonen når Nixi er ferdig"
+   - nb `phone.turn_failed`: "Nixi støtte på et problem."
+   - nb `phone.notify_none`: "Jeg finner ikke noe varsel fra den avsenderen som du kan svare på."
+   - pl `phone.note_sent`: "Przekazałem telefonowi."
+   - pl `phone.fingerprint`: "odcisk klucza"
+   - pl `phone_when_done` phrases 1 and 2: "powiadom mój telefon, gdy to będzie gotowe" / "powiadom mój telefon, gdy skończysz" (keep the third)
+   - pl `phone.nothing_running`: "Nic teraz nie działa."
+
 ## Affected users and systems
 
 - Users who say phone phrases with Phone off, and users with several
@@ -83,6 +94,9 @@ Follow-up to `plan/2026-11-18-100-phone-flux-gaps.md`. Two small gaps remain.
 - p510 needs the owner's OK before any build or deploy.
 
 ## Open questions
+
+Decided at approval (2026-11-18): the recommendations below.
+
 
 1. **Which phrases get the Phone-off answer?**
    - A: all phone phrases that `quick.handle` matched, including reply
