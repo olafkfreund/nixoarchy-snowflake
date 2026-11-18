@@ -225,6 +225,10 @@ Changed from the spec, to be approved with this plan (Codex plan review):
        inherited language voice is applied in memory (`restore_voice`).
        Resetting `autostart` runs `sync_autostart()`, as a panel change
        does.
+     - (Codex PR review, round 4) Resetting `voice` removes a local
+       `voice_by_lang` it empties, so the shared map applies after the
+       restart. Remaining local entries still override the whole key, as
+       the intent decided for nested settings.
 
 2. **`app/server.py`: voices.** By the coder.
    - **Pinned downloads.** Add the `PIPER_REV` constant. `fetch_voice` and

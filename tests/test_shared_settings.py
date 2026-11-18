@@ -118,6 +118,15 @@ class ResetSharedSettingsTest(SharedSettingsTest):
         self.popen.assert_called_once()
         self.assertTrue(self.popen.call_args.kwargs["start_new_session"])
 
+    def test_reset_voice_drops_an_emptied_voice_by_lang(self):
+        s = self.s
+        self.path.write_text('{"voice":"cute","voice_by_lang":{"en":"cute"}}')
+        self.addCleanup(setattr, s.lang, "active", s.lang.active)
+        s.lang.active = "en"
+        with mock.patch.object(s, "SHARED", {"voice": "girl", "voice_by_lang": {"en": "guy"}}):
+            self.assertEqual(self.post("voice")[0], 200)
+        self.assertEqual(json.loads(self.path.read_text()), {})
+
     def test_reset_notification_details_clears_images(self):
         s = self.s
         self.path.write_text('{"notify_details":true}')

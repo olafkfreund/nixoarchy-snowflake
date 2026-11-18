@@ -9224,7 +9224,10 @@ class Handler(BaseHTTPRequestHandler):
                         by_lang = cur.get("voice_by_lang")
                         if isinstance(by_lang, dict):
                             by_lang.pop(lang.active, None)
-                            cur["voice_by_lang"] = by_lang
+                            if by_lang:
+                                cur["voice_by_lang"] = by_lang
+                            else:
+                                cur.pop("voice_by_lang", None)       # (an empty local map would hide the shared one after the restart)
                     fd, tmp = tempfile.mkstemp(dir=CONF_PATH.parent, prefix=".config-", suffix=".tmp")
                     try:
                         with os.fdopen(fd, "w", encoding="utf-8") as f:
