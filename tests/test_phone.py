@@ -314,7 +314,7 @@ class Reader(_FluxCase):
 class CallList(_FluxCase):
     def test_refuses_methods_outside_the_list(self):
         client = self.client()
-        for method in ("commands.run", "settings.set", "automation.add", "pair.accept", "notification.reply"):
+        for method in ("commands.run", "settings.set", "automation.add", "pair.accept", "notification.dismiss"):
             with self.subTest(method=method), self.assertRaises(ValueError):
                 client.call(method)
         self.assertEqual([m for m in self.flux.methods() if m != "subscribe"], [])

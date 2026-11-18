@@ -345,6 +345,8 @@ def _phone_phrase(t, key):
 
 def _phone(t):
     """Find my phone / send to my phone / how is my phone (#231). The server does the work."""
+    if t in lang.load(lang.active).get("phrases", {}).get("phone_notes", []) or t in lang.load("en").get("phrases", {}).get("phone_notes", []):
+        return {"phone": {"do": "notes"}}
     if t in lang.load(lang.active).get("phrases", {}).get("phone_read", []) or t in lang.load("en").get("phrases", {}).get("phone_read", []):
         return {"phone": {"do": "read"}}
     for key, do in (("phone_find", "ring"), ("phone_send", "clip"), ("phone_send_shot", "shot"), ("phone_status", "status")):
@@ -374,6 +376,20 @@ def handle(text):
                     re.sub(r"^\W*(?:(?:hey|hi|ok|okay)\W+)?" + NIXI + r"\W+", "", t)):
         return {"nixi_ask": None}
     phone_text = re.sub(r"^\s*(?:(?:hey|hi|okay|ok|yo|oi|hei|hallo|hej|cześć)\s+)?" + NIXI + r"[,\s]+", "", (text or "").strip(), flags=re.I)
+    for key, do in (("phone_when_done", "when_done"), ("phone_note", "note"), ("phone_notify_reply", "notify_reply")):
+        for code in dict.fromkeys((lang.active, "en")):
+            for phrase in lang.load(code).get("phrases", {}).get(key, []):
+                pat = re.escape(phrase).replace(r"\{name\}", r"(?P<name>[\w .'-]{1,60})").replace(r"\{text\}", r"(?P<text>.+)")
+                m = re.fullmatch(pat, phone_text.replace("’", "'").rstrip(" .!?") if do == "when_done" else phone_text, re.I | re.S)
+                if not m:
+                    continue
+                text, name = (m.groupdict().get("text") or "").strip(), (m.groupdict().get("name") or "").strip()
+                if do == "note" and ":" not in phrase and re.match(r"(?:when|once|after|as soon as|når|etter|gdy|kiedy|po)\b", text, re.I):   # (only the ambiguous "tell my phone …" form: an explicit "note: …" keeps its words)
+                    do = "when_done"
+                if do == "when_done":
+                    return {"phone": {"do": do, "name": None}}
+                if text and (do != "note" or len(text) <= 200):
+                    return {"phone": {"do": do, "text": text, **({"name": name} if name else {})}}
     for code in dict.fromkeys((lang.active, "en")):
         for phrase in lang.load(code).get("phrases", {}).get("phone_reply", []):
             name_pat = r"(?P<name>[\w .'-]{1,60})" if "," in phrase else r"(?P<name>[\w'-]{1,60})"

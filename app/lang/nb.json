@@ -115,7 +115,28 @@
     "phone.text_failed": "Meldingen ble ikke sendt.",
     "phone.draft_gone": "Den meldingstråden er borte.",
     "phone.draft_open_failed": "Klarte ikke å åpne utkastet.",
-    "phone.text_length": "Skriv 1–1000 tegn."
+    "phone.text_length": "Skriv 1–1000 tegn.",
+    "phone.note_sent": "Sa fra til telefonen din.",
+    "phone.note_update": "Flux er for gammel for notater. Oppdater den.",
+    "phone.note_unsure": "Jeg er ikke sikker på at det nådde telefonen din.",
+    "phone.note_offline": "{name} er frakoblet, så jeg sendte ikke notatet.",
+    "phone.nothing_running": "Ingenting kjører akkurat nå.",
+    "phone.when_done_set": "Jeg gir telefonen din beskjed når dette er ferdig.",
+    "phone.when_done_button": "Si fra til telefonen når ferdig",
+    "phone.turn_done": "Nixi er ferdig.",
+    "phone.turn_stopped": "Nixi ble stoppet.",
+    "phone.turn_failed": "Nixi fikk et problem.",
+    "phone.offline_hint": "Ikke nåbar nå. Samme nettverk, eller Tailscale på?",
+    "phone.fingerprint": "fingeravtrykk",
+    "phone.open_button": "Åpne",
+    "phone.thread_title": "Samtale",
+    "phone.thread_empty": "Ingen meldinger i denne samtalen",
+    "phone.notes_title": "Varsler på telefonen",
+    "phone.notes_empty": "Ingen varsler på telefonen",
+    "phone.notify_none": "Jeg ser ikke noe varsel fra den avsenderen du kan svare på.",
+    "phone.notify_changed": "Det varselet er endret. Åpne listen på nytt.",
+    "phone.notify_sent": "Svaret er sendt.",
+    "phone.notify_draft_title": "Svar på varsel"
   },
   "phrases": {
     "phone_generic": [
@@ -177,6 +198,21 @@
       "svar {name} {text}",
       "send melding til {name} {text}",
       "send sms til {name} {text}"
+    ],
+    "phone_when_done": [
+      "si fra til telefonen min når dette er ferdig",
+      "si fra til telefonen min når det er ferdig",
+      "si fra til telefonen når du er ferdig"
+    ],
+    "phone_note": [
+      "si til telefonen min {text}",
+      "send telefonen min et notat: {text}"
+    ],
+    "phone_notes": [
+      "vis varslene på telefonen min"
+    ],
+    "phone_notify_reply": [
+      "svar {name} på telefonen min: {text}"
     ]
   },
   "_review": [
