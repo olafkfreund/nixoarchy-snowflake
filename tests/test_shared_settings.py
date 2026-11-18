@@ -127,6 +127,17 @@ class ResetSharedSettingsTest(SharedSettingsTest):
             self.assertEqual(self.post("voice")[0], 200)
         self.assertEqual(json.loads(self.path.read_text()), {})
 
+    def test_reset_trust_turns_root_mode_off(self):
+        s = self.s
+        self.path.write_text('{"trust":"trust","root_mode":true}')
+        s.CFG["root_mode"] = True
+        with mock.patch.object(s, "SHARED", {"trust": "readonly"}), mock.patch.object(s.AskPass, "forget") as forget:
+            self.assertEqual(self.post("trust")[0], 200)
+        self.assertEqual(json.loads(self.path.read_text()), {})
+        self.assertFalse(s.CFG["root_mode"])
+        self.assertEqual(s.trust(), "readonly")
+        forget.assert_called_once()
+
     def test_reset_notification_details_clears_images(self):
         s = self.s
         self.path.write_text('{"notify_details":true}')

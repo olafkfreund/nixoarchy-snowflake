@@ -229,6 +229,9 @@ Changed from the spec, to be approved with this plan (Codex plan review):
        `voice_by_lang` it empties, so the shared map applies after the
        restart. Remaining local entries still override the whole key, as
        the intent decided for nested settings.
+     - (Codex PR review, round 5) Resetting `trust` also removes the local
+       `root_mode` and calls `AskPass.forget()`, as a panel trust change
+       does. A shared trust never leaves root mode on.
 
 2. **`app/server.py`: voices.** By the coder.
    - **Pinned downloads.** Add the `PIPER_REV` constant. `fetch_voice` and

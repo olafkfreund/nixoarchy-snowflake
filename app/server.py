@@ -9220,6 +9220,8 @@ class Handler(BaseHTTPRequestHandler):
                     if not isinstance(cur, dict):
                         return self._json({"error": "invalid settings file"}, 500)
                     cur.pop(key, None)
+                    if key == "trust":
+                        cur.pop("root_mode", None)               # (as a panel trust change does: shared trust never leaves root on)
                     if key == "voice":
                         by_lang = cur.get("voice_by_lang")
                         if isinstance(by_lang, dict):
@@ -9242,6 +9244,10 @@ class Handler(BaseHTTPRequestHandler):
                     CFG[key] = SHARED[key]
                     if key == "notify_details" and SHARED[key] is False:
                         NImage.clear()
+                    if key == "trust":
+                        CFG["root_mode"] = False
+                if key == "trust":
+                    AskPass.forget()
                 if key == "autostart":
                     sync_autostart()                 # (the login entries follow the reset, as a panel change does)
                 try:
