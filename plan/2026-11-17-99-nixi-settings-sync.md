@@ -217,6 +217,10 @@ Changed from the spec, to be approved with this plan (Codex plan review):
        `voice` isn't shared.
      - At start, listed voices are checked and fetched before `warm_tts`,
        which caches a loaded model by path.
+     - (Codex PR review) `restore_voice` also keeps an inherited
+       `voice_by_lang` in memory only. Speech uses a pinned voice only
+       when `voice_ok`, and a replaced voice file drops its cached
+       `_PIPER` model.
 
 2. **`app/server.py`: voices.** By the coder.
    - **Pinned downloads.** Add the `PIPER_REV` constant. `fetch_voice` and

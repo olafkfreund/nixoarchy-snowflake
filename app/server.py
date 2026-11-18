@@ -5322,8 +5322,8 @@ def lang_voice_name(code):
 def restore_voice(code):
     """The switcher calls this when `code` becomes active: the preset last chosen in that language comes back."""
     v = (CFG.get("voice_by_lang") or {}).get(code)
-    if "voice" in SHARED and "voice" not in user_file_keys():
-        CFG["voice"] = v if v in VOICES else SHARED["voice"]
+    if ("voice" in SHARED or "voice_by_lang" in SHARED) and "voice" not in user_file_keys():   # (inherited: never written back)
+        CFG["voice"] = v if v in VOICES else SHARED.get("voice", DEFAULTS["voice"])
         return
     if v in VOICES:
         save_config(voice=v)
@@ -5467,6 +5467,7 @@ def _voice_download(name, end):
             os.replace(part, dest)
         if listed and not voice_ok(name):
             raise ValueError("the download doesn't match its pinned sha256")
+        _PIPER.pop(str(voice_file(name)), None)           # (a model loaded from the old file is not used again)
     except Exception:
         for f in files + [f.with_name(f.name + ".part") for f in files]:
             f.unlink(missing_ok=True)
@@ -6214,7 +6215,7 @@ def synth(text: str, engine=None, local=False):
         model = None
         pinned = CFG["piper_voice"] if lang.active == "en" else ""         # (a pinned voice is the user's English one)
         if eng == "piper" and not vp.get("espeak") and not pinned:
-            if voice_file(vp["piper"]).exists():
+            if voice_ok(vp["piper"]):                 # (a pinned voice must match its sha256, not only exist)
                 model = str(voice_file(vp["piper"]))
             else:
                 fetch_voice(vp["piper"])          # use whatever we have until it lands

@@ -207,6 +207,15 @@ class SharedLayerFixesTest(_SharedBase):
             self.switch("pl")
         self.assertNotIn("voice_by_lang", json.loads(self.path.read_text()))
 
+    def test_restore_from_shared_voice_by_lang_alone_is_not_saved(self):
+        s = self.s
+        self.path.write_text("{}")
+        s.CFG["voice_by_lang"] = {"pl": "cute"}
+        with mock.patch.object(s, "SHARED", {"voice_by_lang": {"pl": "cute"}}):
+            s.restore_voice("pl")
+        self.assertEqual(s.CFG["voice"], "cute")
+        self.assertNotIn("voice", json.loads(self.path.read_text()))
+
     def test_failed_switch_with_shared_language_is_not_saved(self):
         s = self.s
         self.keep_lang_state()
@@ -253,6 +262,14 @@ class SharedVoiceTest(_SharedBase):
     def sync(self):
         with mock.patch.object(self.s.urllib.request, "urlopen", self.urlopen):
             return self.s.fetch_voice_sync(self.NAME)
+
+    def test_replacing_a_stale_voice_drops_its_cached_model(self):
+        self.put(b"stale", b"{}")
+        path = str(self.s.voice_file(self.NAME))
+        self.s._PIPER[path] = "old model"
+        self.addCleanup(self.s._PIPER.pop, path, None)
+        self.assertEqual(self.sync(), (True, ""))
+        self.assertNotIn(path, self.s._PIPER)
 
     def test_pinned_urls_and_matching_voice_kept(self):
         self.assertEqual(self.sync(), (True, ""))
