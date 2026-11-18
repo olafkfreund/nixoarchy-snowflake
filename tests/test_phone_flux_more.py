@@ -112,7 +112,7 @@ class PhraseTest(_ServerEnv):
         self.assertEqual(self.h("tell the build session: x"), {"session_send": ["build", "x"]})
 
     def test_each_language_parses(self):
-        for code, say in (("nb", "si fra til telefonen min når dette er ferdig"), ("pl", "powiedz mojemu telefonowi, gdy skończysz")):
+        for code, say in (("nb", "si fra til telefonen min når dette er ferdig"), ("pl", "powiadom mój telefon, gdy skończysz")):
             self.server.lang.active = code
             self.assertEqual(self.h(say), {"phone": {"do": "when_done", "name": None}}, code)
         self.server.lang.active = "nb"

@@ -177,18 +177,18 @@
     "phone.draft_gone": "Ten wątek wiadomości zniknął.",
     "phone.draft_open_failed": "Nie udało się otworzyć szkicu.",
     "phone.text_length": "Wpisz 1–1000 znaków.",
-    "phone.note_sent": "Powiedziałem telefonowi.",
+    "phone.note_sent": "Przekazałem telefonowi.",
     "phone.note_update": "Twój Flux jest za stary na notatki. Zaktualizuj go.",
     "phone.note_unsure": "Nie jestem pewien, czy to dotarło do telefonu.",
     "phone.note_offline": "{name} jest offline, więc nie wysłałem notatki.",
-    "phone.nothing_running": "Nic się teraz nie wykonuje.",
+    "phone.nothing_running": "Nic teraz nie działa.",
     "phone.when_done_set": "Dam znać telefonowi, gdy to się skończy.",
     "phone.when_done_button": "Powiadom telefon po zakończeniu",
     "phone.turn_done": "Nixi skończył.",
     "phone.turn_stopped": "Nixi został zatrzymany.",
     "phone.turn_failed": "Nixi napotkał problem.",
     "phone.offline_hint": "Brak połączenia. Ta sama sieć albo Tailscale włączony?",
-    "phone.fingerprint": "odcisk",
+    "phone.fingerprint": "odcisk klucza",
     "phone.open_button": "Otwórz",
     "phone.thread_title": "Rozmowa",
     "phone.thread_empty": "Brak wiadomości w tej rozmowie",
@@ -255,8 +255,8 @@
       "wyślij sms do {name} {text}"
     ],
     "phone_when_done": [
-      "powiedz mojemu telefonowi, gdy to będzie gotowe",
-      "powiedz mojemu telefonowi, gdy skończysz",
+      "powiadom mój telefon, gdy to będzie gotowe",
+      "powiadom mój telefon, gdy skończysz",
       "daj znać mojemu telefonowi, gdy skończysz"
     ],
     "phone_note": [
