@@ -531,6 +531,10 @@ The steps run in order, because most of them edit `app/server.py`.
      nix develop .#ci -c python3 -B .github/ci/run_tests.py --deadline 1800 test_character_fit.py test_accessories_fit.py
      ```
 
+   - *Deviation (step 6):* GUIDE had no phone section, so step 6 adds
+     "Your phone" before "Agent alerts". (Codex review) It says a note now
+     carries your own words, and only a "when done" note is generic.
+
 ### Lead, after step 6
 
 - **Reviews:**

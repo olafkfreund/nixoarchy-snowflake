@@ -128,6 +128,40 @@ still answers when you ask him something, and “hey Nixi” is paused.
 > [!NOTE]
 > The takeover needs nixarchy's notification patch (903). On a shell without it, the popups stay as they are.
 
+## Your phone
+
+With **Phone** on (Settings) and a phone paired through Flux, he can reach it. Nothing here is on until you turn Phone on.
+
+| say | |
+|---|---|
+| "tell my phone when this is done" · "ping my phone when you're done" | one note to that phone when the current turn ends |
+| "tell my phone the build is ready" · "send my phone a note: call back" | a note right now |
+| "show my phone notifications" | the phone's notifications, with a **Reply** button on those that can be answered |
+| "answer Ola on my phone: on my way" | opens a draft of that reply for you to send |
+
+Norwegian: "si fra til telefonen min når dette er ferdig", "si til telefonen min …", "vis varslene på telefonen min",
+"svar Ola på telefonen min: …". Polish: "powiedz mojemu telefonowi, gdy to będzie gotowe", "powiedz mojemu telefonowi …",
+"pokaż powiadomienia z mojego telefonu", "odpowiedz Ola na moim telefonie: …".
+
+- **The 📱 button** shows next to the work chip while he works and a paired phone is online. A click does the same as
+  "tell my phone when this is done". With several phones he asks which one.
+- **The Phone tab** lists your paired phones: online or not, when last seen, battery, fingerprint and address. Never
+  numbers, messages or notification text.
+- **Open** on a conversation in the list of texts shows its latest 100 messages. **Reply** there works as before.
+- **Phone notifications** are listed with the app, title and text. **Reply** opens a draft; you edit it and click
+  **Send**.
+
+**Limits.**
+- A note you ask for sends the words you said (up to 200 characters), never Nixi's answer. A "when done" note is
+  generic ("Nixi is done.", "Nixi was stopped.", "Nixi hit a problem."). Neither is ever queued: if the phone is offline or the
+  send fails, it is dropped. A "when done" note covers one phone and one turn, and is cancelled when Phone goes off,
+  Nixi restarts, the phone is unpaired, or 30 minutes pass.
+- Replies are click-only. The agent can't send anything to your phone, and nothing you say can send a reply to a person
+  without your click on the draft. A draft is single-use and lasts 10 minutes.
+- Flux can still change a notification between Nixi's last check and its own lookup of what to reply to. Nixi catches
+  every change it can see, and cancels the draft when the notification changed.
+- Not included: captions on incoming files, and pausing the clipboard from Nixi.
+
 ## Agent alerts
 
 Coding agents in your terminal (Claude Code, Codex, agy) can tell the snowflake when they need you or when they are
