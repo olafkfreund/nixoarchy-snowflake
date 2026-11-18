@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 105
 spec: spec/2026-11-18-105-otp-clipboard-pause.md
 coders:
