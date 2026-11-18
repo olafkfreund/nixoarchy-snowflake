@@ -427,7 +427,7 @@ class Store:
     @staticmethod
     def _keep(e):
         """Private mail and phone stages, and stale choosers, never come back."""
-        return None if e and e[0].get("kind") in ("mail", "phone_pick", "phone_sms", "phone_threads", "phone_draft", "phone_missed") else e
+        return None if e and e[0].get("kind") in ("mail", "phone_pick", "phone_sms", "phone_threads", "phone_draft", "phone_missed", "phone_thread") else e
 
     def put(self, stage, refresh=None):
         """-> the stage for the page: items (or the stage) carry a token, nothing else added."""
@@ -476,7 +476,17 @@ class Store:
             for row in stage.get("rows", []):
                 token = secrets.token_urlsafe(12)
                 toks[token] = ("phone_reply", {"device": row["device"], "number": row["number"], "name": row["name"], "text": stage.get("text", "")})
-                page["rows"].append({"name": row["name"], "last": row.get("last", ""), "reply": token})
+                r = {"name": row["name"], "last": row.get("last", ""), "reply": token}
+                if stage["kind"] == "phone_sms" and row.get("thread") is not None:   # the thread id stays here; the page gets a token (#100)
+                    r["open"] = secrets.token_urlsafe(12)
+                    toks[r["open"]] = ("phone_thread", {"device": row["device"], "thread": row["thread"], "number": row["number"], "name": row["name"]})
+                page["rows"].append(r)
+        elif stage["kind"] == "phone_thread":
+            for k in ("device", "number"):
+                page.pop(k, None)
+            if stage.get("number"):
+                page["reply"] = secrets.token_urlsafe(12)
+                toks[page["reply"]] = ("phone_reply", {"device": stage["device"], "number": stage["number"], "name": stage["name"], "text": ""})
         elif stage["kind"] == "phone_missed":
             page.pop("number", None)
             if stage.get("number"):

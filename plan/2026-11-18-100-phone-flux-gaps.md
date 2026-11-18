@@ -414,6 +414,15 @@ The steps run in order, because most of them edit `app/server.py`.
      ```bash
      nix develop .#ci -c python3 -B .github/ci/run_tests.py test_phone_flux_more.py test_phone.py test_phone_fit.py test_stage_actions.py
      ```
+   - *Deviations (step 4):*
+     - `phone_thread` joins `stages.Store._keep`'s private kinds, which
+       never come back through the back history.
+     - `phone_sms` gets an `open_label` field for the button.
+     - (Codex review) The thread stage is put *and* published under
+       `PHONE_LOCK`, so a reset's `stage_close` can't come first.
+     - (Codex review) A late `sms.thread` reply is dropped with 410
+       unless stages are on and the originating stage is still current
+       (`STAGES.get(token)`), so it never covers a newer draft.
    - **Trap:** never send a device ID, thread ID or number to the page.
 
 5. **`app/server.py`, `app/stages.py` and `index.html`: answering

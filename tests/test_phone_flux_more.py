@@ -395,5 +395,123 @@ class PhoneTabTest(_ServerEnv):
         self.assertEqual(self.s.phone_devices(), [])
 
 
+class ThreadTest(_ServerEnv):
+    def setUp(self):
+        s = self.s = self.server
+        saved = dict(s.CFG), s.PHONE_GEN
+        self.addCleanup(self.restore, saved)
+        s.CFG["phone_on"] = True
+        self.p = StubPhone([dev("pixel", "Pixel", can=("sms",))])
+        self.p.threads = [{"device": "pixel", "address": "+4790000000", "name": "Kari", "last": "hi", "time": 1, "thread": 12}]
+        self.p.results["sms.thread"] = {"messages": [
+            {"name": "Verification", "body": "123456", "outgoing": False, "time": 5},
+            {"name": "Me", "body": "ok", "outgoing": True, "time": 6}]}
+        for pt in (mock.patch.object(s, "Phone", self.p), mock.patch.object(s, "BRIDGED", True),
+                   mock.patch.object(s, "stages_on", lambda: True), mock.patch.object(s.BUS, "pub"),
+                   mock.patch.object(s.Speaker, "available", lambda: False)):
+            pt.start()
+            self.addCleanup(pt.stop)
+        s.STAGES.close()
+
+    def restore(self, saved):
+        self.s.CFG.clear()
+        self.s.CFG.update(saved[0])
+        self.s.PHONE_GEN = saved[1]
+        self.s.STAGES.close()
+
+    def open_token(self):
+        self.s.phone_read_messages()
+        page = self.s.STAGES.current()
+        self.assertNotIn("thread", json.dumps(page["rows"]))
+        return page["rows"][0]["open"]
+
+    def test_thread_comes_from_token_scrubbed_and_hidden_ids(self):
+        s = self.s
+        r, code = s.phone_thread_open(self.open_token())
+        self.assertEqual((code, r["ok"]), (200, True))
+        self.assertEqual(self.p.calls[-1], ("sms.thread", {"device": "pixel", "thread": 12}))
+        page = s.STAGES.current()
+        self.assertEqual(page["kind"], "phone_thread")
+        self.assertTrue(page["from_phone"])
+        blob = json.dumps(page)
+        for hidden in ("123456", "pixel", "+4790000000"):
+            self.assertNotIn(hidden, blob)
+        self.assertEqual([m["outgoing"] for m in page["messages"]], [False, True])
+        self.assertEqual(s.STAGES.get(page["reply"])[0], "phone_reply")
+        self.assertTrue(s.phone_on_screen())
+
+    def test_bad_token_and_flux_error(self):
+        s = self.s
+        self.assertEqual(s.phone_thread_open("nope")[1], 410)
+        tok = self.open_token()
+        self.p.errors["sms.thread"] = RuntimeError("x")
+        r, _ = s.phone_thread_open(tok)
+        self.assertEqual(r["say"], s.lang.t("phone.failed"))
+        self.assertEqual(s.STAGES.current()["kind"], "phone_sms")
+
+    def test_late_reply_after_reset_is_not_put_and_reset_closes(self):
+        s = self.s
+        tok = self.open_token()
+        orig = self.p.call
+
+        def call(method, **kw):
+            r = orig(method, **kw)
+            s.PHONE_GEN += 1
+            return r
+        self.p.call = call
+        r, _ = s.phone_thread_open(tok)
+        self.assertFalse(r["ok"])
+        self.assertEqual(s.STAGES.current()["kind"], "phone_sms")
+        self.p.call = orig
+        s.PHONE_GEN -= 1
+        s.phone_thread_open(tok)
+        self.assertEqual(s.STAGES.current()["kind"], "phone_thread")
+        s.phone_reset()
+        self.assertIsNone(s.STAGES.current())
+
+    def test_late_reply_does_not_replace_newer_stage(self):
+        s = self.s
+        tok = self.open_token()
+        orig = self.p.call
+
+        def call(method, **kw):
+            r = orig(method, **kw)
+            s.STAGES.put({"v": 1, "kind": "phone_draft", "from_phone": True})
+            return r
+        self.p.call = call
+        r, code = s.phone_thread_open(tok)
+        self.assertEqual((code, r["ok"]), (410, False))
+        self.assertEqual(s.STAGES.current()["kind"], "phone_draft")
+
+    def test_thread_stage_is_published_under_the_phone_lock(self):
+        s = self.s
+        held = []
+        s.BUS.pub.side_effect = lambda **kw: held.append(s.PHONE_LOCK.locked())
+        s.phone_thread_open(self.open_token())
+        self.assertIn(True, held[-1:])
+
+    def test_route_ignores_body_ids_and_tool_token_refused(self):
+        s = self.s
+        tok = self.open_token()
+        self.assertNotIn("/api/phone/thread", s.TOOL_PATHS)
+        h = s.Handler.__new__(s.Handler)
+        h._host_ok = lambda: True
+        h._json = mock.Mock()
+        h.path = "/api/phone/thread"
+        h.headers = {"X-Nixi-Token": s.TOOL_TOKEN}
+        h.do_POST()
+        self.assertEqual(h._json.call_args.args[1], 403)
+        h.headers = {"X-Nixi-Token": s.TOKEN}
+        h._body = lambda: json.dumps({"token": tok, "device": "evil", "thread": 99}).encode()
+        h.do_POST()
+        self.assertEqual(self.p.calls[-1], ("sms.thread", {"device": "pixel", "thread": 12}))
+
+    def test_page_source(self):
+        page = (REPO_ROOT / "app/static/index.html").read_text()
+        i = page.index("function stageText(ev){")
+        self.assertIn("if(ev.from_phone) return '';", page[i:i + 80])
+        self.assertIn("'/api/phone/thread'", page)
+
+
 if __name__ == "__main__":
     unittest.main()

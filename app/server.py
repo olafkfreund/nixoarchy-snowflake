@@ -7075,7 +7075,7 @@ def phone_play_ok(queued):
 
 def phone_on_screen():
     cur = STAGES.current()
-    return bool(cur and cur.get("kind") in ("phone_sms", "phone_draft", "phone_missed", "phone_threads"))
+    return bool(cur and cur.get("kind") in ("phone_sms", "phone_draft", "phone_missed", "phone_threads", "phone_thread"))
 
 
 def phone_draft_item(item):
@@ -7660,13 +7660,13 @@ def phone_read_messages():
         if not c.get("address") or len(c.get("addresses") or [c["address"]]) != 1:
             continue
         name, last = mail_scrub([mail_clean(c.get("name") or c["address"], 100), mail_clean(c.get("last") or "", 500)])
-        rows.append({"device": c["device"], "number": c["address"], "name": name, "last": last})
+        rows.append({"device": c["device"], "number": c["address"], "name": name, "last": last, "thread": c.get("thread")})
         if len(rows) == 5:
             break
     if gen != PHONE_GEN or not CFG.get("phone_on"):
         return {"say": lang.t("phone.off"), "mood": "curious"}
     page = STAGES.put({"v": 1, "kind": "phone_sms", "title": lang.t("phone.messages_title"),
-                       "rows": rows, "reply_label": lang.t("phone.reply_button"),
+                       "rows": rows, "reply_label": lang.t("phone.reply_button"), "open_label": lang.t("phone.open_button"),
                        "empty": lang.t("phone.messages_empty"), "draft_gone": lang.t("phone.draft_gone"),
                        "draft_error": lang.t("phone.draft_open_failed"), "from_phone": True})
     BUS.pub(t="stage", **stage_event(page))
@@ -7683,6 +7683,38 @@ def phone_read_messages():
                 Speaker.phone_sids.pop(sid, None)
             print(f"[nixi] phone speech failed: {type(exc).__name__}", file=sys.stderr)
     return {"say": lang.t("phone.messages_ready"), "mood": "curious"}
+
+
+def phone_thread_open(token):
+    gen = PHONE_GEN
+    got = STAGES.get(token) if isinstance(token, str) else None
+    if not got or got[0] != "phone_thread":
+        return {"ok": False, "say": lang.t("phone.draft_gone")}, 410
+    item = got[1]
+    if not CFG.get("phone_on") or not Phone.connected:
+        return {"ok": False, "say": lang.t("phone.not_running")}, 200
+    try:
+        res = Phone.call("sms.thread", device=item["device"], thread=item["thread"])
+    except Exception as exc:
+        print(f"[nixi] phone thread failed: {type(exc).__name__}", file=sys.stderr)
+        return {"ok": False, "say": lang.t("phone.failed")}, 200
+    msgs = []
+    for m in (res.get("messages") or [])[-100:] if isinstance(res, dict) else []:
+        if isinstance(m, dict):
+            name, body = mail_scrub([mail_clean(m.get("name") or "", 100), mail_clean(m.get("body") or "", 500)])
+            msgs.append({"name": name, "body": body, "outgoing": bool(m.get("outgoing")), "time": m.get("time") if isinstance(m.get("time"), (int, float)) else 0})
+    with PHONE_LOCK:                                   # (the show-content check, then put: a reset can't leave this on screen)
+        if gen != PHONE_GEN or not CFG.get("phone_on"):
+            return {"ok": False, "say": lang.t("phone.off")}, 200
+        if not stages_on() or not STAGES.get(token):   # (a newer stage or a closed view while Flux was slow: leave it be)
+            return {"ok": False, "say": lang.t("phone.draft_gone")}, 410
+        page = STAGES.put({"v": 1, "kind": "phone_thread", "title": lang.t("phone.thread_title"), "messages": msgs,
+                           "device": item["device"], "number": item["number"], "name": item["name"],
+                           "reply_label": lang.t("phone.reply_button"), "empty": lang.t("phone.thread_empty"),
+                           "draft_gone": lang.t("phone.draft_gone"), "draft_error": lang.t("phone.draft_open_failed"),
+                           "from_phone": True})
+        BUS.pub(t="stage", **stage_event(page))       # (inside the lock: a reset's stage_close can't pass it)
+    return {"ok": True}, 200
 
 
 def phone_reply_quick(name, text, sms=False):
@@ -9144,6 +9176,10 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/phone/pick":
                 b = json.loads(self._body() or b"{}")
                 r, code = phone_pick_note(b.get("token") if isinstance(b, dict) else None)
+                return self._json(r, code)
+            if p == "/api/phone/thread":
+                b = json.loads(self._body() or b"{}")
+                r, code = phone_thread_open(b.get("token") if isinstance(b, dict) else None)
                 return self._json(r, code)
             if p == "/api/phone/when-done":
                 self._body()
