@@ -1,5 +1,5 @@
 ---
-status: approved
+status: draft
 issue: 105
 intent: intent/2026-11-18-105-otp-clipboard-pause.md
 ---
@@ -39,8 +39,8 @@ A single worker thread asks Flux for an owned pause, so the notification path ne
   - `keys`: row key → when it was first seen;
   - `pending`: the count of new keys not yet sent;
   - `sent`: requests counted in the current hold;
-  - `until`: the latest moment Nixi's pause may still be in force, in `time.time()` seconds;
-  - `gen`: the Phone connection number of the current hold.
+  - `until`: the latest moment Nixi's pause may still be in force, in `time.time()` seconds.
+  - The session number is a local of each worker turn, not shared state.
 - An `Event` wakes the worker.
 
 ### Dedupe
@@ -75,7 +75,7 @@ A single worker thread asks Flux for an owned pause, so the notification path ne
      | `TimeoutError`, `ConnectionError` raised after the write | `max(until, call start + SECS)` (it may have taken effect) | kept | nothing |
      | `RuntimeError` from a Flux error (`too_many`, `bad_params`, …), `ValueError` | unchanged | kept | nothing |
      | Reply whose `expires` is not an `int` greater than `time.time() + 1` | `max(until, call start + SECS)` | kept | nothing |
-     | Good reply, but `Phone.session != g` (Flux restarted or Phone was reset meanwhile) | unchanged | kept | nothing |
+     | Good reply, but `Phone.session != g` (Flux restarted or Phone was reset meanwhile) | `max(until, call start + SECS)` (the new session may hold it) | kept | nothing |
      | Good reply, same session | `max(until, expires)` | kept | toast |
 
      - The conservative `until` means an unconfirmed request still counts toward the hold. A late reply can't reset
@@ -116,7 +116,8 @@ A single worker thread asks Flux for an owned pause, so the notification path ne
 - **What triggers it:** a notification with a code or secret, while Nixi takes notifications over.
 - **How long:** 2 min, renewed by a new code, for about 10 min at most, then not again until it has run out.
 - **The limits:** only while notifications are taken over; a copy made before the notification can still go out; a
-  send already past Flux's check still goes out; a notification seen again after 10 min counts as new.
+  send already past Flux's check still goes out; a notification seen again after 10 min, or after 64 other code
+  notifications, counts as new.
 - **What it costs:** copies made during it are not shared and stay out of Flux history; copying the same value
   again after it ends may not sync; manual sends still work.
 - **Restarts:** a `fluxd` restart drops it.
@@ -184,7 +185,8 @@ It runs under `nixi_env`, with `Phone.call` and `Phone.session` patched, and cov
   - `{"expires": "x"}`;
   - `{"expires": now - 5}`;
   - a non-dict reply.
-- **Session change:** a good reply after `Phone.session` changed shows no toast.
+- **Session change:** a good reply after `Phone.session` changed shows no toast, keeps `sent`, and still pushes `until`
+  to `call start + 120`, so the next code stays in the same hold.
 - **When nothing is sent:**
   - Phone off;
   - not connected;

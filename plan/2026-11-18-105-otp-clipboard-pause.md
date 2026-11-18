@@ -26,8 +26,8 @@ reviewers:
 - **Coalescing:** a `pending` count, taken under a lock before the call. Arrivals during the call go to the next turn.
 - **Bound:** at most 5 requests per hold.
   - A hold ends when `until`, the latest time Nixi's pause may still be in force, has passed. Only then does `sent` reset.
-  - Unconfirmed requests (a timeout or connection error after the write, or a bad reply) push `until` to
-    `call start + 120`.
+  - Unconfirmed requests push `until` to `call start + 120`: a timeout or connection error after the write, a bad
+    reply, or a good reply from a changed session.
   - `NotSent`, and an eligibility check that fails, give `sent` back.
 - **Eligibility:** `CFG.get("phone_on") is True`, `Phone.connected`, and `"clipboardPauses"` in `Phone.snap`.
 - **Session check:** a good reply counts only when `Phone.session` is unchanged since the work was taken. `Phone.session`
@@ -93,6 +93,8 @@ reviewers:
    - **Constants:** `OWNER = "nixi-otp"`, `SECS = 120`, `MAX = 5`, `KEEP = 64`, `FORGET = 600`.
    - **State:** `lock`, `wake = threading.Event()`, `keys = {}`, `pending = 0`, `sent = 0`, `until = 0.0`,
      `logged = False`, `thread = None`.
+     - `keys`, `pending`, `sent`, `until` and `logged` are read and written only under `lock`.
+     - The session number `g` is a local of each turn.
    - **`seen(key)`:**
      - under `lock`: drop keys older than `FORGET`; if `key in keys`, return;
      - otherwise store `keys[key] = time.monotonic()`, evict the oldest past `KEEP`, and do `pending += 1`;
@@ -113,13 +115,15 @@ reviewers:
        | `TimeoutError` or `ConnectionError` | `max(until, start + SECS)` | kept | nothing |
        | `RuntimeError` or `ValueError` | unchanged | kept | nothing |
        | A reply that isn't a dict with an `int` (not `bool`) `expires > time.time() + 1` | `max(until, start + SECS)` | kept | nothing |
-       | `Phone.session != g` | unchanged | kept | nothing |
+       | `Phone.session != g` | `max(until, start + SECS)` | kept | nothing |
        | Otherwise | `max(until, expires)` | kept | toast, published after the lock is released |
 
      - Every failure branch calls `_log(exc_or_reason_type)`, which prints once per process.
    - **`loop()`:** `while True: wake.wait(); wake.clear(); turn()`, inside `try/except Exception`, as `Inbox.loop` does
-     (`:3428`). After `turn()`, if `pending > 0`, set `wake` again, so arrivals during the call are sent.
-   - **Start:** `Inbox.start()` (`:3435`) also starts `CodePause` once.
+     (`:3428`). After `turn()`, read `pending` under `lock`; if it is above 0, set `wake` again, so arrivals during the
+     call are sent.
+   - **Start:** `Inbox.start()` (`:3435`) also calls `CodePause.start()`. That starts one daemon thread, only if
+     `CodePause.thread` is unset.
    - **Strings:** add `phone.clip_paused` to the three lang files, next to `phone.off`:
      - `en.json:62`: "Clipboard sharing paused for the code"
      - `nb.json:62`: "Deling av utklippstavlen er satt på pause for koden"
@@ -141,18 +145,20 @@ reviewers:
        - a hold is confirmed to t=120;
        - a renewal starts at t=119 and raises `TimeoutError`;
        - at t=130, a new code still counts in the same hold (`sent` is not reset).
-     - **Accounting per outcome:**
-       - `NotSent` gives `sent` back and leaves `until` unchanged;
-       - a `RuntimeError` keeps `sent`;
-       - no failure shows a toast;
-       - stderr gets exactly one line over all failures, and it holds no row text.
-     - **Bad replies:** these claim nothing:
-       - `{}`;
-       - `{"expires": "x"}`;
-       - `{"expires": True}`;
-       - `{"expires": now - 5}`;
-       - `None`.
-     - **Session change:** a session change during the call shows no toast.
+     - **Accounting per outcome:** one table-driven test asserts `sent`, `until` and the toast for every row of the
+       table:
+       - `NotSent`;
+       - `TimeoutError`;
+       - a plain `ConnectionError`;
+       - `RuntimeError`;
+       - `ValueError`;
+       - each bad reply: `{}`, `{"expires": "x"}`, `{"expires": True}`, `{"expires": now - 5}`, `None`;
+       - a good reply from a changed session;
+       - a good reply.
+       - Stderr gets exactly one line over all failures, and it holds no row text.
+     - **Session change:** a hold is confirmed, then a renewal gets a good reply from a changed session. A new code
+       after the old `until` still counts in the same hold.
+     - **Start:** calling `Inbox.start()` twice starts one `CodePause` thread.
      - **Not eligible:** nothing is sent with Phone off, when not connected, or with no `clipboardPauses` key; `sent` is
        given back. `clipboardPauses: []` is enough to send.
      - **The toast:** 2 confirmed renewals publish the same toast twice.
@@ -177,20 +183,20 @@ reviewers:
        - only while notifications are taken over;
        - a copy made before the notification can still go out;
        - a send already past Flux's check still goes out;
-       - a notification seen again after 10 min counts as new.
+       - a notification seen again after 10 min, or after 64 other code notifications, counts as new.
      - **The costs:**
        - copies made during the pause aren't shared and stay out of Flux history;
        - copying the same value again after it may not sync;
        - manual sends still work.
      - **Restarts:** a `fluxd` restart drops it.
-   - Verify: read it back, and run `nix develop .#ci -c python3 -B .github/ci/run_tests.py test_docs*.py`, if such
-     tests exist.
+   - Verify: read it back, and run
+     `nix develop .#ci -c python3 -B .github/ci/run_tests.py test_docs_names.py`.
    - Traps: keep the GUIDE's plain, short style; no promises beyond the spec.
 
 5. **Lead only: checks, the PR, then nixos_config**
    - **Checks:**
      - the full suite: `nix develop .#ci -c python3 -B .github/ci/run_tests.py --exclude test_character_fit.py --exclude test_accessories_fit.py`;
-     - the fit tests: `--deadline 1800 test_character_fit.py test_accessories_fit.py`;
+     - the fit tests: `nix develop .#ci -c python3 -B .github/ci/run_tests.py --deadline 1800 test_character_fit.py test_accessories_fit.py`;
      - the README's sandbox tests, if this change needs them.
    - **Reviews:** Opus on the plan plus `git diff origin/main`, then `codex review --base origin/main`.
    - **The PR:** it links all three files, names the coders per step, and gets "@codex review".
@@ -204,8 +210,11 @@ reviewers:
        razer is off the LAN.
      - Announce on the agent bus first.
      - Restart Nixi on both, with the live Hypr signature.
-   - **Runtime check** on p620, as in the spec: `clipboardPauses`, `notify-send "Your sign-in code" "123456"`, the
-     toast, the expiry about 120 s out, then empty.
+   - **Runtime check** on p620, as in the spec:
+     1. `clipboardPauses` is empty;
+     2. `notify-send "Your sign-in code" "123456"` shows the toast, and `nixi-otp` appears about 120 s out;
+     3. a second, different code notification within 2 min moves the expiry and updates the toast;
+     4. after the pause runs out, the list is empty.
    - Traps:
      - deploy from a clean worktree, never a dirty `~/.config/nixos`;
      - copy the uncommitted theme file in;
