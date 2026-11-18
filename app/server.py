@@ -7144,7 +7144,7 @@ def phone_tick():
                     PHONE_MISSED.pop(key, None)
         waiting = [(key, item) for key, item in PHONE_MISSED.items() if key not in PHONE_SHOWN]
     cur = STAGES.current()
-    drafting = bool(cur and cur.get("kind") in ("phone_draft", "phone_missed"))   # (a draft or a missed-call card on screen waits)
+    drafting = bool(cur and cur.get("kind") in ("phone_draft", "phone_missed", "phone_note_draft"))   # (a draft or a missed-call card on screen waits)
     if waiting and not drafting and Desk.locked() is False and not (Ambient.meeting or Ambient.dnd or Ambient.phone_call):   # (never over a draft being written)
         key, item = waiting[0]
         if BRIDGED and stages_on():

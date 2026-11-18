@@ -694,3 +694,11 @@ class NotificationTest(_ServerEnv):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BranchReviewFixes(unittest.TestCase):
+    def test_missed_call_waits_for_a_notification_draft_and_button_takes_clicks(self):
+        src = (Path(__file__).resolve().parent.parent / "app" / "server.py").read_text()
+        assert '"phone_draft", "phone_missed", "phone_note_draft"' in src
+        page = (Path(__file__).resolve().parent.parent / "app" / "static" / "index.html").read_text()
+        assert "add($('#phoneDone'),4)" in page[page.index("function sendRegion"):]

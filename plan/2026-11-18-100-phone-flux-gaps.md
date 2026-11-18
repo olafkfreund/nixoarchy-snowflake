@@ -535,6 +535,11 @@ The steps run in order, because most of them edit `app/server.py`.
      "Your phone" before "Agent alerts". (Codex review) It says a note now
      carries your own words, and only a "when done" note is generic.
 
+   - *Deviations (branch review, Codex):* `phone_tick`'s drafting guard
+     also counts `phone_note_draft`, so a missed-call card never replaces a
+     reply being written. `sendRegion()` adds `#phoneDone` when it's shown,
+     so the button takes clicks with click-through on.
+
 ### Lead, after step 6
 
 - **Reviews:**
