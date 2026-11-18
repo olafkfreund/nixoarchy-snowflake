@@ -170,8 +170,8 @@ The steps run in order, because most of them edit `app/server.py`.
      - `notifications()`: `rev` changes with the text or `replyId`, and no
        `replyId` key is returned;
      - for each of `note`, `when_done`, `notes` and `notify_reply`,
-       `phone_quick` returns `None`, and `phone_share` and
-       `phone_capture` are never called (patched);
+       `phone_quick` returns `None`, and `phone_share` (`:7503`, where
+       the clipboard is read) is never called (patched);
      - "tell my phone when this is done" gives `when_done`, not a note;
      - a 200-character mixed-case note is kept, and 201 characters isn't a
        note;
