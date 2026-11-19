@@ -1,5 +1,5 @@
 ---
-status: approved
+status: draft
 issue: 107
 author: olafkfreund
 ---
@@ -68,7 +68,7 @@ author: olafkfreund
 ## Decisions (approver, 2026-11-19: the recommendations taken)
 
 1. **Source:** a session-bus monitor of `Notify` calls and their replies, through `BecomeMonitor` on a private Gio connection.
-2. **Sharing the pause:** the monitor feeds it while it runs. #105's `Inbox.rows` hook feeds it only while the monitor is down.
+2. **Sharing the pause:** the monitor feeds it. #105's `Inbox.rows` hook stays as the fallback and feeds it only when the monitor hasn't counted a code in the last 10 s. *(Amended 2026-11-19 after Codex's spec review: an "is the monitor up" switch loses or double-counts codes around reconnects. Pending re-approval.)*
 3. **While hidden:** nothing is shown. The #105 toast stays while Nixi is shown.
 
 ## Open questions
