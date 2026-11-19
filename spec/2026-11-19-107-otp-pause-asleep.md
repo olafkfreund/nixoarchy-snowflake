@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 107
 intent: intent/2026-11-19-107-otp-pause-asleep.md
 ---
