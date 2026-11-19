@@ -10,7 +10,7 @@ from unittest.mock import Mock
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 import room  # noqa: E402
-from size import step  # noqa: E402
+from size import page_zoom, step, text_clamp, text_step, zooms  # noqa: E402
 
 
 def window_methods(*names):
@@ -37,6 +37,35 @@ class RoomTest(unittest.TestCase):
         self.assertEqual(step(1.2, "up"), 1.25)
         self.assertEqual(step(0.55, "down"), 0.5)
         self.assertEqual(step(0.6, "reset"), 0.75)
+
+    def test_card_zoom(self):
+        page, nixi, target = zooms(0.75, 1.0, 16, 2560, 1440)
+        self.assertAlmostEqual(page, 16 / 14)
+        self.assertAlmostEqual(nixi, 0.75 / page)
+        self.assertEqual(target, 16)
+        self.assertEqual(zooms(1.25, 1.0, 16, 2560, 1440)[:2], (1.25, 1.0))
+        self.assertEqual(zooms(0.75, 1.0, None, 2560, 1440)[2], 16)
+        self.assertAlmostEqual(zooms(0.75, 2.0, 16, 1280, 720)[0], 720 / 460)
+        self.assertEqual(zooms(1.25, 1.0, 16, 960, 540)[:2], (1.25, 1.0))
+        self.assertEqual(zooms(0.75, 2.0, 28, None, None)[0], 2.5)
+        for size in (0.5, 0.75, 1.0, 1.25):
+            for card_text in (0.6, 1.0, 2.0):
+                for monitor in ((None, None), (960, 540), (1280, 720), (2560, 1440)):
+                    with self.subTest(size=size, card_text=card_text, monitor=monitor):
+                        page, nixi, _ = zooms(size, card_text, 16, *monitor)
+                        self.assertLessEqual(nixi, 1.0)
+                        self.assertAlmostEqual(page * nixi, size)
+
+    def test_card_text_steps_and_limits(self):
+        self.assertEqual((text_step(1.0, "up"), text_step(1.0, "down")), (1.1, 0.9))
+        self.assertEqual(text_step(1.5, "reset"), 1.0)
+        self.assertEqual((text_step(2.0, "up"), text_step(0.6, "down")), (2.0, 0.6))
+        self.assertEqual((text_clamp("bad"), text_clamp(float("inf"))), (1.0, 1.0))
+        self.assertEqual((text_clamp(0.1), text_clamp(3)), (0.6, 2.0))
+        self.assertEqual((page_zoom("bad"), page_zoom(float("nan"))), (1.0, 1.0))
+        self.assertEqual((page_zoom(0.1), page_zoom(3)), (0.5, 2.5))
+        with self.assertRaises(ValueError):
+            text_step(1.0, "sideways")
 
     def test_layer_size_growth_clamps_base_before_room(self):
         ns = window_methods("set_wide")
