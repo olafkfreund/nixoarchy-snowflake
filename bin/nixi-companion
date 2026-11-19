@@ -182,6 +182,38 @@ except Exception:
     pass' "$APP" "$2" "$PSOCK" >/dev/null 2>&1 || true
   exit 0
 fi
+# step the card text size from a key bind: same route as size
+if [ "${1:-}" = text ]; then
+  case "${2:-}" in up|down|reset) ;; *) exit 2 ;; esac
+  PSOCK="${XDG_RUNTIME_DIR:-/tmp}/nixi-companion-$(id -u).sock"
+  [ -S "$PSOCK" ] || exit 0
+  # one step at a time: two quick presses would each read the same size and collapse into one step
+  command -v flock >/dev/null 2>&1 && { exec 9>"$ROOT/text.lock"; flock -w 5 9 || true; }
+  "${NIXI_COMPANION_PYTHON:-python3}" -c 'import json,os,socket,sys,urllib.request as u
+sys.path.insert(0, sys.argv[1])
+from size import text_step
+try:
+    data = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    config = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    rt = json.load(open(os.path.join(data, "nixi-companion", "runtime.json")))
+    current = 1.0
+    for name in ("shared.json", "config.json"):          # the local file wins over the shared one
+        try:
+            current = json.load(open(os.path.join(config, "nixi-companion", name))).get("card_text", current)
+        except (OSError, ValueError, AttributeError):
+            pass
+    value = text_step(current, sys.argv[2])
+    req = u.Request("http://127.0.0.1:%s/api/settings" % rt["port"], json.dumps({"card_text": value}).encode(),
+                    {"Content-Type": "application/json", "X-Nixi-Token": rt["token"]})
+    u.urlopen(req, timeout=2).read()
+    with socket.socket(socket.AF_UNIX) as s:
+        s.settimeout(1)
+        s.connect(sys.argv[3])
+        s.sendall(("text:" + str(value)).encode())
+except Exception:
+    pass' "$APP" "$2" "$PSOCK" >/dev/null 2>&1 || true
+  exit 0
+fi
 # move him to another screen from a key bind: nixi-companion monitor next|prev|focused|<name> (e.g. DP-1)
 if [ "${1:-}" = monitor ]; then
   PSOCK="${XDG_RUNTIME_DIR:-/tmp}/nixi-companion-$(id -u).sock"

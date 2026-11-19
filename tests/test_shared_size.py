@@ -106,6 +106,39 @@ class SharedSizeTest(unittest.TestCase):
         self.assertEqual(len(got), 1)
         self.assertGreater(got[0]["size"], 1.0)
 
+    def test_cli_text_up_uses_shared(self):
+        got = []
+
+        class H(BaseHTTPRequestHandler):
+            def do_POST(self):
+                got.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *a):
+                pass
+        srv = HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        home = Path(self.t.name)
+        data = home / "data" / "nixi-companion"
+        data.mkdir(parents=True)
+        (data / "runtime.json").write_text(json.dumps({"port": srv.server_port, "token": "t"}))
+        run = Path(nixi_env.run_dir())
+        sock = run / f"nixi-companion-{os.getuid()}.sock"
+        sock.unlink(missing_ok=True)
+        ls = socket.socket(socket.AF_UNIX)
+        ls.bind(str(sock))
+        self.addCleanup(sock.unlink, True)
+        self.addCleanup(ls.close)
+        self.put("shared.json", '{"card_text": 1.0}')
+        env = {**os.environ, "HOME": str(home), "XDG_CONFIG_HOME": str(home / "config"), "XDG_DATA_HOME": str(home / "data"),
+               "XDG_RUNTIME_DIR": str(run), "NIXI_COMPANION_APP": str(ROOT / "app"), "NIXI_COMPANION_PYTHON": sys.executable}
+        subprocess.run([str(ROOT / "bin" / "nixi-companion"), "text", "up"], env=env, timeout=30, check=False)
+        self.assertEqual(len(got), 1)
+        self.assertGreater(got[0]["card_text"], 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()
