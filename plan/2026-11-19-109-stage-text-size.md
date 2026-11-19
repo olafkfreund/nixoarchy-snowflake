@@ -158,7 +158,7 @@ PR; this repo documents them.
 
 2. **`app/termfont.py` + `tests/test_termfont.py`** (new files).
    `term_px(env, config_home) -> float | None` per the Decisions.
-   → verify by `python3 -B .github/ci/run_tests.py test_termfont`.
+   → verify by `python3 -B .github/ci/run_tests.py test_termfont.py` (the runner matches file names).
    Tests: each terminal's format; `$TERMINAL` set, empty,
    `xdg-terminal-exec`, `footclient`, a full path;
    `XDG_CURRENT_DESKTOP=Hyprland:wlroots` → `hyprland-xdg-terminals.list`;
