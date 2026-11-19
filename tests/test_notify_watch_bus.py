@@ -65,7 +65,22 @@ class NotifyWatchBusTest(_ServerEnv):
         self.W, self.C = self.server.NotifyWatch, self.server.CodePause
         tmp = tempfile.mkdtemp(prefix="nixi-bus-")
         self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
-        self.proc = subprocess.Popen([daemon, "--session", "--nofork", "--print-address=1", f"--address=unix:dir={tmp}"],
+        conf = os.path.join(tmp, "bus.conf")      # (our own config: the host may have no /etc/dbus-1/session.conf)
+        with open(conf, "w") as f:
+            f.write(f"""<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <listen>unix:dir={tmp}</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+""")
+        self.proc = subprocess.Popen([daemon, f"--config-file={conf}", "--nofork", "--print-address=1"],
                                      stdout=subprocess.PIPE, text=True)
         self.addCleanup(self.proc.wait)
         self.addCleanup(self.proc.kill)
