@@ -162,11 +162,14 @@ Norwegian: "si fra til telefonen min når dette er ferdig", "si til telefonen mi
   every change it can see, and cancels the draft when the notification changed.
 - Not included: captions on incoming files.
 
-**Codes and the clipboard.** While Nixi takes your notifications over, a notification with a code or secret pauses
-Flux's clipboard sharing for 2 minutes. Another code renews the pause, for about 10 minutes at most; after that it
-isn't paused again until it has run out. A restart of `fluxd` drops it.
+**Codes and the clipboard.** Whenever Phone is on, a desktop notification with a code or secret pauses Flux's
+clipboard sharing for 2 minutes. This works while Nixi is hidden too, and it is silent then: no toast. Another code
+renews the pause, for about 10 minutes at most; after that it isn't paused again until it has run out. A restart of
+`fluxd` drops it.
 - Copies made during the pause aren't shared and stay out of Flux history. Copying the same value again afterwards may
   not sync. Manual sends still work.
+- The shell's **Copy code** button is never shared anyway, because Flux skips sensitive copies.
+- The cost: more false positives. Any notification that looks like a code pauses sharing for 2 minutes.
 - A copy made before the notification can still go out, and so can a send already past Flux's check.
 - A notification seen again after 10 minutes, or after 64 other code notifications, counts as new.
 
