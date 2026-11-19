@@ -3181,10 +3181,12 @@ def phone_call_row(x):
 
 class CodePause:
     OWNER, SECS, MAX, KEEP, FORGET = "nixi-otp", 120, 5, 64, 600
+    WATCH_GRACE = 10
     lock = threading.Lock()
     wake = threading.Event()
     keys = {}
     pending = 0
+    last_watch = -1e9
     sent = 0
     until = 0.0
     logged = False
@@ -3199,7 +3201,8 @@ class CodePause:
         print(f"[nixi] code pause: {kind.__name__}", file=sys.stderr)
 
     @classmethod
-    def seen(cls, key):
+    def seen(cls, key, fallback=False):
+        wake = False
         with cls.lock:
             now = time.monotonic()
             for old, at in list(cls.keys.items()):
@@ -3210,8 +3213,13 @@ class CodePause:
             cls.keys[key] = now
             if len(cls.keys) > cls.KEEP:
                 del cls.keys[min(cls.keys, key=cls.keys.get)]
-            cls.pending += 1
-        cls.wake.set()
+            if not fallback:
+                cls.last_watch = now
+            if not fallback or now - cls.last_watch >= cls.WATCH_GRACE:
+                cls.pending += 1
+                wake = True
+        if wake:
+            cls.wake.set()
 
     @classmethod
     def turn(cls):
@@ -3261,7 +3269,7 @@ class CodePause:
                 changed = False
         if changed:
             cls._log(ConnectionError)
-        else:
+        elif not Wake.asleep:
             BUS.pub(t="toast", text=lang.t("phone.clip_paused"))
 
     @classmethod
@@ -3277,6 +3285,210 @@ class CodePause:
                 more = cls.pending > 0
             if more:
                 cls.wake.set()
+
+    @classmethod
+    def start(cls):
+        with cls.lock:
+            if cls.thread is None:
+                cls.thread = threading.Thread(target=cls.loop, daemon=True)
+                cls.thread.start()
+
+
+class NotifyWatch:
+    lock = threading.Lock()
+    gen = 0
+    mon = plain = None
+    owner = bus_id = ""
+    pending = {}
+    stale = False
+    fails = 0
+    retry_at = 0.0
+    logged = False
+    thread = None
+    no_owner = False
+    Gio = GLib = None
+    NAME = "org.freedesktop.Notifications"
+    PATH = "/org/freedesktop/Notifications"
+
+    @classmethod
+    def _load(cls):
+        if cls.Gio is None:
+            import gi
+            gi.require_version("Gio", "2.0")
+            from gi.repository import Gio, GLib
+            cls.Gio, cls.GLib = Gio, GLib
+
+    @classmethod
+    def _log(cls, e):
+        with cls.lock:
+            if cls.logged:
+                return
+            cls.logged = True
+        if cls.GLib is not None and isinstance(e, cls.GLib.Error):
+            kind = f"{e.domain}:{e.code}"
+        else:
+            kind = type(e).__name__
+        print(f"[nixi] notification watch: {kind}", file=sys.stderr)
+
+    @classmethod
+    def _call(cls, conn, method, args=None):
+        return conn.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+                              method, args, None, cls.Gio.DBusCallFlags.NONE, -1, None)
+
+    @classmethod
+    def _owner(cls, conn):
+        return cls._call(conn, "GetNameOwner", cls.GLib.Variant("(s)", (cls.NAME,))).get_child_value(0).get_string()
+
+    @classmethod
+    def connect(cls):
+        plain = mon = None
+        try:
+            cls._load()
+            gio, glib = cls.Gio, cls.GLib
+            addr = gio.dbus_address_get_for_bus_sync(gio.BusType.SESSION, None)
+            flags = gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION
+            plain = gio.DBusConnection.new_for_address_sync(addr, flags, None, None)
+            bus_id = cls._call(plain, "GetId").get_child_value(0).get_string()
+            owner = cls._owner(plain)
+            with cls.lock:
+                cls.gen += 1
+                g = cls.gen
+                cls.owner, cls.bus_id = owner, bus_id
+                cls.pending, cls.stale = {}, False
+                cls.plain = plain
+            mon = gio.DBusConnection.new_for_address_sync(addr, flags, None, None)
+            mon.add_filter(lambda c, m, i: cls.filter(c, m, i, g))
+            rules = [
+                f"type='method_call',destination='{dest}',path='{cls.PATH}',interface='{cls.NAME}',member='Notify'"
+                for dest in (cls.NAME, owner)
+            ]
+            rules += [f"type='method_return',sender='{owner}'",
+                      f"type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged',arg0='{cls.NAME}'"]
+            mon.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus.Monitoring",
+                          "BecomeMonitor", glib.Variant("(asu)", (rules, 0)), None, gio.DBusCallFlags.NONE, -1, None)
+            if cls._owner(plain) != owner:
+                raise RuntimeError("notification owner changed")
+            with cls.lock:
+                cls.mon = mon
+            return True
+        except Exception as e:  # noqa: BLE001  (a missing bus or rejected monitor must not stop the worker)
+            cls._log(e)
+            try:
+                cls.no_owner = (cls.GLib is not None and isinstance(e, cls.GLib.Error) and
+                                cls.Gio.DBusError.get_remote_error(e) == "org.freedesktop.DBus.Error.NameHasNoOwner")
+            except Exception:  # noqa: BLE001
+                cls.no_owner = False
+            with cls.lock:
+                managed = cls.mon, cls.plain
+            cls.close()
+            for conn in (mon, plain):
+                if conn is not None and all(conn is not saved for saved in managed):
+                    try:
+                        conn.close_sync(None)
+                    except Exception:
+                        pass
+            return False
+
+    @classmethod
+    def filter(cls, conn, msg, incoming, g):
+        if not incoming or msg.get_destination() == conn.get_unique_name():
+            return msg
+        try:
+            with cls.lock:
+                if g != cls.gen:
+                    return None
+            if CFG.get("phone_on") is not True:
+                return None
+            kind = msg.get_message_type()
+            if kind == cls.Gio.DBusMessageType.METHOD_CALL and msg.get_member() == "Notify":
+                with cls.lock:
+                    owner = cls.owner
+                if msg.get_destination() not in (cls.NAME, owner) or msg.get_signature() != "susssasa{sv}i":
+                    return None
+                body = msg.get_body()
+                summary = body.get_child_value(3).get_string()[:16384]
+                rich = body.get_child_value(4).get_string()[:16384]
+                actions = body.get_child_value(5)
+                labels = [actions.get_child_value(i).get_string()[:1024]
+                          for i in range(1, min(actions.n_children(), 64), 2)]
+                visible = Inbox.ENT.sub(lambda m: Inbox.ENTS[m[1]],
+                                        Inbox.STRIP.sub(lambda m: "\n" if Inbox.BR.match(m[0]) else "", rich))
+                text = "\n".join((summary, visible, *labels))
+                if Inbox.OTP.match(text) or SECRET_LINE.search(text):
+                    now = time.monotonic()
+                    with cls.lock:
+                        if g != cls.gen:
+                            return None
+                        cls.pending = {k: t for k, t in cls.pending.items() if now - t < 10}
+                        cls.pending[(msg.get_sender(), msg.get_serial())] = now
+                        if len(cls.pending) > 64:
+                            del cls.pending[min(cls.pending, key=cls.pending.get)]
+            elif kind == cls.Gio.DBusMessageType.METHOD_RETURN:
+                with cls.lock:
+                    t = cls.pending.pop((msg.get_destination(), msg.get_reply_serial()), None)
+                    bus_id, owner = cls.bus_id, cls.owner
+                if t is not None and time.monotonic() - t < 10:
+                    notification_id = msg.get_body().get_child_value(0).get_uint32()
+                    CodePause.seen(f"{bus_id}:{owner}:{notification_id}")
+            elif kind == cls.Gio.DBusMessageType.SIGNAL and msg.get_member() == "NameOwnerChanged":
+                with cls.lock:
+                    cls.stale = True
+        except Exception as e:  # noqa: BLE001  (never print a notification or stop monitoring on a malformed message)
+            cls._log(e)
+        return None
+
+    @classmethod
+    def close(cls):
+        with cls.lock:
+            cls.gen += 1
+            conns = cls.mon, cls.plain
+            cls.mon = cls.plain = None
+            cls.pending = {}
+        for conn in conns:
+            if conn is not None:
+                try:
+                    conn.close_sync(None)
+                except Exception:
+                    pass
+
+    @classmethod
+    def tick(cls):
+        if CFG.get("phone_on") is not True:
+            if cls.mon is not None or cls.plain is not None:
+                cls.close()
+            cls.fails, cls.retry_at = 0, 0.0              # (Phone back on: connect at once)
+            return
+        if cls.mon is not None:
+            try:
+                if cls.mon.is_closed() or cls.stale or cls._owner(cls.plain) != cls.owner:
+                    cls.close()
+            except Exception as e:
+                cls._log(e)
+                cls.close()
+        if cls.mon is None and time.monotonic() >= cls.retry_at:
+            if cls.connect():
+                try:
+                    if CFG.get("phone_on") is not True or cls._owner(cls.plain) != cls.owner:
+                        cls.close()
+                    else:
+                        cls.fails = 0
+                except Exception as e:
+                    cls._log(e)
+                    cls.close()
+            elif cls.no_owner:                            # (the notification server is restarting: look again next tick)
+                cls.retry_at = time.monotonic() + 2
+            else:
+                cls.fails += 1
+                cls.retry_at = time.monotonic() + min(300, 2 * 2 ** cls.fails)
+
+    @classmethod
+    def loop(cls):
+        while True:
+            try:
+                cls.tick()
+            except Exception as e:  # noqa: BLE001  (the watch must survive a bus failure)
+                cls._log(e)
+            time.sleep(2)
 
     @classmethod
     def start(cls):
@@ -3432,7 +3644,7 @@ class Inbox:
             text = "\n".join(parts)
             hit = bool(cls.OTP.match(text) or SECRET_LINE.search(text))
             if hit:
-                CodePause.seen(x["key"])
+                CodePause.seen(x["key"], fallback=True)
             summary, body = str(x.get("summary") or "")[:120], str(x.get("body") or "")[:120]
             flux_call = phone_call_row(x)                            # (from the raw title: before the details are blanked)
             if not CFG.get("notify_details") or hit or SECRET_LINE.search(summary + "\n" + body) or cls.OTP.match(summary + "\n" + body):
@@ -3555,6 +3767,7 @@ class Inbox:
             cls.thread = threading.Thread(target=cls.loop, daemon=True)
             cls.thread.start()
         CodePause.start()
+        NotifyWatch.start()
 
 
 class Icons:

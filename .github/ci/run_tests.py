@@ -76,6 +76,7 @@ def run(tests, f, deadline):
         home.mkdir(mode=0o700)
         rt.mkdir(mode=0o700)
         env = {**os.environ, "HOME": str(home), "XDG_RUNTIME_DIR": str(rt)}   # never the runner's own HOME
+        env.pop("DBUS_SESSION_BUS_ADDRESS", None)                               # never the runner's own session bus (#107)
         with open(log, "w") as out:   # a file, not a pipe: a leftover child holding it can't stall us
             p = subprocess.Popen([sys.executable, "-B", __file__, "--child", tests, f.name, str(report)],
                                  cwd=REPO, env=env, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,

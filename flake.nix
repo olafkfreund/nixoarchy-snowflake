@@ -54,7 +54,8 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
           base = [
-            pkgs.python3
+            (pkgs.python3.withPackages (p: [ p.pygobject3 ]))
+            pkgs.dbus
             pkgs.bubblewrap
             pkgs.passt
             pkgs.iproute2
