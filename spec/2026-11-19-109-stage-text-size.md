@@ -6,10 +6,10 @@ intent: intent/2026-11-19-109-stage-text-size.md
 
 # Spec: companion cards readable at the shell's text size
 
-Revision 3. Revision 1 put a CSS `zoom` on each card; Codex and agy found
+Revision 4. Revision 1 put a CSS `zoom` on each card; Codex and agy found
 it needed new placement code for every card, and on 2026-11-19 the user
 chose the inverse: zoom the page to the card size and draw only Nixi
-smaller. Revision 3 fixes what both reviewers found in revision 2 (the code
+smaller. Revisions 3 and 4 fix what both reviewers found in revision 2 (the code
 sheet inheriting Nixi's scale, the 1.25 zoom clamp, small monitors, one
 source of truth for the zoom, click-through, things drawn next to Nixi).
 
@@ -29,8 +29,8 @@ New:
 T     = clamp(term_px or 16, 10, 28) · card_text      # target text, logical px
 C     = T / 14                                        # card CSS is designed around 14 px text
 P_fit = min(mon_w / 750, mon_h / 460)                 # strip + stage card fit on Nixi's monitor
-P     = clamp(min(max(C, z), P_fit), 0.5, 2.5)        # WebKit page zoom
-n     = z / P                                         # Nixi's own scale inside the page
+P     = clamp(max(min(C, P_fit), z), 0.5, 2.5)        # WebKit page zoom; never below Nixi's size
+n     = z / P                                         # Nixi's own scale inside the page, always ≤ 1
 ```
 
 Default (kitty 12 pt → 16 px, `card_text` 1.0, `z` 0.75, 2560x1440):
@@ -52,13 +52,22 @@ logical px (`app/window.py:253`).
   stage card at `P`, the text is the largest that fits rather than
   scrolling sideways. On a 1280x720 monitor `P_fit ≈ 1.56` (about 22 px
   text), so it binds only above that. Vertically, cards keep their own
-  `max-height` and scroll as today.
+  `max-height` and scroll as today. `P_fit` only limits the cards:
+  Nixi's size always wins (`P ≥ z`, so `n ≤ 1`); a Nixi too big for the
+  monitor behaves as today.
+- **Click-through off.** `click_through` defaults to off because input
+  shaping flickers on some GPU drivers (`app/server.py:279-280`). With it
+  off the whole window catches clicks, as today, and the window is about
+  1.5x larger at the default size. Accepted; Settings → "Click through
+  around him" removes it where the driver allows.
 
 ### 2. One source of truth: the window
 
 `app/window.py` owns `(P, n)`. It keeps Nixi's size (`self.size`, from
 `saved_size()` at `:339`) separate from the page zoom (`self.z`, now `P`),
-plus `self.card_text` and `self.term_px`. One method, `_apply_zoom()`:
+plus `self.card_text` (a new `saved_card_text()` reading `shared.json`
+then `config.json`, like `saved_size()` at `:140-147`) and
+`self.term_px`. One method, `_apply_zoom()`:
 
 1. `P, n = size.zooms(self.size, self.card_text, self.term_px, mon_w, mon_h)`
    (new pure function in `app/size.py`, unit-tested).
@@ -66,19 +75,42 @@ plus `self.card_text` and `self.term_px`. One method, `_apply_zoom()`:
    zoom level, re-request the extra space, re-apply the bar and region.
    The clamp is a new `page_zoom()` (0.5-2.5); `window_size()` keeps its
    0.5-1.25 meaning for Nixi's size.
-3. Always push to the page: `nixiZoom(P, n, card_px)`, which sets
-   `info.page_zoom`, `info.nk`, `info.card_px`, `--nk`, re-runs the
-   placement that depends on Nixi's drawn size (`cardPlace()` and
-   `fitCard()` if an approval is open, `stagePlace()`, `sizeWindow()`),
-   `sendRegion(true)`, and `renderSettings()` if Settings is open.
+3. Always push to the page:
+   `nixiZoom({page:P, nk:n, cardPx:T, monW, size, cardText})`.
 
-It runs at start, on `zoom:<z>` and `text:<v>` from both the socket
-(`:1441`) and the page (`_on_msg`, `:1393`), on a monitor change
-(`P_fit` changes), and on `rezoom` from the page (sent when Settings
-opens), which re-reads the terminal font first. The server never computes
-`n`: `/api/state` carries `size`, `card_text` and `card_px` for display
-only. In the browser fallback (`!NATIVE`) the page keeps `--nk` at 1 and
-draws as today.
+**Page state.** `nixiZoom` stores these in a page-level `ZOOM` object
+(defaults `{page:1, nk:1, cardPx:16}`), never in `info`, because
+`refresh()` (`:4685`, every 15 s) and `setSetting()` (`:4527`) replace
+`info` wholesale. It also sets `info.size`/`info.card_text` so Settings
+draws the new values at once, sets `--nk`, re-runs `nixiCorner(corner)`
+(peek offsets depend on `n`), the placement that depends on Nixi's drawn
+size (`cardPlace()` and `fitCard()` if an approval is open,
+`stagePlace()`, `sizeWindow()`), `sendRegion(true)`, and
+`renderSettings()` if Settings is open. Because `#stage` animates its
+scale for .65 s (`:42`), the `#stage` `transitionend` handler (`:4759`,
+today only `sendRegion(true)`) runs the same placement again once the
+scale settles. The server never computes `P`, `n` or `T`; `/api/state`
+carries only the saved `size` and `card_text`.
+
+**When it runs.**
+
+- At start, in order: read size, `card_text`, `term_px`; compute `P`
+  without `P_fit` for `set_default_size` (`:343`); after `_load_pos` /
+  `_load_xpos` pick the monitor, run `_apply_zoom()` with its geometry.
+- After every page load, on `load-changed` FINISHED (`:1365`, which also
+  covers the renderer-crash reload `:417` and re-auth `:1391`), push
+  `nixiZoom` before `_send_corner()`, even when `P` is unchanged.
+- On `zoom:<z>` and `text:<v>` from the socket (`:1441`) and from the
+  page (`_on_msg`, `:1393`).
+- When Nixi settles on another monitor: `go_monitor`, the end of a drag,
+  `set_bar`, step-aside moves. Not in `_place` (it runs every frame
+  during drags and hover). In X11 mode the monitor is the one under the
+  window's centre (`_mon_at`).
+- On `rezoom` from the page (sent when Settings opens): re-read the
+  terminal font first.
+
+In the browser fallback (`!NATIVE`) nothing calls `nixiZoom`: `ZOOM` and
+`--nk` stay at their defaults and the page draws as today.
 
 ### 3. The page: what scales with `--nk`
 
@@ -101,19 +133,26 @@ draws as today.
   individual `translate` property stays free for `#chalk.pt`'s keyframes
   (`:392-395`).
 - **Controls attached to Nixi** (`#musChip` `:427`, `#remChip` `:432`):
-  page size (readable), positioned toward the ball by the same offset
-  rule, so they stay next to him.
-- **The menu sparks** (`MENU_XY`, `:3867`): the menu buttons are at page
-  scale, the sparks fly inside `#stage`; their targets are converted to
-  stage coordinates (`ball + (xy − ball) / n`) so they still reach the
-  buttons.
-- **The code sheet** reads `#stage`'s scale (`:4897`,
-  `k=SHEET_K*clamp(st,.4,1)`). It divides `st` by `n` so only the
-  peek/hover mode scale counts, and `SHEET_K` goes from 0.7 to `14/15`
-  so its 15 px text shows at `T`.
+  page size (readable), and their anchor point (the corner their CSS
+  positions: `#musChip`'s left/top, `#remChip`'s right/top) is moved
+  toward the ball by `(anchor − ball) · (n − 1)`, so they stay next to
+  him without depending on their content width.
+- **The menu sparks** (`MENU_XY`, `:3867-3869`) are in the face's SVG
+  units, where (0, 0) is already the ball centre. The menu buttons are at
+  page scale and the sparks fly inside `#stage`, so outside docked mode
+  their targets become `xy / n`. Docked mode keeps page scale and keeps
+  `xy`.
+- **The code sheet** reads `#stage`'s live transform (`:4897`,
+  `k=SHEET_K*clamp(st,.4,1)`). It takes the mode scale from the body
+  class instead (peek .4, hover .17, else 1), so neither `n` nor the
+  .65 s transition leaks into the sheet. In the native window `SHEET_K`
+  goes from 0.7 to `14/15` so its 15 px text shows at `T`; the browser
+  fallback keeps 0.7. `fitSheet` (`:4916`) also caps the width so the
+  sheet beside the strip fits the monitor:
+  `W · SHEET_K ≤ ZOOM.monW / ZOOM.page − 340 − 40`.
 - **`screen.*` in page px** (`--apprMax` `:3585`, `setDefaultSize`
   `:3739`, Settings resize limits `:4096`, `:4106`): divided by
-  `info.page_zoom`. Plan step 1 checks whether WebKit already reports
+  `ZOOM.page`. Plan step 1 checks whether WebKit already reports
   `screen.*` in zoomed CSS px; if it does, no change.
 
 Everything else (cards, bubble `#cap`, chips, menu, panels, approval and
@@ -122,16 +161,14 @@ placement, window space and click region already scale with the zoom.
 Cards stay beside the 340 px strip, so the gap between Nixi's drawn body
 and a card grows by about `(1 − n) · 100 · P ≈ 40` logical px. Accepted.
 
-### 4. Clicks: the window does not catch more than today
+### 4. Clicks
 
-`click_through` defaults to off (`app/server.py:280`): the page then
-sends `region:null` (`:4730`) and the whole window catches clicks. With a
-larger window that would block more of the desktop. New: with
-click-through off, the page sends the region it measures today for
-click-through mode, plus Nixi's strip drawn at his scale (the 340x460
-box scaled by `n` around the ball). So the clickable area is today's
-window area plus whatever cards are open, not the larger transparent
-window. Click-through on is unchanged.
+Unchanged. With click-through on, `sendRegion` (`:4731`) measures drawn
+rectangles, so the clickable area follows Nixi's smaller body and the
+larger cards. With click-through off (the default, kept because input
+shaping flickers on some drivers), the page sends `region:null`
+(`:4730`) as today and the whole window catches clicks; see the limit in
+section 1.
 
 ### 5. Step-aside and dragging
 
@@ -224,12 +261,17 @@ Keys:
 - **Monitor scale or DPI in the formula:** double-scales on HiDPI.
 - **Server computes `n`:** two processes with different caches disagree;
   the window owns the zoom.
+- **Shaping input with click-through off:** removes the escape hatch for
+  drivers where input shaping flickers.
+- **Applying `P_fit` after `max(C, z)`:** lets `n` exceed 1 on small or
+  scaled monitors and clips Nixi.
 
 ## Risks
 
 - **Bigger transparent window.** About 1.5x today's at the default size
-  (388x524 logical instead of 255x345). Section 4 keeps the clickable
-  area as today; Nixi cannot sit as close to a monitor edge, and
+  (388x524 logical instead of 255x345). With click-through off it
+  catches clicks over that area (section 1). Nixi cannot sit as close to
+  a monitor edge, and
   `screens.clamp_on` (`app/window.py:653`) and saved margins move him
   inward on the first start.
 - **Things drawn next to Nixi** that section 3 does not list. The plan
@@ -257,8 +299,9 @@ Keys:
     `[main]`, repeated keys, a font fallback list, `pixelsize`; alacritty
     `size = true`; missing, garbled, non-finite, 2 pt and 200 px → `None`.
   - `zooms()`: the default case; `z = 1.25` → `P = 1.25, n = 1`;
-    `term_px None` → 16 px; 1280x720 → `P_fit` binds; `card_text 2.0`
-    with 28 px → clamped.
+    `term_px None` → 16 px; 1280x720 → `P_fit` binds; 960x540 with
+    `z = 1.25` → `P = 1.25, n = 1` (Nixi wins); `n ≤ 1` for a grid of
+    inputs; `card_text 2.0` with 28 px → clamped.
   - `text_step` steps and clamps; `/api/settings` replaces a bad
     `card_text` with 1.0; a shared `card_text` is taken like `size`.
   - `aside.plan()` with scaled widths.
@@ -283,6 +326,8 @@ Keys:
     focus with wev).
   - `card_text` 2.0 on the 1280x720-sized monitor (or a scaled one):
     text capped by `P_fit`, no clipping, every control reachable.
-  - Move Nixi to the other monitor and near each screen edge.
+  - Move Nixi to the other monitor and near each screen edge; reload the
+    page (`nixi-companion` re-auth) and confirm Nixi and the cards keep
+    their sizes; wait past a 15 s `refresh()` with a card open.
 - If the plugin stage path is touched, the plugin sandbox tests from
   README "Working on it"; the PR states the result.
