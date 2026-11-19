@@ -145,6 +145,16 @@ PR; this repo documents them.
    `screen.*` change.
    Traps: memory "no GPU Chrome previews": offscreen only, no new
    visible window, no Chrome; WebKit only.
+   **Result (2026-11-19, done):** the companion's own WebKitGTK 4.1, in a
+   `Gtk.OffscreenWindow` with compositing and DMA-BUF off, at zoom 1.0
+   and 1.5. Individual `translate`/`scale` are supported and compose with
+   `transform` (computed `translate: 10px`, `scale: 0.5`, rotated
+   matrix; the box moves and shrinks accordingly);
+   `scale(calc(.4 * var(--nk)))` is supported. `screen.width/height/
+   availWidth/availHeight` stay 2560/1440 at zoom 1.5 while `innerWidth`
+   goes 400 → 266: **`screen.*` is not divided by the zoom**, so step 6
+   divides every `screen.*` use by `ZOOM.page`. The props keep their
+   offset in `transform` as planned.
 
 2. **`app/termfont.py` + `tests/test_termfont.py`** (new files).
    `term_px(env, config_home) -> float | None` per the Decisions.
