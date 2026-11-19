@@ -60,6 +60,7 @@
     "phone.turn_on_sync": "Slå på synkronisering av Ikke forstyrr på {name} for møtestillhet",
     "phone.connected": "Tilkoblet: {names}",
     "phone.off": "Telefon er slått av. Du kan slå det på i Innstillinger.",
+    "phone.clip_paused": "Deling av utklippstavlen er satt på pause for koden",
     "phone.none_can": "Ingen av enhetene dine kan gjøre det.",
     "phone.ringing": "Ringer {name}.",
     "phone.cant_ring": "{name} kan ikke spille av ringelyd.",

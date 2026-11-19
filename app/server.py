@@ -3179,6 +3179,113 @@ def phone_call_row(x):
         return False
 
 
+class CodePause:
+    OWNER, SECS, MAX, KEEP, FORGET = "nixi-otp", 120, 5, 64, 600
+    lock = threading.Lock()
+    wake = threading.Event()
+    keys = {}
+    pending = 0
+    sent = 0
+    until = 0.0
+    logged = False
+    thread = None
+
+    @classmethod
+    def _log(cls, kind):
+        with cls.lock:
+            if cls.logged:
+                return
+            cls.logged = True
+        print(f"[nixi] code pause: {kind.__name__}", file=sys.stderr)
+
+    @classmethod
+    def seen(cls, key):
+        with cls.lock:
+            now = time.monotonic()
+            for old, at in list(cls.keys.items()):
+                if now - at >= cls.FORGET:
+                    del cls.keys[old]
+            if key in cls.keys:
+                return
+            cls.keys[key] = now
+            if len(cls.keys) > cls.KEEP:
+                del cls.keys[min(cls.keys, key=cls.keys.get)]
+            cls.pending += 1
+        cls.wake.set()
+
+    @classmethod
+    def turn(cls):
+        with cls.lock:
+            now = time.time()
+            if not cls.pending:
+                return
+            if cls.until <= now:
+                cls.sent = 0
+            if cls.sent >= cls.MAX:
+                cls.pending = 0
+                return
+            cls.pending = 0
+            cls.sent += 1
+            g = Phone.session
+        if not (CFG.get("phone_on") is True and Phone.connected and "clipboardPauses" in Phone.snap):
+            with cls.lock:
+                cls.sent -= 1
+            return
+        start = time.time()
+        try:
+            reply = Phone.call("clipboard.pauseOwned", owner=cls.OWNER, expires=cls.SECS)
+        except phone.NotSent as e:
+            with cls.lock:
+                cls.sent -= 1
+            cls._log(type(e))
+            return
+        except (TimeoutError, ConnectionError) as e:
+            with cls.lock:
+                cls.until = max(cls.until, start + cls.SECS)
+            cls._log(type(e))
+            return
+        except (RuntimeError, ValueError) as e:
+            cls._log(type(e))
+            return
+        if not (isinstance(reply, dict) and type(reply.get("expires")) is int and reply["expires"] > time.time() + 1):
+            with cls.lock:
+                cls.until = max(cls.until, start + cls.SECS)
+            cls._log(ValueError)
+            return
+        with cls.lock:
+            if Phone.session != g:
+                cls.until = max(cls.until, start + cls.SECS)
+                changed = True
+            else:
+                cls.until = max(cls.until, reply["expires"])
+                changed = False
+        if changed:
+            cls._log(ConnectionError)
+        else:
+            BUS.pub(t="toast", text=lang.t("phone.clip_paused"))
+
+    @classmethod
+    def loop(cls):
+        while True:
+            cls.wake.wait()
+            cls.wake.clear()
+            try:
+                cls.turn()
+            except Exception as e:  # noqa: BLE001  (the worker must survive malformed replies)
+                cls._log(type(e))
+            with cls.lock:
+                more = cls.pending > 0
+            if more:
+                cls.wake.set()
+
+    @classmethod
+    def start(cls):
+        with cls.lock:
+            if cls.thread is None:
+                cls.thread = threading.Thread(target=cls.loop, daemon=True)
+                cls.thread.start()
+
+
 class Inbox:
     """Notifications the shell hands to the companion (#133), only while this thread holds a lease on the shell's IPC
     socket (renewed every second). Row text is never logged, written to disk or sent to the agent."""
@@ -3188,6 +3295,7 @@ class Inbox:
     MAIL = re.compile(r"(?i)\bomamail\b|outlook")                                  # Outlook through the Omamail plug-in or a web app
     CHAT = re.compile(r"(?i)web\.whatsapp\.com|\bwhatsapp\b|messenger\.com")         # chats the shell files under "other"
     # a code word and something shaped like a code (digits, spaced digit groups, a 6-10 char mix with 2+ digits) in one text
+    # (match, not search: the lookaheads already scan the whole text; search retries every offset, quadratic)
     OTP = re.compile(r"(?=.*\b(?:codes?|otp|verif\w*|log[- ]?in|passcode|pin|one[- ]?time|security|sign[- ]?in|mfa|2fa|auth\w*)\b)"
                      r"(?=.*(?:\b\d{4,10}\b|\b\d{2,4}(?:[ -]\d{2,4}){1,3}\b|\b(?=[A-Za-z0-9]{6,10}\b)(?:[A-Za-z]*\d){2}[A-Za-z0-9]*\b))", re.I | re.S)
     CAP = 1024 * 1024
@@ -3202,6 +3310,8 @@ class Inbox:
     alock = threading.Lock()                                  # acts: the tick thread writes, handler threads compare-and-pop
     legacy = 0.0                                              # until then the shell had no delegateRich: use delegate, then ask again
     TAG = re.compile(r"<(/?)([A-Za-z][A-Za-z0-9]*)([^<>]*)>")
+    STRIP = re.compile(r"<(?=/?[A-Za-z])[^<>]*>")                  # (TAG's overlapping groups are quadratic on an unclosed tag; this is linear)
+    BR = re.compile(r"</?br\b", re.I)
     ENT = re.compile(r"&(lt|gt|amp|quot);")
     ENTS = {"lt": "<", "gt": ">", "amp": "&", "quot": '"'}
     HREF = re.compile(r'\s+href="([^"]*)"\s*')
@@ -3315,9 +3425,17 @@ class Inbox:
                 x["category"] = "mail" if cls.MAIL.search(who) else "chat" if cls.CHAT.search(who) else "video" if cls.FEED.search(who) else Plug.category(str(x.get("app") or ""), str(x.get("source") or ""))
             if not isinstance(x, dict) or not isinstance(x.get("key"), str) or not cls.KEY.fullmatch(x["key"]) or x.get("category") not in cls.CATS:
                 continue
+            rich = cls.STRIP.sub(lambda m: "\n" if cls.BR.match(m[0]) else "", str(x.get("rich") or ""))   # (the visible text: a long link id is not a code)
+            parts = [str(x.get("summary") or ""), str(x.get("body") or ""), cls.ENT.sub(lambda m: cls.ENTS[m[1]], rich)]
+            if isinstance(x.get("actions"), list):
+                parts.extend(a["text"] for a in x["actions"] if isinstance(a, dict) and isinstance(a.get("text"), str))
+            text = "\n".join(parts)
+            hit = bool(cls.OTP.match(text) or SECRET_LINE.search(text))
+            if hit:
+                CodePause.seen(x["key"])
             summary, body = str(x.get("summary") or "")[:120], str(x.get("body") or "")[:120]
             flux_call = phone_call_row(x)                            # (from the raw title: before the details are blanked)
-            if not CFG.get("notify_details") or SECRET_LINE.search(summary + "\n" + body) or cls.OTP.search(summary + "\n" + body):
+            if not CFG.get("notify_details") or hit or SECRET_LINE.search(summary + "\n" + body) or cls.OTP.match(summary + "\n" + body):
                 summary = body = ""
             row = {"key": x["key"], "app": str(x.get("app") or "")[:60], "source": str(x.get("source") or "")[:80],
                    "category": x["category"], "summary": summary, "body": body}
@@ -3328,7 +3446,7 @@ class Inbox:
             if buttons or image:                                 # a card: markup, then the gate over all of it, then the image, then the buttons
                 runs, labels = cls.runs(x.get("rich")), [a["text"][:40] for a in buttons]
                 whole = "\n".join([str(x.get("summary") or ""), "".join(r["t"] for r in runs), *labels])
-                if not CFG.get("notify_details") or SECRET_LINE.search(whole) or cls.OTP.search(whole):
+                if not CFG.get("notify_details") or hit or SECRET_LINE.search(whole) or cls.OTP.match(whole):
                     if buttons:                                  # the shell keeps the row, with its buttons
                         cls.call("showKey", row["key"])
                         continue
@@ -3436,6 +3554,7 @@ class Inbox:
         if not cls.thread:
             cls.thread = threading.Thread(target=cls.loop, daemon=True)
             cls.thread.start()
+        CodePause.start()
 
 
 class Icons:
@@ -7244,7 +7363,7 @@ def mail_clean(text, limit):
 
 
 def mail_otp(fields):
-    return bool(Inbox.OTP.search("\n".join(fields)))
+    return bool(Inbox.OTP.match("\n".join(fields)))
 
 
 def mail_scrub(fields, otp=None):

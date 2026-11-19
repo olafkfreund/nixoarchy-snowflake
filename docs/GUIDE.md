@@ -160,7 +160,15 @@ Norwegian: "si fra til telefonen min når dette er ferdig", "si til telefonen mi
   without your click on the draft. A draft is single-use and lasts 10 minutes.
 - Flux can still change a notification between Nixi's last check and its own lookup of what to reply to. Nixi catches
   every change it can see, and cancels the draft when the notification changed.
-- Not included: captions on incoming files, and pausing the clipboard from Nixi.
+- Not included: captions on incoming files.
+
+**Codes and the clipboard.** While Nixi takes your notifications over, a notification with a code or secret pauses
+Flux's clipboard sharing for 2 minutes. Another code renews the pause, for about 10 minutes at most; after that it
+isn't paused again until it has run out. A restart of `fluxd` drops it.
+- Copies made during the pause aren't shared and stay out of Flux history. Copying the same value again afterwards may
+  not sync. Manual sends still work.
+- A copy made before the notification can still go out, and so can a send already past Flux's check.
+- A notification seen again after 10 minutes, or after 64 other code notifications, counts as new.
 
 ## Agent alerts
 

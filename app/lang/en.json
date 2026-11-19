@@ -60,6 +60,7 @@
     "phone.turn_on_sync": "Turn on Sync Do Not Disturb on the {name} for meeting silence",
     "phone.connected": "Connected: {names}",
     "phone.off": "Phone is off. You can switch it on in Settings.",
+    "phone.clip_paused": "Clipboard sharing paused for the code",
     "phone.none_can": "None of your devices can do that.",
     "phone.ringing": "Ringing your {name}.",
     "phone.cant_ring": "Your {name} can't ring.",

@@ -119,6 +119,66 @@ class InboxTest(_ServerEnv):
         for txt in ("Lunch at 12?", "Ana sent 3 photos", "Build 2026 passed"):
             self.assertEqual(S.Inbox.rows(json.dumps([self.row(summary=txt, body="")]))[0]["summary"], txt, txt)
 
+    def test_full_text_code_is_blanked_before_display(self):
+        S = self.server
+        S.CFG["notify_details"] = True
+        row = self.row(summary="123456 " + "hello " * 22 + "sign-in code")
+        with mock.patch.object(S.CodePause, "seen") as seen:
+            out = S.Inbox.rows(json.dumps([row]))
+        self.assertEqual((out[0]["summary"], out[0]["body"]), ("", ""))
+        seen.assert_called_once_with("nabc12")
+
+    def test_code_hook_sees_all_raw_fields_and_discarded_cards(self):
+        S = self.server
+        cases = (
+            (self.row(body="Your code is 482910"), False),
+            (self.row(body="password=example"), True),
+            (self.rich_row(summary="Your code is 482910"), True),
+            (self.row(rich="a " * 301 + "Your code is 482910"), True),
+            (self.rich_row(actions=[{"id": "a", "text": "Your code is 482910"}]), True),
+        )
+        for row, details in cases:
+            with self.subTest(row=row), mock.patch.object(S.CodePause, "seen") as seen, mock.patch.object(S.Inbox, "call") as call:
+                S.CFG["notify_details"] = details
+                S.Inbox.rows(json.dumps([row]))
+                seen.assert_called_once_with("nabc12")
+                if row.get("actions") and details:
+                    call.assert_called_once_with("showKey", "nabc12")
+
+    def test_code_hook_reads_visible_rich_text_only(self):
+        S = self.server
+        link = 'Meeting notes <a href="https://outlook.office.com/mail/id/' + "AAQkADAwATM0" * 6 + '">open</a>'
+        with mock.patch.object(S.CodePause, "seen") as seen:
+            out, call, _ = self.rows(self.rich_row(rich=link))
+        seen.assert_not_called()
+        call.assert_not_called()
+        self.assertIn("card", out[0])
+        with mock.patch.object(S.CodePause, "seen") as seen:
+            self.rows(self.row(rich="your sign-in code is <b>482</b>910"))
+        seen.assert_called_once_with("nabc12")
+
+    def test_code_check_is_linear_on_an_unclosed_tag(self):
+        S = self.server
+        start = time.monotonic()
+        with mock.patch.object(S.CodePause, "seen"):
+            self.rows(self.rich_row(rich="<" + "a" * 300000))
+        self.assertLess(time.monotonic() - start, 1.0)
+
+    def test_card_gate_uses_full_text_verdict(self):
+        S = self.server                                          # digits inside the shown 600 chars, the code word after them
+        with mock.patch.object(S.CodePause, "seen"):
+            out, call, _ = self.rows(self.rich_row(rich="482910 " + "a " * 300 + "sign-in code"))
+        self.assertEqual(out, [])
+        call.assert_called_once_with("showKey", "nabc12")
+
+    def test_clean_row_has_no_pause_or_new_fields(self):
+        S = self.server
+        S.CFG["notify_details"] = True
+        with mock.patch.object(S.CodePause, "seen") as seen, mock.patch.object(S.Icons, "lookup", return_value=None):
+            out = S.Inbox.rows(json.dumps([self.row()]))
+        self.assertEqual(out, [{"key": "nabc12", "app": "teams", "source": "", "category": "chat", "summary": "Ana", "body": "hi"}])
+        seen.assert_not_called()
+
     def test_want_false_while_asleep(self):
         S = self.server
         with mock.patch.object(S.BUS, "subs", [object()]), mock.patch.object(S.Wake, "asleep", False):

@@ -121,6 +121,7 @@
     "phone.turn_on_sync": "Włącz synchronizację Nie przeszkadzać na urządzeniu {name}, aby wyciszać na spotkaniach",
     "phone.connected": "Połączono: {names}",
     "phone.off": "Telefon jest wyłączony. Możesz go włączyć w Ustawieniach.",
+    "phone.clip_paused": "Udostępnianie schowka wstrzymane na czas kodu",
     "phone.none_can": "Żadne z twoich urządzeń tego nie potrafi.",
     "phone.ringing": "Dzwonię na {name}.",
     "phone.cant_ring": "{name} nie może odtworzyć dzwonka.",
