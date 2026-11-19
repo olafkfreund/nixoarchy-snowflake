@@ -4,7 +4,7 @@ issue: 109
 author: olafkfreund
 ---
 
-# Intent: stage cards readable at the shell's text size
+# Intent: companion cards readable at the shell's text size
 
 ## Problem
 
@@ -29,8 +29,10 @@ setting, which also enlarges Nixi himself, and it tops out at 1.25.
 
 ## Proposed outcome
 
-- A stage card's text (headlines, metadata lines, buttons, inputs) shows
-  at about the user's terminal text size, measured in logical pixels.
+- Every card's text (headlines, metadata lines, buttons, inputs; the
+  cards are listed under Decisions) shows at about the user's terminal
+  text size, measured in logical pixels, and the user can step it up or
+  down from the keyboard.
   Monitor scaling is already applied by the compositor, so on a 2x
   monitor the card is not scaled twice; what differs per monitor is the
   space available.
@@ -91,17 +93,25 @@ setting, which also enlarges Nixi himself, and it tops out at 1.25.
   `systemd-run` with `RemainAfterExit` (memory: test builds on the
   desktop).
 
-## Open questions
+## Decisions (approved 2026-11-19)
 
-1. Should the size come from the terminal config automatically, or from a
-   fixed default only? Proposal: automatic, from the terminal the user
+1. **Source of the size:** automatic, from the terminal the user
    launches: `$TERMINAL`, else the Omarchy / `xdg-terminal-exec` default,
    else the fixed default. Not "the first config found": an installed
    but unused terminal says nothing about the user's preference. The
    companion runs as a user service, so `$TERMINAL` may be missing from
    its environment; the spec settles where it is read.
-2. Should the card also get a manual override (Settings → "Card text
-   size")? Proposal: no, automatic only; an override is a later issue if
-   needed.
-3. Should Nixi's message bubble (`#him`, 14.5 px, `:414`) follow the same
-   size? Proposal: no, stage cards only, as asked.
+2. **Keyboard control: yes.** The user can make card text bigger or
+   smaller, and reset it to the automatic size, from the keyboard, the
+   way `nixi-companion size up|down|reset` changes Nixi's size today
+   (`bin/nixi-companion:153`, bound in `nixos_config`, `docs/GUIDE.md:584`).
+   The chosen step persists like the size setting does.
+3. **All cards, not only stages.** Every card the companion shows
+   follows the card text size: answer stages and their tab (`#stg`,
+   `#stgTab`), the approval card (`#appr`), the password box (`#pwbox`),
+   the mail pop-up (`#mailPop`), the music card (`#musCard`), the code
+   sheet (`#code`), and notification cards (`.ncard`, `:3014`, shown
+   inside the bubble). Nixi's plain message bubble text (`#him`), his
+   menu and his panels (settings, history; `.pn`) keep their size.
+   Each card keeps the window-space request it already makes
+   (`cardWant`, `sheetWant`, `popWant`, `stageWant`; `:4714`), scaled.
