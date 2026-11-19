@@ -167,6 +167,29 @@ class ResetSharedSettingsTest(SharedSettingsTest):
         self.popen.assert_not_called()
 
 
+class CardTextTest(_SharedBase):
+    def settings(self, body):
+        h = object.__new__(self.s.Handler)
+        h.path = "/api/settings"
+        h.headers = {"X-Nixi-Token": self.s.TOKEN}
+        h._host_ok = lambda: True
+        h._body = lambda: json.dumps(body).encode()
+        h._json = mock.Mock()
+        h.do_POST()
+
+    def test_bad_post_value_becomes_one_and_good_is_clamped(self):
+        for raw, want in (("big", 1.0), (None, 1.0), (1.5, 1.5), (9, 2.0), (0.1, 0.6)):
+            self.settings({"card_text": raw})
+            self.assertEqual(self.s.CFG["card_text"], want, raw)
+
+    def test_shared_card_text_is_taken_like_size(self):
+        f = self.path.with_name("shared.json")
+        f.write_text(json.dumps({"card_text": 1.5, "size": 1.0}))
+        self.assertEqual(self.s.load_shared(f)[0], {"card_text": 1.5, "size": 1.0})
+        f.write_text(json.dumps({"card_text": 9, "size": 10}))
+        self.assertEqual(self.s.load_shared(f)[0], {})
+
+
 class SharedLayerFixesTest(_SharedBase):
     LOOK = {"body": "#161616", "pupL": "#ffffff", "pupR": "#ffffff", "whiteL": "#eeeeee", "whiteR": "#eeeeee", "skin": "none",
             "skinColor": "", "link": True, "random": False, "follow_theme": True, "character": "robot"}
