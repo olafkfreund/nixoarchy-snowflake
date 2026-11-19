@@ -8,28 +8,37 @@ author: olafkfreund
 
 ## Problem
 
-- **What #105 does:** when a notification carries a one-time code, Nixi asks Flux for a 2-minute owned clipboard pause.
-- **Where it stops working:** Nixi only checks for codes in `Inbox.rows`, and `Inbox.rows` runs only while Nixi takes notifications over.
-  - `Inbox.want()` (`app/server.py:3260`) is false while `Wake.asleep` is true.
-  - Hiding Nixi posts `/api/sleep {on: true}` (`app/static/index.html:4690`, `app/server.py:9391`). So a hidden Nixi is asleep, and the shell shows its own popups.
-  - Nixi is hidden most of the day, so the pause rarely runs.
-- **Seen live on p620 (2026-11-19):** with Phone, takeover and `proactive` all on, four test codes showed as shell popups, and Flux listed no pause.
-- **What is already safe:** the shell popup's own **Copy code** button copies with `wl-copy --sensitive` (omarchy `shell/plugins/notifications/Service.qml:1254`). Flux drops sensitive clips (`internal/desktop/clipboard.go:159` in nixarchy-flux). The gap is a code copied any other way while the notification is up: selected in the mail or chat app it came from, or typed from it into a field and copied again.
+- **What #105 does:** when a notification matches the code-or-secret checks (`Inbox.OTP` or `SECRET_LINE`), Nixi asks Flux for a 2-minute owned clipboard pause.
+  - `SECRET_LINE` (`app/server.py:6829`) also matches passwords, API keys and long token-shaped strings, so "code" here means that whole set.
+  - Flux eligibility and #105's request cap can still stop a request.
+- **Where it stops working:** the check sits in `Inbox.rows`, which runs only while `Inbox.want()` is true (`app/server.py:3260`).
+  - `want()` needs `proactive`, notification takeover, an open page stream, no fullscreen window, and Nixi awake.
+  - Hiding Nixi posts `/api/sleep {on: true}` (`app/static/index.html:4690`) and sets `Wake.asleep` (`app/server.py:9392`). A hidden Nixi is therefore asleep, and the shell shows its own popups.
+  - Nixi is hidden most of the day, so the pause rarely runs. Fullscreen and takeover-off have the same effect.
+- **Seen live on p620 (2026-11-19):** with Phone, takeover and `proactive` all on and Nixi hidden, four test codes showed as shell popups, and Flux listed no pause.
+- **What is already safe:** the shell popup's own **Copy code** button copies with `wl-copy --sensitive` (omarchy `shell/plugins/notifications/Service.qml:1254`). Flux drops sensitive clips (nixarchy-flux `internal/desktop/clipboard.go:159`).
+  - The gap is a code copied any other way while it is around, for example selected in the mail or chat app it came from.
 
 ## Proposed outcome
 
-- **The pause runs whether Nixi is shown or hidden,** as long as Nixi is running and Phone is on. Everything else stays as #105 set it:
+- **The pause depends only on Nixi running and Phone being on.** Hidden or shown, fullscreen or not, takeover on or off.
+  - `proactive`, takeover, the page stream and fullscreen keep governing what Nixi shows. They no longer govern the pause.
+- **#105's rules are unchanged:**
   - 120 s;
   - renewed by a new code, at most 5 requests per hold;
   - never ended early;
-  - the same detection (`Inbox.OTP` or `SECRET_LINE`) and the same Flux eligibility checks.
-- **A hidden Nixi still doesn't take notifications over.** The shell keeps its popups, and a hidden Nixi shows nothing new on screen.
-- **One notification is one code,** whichever way Nixi saw it.
+  - the same `OTP`/`SECRET_LINE` checks, on visible text (markup stripped, as #105 does for rich text), plus action labels;
+  - the same Flux eligibility checks.
+- **Coverage widens on purpose.** The check sees every notification sent to the desktop's notification server. Today it only sees the rows the shell hands Nixi, which the shell's categories and `Inbox.KEY` filter first.
+  - **The cost:** more false positives, each one a 2-minute pause. The docs will say so.
+- **A hidden Nixi still doesn't take notifications over.** The shell keeps its popups, and the shell's delivery is never touched.
+- **One notification is one code.** An update of a notification, or a repeat of it, is not a new code, within #105's dedupe bounds (64 keys, 10 min). A notification updated from clean text to a code counts once, when the code appears.
+- **`Inbox.rows` keeps its display protection** (blanking text, handing cards back) exactly as today. The two checks never loosen each other: neither unblanks text nor changes delivery.
 
 ## Affected users and systems
 
-- **Nixi companion:** `app/server.py`, the notification and `CodePause` path. Possibly a new small reader for notifications that arrive while Nixi isn't taking them over.
-- **nixos_config:** one `nixi-companion` input bump, deployed to p620 and razer. No Flux change.
+- **Nixi companion:** `app/server.py`, where `CodePause` gets a new feed of notifications. There may also be a new small reader for the notification server's calls.
+- **nixos_config:** one `nixi-companion` input bump, deployed to p620 and razer. No Flux or shell change.
 - **The user,** on both machines.
 
 ## Constraints
@@ -40,17 +49,35 @@ author: olafkfreund
   - Nixi never ends or shortens a pause;
   - notifications are never held up;
   - it's a mitigation, not a guarantee.
-- **Notification text stays in memory only,** as it does during takeover today: not stored, logged or sent anywhere. Nixi keeps only the yes/no verdict and a key for dedupe.
-- **The shell's popups and the takeover hand-off are unchanged.**
+- **Privacy:** Nixi now reads notification text while hidden, including notifications it would never show. That is a real widening, accepted only because of the following:
+  - It reads only while Phone is on. Turning Phone off stops it.
+  - It asks the bus for the narrowest match: `Notify` calls on `org.freedesktop.Notifications`, and the replies it needs to learn a notification's id.
+  - Text stays in memory, only for the length of the check. It is never stored, logged, published to the page, or passed to plugins or the agent. Nixi keeps only the yes/no verdict and a dedupe key.
+  - Processing and kept state are bounded.
+- **The way in is the bus's own monitoring interface** (`org.freedesktop.DBus.Monitoring.BecomeMonitor`), as the same user. Nothing more:
+  - no root;
+  - no policy change;
+  - no legacy eavesdropping.
+- **Failure is quiet and safe:**
+  - If monitoring is refused or stops, shell delivery is untouched, and Nixi prints at most one line without content.
+  - It tries again on a slow, bounded schedule.
+  - While monitoring is down, #105's takeover check still pauses, so this is never worse than today.
+- **No new dependency:** the Python D-Bus support Nixi already ships (PyGObject `Gio`, `nix/package.nix:45`), on its own private connection. The reader doesn't parse `busctl` text: `busctl` isn't on Nixi's PATH.
 - **Nixi stays quiet while asleep:** no mic, no voice, no window.
 
 ## Open questions
 
-1. **Where a hidden Nixi reads notifications from.** The shell's socket has no read-only method today: `ping`, `delegate`, `delegateRich` and `showKey` only.
-   - **(a) A session-bus monitor** of `org.freedesktop.Notifications.Notify` calls. Tested on p620: `busctl --user monitor` with that match saw the summary and body of a `notify-send`. This needs no shell change. **Recommended.**
-   - **(b) A new read-only method on the shell socket.** That is a change to basecamp/omarchy, which we don't own.
-   - **(c) Keep the lease while hidden,** taking notifications over without showing them. Rejected up front: it would hide every notification while Nixi is hidden.
-2. **One detection path or two.** With (a), the monitor could become the only detection path, shown or hidden, and `Inbox.rows` would keep only the display gate. Or the monitor could run only while Nixi is asleep. One path is simpler, and it can't count one notification twice. **Recommended: one path.**
-3. **What a hidden Nixi shows when it pauses.** #105's toast lives in Nixi's page, so it isn't seen while hidden.
-   - **(a) Nothing while hidden.** The pause is silent, and `flux-cli status` still lists it. **Recommended.**
-   - **(b) A desktop notification.** It would be one more popup next to the code's popup.
+1. **Where a hidden Nixi reads notifications from.**
+   - **(a) A session-bus monitor of `Notify` calls and their replies.** No shell change needed.
+     - **p620:** `busctl --user monitor` saw a `notify-send`'s summary and body. `busctl` uses `BecomeMonitor`.
+     - **razer:** not tested yet.
+     - **Recommended.**
+   - **(b) A new read-only method on the shell socket.** That's a basecamp/omarchy change, which we don't own.
+   - **(c) Keep the lease while hidden.** Rejected: it would hide every notification while Nixi is hidden.
+2. **How the two checks share the pause.**
+   - **(a) The monitor feeds the pause whenever it runs, and #105's `Inbox.rows` hook feeds it only while the monitor is down.** There is one source at a time, so a notification is never counted twice by key mismatch. **Recommended.**
+   - **(b) Both feed it all the time.** A notification seen both ways would use 2 of the 5 requests in a hold.
+   - **(c) Monitor only.** This gives up today's pause whenever monitoring fails.
+3. **What a hidden Nixi shows when it pauses.**
+   - **(a) Nothing while hidden.** The pause is silent, and `flux-cli status` lists it. While Nixi is shown, the #105 toast stays. **Recommended.**
+   - **(b) A desktop notification.** That's one more popup next to the code's popup.
