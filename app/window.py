@@ -31,6 +31,8 @@ from urllib.parse import urlparse
 import aside
 from room import split_room
 import screens
+import size
+import termfont
 
 # He's an overlay (a layer-shell surface, like a bar or a notification), which only works when GTK talks Wayland.
 # Lots of setups (NVIDIA ones especially) set GDK_BACKEND=x11, or start apps without WAYLAND_DISPLAY — then GTK quietly
@@ -145,6 +147,16 @@ def saved_size():
         except (OSError, ValueError, AttributeError):
             pass
     return window_size(size)
+
+
+def saved_card_text():
+    card_text = 1.0
+    for f in (os.path.join(os.path.dirname(CONF_FILE), "shared.json"), CONF_FILE):
+        try:
+            card_text = json.load(open(f)).get("card_text", card_text)
+        except (OSError, ValueError, AttributeError):
+            pass
+    return size.text_clamp(card_text)
 
 POS_FILE = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "nixi-companion", "pos.json")
 
@@ -336,7 +348,11 @@ class Ghost:
 
 class NixiWindow:
     def __init__(self, url):
-        self.z = saved_size()
+        self.size = saved_size()
+        self.card_text = saved_card_text()
+        self.config_home = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+        self.term_px = termfont.term_px(os.environ, self.config_home)
+        self.z = size.zooms(self.size, self.card_text, self.term_px, None, None)[0]
         w = self.win = Gtk.Window(title="Nixi")
         w.set_decorated(False)
         w.set_resizable(False)
@@ -441,6 +457,7 @@ class NixiWindow:
         self.last_sent = None
         self.rects = None
         self.region_on = False
+        self._apply_zoom()
         if not SELFTEST:                     # (a test window must not take over the real one's socket: `nixi-companion stop`)
             threading.Thread(target=self._serve, daemon=True).start()
             if self.hypr.ok():
@@ -458,21 +475,42 @@ class NixiWindow:
         left, top = math.floor(x * z), math.floor(y * z)
         return left, top, math.ceil((x + w) * z) - left, math.ceil((y + h) * z) - top
 
+    def _apply_zoom(self, reread=False):
+        if reread:
+            self.term_px = termfont.term_px(os.environ, self.config_home)
+        if self.layer:
+            g = self._geom()[1]
+        else:
+            g = self._mon_at(self.mx + self.wide_shift + self._px(W) // 2,
+                             self.my + self.top_shift + self._px(H) // 2)[1]
+        page, _, _ = size.zooms(self.size, self.card_text, self.term_px, g.width, g.height)
+        if page != self.z:
+            self.z = size.page_zoom(page)
+            self.view.set_zoom_level(self.z)
+            self.set_wide(getattr(self, "want_css", (self.want_xw / self.z, self.want_h / self.z)), "size")
+            if self.bar:
+                self.set_bar(self.bar, glide=False)
+            self._apply_region()
+        self._push_zoom()
+
+    def _push_zoom(self):
+        g = (self._geom()[1] if self.layer else
+             self._mon_at(self.mx + self.wide_shift + self._px(W) // 2,
+                          self.my + self.top_shift + self._px(H) // 2)[1])
+        page, nixi, target = size.zooms(self.size, self.card_text, self.term_px, g.width, g.height)
+        self._js("window.nixiZoom&&nixiZoom(" + json.dumps(dict(page=page, nk=nixi, cardPx=target,
+                                                                  monW=g.width, size=self.size, cardText=self.card_text)) + ")")
+
     def set_zoom(self, value):
-        z = window_size(value)
-        if z == self.z:
-            return
-        self.z = z
-        self.view.set_zoom_level(z)
-        self.set_wide(getattr(self, "want_css", (self.want_xw / z, self.want_h / z)), "size")
-        if self.bar:
-            self.set_bar(self.bar, glide=False)
-        self._apply_region()
+        self.size = window_size(value)
+        self._apply_zoom()
 
     def socket_zoom(self, value):
-        z = window_size(value)
-        self.set_zoom(z)
-        self._js(f"info.size={z}; if(setEl.classList.contains('on')) renderSettings()")
+        self.set_zoom(value)
+
+    def set_text(self, value):
+        self.card_text = size.text_clamp(value)
+        self._apply_zoom()
 
     # ---- where he is (layer mode: margins from the top-left of a monitor)
     @staticmethod
@@ -544,6 +582,7 @@ class NixiWindow:
             json.dump(p, open(POS_FILE, "w"))
         except OSError:
             pass
+        self._apply_zoom()
         self._send_corner()
         return False
 
@@ -729,6 +768,7 @@ class NixiWindow:
         else:
             self._xmove(g.x + x - self.wide_shift, g.y + y - self.top_shift)
         self._rewide()
+        self._apply_zoom()
         self._send_corner()
         GLib.timeout_add(100, lambda: (self._save_pos() if self.layer else self._save_xpos(), False)[1])
         return True
@@ -779,7 +819,7 @@ class NixiWindow:
                 return False                                       # the card is on another screen
         g = self._geom()[1]
         home = self._spot()
-        mode = aside.plan(g.width, len(ms) > 1)
+        mode = aside.plan(g.width, len(ms) > 1, 340 * self.z, aside.VISIBLE_W * self.size)
         self.aside = {"home": home, "mode": mode, "parked": None}
         if mode == "side":
             tx, ty = aside.target(g.width, g.height, home[1], self._px(W), self._px(H))
@@ -1131,6 +1171,7 @@ class NixiWindow:
         self._rewide()
         if self.layer:
             self._place(self.mx, self.my, True)          # the whole surface (cards, a panel moved while docked) inside its screen
+        self._apply_zoom()
         if not self.bar:                                 # docked: his blob spot (bar_home) stays where it was
             self._save_pos()
         return False
@@ -1166,9 +1207,9 @@ class NixiWindow:
                 return
             edge = None
             if o and not self.pmoving:                     # pushed 40px+ past an edge: dock there
-                if abs(o[1]) >= self._px(40) and abs(o[1]) >= abs(o[0]):
+                if abs(o[1]) >= round(40 * self.size) and abs(o[1]) >= abs(o[0]):
                     edge = "top" if o[1] < 0 else "bottom"
-                elif abs(o[0]) >= self._px(40):
+                elif abs(o[0]) >= round(40 * self.size):
                     edge = "left" if o[0] < 0 else "right"
             self._drag_finished(edge)
 
@@ -1362,7 +1403,7 @@ class NixiWindow:
                                                        WebKit2.UserScriptInjectionTime.START, allow, None))
 
     def _start_page(self):
-        self.view.connect("load-changed", lambda _v, ev: self._send_corner() if ev == WebKit2.LoadEvent.FINISHED else None)
+        self.view.connect("load-changed", lambda _v, ev: (self._push_zoom(), self._send_corner()) if ev == WebKit2.LoadEvent.FINISHED else None)
         origin = f"http://127.0.0.1:{urlparse(self.url).port}/"
 
         def retry():
@@ -1392,6 +1433,12 @@ class NixiWindow:
             return
         if msg.startswith("zoom:"):
             self.set_zoom(msg[5:])
+            return
+        if msg.startswith("text:"):
+            self.set_text(msg[5:])
+            return
+        if msg == "rezoom":
+            self._apply_zoom(reread=True)
             return
         if msg.startswith("region:"):
             try:
@@ -1438,7 +1485,7 @@ class NixiWindow:
                 cmd = c.recv(64).decode().strip()
             finally:
                 c.close()
-            fn = (lambda: (self.go_monitor(cmd[8:]), False)[1]) if cmd.startswith("monitor:") else (lambda: self.socket_zoom(cmd[5:])) if cmd.startswith("zoom:") else {"toggle": self.toggle, "show": self.show, "hide": self.hide, "quit": self.quit,
+            fn = (lambda: (self.go_monitor(cmd[8:]), False)[1]) if cmd.startswith("monitor:") else (lambda: self.socket_zoom(cmd[5:])) if cmd.startswith("zoom:") else (lambda: self.set_text(cmd[5:])) if cmd.startswith("text:") else {"toggle": self.toggle, "show": self.show, "hide": self.hide, "quit": self.quit, "rezoom": lambda: self._apply_zoom(reread=True),
                   "aside:on": self.aside_on, "aside:off": self.aside_off, "listen": lambda: self.cmd("listen"), "look": lambda: self.cmd("look"), "live": lambda: self.cmd("live"),
                   "hover": lambda: self.cmd("hover"), "hover-on": lambda: self.cmd("hover-on"),
                   "hover-off": lambda: self.cmd("hover-off"),

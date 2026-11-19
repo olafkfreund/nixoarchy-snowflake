@@ -33,9 +33,9 @@ def free_gap(mon_w):
     return mon_w * (1 - CARD_MAX) / 2
 
 
-def plan(mon_w, has_other_monitor):
+def plan(mon_w, has_other_monitor, strip_w=STRIP_W, visible_w=VISIBLE_W):
     """'side' if he fits beside the card, else 'monitor' if there is another screen, else 'hover'."""
-    need = MARGIN + (STRIP_W - VISIBLE_W) / 2 + VISIBLE_W   # he sits inside a padded strip, a margin from the edge
+    need = MARGIN + (strip_w - visible_w) / 2 + visible_w   # he sits inside a padded strip, a margin from the edge
     return "side" if free_gap(mon_w) >= need else "monitor" if has_other_monitor else "hover"
 
 
