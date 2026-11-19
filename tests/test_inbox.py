@@ -145,6 +145,25 @@ class InboxTest(_ServerEnv):
                 if row.get("actions") and details:
                     call.assert_called_once_with("showKey", "nabc12")
 
+    def test_code_hook_reads_visible_rich_text_only(self):
+        S = self.server
+        link = 'Meeting notes <a href="https://outlook.office.com/mail/id/' + "AAQkADAwATM0" * 6 + '">open</a>'
+        with mock.patch.object(S.CodePause, "seen") as seen:
+            out, call, _ = self.rows(self.rich_row(rich=link))
+        seen.assert_not_called()
+        call.assert_not_called()
+        self.assertIn("card", out[0])
+        with mock.patch.object(S.CodePause, "seen") as seen:
+            self.rows(self.row(rich="your sign-in code is <b>482</b>910"))
+        seen.assert_called_once_with("nabc12")
+
+    def test_card_gate_uses_full_text_verdict(self):
+        S = self.server                                          # digits inside the shown 600 chars, the code word after them
+        with mock.patch.object(S.CodePause, "seen"):
+            out, call, _ = self.rows(self.rich_row(rich="482910 " + "a " * 300 + "sign-in code"))
+        self.assertEqual(out, [])
+        call.assert_called_once_with("showKey", "nabc12")
+
     def test_clean_row_has_no_pause_or_new_fields(self):
         S = self.server
         S.CFG["notify_details"] = True

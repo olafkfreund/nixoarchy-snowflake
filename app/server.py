@@ -3423,7 +3423,8 @@ class Inbox:
                 x["category"] = "mail" if cls.MAIL.search(who) else "chat" if cls.CHAT.search(who) else "video" if cls.FEED.search(who) else Plug.category(str(x.get("app") or ""), str(x.get("source") or ""))
             if not isinstance(x, dict) or not isinstance(x.get("key"), str) or not cls.KEY.fullmatch(x["key"]) or x.get("category") not in cls.CATS:
                 continue
-            parts = [str(x.get(k) or "") for k in ("summary", "body", "rich")]
+            rich = cls.TAG.sub(lambda m: "\n" if m[2].lower() == "br" else "", str(x.get("rich") or ""))   # (the visible text: a long link id is not a code)
+            parts = [str(x.get("summary") or ""), str(x.get("body") or ""), cls.ENT.sub(lambda m: cls.ENTS[m[1]], rich)]
             if isinstance(x.get("actions"), list):
                 parts.extend(a["text"] for a in x["actions"] if isinstance(a, dict) and isinstance(a.get("text"), str))
             text = "\n".join(parts)

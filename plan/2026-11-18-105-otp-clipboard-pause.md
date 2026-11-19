@@ -244,3 +244,11 @@ reviewers:
   - Its lookaheads start with `.*` under `re.S`, so the result is identical.
   - `search` retried at every offset: 2.8 s on 10k characters of clean text, which would stall the 1 s inbox loop.
   - With `match`, a 1 MB reply (the shell's cap) takes about 0.06 s for `OTP` and 0.25 s for `SECRET_LINE`.
+- **Opus review (step 2 follow-up):** the code check reads the *visible* `rich` text, at full length, not the raw markup.
+  - Tags are removed (`<br>` becomes a newline) and the four entities are decoded.
+  - The raw markup let a long link id (an Outlook deep link) match `SECRET_LINE`. That hid ordinary mail cards and
+    paused sharing with no code involved.
+  - A secret inside an `href` is never displayed, so dropping it loses nothing.
+  - A code split by tags (`<b>482</b>910`) now triggers too.
+  - New tests cover this, the card gate's full-text verdict, Flux's `expires` being kept, and eviction by age. Each
+    fails when its fix is reverted.

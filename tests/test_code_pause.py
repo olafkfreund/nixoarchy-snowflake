@@ -38,16 +38,20 @@ class CodePauseTest(_ServerEnv):
         self.pub.assert_called_once_with(t="toast", text=self.S.lang.t("phone.clip_paused"))
 
     def test_dedupe_eviction_and_age(self):
-        with mock.patch.object(self.S.time, "monotonic", return_value=1000):
-            for i in range(64):
+        for i in range(64):                                      # (keys "9" < "10" in age, not in name: eviction goes by time)
+            with mock.patch.object(self.S.time, "monotonic", return_value=1000 + 63 - i):
                 self.C.seen(str(i))
+        with mock.patch.object(self.S.time, "monotonic", return_value=1100):
             self.C.seen("0")
             self.assertEqual(self.C.pending, 64)
+            self.C.seen("64")                                    # evicts "63", the oldest, not "0"
+            self.assertNotIn("63", self.C.keys)
+            self.C.seen("0")
+            self.assertEqual((len(self.C.keys), self.C.pending), (64, 65))
+            self.C.seen("63")
+            self.assertEqual(self.C.pending, 66)
+        with mock.patch.object(self.S.time, "monotonic", return_value=1700):
             self.C.seen("64")
-            self.C.seen("0")
-            self.assertEqual((len(self.C.keys), self.C.pending), (64, 66))
-        with mock.patch.object(self.S.time, "monotonic", return_value=1600):
-            self.C.seen("0")
             self.assertEqual(self.C.pending, 67)
 
     def test_arrival_during_call_waits_for_next_turn(self):
@@ -166,6 +170,13 @@ class CodePauseTest(_ServerEnv):
             self.C.seen("eligible")
             self.C.turn()
         self.phone.call.assert_called_once()
+
+    def test_confirmed_hold_takes_flux_expiry(self):
+        self.phone.call.return_value = {"expires": 150}         # (earlier or later than start + 120: Flux's value wins)
+        self.C.seen("a")
+        with mock.patch.object(self.S.time, "time", return_value=0):
+            self.C.turn()
+        self.assertEqual(self.C.until, 150)
 
     def test_each_confirmed_renewal_toasts(self):
         with mock.patch.object(self.S.time, "time", return_value=0):
