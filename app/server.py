@@ -3305,6 +3305,7 @@ class NotifyWatch:
     retry_at = 0.0
     logged = False
     thread = None
+    no_owner = False
     Gio = GLib = None
     NAME = "org.freedesktop.Notifications"
     PATH = "/org/freedesktop/Notifications"
@@ -3372,6 +3373,11 @@ class NotifyWatch:
             return True
         except Exception as e:  # noqa: BLE001  (a missing bus or rejected monitor must not stop the worker)
             cls._log(e)
+            try:
+                cls.no_owner = (cls.GLib is not None and isinstance(e, cls.GLib.Error) and
+                                cls.Gio.DBusError.get_remote_error(e) == "org.freedesktop.DBus.Error.NameHasNoOwner")
+            except Exception:  # noqa: BLE001
+                cls.no_owner = False
             with cls.lock:
                 managed = cls.mon, cls.plain
             cls.close()
@@ -3450,6 +3456,7 @@ class NotifyWatch:
         if CFG.get("phone_on") is not True:
             if cls.mon is not None or cls.plain is not None:
                 cls.close()
+            cls.fails, cls.retry_at = 0, 0.0              # (Phone back on: connect at once)
             return
         if cls.mon is not None:
             try:
@@ -3468,6 +3475,8 @@ class NotifyWatch:
                 except Exception as e:
                     cls._log(e)
                     cls.close()
+            elif cls.no_owner:                            # (the notification server is restarting: look again next tick)
+                cls.retry_at = time.monotonic() + 2
             else:
                 cls.fails += 1
                 cls.retry_at = time.monotonic() + min(300, 2 * 2 ** cls.fails)

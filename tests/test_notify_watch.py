@@ -210,6 +210,18 @@ class FilterTest(WatchTestBase):
             self.feed(notify(serial=99, **CODE))
         self.assertEqual(list(self.W.pending), [(":1.5", 99)])
 
+    def test_a_hit_from_a_connection_closed_mid_read_is_not_kept(self):
+        W = self.W
+
+        class Closing(V):
+            def get_string(self):
+                W.close()                               # a close() or reconnect while the filter is reading
+                return "Your sign-in code"
+        msg = notify(**CODE)
+        msg.get_body.return_value.kids[3] = Closing()
+        self.assertIsNone(self.feed(msg))
+        self.assertEqual(self.W.pending, {})
+
     def test_pass_through_and_drops(self):
         out = notify(**CODE)
         self.assertIs(self.feed(out, incoming=False), out)
@@ -283,7 +295,9 @@ class FakeConn:
     def call_sync(self, dest, path, iface, method, args, *_):
         bus = self.bus
         if bus.fail_at == method:
-            raise Err(method)
+            err = Err(method)
+            err.remote = bus.remote
+            raise err
         if method == "BecomeMonitor":
             if bus.on_become:
                 bus.on_become(self)
@@ -296,6 +310,7 @@ class FakeConn:
 class FakeBus:
     def __init__(self):
         self.conns, self.fail_at, self.on_become, self.owners, self.owner = [], None, None, [], ":1.9"
+        self.remote = None
 
     def new(self, *_):
         self.conns.append(FakeConn(self))
@@ -312,6 +327,7 @@ class LifecycleTest(WatchTestBase):
         self.W.Gio.DBusConnectionFlags = SimpleNamespace(AUTHENTICATION_CLIENT=1, MESSAGE_BUS_CONNECTION=2)
         self.W.Gio.DBusCallFlags = SimpleNamespace(NONE=0)
         self.W.Gio.DBusConnection = SimpleNamespace(new_for_address_sync=self.bus.new)
+        self.W.Gio.DBusError = SimpleNamespace(get_remote_error=lambda e: getattr(e, "remote", None))
         self.W.thread = None
         patch = mock.patch.object(self.S.time, "monotonic", return_value=1000.0)
         patch.start()
@@ -378,6 +394,26 @@ class LifecycleTest(WatchTestBase):
                 self.assertGreater(self.W.gen, gen)
                 self.assertFalse(self.W.stale)
         self.assertEqual(self.W.owner, ":1.20")
+
+    def test_no_notification_server_retries_next_tick_without_growing_the_back_off(self):
+        self.bus.fail_at, self.bus.remote = "GetNameOwner", "org.freedesktop.DBus.Error.NameHasNoOwner"
+        with mock.patch.object(sys, "stderr", io.StringIO()):
+            self.W.tick()
+            self.W.tick()
+        self.assertEqual((self.W.fails, self.W.retry_at), (0, 1002.0))
+        self.bus.fail_at = None
+        self.W.retry_at = 0.0
+        self.W.tick()
+        self.assertIsNotNone(self.W.mon)
+
+    def test_phone_off_resets_the_back_off(self):
+        self.W.fails, self.W.retry_at = 5, 5000.0
+        self.S.CFG["phone_on"] = False
+        self.W.tick()
+        self.assertEqual((self.W.fails, self.W.retry_at), (0, 0.0))
+        self.S.CFG["phone_on"] = True
+        self.W.tick()
+        self.assertIsNotNone(self.W.mon)
 
     def test_no_reconnect_before_the_back_off(self):
         self.W.tick()

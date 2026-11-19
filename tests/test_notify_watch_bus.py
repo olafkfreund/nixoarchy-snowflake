@@ -70,6 +70,7 @@ class NotifyWatchBusTest(_ServerEnv):
         self.addCleanup(self.proc.wait)
         self.addCleanup(self.proc.kill)
         self.addr = self.proc.stdout.readline().strip()
+        self.assertTrue(self.addr, "dbus-daemon printed no address")
         env = mock.patch.dict(os.environ, {"DBUS_SESSION_BUS_ADDRESS": self.addr})
         env.start()
         self.addCleanup(env.stop)
@@ -97,6 +98,7 @@ class NotifyWatchBusTest(_ServerEnv):
         with self.W.lock:
             self.W.mon = self.W.plain = None
             self.W.fails, self.W.retry_at, self.W.logged = 0, 0.0, True
+        self.addCleanup(setattr, self.W, "logged", False)
         self.addCleanup(self.W.close)
         self.fake = Fake(self.addr, "org.freedesktop.Notifications")
         self.client = connect(self.addr)

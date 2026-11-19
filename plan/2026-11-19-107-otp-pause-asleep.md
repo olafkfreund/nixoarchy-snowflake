@@ -252,3 +252,13 @@ Both must pass. `test_notify_watch_bus.py` must run, not be skipped, in `.#ci`.
 1. **The bus test starts its own `dbus-daemon`** instead of running under `dbus-run-session`, as the spec's Verification says.
    - **Why:** the test needs the bus address in-process, and needs to change the name owner and close connections during the test.
    - The result is the same: a private bus, never the host's.
+2. **The back-off no longer grows while the notification server is gone,** and Phone off resets it. This comes from the Opus review.
+   - A `connect()` that fails with `org.freedesktop.DBus.Error.NameHasNoOwner` retries on the next tick (2 s) without raising `fails`. Under the plan's rule, an omarchy-shell restart longer than about 30 s left the watch off for up to 5 min afterwards.
+   - Phone off resets `fails` and `retry_at`, so turning Phone on connects at once.
+   - Other failures keep `min(300, 2·2^n)`.
+3. **Other changes from the Opus review:**
+   - A test covers the second generation check in the filter (a `close()` while it reads).
+   - `.github/ci/run_tests.py` drops `DBUS_SESSION_BUS_ADDRESS`, so no test can reach the runner's real session bus.
+   - The bus test asserts that the private daemon printed an address, and it restores `NotifyWatch.logged`.
+4. **Step 3's additions to `test_code_pause.py` and `test_inbox.py`** already landed with steps 1 and 2, written by the implementer. Step 3 added `tests/test_notify_watch.py` only.
+5. **Step 4's update case** asserts that the update produces the same key. The real dedupe of that key is covered in `test_notify_watch.py` and `test_code_pause.py`.
