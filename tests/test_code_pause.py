@@ -220,10 +220,13 @@ class CodePauseTest(_ServerEnv):
 
     def test_inbox_start_starts_code_worker_once(self):
         with mock.patch.object(self.S.Inbox, "thread", None), mock.patch.object(self.C, "thread", None), \
+             mock.patch.object(self.S.NotifyWatch, "thread", None), \
              mock.patch.object(self.S.threading, "Thread") as thread:
             self.S.Inbox.start()
             self.S.Inbox.start()
-        self.assertEqual(thread.call_count, 2)
+        self.assertEqual(thread.call_count, 3)
+        self.assertEqual([call.kwargs["target"] for call in thread.call_args_list],
+                         [self.S.Inbox.loop, self.C.loop, self.S.NotifyWatch.loop])
 
 
 if __name__ == "__main__":
