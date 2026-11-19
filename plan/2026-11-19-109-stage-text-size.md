@@ -63,9 +63,10 @@ and their placement, window space and click regions.
 | hover / peek | `scale(calc(.17 * var(--nk)))`, `scale(calc(.4 * var(--nk)))`; `nixiCorner` offsets `±(170 − 68·n)`, `±(165 − 66·n)` |
 | docked (bar) | unchanged: page scale, notch and Nixi grow together |
 | `#chalk` `#hat` `#pop` `#wtc` | `transform: translate(var(--ox),var(--oy)) <today's transform> scale(var(--nk))`, offset = (prop centre − ball centre)·(nk − 1); individual `translate` left free for `#chalk.pt` |
-| `#musChip`, `#remChip` | page size; their CSS anchor corner moved by (anchor − ball)·(n − 1) |
-| menu sparks `MENU_XY` | SVG units with the ball at (0,0): target `xy / n` outside bar mode, `xy` in bar mode |
-| code sheet | mode scale from body class (peek .4, hover .17, else 1), not the live transform; native `SHEET_K = 14/15` (browser keeps .7); width capped so `W · SHEET_K ≤ ZOOM.monW / ZOOM.page − 380` |
+| `#musChip` (`left:296px;top:196px`) | page size; `left: calc(296px − 126px·(1 − var(--nk)))`, `top: calc(196px − 31px·(1 − var(--nk)))` |
+| `#remChip` (`right:14px;top:232px`) | page size; `right: calc(14px + 156px·(1 − var(--nk)))` (anchor x 326 moves toward 170, so `right` grows), `top: calc(232px − 67px·(1 − var(--nk)))` |
+| menu sparks `MENU_XY` | SVG units with the ball at (0,0). At the consumer, `frame()` (`:2410`), target `tg / ZOOM.nk` unless `barEdge()`; `MENU_XY` itself (built at `:3867-3870`, rebuilt by `layoutMenu()` `:3875-3890`) is unchanged |
+| code sheet | mode scale from body class (peek .4, hover .17, else 1), not the live transform; native `SHEET_K = 14/15` (browser keeps .7); width cap below |
 | `screen.*` in page px | divided by `ZOOM.page` (unless step 1 shows WebKit already does it) |
 
 ### Ownership and timing
@@ -75,14 +76,25 @@ and their placement, window space and click regions.
   server never computes them; `/api/state` carries only `size` and
   `card_text`.
 - The page keeps them in a `ZOOM` object (defaults `{page:1, nk:1,
-  cardPx:16}`), never in `info` (`refresh()` and `setSetting()` replace
+  cardPx:16, monW:0, size:.75, cardText:1}`), never in `info` (`refresh()` and `setSetting()` replace
   `info`). Browser fallback (`!NATIVE`): never pushed, defaults stay.
 - Pushed: at start (after the monitor is known), after every page load
   (before `_send_corner()`), on `zoom:`/`text:` from socket or page, when
   Nixi settles on another monitor (not per frame), and on `rezoom` (sent
   when Settings opens; re-reads the terminal font).
 - `nixiZoom` and the `#stage` `transitionend` both re-run the placement
-  that depends on Nixi's drawn size.
+  that depends on Nixi's drawn size, and refit an open code sheet.
+- Code sheet width cap in `fitSheet` (`:4916`): when `ZOOM.monW > 0`,
+  `maxW = max(200, (ZOOM.monW / ZOOM.page − 380) / SHEET_K)` and the
+  clamp becomes `clamp(w, min(380, maxW), min(760, maxW))`; when
+  `monW` is 0 (browser, or before the first push) no cap.
+- **Clicks.** Click-through on: clicks land on drawn things and pass
+  through elsewhere. Click-through off (default): the whole window
+  catches clicks, as today (spec §4). The spec's runtime line saying
+  clicks reach the desktop with click-through off is a leftover from
+  revision 3; §4 and §1 govern.
+- **Native only.** The Card text row and the Ctrl keys are hidden or
+  inert when `!NATIVE` (no window to apply them).
 
 ### Terminal font (`app/termfont.py`)
 
@@ -92,13 +104,21 @@ Terminal: `$TERMINAL` (set, non-empty, not `xdg-terminal-exec`; basename,
 name split on `:`, then `xdg-terminals.list`, under `$XDG_CONFIG_HOME`
 (blank/`#` lines skipped, `:action` dropped, case-insensitive desktop IDs:
 `kitty.desktop`, `Alacritty.desktop`, `com.mitchellh.ghostty.desktop`,
-`foot.desktop`, `footclient.desktop`), else `None`. Size from the main
-config only, last value wins, includes not followed: kitty `font_size`,
-ghostty `font-size =`, alacritty `[font] size` (`tomllib`, bools
-rejected), foot `font` in the main section (keys before any section are
-main; first font of the list; `size=` pt or `pixelsize=` px; hand-parsed).
+`foot.desktop`, `footclient.desktop`), else `None`; a selected terminal
+that is not one of the four → `None`. `config_home` is
+`$XDG_CONFIG_HOME`, else `~/.config`. Size from the main config only,
+last value wins, includes not followed:
+
+| Terminal | File under `config_home` | Key |
+|---|---|---|
+| kitty | `kitty/kitty.conf` | `font_size N` (pt) |
+| ghostty | `ghostty/config` | `font-size = N` (pt) |
+| alacritty | `alacritty/alacritty.toml` | `[font] size` (pt; `tomllib`; bools rejected) |
+| foot | `foot/foot.ini` | `font` in the main section (keys before any section are main); first font of the comma list; `size=N` pt or `pixelsize=N` px; hand-parsed |
+
 pt · 96/72; result outside 5-96 px, non-finite or unreadable → `None`.
-Only files under `$XDG_CONFIG_HOME`.
+Only files under `config_home` are opened; Home Manager's store symlinks
+are followed by `open()`.
 
 ### The keyboard step
 
@@ -116,7 +136,8 @@ PR; this repo documents them.
    `webkitgtk_4_1` (`nix develop`), zoom level 1.5, page with
    `#a{translate:10px 0;scale:.5;transform:rotate(10deg)}`. Read back
    `getComputedStyle(a).translate/scale`, `getBoundingClientRect()`, and
-   `screen.width`/`screen.availWidth`/`innerWidth` vs zoom 1.
+   `screen.width`/`height`/`availWidth`/`availHeight`/`innerWidth` vs
+   zoom 1.
    → verify by the recorded output. Record the result in this plan; if
    individual properties are missing, props fold the offset into
    `transform` only (and `#chalk.pt` keyframes move to `transform`); if
@@ -137,7 +158,9 @@ PR; this repo documents them.
    `None`.
    Traps: never read the real `~/.config`: every test builds its own
    temp `config_home` and passes `env` explicitly (memory: tests must not
-   touch the live config). No imports from `server`.
+   touch the live config). No imports from `server`, so `nixi_env` (the
+   spec's harness for server tests) is not needed here; the explicit temp
+   dir is the stricter form.
 
 3. **`app/size.py`: `page_zoom`, `zooms`, `text_step`** (+ tests in
    `tests/test_window_room.py`, which already imports `size.step`).
@@ -151,7 +174,8 @@ PR; this repo documents them.
    Tests: default → `P ≈ 1.143, n ≈ 0.656, T = 16`; `z 1.25` →
    `P 1.25, n 1`; `term_px None` → `T 16`; 1280x720 with `card_text 2`
    → `P = P_fit ≈ 1.565`; 960x540 with `z 1.25` → `P 1.25, n 1`;
-   `n ≤ 1` over a grid of inputs; `card_text 2.0` with 28 px → 2.5;
+   `n ≤ 1` over a grid of inputs; `card_text 2.0` with 28 px and no
+   monitor (`None`) → 2.5;
    `text_step` up/down/reset and clamps.
    Traps: `step`, `clamp` and their 0.5-1.25 meaning stay untouched
    (`bin/nixi-companion:162` imports `step`).
@@ -160,7 +184,8 @@ PR; this repo documents them.
    - `DEFAULTS` (`:160`): `"card_text": 1.0` next to `"size"` (`:251`).
    - Range rule `("card_text", 0.6, 2.0)` next to `("size", 0.5, 1.25)`
      (`:313`), so `SHARED_RULES`/`SHARED_OK` (`:298-299`) share it.
-   - `card_text_value()` next to `size_value()` (`:6257`) using
+   - `import size` with the other app imports (`:49-58`);
+     `card_text_value()` next to `size_value()` (`:6257`) using
      `size.text_clamp`; POST branch next to `:9548-9549`.
    - `info` (`:9116`): `"card_text": card_text_value(CFG.get("card_text"))`.
    → verify by `python3 -B .github/ci/run_tests.py test_shared_size
@@ -173,16 +198,21 @@ PR; this repo documents them.
 5. **`app/window.py` (+ `app/aside.py`): the window owns the zoom.**
    - `saved_card_text()` next to `saved_size()` (`:140-147`), same file
      order, via `size.text_clamp`.
+   - `import size, termfont` next to the other app imports (`:31-33`).
    - `__init__` (`:339`): `self.size = saved_size()`,
      `self.card_text = saved_card_text()`,
-     `self.term_px = termfont.term_px(os.environ, <XDG_CONFIG_HOME>)`;
+     `self.term_px = termfont.term_px(os.environ, config_home)` with
+     `config_home = $XDG_CONFIG_HOME or ~/.config`;
      `self.z = zooms(..., None, None)[0]` before `set_default_size`
-     (`:343`); after `_load_pos` / `_load_xpos` (`:385`, `:426`) call
-     `_apply_zoom()`.
+     (`:343`). Call `_apply_zoom()` once, after `self.view` exists, both
+     `_load_pos`/`_load_xpos` have run and `self.rects`/`self.region_on`
+     are set (after `:443`), not at `:385` (no view yet there).
    - `_apply_zoom(reread=False)`: optional re-read of `term_px`;
      `P, n, T = zooms(self.size, self.card_text, self.term_px, mon_w,
      mon_h)` with the current monitor's logical geometry (`_geom()` in
-     layer mode, `_mon_at` of the window centre in X11 mode); if
+     layer mode; in X11 mode the monitor under the strip centre
+     `(mx + wide_shift + _px(W)//2, my + top_shift + _px(H)//2)` as at
+     `:697-698`); if
      `P != self.z` run today's `set_zoom` body (`:463-470`) with
      `page_zoom`; always `_push_zoom()`.
    - `_push_zoom()`: `self._js("window.nixiZoom&&nixiZoom({...})")` with
@@ -195,9 +225,13 @@ PR; this repo documents them.
      (`:1441`).
    - `load-changed` (`:1365`): on FINISHED, `_push_zoom()` then
      `_send_corner()`.
-   - Monitor settle points call `_apply_zoom()`: `go_monitor` (`:693`),
-     the end of a drag, `set_bar` (`:1034`), step-aside moves (`:775-840`).
-     Not `_place`.
+   - Monitor settle points call `_apply_zoom()`, which only re-applies
+     the zoom when `P` changed: `go_monitor` (`:693`, after the move;
+     `aside_on`/`aside_off` route through it, no own call), the layer-mode
+     drag end `_drag_finished` (`:1125`), and the X11 drag end
+     `_save_xpos` (`:535`). Not inside `set_bar` (`:1033`): today's
+     `set_zoom` body calls `set_bar(..., glide=False)`, so a hook there
+     would re-enter and cancel a dock glide. Not `_place`.
    - Drag dock threshold (`:1169-1171`): `self._px(40)` →
      `round(40 * self.size)`.
    - `app/aside.py` `plan()` (`:36-39`): take `strip_w` and `visible_w`
@@ -208,7 +242,12 @@ PR; this repo documents them.
    New tests via `window_methods(...)` in `tests/test_window_room.py`:
    `_apply_zoom` calls the zoom setter only when `P` changes and always
    pushes; `zoom:`/`text:` update the right field. `aside.plan` with
-   scaled widths.
+   scaled widths. Update the existing doubles that now reach
+   `_apply_zoom` (`test_hover_and_monitor_use_base` `:194-215`,
+   `test_bar_uses_base_top_for_dock_and_restore` `:241-271`, and any
+   other test loading `go_monitor`, `_drag_finished` or `_save_xpos`)
+   with `w._apply_zoom = Mock()`, and add `size`/`termfont` names to
+   `window_methods`' namespace (`:24-30`) for the new tests.
    Traps: `window_size()` keeps 0.5-1.25 for Nixi's size; `self.z` is
    now `P` and every `_px`/`_css` stays as is. No test may open a GTK
    window. No live restart in this step.
@@ -220,6 +259,8 @@ PR; this repo documents them.
      if `pendingAppr`, `stagePlace()`, `sizeWindow()`,
      `sendRegion(true)`, `renderSettings()` if Settings is on.
    - `#stage` `transitionend` (`:4759`): also the placement above.
+   - Both also refit an open code sheet (expose `fitSheet` from the `CP`
+     closure, `:4911-4920`, e.g. `CP.refit()`).
    - CSS: `:root{--nk:1}`; `#stage` (`:36`) resting
      `transform:scale(var(--nk))`; hover (`:38`) and peek (`:39`) scales
      times `var(--nk)`; bar rules (`:80-83`) unchanged.
@@ -228,22 +269,38 @@ PR; this repo documents them.
    - Props `#chalk` `#hat` `#pop` `#wtc` (`:381-391`) and `.l` variants:
      `--ox`/`--oy` from each prop's centre vs (170, 165), folded into
      `transform` as in the Decisions (per step 1's result).
-   - `#musChip` (`:427`), `#remChip` (`:432`): anchor offsets with
-     `calc()` and `var(--nk)`.
-   - `MENU_XY` (`:3867-3870`) used by the sparks: divide by `ZOOM.nk`
-     unless `barEdge()`.
+   - `#musChip` (`:427`), `#remChip` (`:432`): the `calc()` rules in the
+     Decisions table.
+   - Sparks: in `frame()` (`:2410`), `tg` divided by `ZOOM.nk` unless
+     `barEdge()`.
    - Code sheet (`:4880`, `:4897-4898`, `:4916`): mode scale from body
-     class; `SHEET_K = NATIVE ? 14/15 : .7`; width cap in `fitSheet`.
+     class; `SHEET_K = NATIVE ? 14/15 : .7`; the width cap from the
+     Decisions.
    - `screen.*` (`:3585`, `:3739`, `:4096`, `:4106`): divide by
      `ZOOM.page` (per step 1).
-   - Keys (`:4864-4867`): Ctrl+`=`/`+` up, Ctrl+`-` down, Ctrl+`0` reset:
-     step like `text_step`, `setSetting({card_text})`, then
-     `native('text:'+v)`. Settings filter (`:4635`) lets these through.
-     Keys help (`:1056`) lists them.
-   - Settings → Look: "Card text" chips 80/100/120/150 % under
-     `#sizeChips` (`:4328`), showing `ZOOM.cardPx`-based px; click posts
-     `card_text` and sends `native('text:…')`, like the size handler
-     (`:4547`). Opening Settings sends `native('rezoom')`.
+   - Keys: in the keydown handler (`:4839`), before the `typing` guard
+     (`:4841`), when `NATIVE && e.ctrlKey` and the key is `=`/`+`
+     (up), `-` (down) or `0` (reset): `preventDefault`, step like
+     `text_step`, `setSetting({card_text})`, and only if it returns true
+     `native('text:'+v)`. Settings filter (`:4635`) lets these through
+     like Ctrl+`,`. Keys help (`:1056`) lists them.
+   - Settings → Look, native only: a "Card text" row under the Size row
+     (`:910`) with chips 80/100/120/150 %, built like `#sizeChips`
+     (`:4328`); the row hint shows the size cards are drawn at now,
+     `≈ Math.round(14 · ZOOM.page) px` (the effective size, so a
+     `P_fit` cap or `max(C, z)` is visible). A click posts `card_text`
+     and, on success, sends `native('text:…')`, like the size handler
+     (`:4547`). Opening Settings (`settings(on)`, `:4109-4115`) sends
+     `native('rezoom')`.
+   - The strip inventory (spec risk): every absolutely positioned element
+     in the 340x460 strip and what it does at `n = 0.4`. Follows Nixi:
+     `#stage` (with `#accBack`/`#accFront`), `#goo` (`:98`, reads
+     `ballNow()`), the four props, `#musChip`, `#remChip`. Stays at page
+     scale and place (accepted): `#cap`, `#chip`, `#wk` (`:399`),
+     `#phoneDone` (`:425`), `#ask` (`:449`), `#atts` (`:461`), `#moreB`
+     (`:711`), `#nixiB` (`:715`), `#menu`. The coder checks the file for
+     any other absolute element in the strip and adds it to one list in
+     the PR notes.
    → verify by `python3 -B .github/ci/run_tests.py` (page tests such as
    `test_settings_fit`, `test_accessories_fit`, `test_stage_actions`), and
    `node --check` on the extracted `<script>` text.
@@ -255,12 +312,13 @@ PR; this repo documents them.
    `test_settings_fit` must still pass with the extra row.
 
 7. **`bin/nixi-companion` and docs.**
-   - A `text` branch copied from `size` (`:153-183`): `up|down|reset`,
+   - A `text` branch copied from `size` (`:153-184`): `up|down|reset`,
      reads `card_text` from `shared.json` then `config.json`,
      `text_step`, POSTs `{"card_text": v}`, sends `text:<v>`; its own
      lock file `text.lock`.
    - `docs/GUIDE.md` (`:584`): the `text` row, the in-page keys, the
-     proposed Hyprland binds, and Size meaning Nixi's own size.
+     proposed Hyprland binds, and that Size is Nixi's own size while the
+     window follows the cards.
    → verify by `bash -n bin/nixi-companion` and the whole suite.
    Traps: none beyond copying the `size` branch's error handling exactly
    (`|| true`, `exit 0`).
@@ -278,13 +336,24 @@ PR; this repo documents them.
      - Nixi's drawn size equal to before (±2 px) at 0.5, 0.75, 1.0;
        sparks reach the menu; props and chips beside him.
      - `nixi-companion text up` ×3 / `reset`, Ctrl+`=`/`-`/`0`,
-       `nixi-companion size up/down`, each with a stage and an approval
-       open and with Settings open.
-     - Each card on both sides, docked on four edges, peek, hover, calm,
-       step-aside; clicks checked with `wev` (memory: verify focus with
-       wev); click-through on and off.
-     - `card_text 2.0` on the smaller monitor; move between monitors; a
-       re-auth reload; wait past a 15 s refresh with a card open.
+       `nixi-companion size up/down`: once with a stage and an approval
+       open (Settings closed, since an open panel suppresses the stage's
+       room request), once with Settings open. Pass: the change shows at
+       once, nothing is clipped, chips and the px hint update without a
+       refresh.
+     - At Nixi size 0.5 with `card_text` high enough that `n ≈ 0.4`:
+       the strip inventory above, each element where the list says.
+     - Each card: stage on both sides of Nixi, the stage tab, approval,
+       password box, mail pop, music card, code sheet (its text height
+       ≈ T), notification. Docked on four edges, peek, hover, calm,
+       step-aside. Clicks checked with `wev` (memory: verify focus with
+       wev): click-through on, a point in the transparent window passes
+       to the desktop; click-through off, the same point is caught by the
+       window (as today).
+     - `card_text 2.0` on the smaller monitor: text capped by `P_fit`
+       (px hint shows it), no clipping, every control reachable. Move
+       between monitors; a re-auth reload keeps Nixi's and the cards'
+       sizes; wait past a 15 s refresh with a card open.
    → verify by the screenshots and notes in the PR.
    Traps: deploys and `~/.config/nixos` are out of scope; the Hyprland
    binds are a separate `nixos_config` PR.
@@ -293,11 +362,13 @@ PR; this repo documents them.
 
 ```bash
 python3 -B .github/ci/run_tests.py
-nix develop -c python3 -B tests/test_plugin_sandbox.py
 nix build
+# only if the plugin stage path changed:
+nix develop -c python3 -B tests/test_plugin_sandbox.py
 ```
 
-Expected: all pass; the plugin sandbox result stated in the PR.
+Expected: all pass; the PR states whether the plugin sandbox suite ran
+and its result.
 
 ## Rollback
 
