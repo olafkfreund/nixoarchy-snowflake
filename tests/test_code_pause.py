@@ -13,6 +13,7 @@ class CodePauseTest(_ServerEnv):
         with self.C.lock:
             self.C.keys.clear()
             self.C.pending = self.C.sent = 0
+            self.C.last_watch = -1e9
             self.C.until = 0.0
             self.C.logged = False
         self.C.wake.clear()
@@ -27,6 +28,38 @@ class CodePauseTest(_ServerEnv):
         self.toasts = mock.patch.object(self.S.BUS, "pub")
         self.pub = self.toasts.start()
         self.addCleanup(self.toasts.stop)
+        asleep = mock.patch.object(self.S.Wake, "asleep", False)
+        asleep.start()
+        self.addCleanup(asleep.stop)
+
+    def test_fallback_counts_only_without_recent_watch(self):
+        with mock.patch.object(self.S.time, "monotonic", return_value=100):
+            self.C.seen("w")
+        with mock.patch.object(self.S.time, "monotonic", return_value=101):
+            self.C.seen("s", fallback=True)
+        self.assertEqual(self.C.pending, 1)
+        self.assertIn("s", self.C.keys)
+        with mock.patch.object(self.S.time, "monotonic", return_value=111):
+            self.C.seen("s2", fallback=True)
+            self.C.seen("s2", fallback=True)
+        self.assertEqual(self.C.pending, 2)
+        with mock.patch.object(self.S.time, "monotonic", return_value=112):
+            self.C.seen("w")
+        self.assertEqual(self.C.last_watch, 100)
+        with mock.patch.object(self.S.time, "monotonic", return_value=113):
+            self.C.seen("s3", fallback=True)
+        self.assertEqual(self.C.pending, 3)
+
+    def test_fallback_counts_without_watch(self):
+        self.C.seen("shell", fallback=True)
+        self.assertEqual(self.C.pending, 1)
+
+    def test_confirmed_hold_is_silent_while_asleep(self):
+        self.C.seen("a")
+        with mock.patch.object(self.S.time, "time", return_value=0), mock.patch.object(self.S.Wake, "asleep", True):
+            self.C.turn()
+        self.assertEqual(self.C.until, 120)
+        self.pub.assert_not_called()
 
     def test_request_and_coalescing(self):
         for key in ("a", "b", "c"):

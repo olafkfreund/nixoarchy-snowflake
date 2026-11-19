@@ -126,7 +126,7 @@ class InboxTest(_ServerEnv):
         with mock.patch.object(S.CodePause, "seen") as seen:
             out = S.Inbox.rows(json.dumps([row]))
         self.assertEqual((out[0]["summary"], out[0]["body"]), ("", ""))
-        seen.assert_called_once_with("nabc12")
+        seen.assert_called_once_with("nabc12", fallback=True)
 
     def test_code_hook_sees_all_raw_fields_and_discarded_cards(self):
         S = self.server
@@ -141,7 +141,7 @@ class InboxTest(_ServerEnv):
             with self.subTest(row=row), mock.patch.object(S.CodePause, "seen") as seen, mock.patch.object(S.Inbox, "call") as call:
                 S.CFG["notify_details"] = details
                 S.Inbox.rows(json.dumps([row]))
-                seen.assert_called_once_with("nabc12")
+                seen.assert_called_once_with("nabc12", fallback=True)
                 if row.get("actions") and details:
                     call.assert_called_once_with("showKey", "nabc12")
 
@@ -155,7 +155,7 @@ class InboxTest(_ServerEnv):
         self.assertIn("card", out[0])
         with mock.patch.object(S.CodePause, "seen") as seen:
             self.rows(self.row(rich="your sign-in code is <b>482</b>910"))
-        seen.assert_called_once_with("nabc12")
+        seen.assert_called_once_with("nabc12", fallback=True)
 
     def test_code_check_is_linear_on_an_unclosed_tag(self):
         S = self.server

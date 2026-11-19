@@ -3181,10 +3181,12 @@ def phone_call_row(x):
 
 class CodePause:
     OWNER, SECS, MAX, KEEP, FORGET = "nixi-otp", 120, 5, 64, 600
+    WATCH_GRACE = 10
     lock = threading.Lock()
     wake = threading.Event()
     keys = {}
     pending = 0
+    last_watch = -1e9
     sent = 0
     until = 0.0
     logged = False
@@ -3199,7 +3201,8 @@ class CodePause:
         print(f"[nixi] code pause: {kind.__name__}", file=sys.stderr)
 
     @classmethod
-    def seen(cls, key):
+    def seen(cls, key, fallback=False):
+        wake = False
         with cls.lock:
             now = time.monotonic()
             for old, at in list(cls.keys.items()):
@@ -3210,8 +3213,13 @@ class CodePause:
             cls.keys[key] = now
             if len(cls.keys) > cls.KEEP:
                 del cls.keys[min(cls.keys, key=cls.keys.get)]
-            cls.pending += 1
-        cls.wake.set()
+            if not fallback:
+                cls.last_watch = now
+            if not fallback or now - cls.last_watch >= cls.WATCH_GRACE:
+                cls.pending += 1
+                wake = True
+        if wake:
+            cls.wake.set()
 
     @classmethod
     def turn(cls):
@@ -3261,7 +3269,7 @@ class CodePause:
                 changed = False
         if changed:
             cls._log(ConnectionError)
-        else:
+        elif not Wake.asleep:
             BUS.pub(t="toast", text=lang.t("phone.clip_paused"))
 
     @classmethod
@@ -3432,7 +3440,7 @@ class Inbox:
             text = "\n".join(parts)
             hit = bool(cls.OTP.match(text) or SECRET_LINE.search(text))
             if hit:
-                CodePause.seen(x["key"])
+                CodePause.seen(x["key"], fallback=True)
             summary, body = str(x.get("summary") or "")[:120], str(x.get("body") or "")[:120]
             flux_call = phone_call_row(x)                            # (from the raw title: before the details are blanked)
             if not CFG.get("notify_details") or hit or SECRET_LINE.search(summary + "\n" + body) or cls.OTP.match(summary + "\n" + body):
