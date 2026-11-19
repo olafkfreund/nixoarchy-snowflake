@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 107
 author: olafkfreund
 ---
@@ -65,7 +65,15 @@ author: olafkfreund
 - **No new dependency:** the Python D-Bus support Nixi already ships (PyGObject `Gio`, `nix/package.nix:45`), on its own private connection. The reader doesn't parse `busctl` text: `busctl` isn't on Nixi's PATH.
 - **Nixi stays quiet while asleep:** no mic, no voice, no window.
 
+## Decisions (approver, 2026-11-19: the recommendations taken)
+
+1. **Source:** a session-bus monitor of `Notify` calls and their replies, through `BecomeMonitor` on a private Gio connection.
+2. **Sharing the pause:** the monitor feeds it while it runs. #105's `Inbox.rows` hook feeds it only while the monitor is down.
+3. **While hidden:** nothing is shown. The #105 toast stays while Nixi is shown.
+
 ## Open questions
+
+None. The earlier options, for the record:
 
 1. **Where a hidden Nixi reads notifications from.**
    - **(a) A session-bus monitor of `Notify` calls and their replies.** No shell change needed.
