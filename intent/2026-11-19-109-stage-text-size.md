@@ -10,46 +10,81 @@ author: olafkfreund
 
 Answer stages (`#stg` in `app/static/index.html:207`), such as the News
 card, are drawn inside the companion page. WebKit zooms that whole page by
-Nixi's size setting (`set_zoom_level`, `app/window.py:402`), which defaults
-to 0.75 (`window_size`, `app/window.py:132`; `app/size.py`). The card's
-CSS sizes are 12-15 px (headlines 14 px, `#stg .tt` at `:231`; source line
-12 px, `#stg .src` at `:363`). On screen that is about 9-10.5 px.
+Nixi's size setting (`set_zoom_level`, `app/window.py:402` and live at
+`:466`), which defaults to 0.75 (`window_size`, `app/window.py:132`;
+`app/size.py`).
+
+The News card is the `press` stage. Its headlines are 14 px
+(`#stg.press .prt`, `:325`), the source and age line 11.5 px
+(`#stg.press .prm`, `:326`), and the footer 12 px (`#stg .fn`, `:365`).
+At 0.75 that is about 10.5 px, 8.6 px and 9 px of logical screen space.
+Other stages are similar: most card text is 11-15 CSS px, so 8.25-11.25 px
+on screen. `fit()` (`:4717`) can shrink the page further when the window
+is smaller than 340x460.
 
 The user's terminals are set to 12 pt (ghostty, alacritty, kitty, foot),
-about 16 px. Next to the shell the card is hard to read (screenshot in
-#109). The only way to enlarge it today is Nixi's size setting, which
-also enlarges Nixi himself, and it tops out at 1.25.
+about 16 logical px. Next to the shell the card is hard to read
+(screenshot in #109). The only way to enlarge it today is Nixi's size
+setting, which also enlarges Nixi himself, and it tops out at 1.25.
 
 ## Proposed outcome
 
-- A stage card's body text shows at about the size of the user's terminal
-  text, on each monitor, at Nixi's default size.
-- Nixi himself and his other panels (settings, chat bubble) keep their
-  current size.
-- The window still fits the bigger card: nothing clipped. The card stays
-  on the side of Nixi that has room, as it does now (`stagePlace`, `:3091`).
-- When no terminal font can be read, the card falls back to a sensible
-  default, larger than today.
+- A stage card's text (headlines, metadata lines, buttons, inputs) shows
+  at about the user's terminal text size, measured in logical pixels.
+  Monitor scaling is already applied by the compositor, so on a 2x
+  monitor the card is not scaled twice; what differs per monitor is the
+  space available.
+- That size stays the same whatever Nixi's size setting is (0.5-1.25).
+  Changing the setting resizes Nixi, not the card's text.
+- Nixi himself, his message bubble (`#him`) and his other panels
+  (settings, chat) keep their current size. The collapsed stage tab
+  (`#stgTab`) is part of the stage and follows the stage's size.
+- The window grows to fit the bigger card: nothing is clipped. If a
+  monitor is too small for the whole card, readability wins: the card
+  keeps its text size and scrolls, and every control stays reachable.
+- When no terminal font can be read, the card uses a fixed default that
+  is larger than today's (about 16 px body text). A terminal font outside
+  a sane range is clamped, so a 6 pt or 30 pt terminal cannot break the
+  overlay.
 
 ## Affected users and systems
 
-- `app/static/index.html`: stage CSS, `stagePlace`, `stgSize` and
-  `sizeWindow` (`:3088`, `:4715`).
-- `app/window.py`: the zoom level and window size the page asks for, and
-  the click-through region around the card.
-- `app/server.py` (or a small helper) if the terminal font and the monitor
-  scale are read there.
-- Every host running the companion; all stage kinds (news, board,
-  notebook, map, sky, desk, term, press, phone).
+- `app/static/index.html`: stage CSS for every stage class (`board`,
+  `map`, `cinema`, `sky`, `desk`, `term`, `press`, `notebook`;
+  `:3101`), including the fixed widths of `term` and `press`;
+  `stagePlace` (`:3091`, its 400/160 px space check), `stgSize`
+  (`:3088`, width only today, called with 800 and 300 at `:3426`,
+  `:3438`, `:3443`), `sizeWindow` (`:4715`), `fit()` (`:4717`) and the
+  click-through region (`sendRegion`, `:4749`).
+- `app/window.py`: zoom (`set_zoom`, `:461`), window growth (`set_wide`,
+  `:628`; it uses the monitor geometry at `:646-651`, since layer-shell
+  runs with `exclusive_zone -1`) and the input region (`_apply_region`).
+- Wherever the terminal font is read (server or a small helper).
+- Every host running the companion.
 
 ## Constraints
 
 - Must not change Nixi's size or the size setting's meaning
   (`app/size.py`, 0.5-1.25).
-- Must keep the card inside the monitor's work area, including on small
-  or HiDPI (scaled) monitors.
-- Must not read files outside the user's own config. A config it cannot
-  parse means the fallback, never a crash.
+- Must keep the card on the monitor (inside the monitor bounds the window
+  uses today) on small and scaled monitors.
+- Must keep current behavior that works:
+  - Clicks land on the visible card and its controls; the transparent
+    space around them still passes clicks through.
+  - Collapse to the tab, restore and close still work, and closing gives
+    the extra window space back.
+  - Stages and their props (`#chalk`, `#hat`, `#pop`, `#wtc`) stay hidden
+    in docked (bar), hover and calm modes, dimmed while an approval is
+    open, and held back while a panel is open, as today
+    (`:339`, `:396`, `:3420-3422`). The props keep their size and their
+    place next to Nixi.
+  - The card picks the side of Nixi that has room, and the music card
+    still avoids the stage's side (`:1832`).
+  - The text stays readable after Nixi's size changes and after he moves
+    to another monitor.
+- Reads only the user's terminal configuration (files under `~/.config`,
+  including ones Home Manager links into the Nix store). A config it
+  cannot read or parse means the fallback, never a crash.
 - Tests must not touch the live config (`tests/nixi_env.py`; memory:
   tests must not import server under the real HOME).
 - Hyprland must not be disrupted during testing: test builds go through
@@ -58,11 +93,15 @@ also enlarges Nixi himself, and it tops out at 1.25.
 
 ## Open questions
 
-1. Which terminal is "the shell"? All four are set to 12 pt today.
-   Proposal: read the one `$TERMINAL` (or the Omarchy default) names, and
-   fall back to the first one found.
+1. Should the size come from the terminal config automatically, or from a
+   fixed default only? Proposal: automatic, from the terminal the user
+   launches: `$TERMINAL`, else the Omarchy / `xdg-terminal-exec` default,
+   else the fixed default. Not "the first config found": an installed
+   but unused terminal says nothing about the user's preference. The
+   companion runs as a user service, so `$TERMINAL` may be missing from
+   its environment; the spec settles where it is read.
 2. Should the card also get a manual override (Settings → "Card text
-   size"), or is the automatic size enough for now? Proposal: automatic
-   only; an override is a later issue if needed.
-3. Should Nixi's message bubble (`#him`, 14.5 px) follow the same size?
-   Proposal: no, stage cards only, as asked.
+   size")? Proposal: no, automatic only; an override is a later issue if
+   needed.
+3. Should Nixi's message bubble (`#him`, 14.5 px, `:414`) follow the same
+   size? Proposal: no, stage cards only, as asked.
