@@ -7,7 +7,7 @@
 <link rel="icon" href="icon.png">
 <script>if(/[?&]native=1/.test(location.search)) document.documentElement.classList.add('native');</script>
 <style>
-:root{--eye:#3e5993;--sclera:#ffffff;--acc:#4d6fb7;--hot:#9cc4f0;--edge:#16304a;--edge2:#2a5f8f;--deep:#0b1b2d;--tint:#d6ecff;
+:root{--nk:1;--eye:#3e5993;--sclera:#ffffff;--acc:#4d6fb7;--hot:#9cc4f0;--edge:#16304a;--edge2:#2a5f8f;--deep:#0b1b2d;--tint:#d6ecff;
   --accA:#5aa9e61f;--accB:#5aa9e659;--glow:var(--acc);--text:#f3f3f3;--dim:#a3a3a3;--panel:#0b0b0b;--panel2:#141414;--line:#222;--notch:#000;
   --mono:"JetBrains Mono","Fira Code",ui-monospace,monospace;--ease:cubic-bezier(.22,1,.36,1)}
 body.m-error,body.m-annoyed{--glow:#ff2a2a} body.m-listening,body.m-happy,body.m-excited,body.m-love{--glow:var(--hot)}
@@ -34,9 +34,9 @@ html.native body{background:transparent}
 button{font:inherit;color:inherit}
 
 #stage{position:absolute;left:0;right:0;top:0;height:330px;display:grid;place-items:center;pointer-events:none;z-index:0;isolation:isolate;
-  transform-origin:170px 165px;transition:transform .7s var(--ease)}
-body.hover #stage{transform:scale(.17)}
-body.peek #stage{transform:translate(var(--px,102px),var(--py,99px)) scale(.4)}   /* idle: small, in the nearest corner of his window (#140) */
+  transform-origin:170px 165px;transform:scale(var(--nk));transition:transform .7s var(--ease)}
+body.hover #stage{transform:scale(calc(.17 * var(--nk)))}
+body.peek #stage{transform:translate(var(--px,102px),var(--py,99px)) scale(calc(.4 * var(--nk)))}   /* idle: small, in the nearest corner of his window (#140) */
 body.peek #orbBack,body.peek #orbFront,body.peek #raysW,body.peek #haloW{opacity:.25}
 body.peek #cap,body.peek #chip{display:none}
 #stage{transition:transform .65s cubic-bezier(.34,1.3,.5,1)}
@@ -378,16 +378,16 @@ body.appr #stg{opacity:.35;pointer-events:none}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;opacity:0;pointer-events:none;transform:translateX(-10px);transition:transform .18s var(--ease),opacity .18s}
 #stgTab.l{left:-160px;transform:translateX(10px)}
 #stgTab.on{opacity:1;transform:none;pointer-events:auto}
-#chalk{position:absolute;left:222px;top:190px;width:26px;height:7px;border-radius:3px;background:linear-gradient(90deg,#fff,#e8e4d8);box-shadow:0 0 0 1px #0003;transform:rotate(-24deg);opacity:0;pointer-events:none;z-index:5;transition:opacity .18s}
-#chalk.l{left:92px;transform:rotate(204deg)}
+#chalk{position:absolute;left:222px;top:190px;width:26px;height:7px;border-radius:3px;background:linear-gradient(90deg,#fff,#e8e4d8);box-shadow:0 0 0 1px #0003;--ox:calc(65px * (var(--nk) - 1));--oy:calc(28.5px * (var(--nk) - 1));transform:translate(var(--ox),var(--oy)) rotate(-24deg) scale(var(--nk));opacity:0;pointer-events:none;z-index:5;transition:opacity .18s}
+#chalk.l{left:92px;--ox:calc(-65px * (var(--nk) - 1));transform:translate(var(--ox),var(--oy)) rotate(204deg) scale(var(--nk))}
 #chalk.on{opacity:1}
-#hat{position:absolute;left:138px;top:34px;width:64px;height:40px;opacity:0;pointer-events:none;z-index:5;transition:opacity .18s}
+#hat{position:absolute;left:138px;top:34px;width:64px;height:40px;--ox:0px;--oy:calc(-111px * (var(--nk) - 1));transform:translate(var(--ox),var(--oy)) scale(var(--nk));opacity:0;pointer-events:none;z-index:5;transition:opacity .18s}
 #hat.on{opacity:1}
-#pop{position:absolute;left:196px;top:196px;width:34px;height:40px;opacity:0;pointer-events:none;z-index:5;transition:opacity .18s}
-#pop.l{left:100px}
+#pop{position:absolute;left:196px;top:196px;width:34px;height:40px;--ox:calc(43px * (var(--nk) - 1));--oy:calc(51px * (var(--nk) - 1));transform:translate(var(--ox),var(--oy)) scale(var(--nk));opacity:0;pointer-events:none;z-index:5;transition:opacity .18s}
+#pop.l{left:100px;--ox:calc(-53px * (var(--nk) - 1))}
 #pop.on{opacity:1}
-#wtc{position:absolute;left:196px;top:196px;width:34px;height:44px;opacity:0;pointer-events:none;z-index:5;transition:opacity .18s}
-#wtc.l{left:100px}
+#wtc{position:absolute;left:196px;top:196px;width:34px;height:44px;--ox:calc(43px * (var(--nk) - 1));--oy:calc(53px * (var(--nk) - 1));transform:translate(var(--ox),var(--oy)) scale(var(--nk));opacity:0;pointer-events:none;z-index:5;transition:opacity .18s}
+#wtc.l{left:100px;--ox:calc(-53px * (var(--nk) - 1))}
 #wtc.on{opacity:1}
 #chalk.pt{animation:stgChalk .3s ease-out}
 @keyframes stgChalk{50%{translate:10px -4px}}
@@ -424,12 +424,12 @@ input[type=range]{accent-color:var(--acc)}
 #chip.on{opacity:1;transform:translate(-50%,0)}
 #phoneDone{position:absolute;top:10px;right:10px;z-index:10;pointer-events:auto;background:var(--panel);color:var(--text);border:1px solid var(--edge);border-radius:999px;cursor:pointer}
 #phoneDone[hidden]{display:none} body.bar #phoneDone,body.peek #phoneDone,body.hover #phoneDone{display:none}   /* (where the chip hides, so does its button) */
-#musChip{position:absolute;left:296px;top:196px;z-index:9;width:30px;height:26px;padding:0;border-radius:999px;font:14px var(--mono);color:var(--tint);cursor:pointer;background:color-mix(in srgb,var(--panel) 87%,transparent);border:1px solid var(--edge)}
+#musChip{position:absolute;left:calc(296px - 126px * (1 - var(--nk)));top:calc(196px - 31px * (1 - var(--nk)));z-index:9;width:30px;height:26px;padding:0;border-radius:999px;font:14px var(--mono);color:var(--tint);cursor:pointer;background:color-mix(in srgb,var(--panel) 87%,transparent);border:1px solid var(--edge)}
 #musCard{position:absolute;top:150px;width:210px;z-index:9;padding:8px 10px;border-radius:12px;font:12px var(--mono);color:var(--text);background:var(--panel);border:1px solid var(--edge)}
 #musCard .mh{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px} #musCard .mt{flex:1;min-height:16px;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden}   /* (three lines at most: the buttons stay inside the 460px window) */
 #musCard button{font:inherit;color:inherit;background:var(--panel2);border:1px solid var(--edge);border-radius:8px;padding:3px 8px;cursor:pointer}
 #musCard .mbs{display:flex;flex-wrap:wrap;gap:6px} #musCard[hidden],#musChip[hidden]{display:none}
-#remChip{position:absolute;right:14px;top:232px;z-index:9;display:flex;gap:5px;padding:6px;border-radius:12px;background:var(--panel);border:1px solid var(--edge);box-shadow:0 6px 18px #0008}
+#remChip{position:absolute;right:calc(14px + 156px * (1 - var(--nk)));top:calc(232px - 67px * (1 - var(--nk)));z-index:9;display:flex;gap:5px;padding:6px;border-radius:12px;background:var(--panel);border:1px solid var(--edge);box-shadow:0 6px 18px #0008}
 #remChip button{font:11px var(--mono);color:var(--text);background:var(--panel2);border:1px solid var(--edge);border-radius:8px;padding:4px 7px;cursor:pointer;white-space:nowrap}
 #remChip[hidden],body.bar #remChip,body.hover #remChip,body.calm #remChip,body.peek #remChip,body.appr #remChip{display:none}
 @keyframes glint{0%,100%{filter:none}40%{filter:brightness(2.4) saturate(1.4) drop-shadow(0 0 6px #77b6e1)}}
@@ -907,7 +907,8 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
         <label class="tg" style="margin-top:9px"><input type="checkbox" id="linkSw"><span class="sw"></span><span class="l">Matching eyes<small>Change both eyes (and both whites) together.</small></span></label>
         <label class="tg" style="margin-top:7px"><input type="checkbox" id="rndSw"><span class="sw"></span><span class="l">Surprise me<small>New random colours every time he pops up.</small></span></label>
       </div>
-      <div class="row"><div class="t">Size</div><div class="h">Nixi and everything he shows shrink together.</div><div class="seg" id="sizeChips"></div></div>
+      <div class="row"><div class="t">Size</div><div class="h">Nixi's own size. Cards follow Card text.</div><div class="seg" id="sizeChips"></div></div>
+      <div class="row" id="textRow" hidden><div class="t">Card text</div><div class="h" id="textHint">≈ 14 px now</div><div class="seg" id="textChips"></div></div>
       <div class="row"><div class="t">Character</div><div class="h">Each character can have its own voice. My voice uses your choice in the Voice tab.</div><div class="skins" id="characterGrid"></div><label for="charVoice" id="charVoiceLabel" class="h" style="display:block;margin:9px 0 5px"></label><select id="charVoice"></select><div class="h" id="charVoiceNote"></div></div>
       <div class="row"><div class="t">Skin</div><div class="h">Something to wear. The sprout sways.</div><div class="skins" id="skinGrid"></div></div>
       <div class="row"><div class="t">Resting pupils</div><div class="h">His everyday look — they still change with his mood.</div><div class="seg" id="pupChips"></div></div>
@@ -1053,7 +1054,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row"><div class="t">Hotkeys</div><div class="h">Bind in your desktop, e.g. Hyprland <code>bind = SUPER, A, exec, nixi-companion listen</code></div>
         <div class="keys"><kbd>nixi-companion listen</kbd><span>pop up &amp; listen</span><kbd>nixi-companion look</kbd><span>screenshot, then listen</span><kbd>nixi-companion hover</kbd><span>be my cursor / come back</span><kbd>nixi-companion</kbd><span>show / hide</span></div></div>
       <div class="row"><div class="t">While he's open</div>
-        <div class="keys"><kbd>Space</kbd><span>hold to talk · tap to stop him</span><kbd>Enter</kbd><span>type</span><kbd>Esc</kbd><span>back / stop / hide</span><kbd>Ctrl+N</kbd><span>new chat</span><kbd>Ctrl+H</kbd><span>history</span><kbd>Ctrl+M</kbd><span>mute</span></div></div>
+        <div class="keys"><kbd>Space</kbd><span>hold to talk · tap to stop him</span><kbd>Enter</kbd><span>type</span><kbd>Esc</kbd><span>back / stop / hide</span><kbd>Ctrl+N</kbd><span>new chat</span><kbd>Ctrl+H</kbd><span>history</span><kbd>Ctrl+M</kbd><span>mute</span><kbd>Ctrl+= / - / 0</kbd><span>card text size</span></div></div>
     </div>
   </div>
   <div class="sgrip r" data-resize="w" aria-hidden="true"></div>
@@ -1092,6 +1093,7 @@ const tokenReady=(async()=>{
   if(location.hash) history.replaceState(null,'',location.pathname+location.search);   // out of the address bar / history
 })();
 const NATIVE=document.documentElement.classList.contains('native');
+const ZOOM={page:1,nk:1,cardPx:16,monW:0,size:.75,cardText:1};
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const input=$('#input'), youEl=$('#you'), himEl=$('#him'), cap=$('#cap'), plate=$('#plate'), chip=$('#chip'), ask=$('#ask'), menuEl=$('#menu');
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), lerp=(a,b,k)=>a+(b-a)*k;
@@ -2407,8 +2409,8 @@ function frame(ts){
     let h=[P0[0],P0[1],P0[2]], tl=[P0[0]-o.v[0]*streak,P0[1]-o.v[1]*streak,P0[2]];
     let depth=(P0[2]/r2+1)/2, op=oa*(.25+depth*.75), w=o.size*(.6+depth*.8);
     if(sw2>.001){            // menu: swirl along a curve into the buttons, and vanish into them
-      const tg=MENU_XY[i%MENU_XY.length], jit=(i/MENU_XY.length|0)*5-2.5, sgn=Math.sign(h[0]*o.v[1]-h[1]*o.v[0])||o.spin;
-      const a0=Math.atan2(h[1],h[0]), r0=Math.hypot(h[0],h[1]), tx2=tg[0]+jit, ty2=tg[1]+jit*.6, a1=Math.atan2(ty2,tx2), r1=Math.hypot(tx2,ty2);
+      const tg=MENU_XY[i%MENU_XY.length], nk=barEdge()?1:ZOOM.nk||1, jit=(i/MENU_XY.length|0)*5-2.5, sgn=Math.sign(h[0]*o.v[1]-h[1]*o.v[0])||o.spin;
+      const a0=Math.atan2(h[1],h[0]), r0=Math.hypot(h[0],h[1]), tx2=tg[0]/nk+jit, ty2=tg[1]/nk+jit*.6, a1=Math.atan2(ty2,tx2), r1=Math.hypot(tx2,ty2);
       let da=a1-a0; while(da>Math.PI) da-=2*Math.PI; while(da<-Math.PI) da+=2*Math.PI; da+=sgn*(.8+(i%3)*.25);
       const at=kk=>{ const e=clamp(kk,0,1), a=a0+da*e, rr=lerp(r0,r1,e)+Math.sin(Math.PI*e)*(22+(i%4)*6); return [Math.cos(a)*rr, Math.sin(a)*rr, 1]; };
       h=at(sw2); tl=at(sw2-.09); depth=1;
@@ -3582,7 +3584,7 @@ const apprQ=[]; const apEl=$('#appr');
 function queueApproval(ev){ apprQ.push(ev); if(!pendingAppr) nextApproval(); }
 function fitCard(){   // the card grows with the command (wider up to 640px, then taller), and the window grows to hold it
   const longest=Math.max(0,...String(pendingAppr.detail||'').split('\n').map(x=>x.length)), w=Math.min(640,Math.max(312,Math.ceil(longest*6.9)+50));
-  apEl.style.width=w+'px'; cardW=w; apEl.style.setProperty('--apprMax',Math.round(screen.height*.6)+'px');
+  apEl.style.width=w+'px'; cardW=w; apEl.style.setProperty('--apprMax',Math.round((screen.height/ZOOM.page)*.6)+'px');
   cardPlace(); cardWant=[Math.max(0,w+28-340),Math.max(0,cardTop+apEl.offsetHeight+14-460)]; sizeWindow(); cardPlace(); sendRegion(true); }
 let cardW=312, cardTop=256;
 function cardPlace(){   // centred on him, below his arms (reach, as CP.geo), inside the window; only re-run when he or the window moves
@@ -3736,7 +3738,7 @@ function whenQuiet(fn){ const t0=performance.now();
 const panelEl=$('#panel'); let panelKind=null;
 const ago=ts=>{ const s=Date.now()/1000-ts; return s<60?'just now':s<3600?`${s/60|0} min ago`:s<86400?`${s/3600|0} h ago`:`${s/86400|0} d ago`; };
 let pnMoved=false, setW=0, setH=0, setWasOpen=false, setFocusBack=null;
-function setDefaultSize(){ return [Math.min(560,((screen&&screen.availWidth)||1920)-40), Math.min(680,Math.round(0.85*((screen&&screen.availHeight)||1080)))]; }
+function setDefaultSize(){ return [Math.min(560,(((screen&&screen.availWidth)||1920)/ZOOM.page)-40), Math.min(680,Math.round(0.85*(((screen&&screen.availHeight)||1080)/ZOOM.page)))]; }
 function setSyncVars(){ if(!setW||!setH){ try{ const s=JSON.parse(localStorage.getItem('nixi.setSize')); if(Array.isArray(s)&&s.length===2&&s.every(n=>Number.isFinite(n)&&n>=420)) [setW,setH]=s; }catch(e){} if(!setW||!setH) [setW,setH]=setDefaultSize(); } setEl.style.setProperty('--setW',setW+'px'); setEl.style.setProperty('--setH',setH+'px'); }
 function panelSize(prevFocus){ const sOn=setEl.classList.contains('on'), pOn=panelEl.classList.contains('on');
   document.body.classList.toggle('pnl',sOn||pOn);
@@ -4093,7 +4095,7 @@ for(const grip of $$('#set .sgrip')){
   grip.addEventListener('pointerdown',e=>{ if(e.button!==0) return; e.preventDefault(); grip.setPointerCapture(e.pointerId); drag=[e.pointerId,e.clientX-layoutX,e.clientY-layoutY,setW,setH]; });
   grip.addEventListener('pointermove',e=>{ if(!drag||e.pointerId!==drag[0]||e.buttons===0) return;
     const [,,,w,h]=drag, axis=grip.dataset.resize;
-    const maxW=Math.max(420,screen.availWidth-40), maxH=Math.max(420,Math.round(screen.availHeight*.85));
+    const maxW=Math.max(420,screen.availWidth/ZOOM.page-40), maxH=Math.max(420,Math.round(screen.availHeight/ZOOM.page*.85));
     setResize(axis.includes('w')?Math.round(clamp(w+(e.clientX-layoutX-drag[1])/fitK,420,maxW)):w,
       axis.includes('h')?Math.round(clamp(h+(e.clientY-layoutY-drag[2])/fitK,420,maxH)):h); });
   for(const end of ['pointerup','pointercancel','lostpointercapture']) grip.addEventListener(end,e=>{ if(!drag||e.pointerId!==drag[0]) return;
@@ -4103,12 +4105,12 @@ const setCorner=$('#set .sgrip.corner');
 setCorner.addEventListener('dblclick',e=>{ e.preventDefault(); setResetSize(); });
 setCorner.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); setResetSize(); return; }
   if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) return;
-  e.preventDefault(); const d=e.shiftKey?64:16, maxW=Math.max(420,screen.availWidth-40), maxH=Math.max(420,Math.round(screen.availHeight*.85));
+  e.preventDefault(); const d=e.shiftKey?64:16, maxW=Math.max(420,screen.availWidth/ZOOM.page-40), maxH=Math.max(420,Math.round(screen.availHeight/ZOOM.page*.85));
   setResize(Math.round(clamp(setW+(e.key==='ArrowLeft'?-d:e.key==='ArrowRight'?d:0),420,maxW)),
     Math.round(clamp(setH+(e.key==='ArrowUp'?-d:e.key==='ArrowDown'?d:0),420,maxH))); setSaveSize(); });
 function settings(on,tab){ const prevFocus=on&&!setWasOpen?document.activeElement:undefined;
   setEl.classList.toggle('on',on);
-  if(on){ menu(false); hideAsk(); panelEl.classList.remove('on'); panelKind=null;
+  if(on){ if(NATIVE) native('rezoom'); menu(false); hideAsk(); panelEl.classList.remove('on'); panelKind=null;
     if(tab) showTab(tab); else try{ showTab(localStorage.getItem('nixi.tab')||'look'); }catch(e){ showTab('look'); } }
   panelSize(prevFocus);
   if(on){ renderSettings(); loadMics(); heardLine(); locLoad(); plugLoad(); requestAnimationFrame(moveInd);
@@ -4326,6 +4328,10 @@ function renderSettings(){
     :'<div class="h" style="margin:0">none yet</div>';
   // look
   $('#sizeChips').innerHTML=[60,75,85,100,125].map(n=>`<button type="button" data-size="${n}" class="${Math.round((info.size??0.75)*100)===n?'on':''}" aria-pressed="${Math.round((info.size??0.75)*100)===n}">${n}%</button>`).join('');
+  { const tr=$('#textRow'); if(tr){ tr.hidden=!NATIVE;
+    if(NATIVE){ $('#textHint').textContent=`≈ ${Math.round(14*ZOOM.page)} px now`;
+      const ct=Math.round((info.card_text??ZOOM.cardText??1)*100);
+      $('#textChips').innerHTML=[80,100,120,150].map(n=>`<button type="button" data-text="${n}" class="${ct===n?'on':''}" aria-pressed="${ct===n}">${n}%</button>`).join(''); } } }
   const L=curLook();
   miniNixi($('#set .hd .logo'),L,false);
   $('#characterGrid').innerHTML=Object.entries(CHARACTERS).map(([id,c])=>`<button type="button" data-character="${id}" class="${(L.character||'snowflake')===id?'on':''}" aria-pressed="${(L.character||'snowflake')===id}"><svg viewBox="-125 -150 250 250" aria-hidden="true"></svg>${esc(c.label)}</button>`).join('');
@@ -4545,6 +4551,7 @@ setEl.addEventListener('click',e=>{
     return post('/api/settings/reset',{key:bsh.dataset.useShared}).then(async r=>{ if(!r.ok) throw new Error(r.statusText); const j=await r.json().catch(()=>({})); if(j.restart===false){ bsh.textContent='Reset \u2014 restart Nixi to apply'; } }).catch(()=>{ bsh.disabled=false; bsh.textContent='Use shared'; tick('couldn\u2019t reset that setting',true); }); }
   const be=g('eff'); if(be) return setSetting({effort:be.dataset.eff}).then(()=>tick('effort → '+be.dataset.eff));
   const bz=g('size'); if(bz) return setSetting({size:Number(bz.dataset.size)/100}).then(ok=>{ if(ok) native('zoom:'+info.size); });
+  const btx=g('text'); if(btx) return setSetting({card_text:Number(btx.dataset.text)/100}).then(ok=>{ if(ok) native('text:'+info.card_text); });
   const bn=g('ns'); if(bn){ const l=info.notify_speak||[], c=bn.dataset.ns; return setSetting({notify_speak:l.includes(c)?l.filter(x=>x!==c):[...l,c]}); }
   const blang=g('lang'); if(blang){ if(blang.dataset.lang===(info.lang_active||'en')&&(info.language||info.lang_active||'en')===blang.dataset.lang&&!info.lang_status) return; return setSetting({language:blang.dataset.lang},'#langErr'); }
   const beng=g('eng'); if(beng){ if(beng.disabled) return; return setSetting({tts:beng.dataset.eng},'#voiceErr').then(ok=>{ if(ok&&beng.dataset.eng!=='off'&&muted) toggleMute(); }); }
@@ -4632,7 +4639,7 @@ setEl.addEventListener('change',e=>{
   if(id==='themeSw') return setLook({follow_theme:on}).then(()=>{ lookShown=''; syncLook(); renderSettings(); });
   if(id==='rndSw') setLook({random:on}).then(()=>{ if(on){ lookRolled=false; syncLook(true); } else { lookShown=''; syncLook(); } renderSettings(); });
 });
-setEl.addEventListener('keydown',e=>{ if(e.key!=='Escape'&&!(e.ctrlKey&&e.key.toLowerCase()===',')) e.stopPropagation(); if(e.key==='Enter'&&(e.target.id==='projPath'||e.target.id==='projName')) $('#projAdd').click(); if(e.key==='Enter'&&e.target.id==='elevenCap') e.target.blur(); });
+setEl.addEventListener('keydown',e=>{ if(e.key!=='Escape'&&!(e.ctrlKey&&(e.key.toLowerCase()===','||['=','+','-','0'].includes(e.key)))) e.stopPropagation(); if(e.key==='Enter'&&(e.target.id==='projPath'||e.target.id==='projName')) $('#projAdd').click(); if(e.key==='Enter'&&e.target.id==='elevenCap') e.target.blur(); });
 setInterval(()=>{ if(info.lang_status||(setEl.classList.contains('on')&&(info.voices||[]).some(v=>v.downloading))) refresh().then(()=>{ if(setEl.classList.contains('on')) renderSettings(); }); },2000);
 
 /* ================= slash commands ================= */
@@ -4756,7 +4763,16 @@ function sendRegion(force){
   const s=JSON.stringify(rs); if(!force&&s===lastRegion) return; lastRegion=s; native('region:'+s);
 }
 setInterval(()=>{ remSync(); sendRegion(false); stageVisSync(); },400);
-$('#stage').addEventListener('transitionend',e=>{ if(e.target===e.currentTarget) sendRegion(true); });   // (the peek's size changes over .65 s: re-measure when it lands)
+function nixiRefit(){ cardPlace(); if(pendingAppr) fitCard(); stagePlace(); sizeWindow(); CP.refit(); sendRegion(true); }
+window.nixiZoom=o=>{ if(!o||typeof o!=='object') return;
+  for(const k of ['page','nk','cardPx','monW','size','cardText']) if(Number.isFinite(+o[k])) ZOOM[k]=+o[k];
+  info.size=ZOOM.size; info.card_text=ZOOM.cardText;
+  document.documentElement.style.setProperty('--nk',String(ZOOM.nk));
+  window.nixiCorner(corner);
+  nixiRefit();
+  if(setEl.classList.contains('on')) renderSettings();
+};
+$('#stage').addEventListener('transitionend',e=>{ if(e.target===e.currentTarget) nixiRefit(); });   // (the peek's size changes over .65 s: re-measure when it lands)
 // panels slide in — re-measure once they've landed so their clickable area matches what you see
 addEventListener('transitionend',e=>{ if(e.target.matches&&e.target.matches('#menu,.pn,#appr,#ask,#pwbox')) sendRegion(true); });
 
@@ -4767,7 +4783,7 @@ E.body.addEventListener('mousedown',e=>{ if(e.button!==0) return; downAt=[e.clie
 let idleSt='full', idleHoldUntil=0, lastUser=performance.now(), IDLE_K=1, eatClick=false, peekT=null, corner='br', stillNow=false;
 const IDLE_SHRINK=20000, IDLE_DOZE=60000;
 window.nixiIdleScale=k=>{ IDLE_K=k; };      // test hook: multiplies the timers
-window.nixiCorner=c=>{ corner=c; const x=c[1]==='l'?-102:102, y=c[0]==='t'?-99:99; document.body.style.setProperty('--px',x+'px'); document.body.style.setProperty('--py',y+'px'); };
+window.nixiCorner=c=>{ corner=c; const dx=170-68*ZOOM.nk, dy=165-66*ZOOM.nk, x=c[1]==='l'?-dx:dx, y=c[0]==='t'?-dy:dy; document.body.style.setProperty('--px',x+'px'); document.body.style.setProperty('--py',y+'px'); };
 // idleActive: your own action, or something that needs you: he stays (or comes back) up. idleShowing: a passive indicator: he just doesn't shrink further.
 function idleActive(){ const on=el=>el.classList.contains('on'), B=document.body.classList;
   return busy||!!rec||transcribing||follow||menuOn||!!pendingAppr||on(pwEl)||on(apEl)||on(ask)||on(setEl)||on(panelEl)
@@ -4838,7 +4854,18 @@ addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('mouseup',()=>{ if(dragNative){ dragNative=false; native('dragend'); } downAt=null; });
 addEventListener('mousedown',e=>{ if(!e.target.closest('#body,#barPill,#menu,#ask,.pn,#appr,#atts,#pwbox,#mirBar')){ menu(false); closePanels(); if(!input.value) hideAsk(); } });
 
+function textStep(cur,dir){
+  if(dir==='reset') return 1;
+  const c=Number.isFinite(+cur)?clamp(+cur,.6,2):1;
+  return clamp(Math.round((c+(dir==='up'?.1:-.1))*100)/100,.6,2);
+}
 addEventListener('keydown',e=>{ wake(); lastUser=performance.now();
+  if(NATIVE&&e.ctrlKey&&!e.altKey&&!e.metaKey&&['=','+','-','0'].includes(e.key)){
+    e.preventDefault();
+    const dir=e.key==='0'?'reset':e.key==='-'?'down':'up', v=textStep(info.card_text??ZOOM.cardText??1,dir);
+    setSetting({card_text:v}).then(ok=>{ if(ok) native('text:'+v); });
+    return;
+  }
   const askOn=ask.classList.contains('on'), k=e.key.toLowerCase(), typing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&document.activeElement!==input;
   if(mailCard&&mailCard.el.isConnected&&(e.key==='Enter'||k==='y')&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){ e.preventDefault(); return; }   // (the mail reply card is up: Enter and y never reach the ask box or an approval)
   if(pendingAppr && !askOn && !typing){ if((e.key==='Enter'||k==='y')&&pendingAppr.confirm==='click'){ e.preventDefault(); return; } if(e.key==='Enter'||k==='y'){ e.preventDefault(); return answer('yes'); } if(e.key==='Escape'||k==='n'){ e.preventDefault(); return answer('no'); } }
@@ -4877,7 +4904,7 @@ addEventListener('blur',()=>{ spaceHeld=false; if(rec&&rec.mode==='ptt') stopRec
    His eyes keep an eye on it. */
 const CP=(()=>{
   const el=$('#code'), out=el.querySelector('.lines'), titleEl=el.querySelector('.tb b'), stEl=el.querySelector('.tb span');
-  let W=380, H=120; const ROWS=24, MAXH=442, SHEET_K=.7;           // (drawn at 70%: it sits beside him, it mustn't fill the screen)                       // size, visible lines
+  let W=380, H=120; const ROWS=24, MAXH=442, SHEET_K=NATIVE?14/15:.7;           // (drawn at 14/15 of card text in native, 70% in browser: sits beside him)                       // size, visible lines
   let on=false, last=0, wide=false, offT=null, pos=null;
   const sp={x:0,y:0,vx:0,vy:0};                // held in a "hand": follows where he looks, with a little lag and tilt
   const ball=()=>document.querySelector('#body > .ball').getBoundingClientRect();
@@ -4894,7 +4921,7 @@ const CP=(()=>{
     if(!on&&!el.classList.contains('on')) return;
     const edge=barEdge();
     if(edge){ pos={x:170,y:230,cx:170,cy:230}; return; }  // the notch: CSS puts it inside the notch (see body.bar #code)
-    const {cx,cy,reach}=geo(), st=new DOMMatrix(getComputedStyle($('#stage')).transform).a||1;
+    const {cx,cy,reach}=geo(), B=document.body.classList, st=B.contains('peek')?.4:B.contains('hover')?.17:1;
     const k=SHEET_K*clamp(st,.4,1), w2=W*k/2, h2=H*k/2, half=w2+14, rr=innerWidth-cx;   // (it shrinks and grows with him: peek, hover)
     if(side>0?cx>rr+40:rr>cx+40) side=-side;                 // (a margin, so it doesn't flip back and forth)
     const tx=clamp(cx+side*(reach*.92+18*k+w2),half,innerWidth-half);
@@ -4913,11 +4940,13 @@ const CP=(()=>{
     if(!barEdge()) fitSheet(); }   // ask for room beside him now: a tool that writes no lines would never ask
   function fitSheet(){   // the sheet follows its content: wider for long lines (up to 720px, then they wrap), taller for more lines
     let mx=0; for(const c of out.children) mx=Math.max(mx,c.textContent.length);
-    const w=clamp(Math.ceil(mx*9.1)+36,380,760); if(w!==W){ W=w; el.style.width=w+'px'; }
+    const maxW=ZOOM.monW>0?Math.max(200,(ZOOM.monW/ZOOM.page-380)/SHEET_K):Infinity;
+    const w=Math.round(clamp(Math.ceil(mx*9.1)+36,Math.min(380,maxW),Math.min(760,maxW))); if(w!==W){ W=w; el.style.width=w+'px'; }
     while(out.children.length>8&&el.offsetHeight>MAXH) out.firstChild.remove();
     // room for it beside him on one side: the window grows evenly, and away from a screen edge
     H=el.offsetHeight; const want=[2*Math.max(0,Math.ceil(geo().reach*.92+18+W+16-170)),Math.max(0,H+16-460)];
     if(want[0]!==sheetWant[0]||want[1]!==sheetWant[1]){ sheetWant=want; sizeWindow(); } }
+  function refit(){ if((on||el.classList.contains('on'))&&!barEdge()) fitSheet(); }
   new MutationObserver(()=>{ if(on&&!barEdge()) fitSheet(); }).observe(out,{childList:true,subtree:true,characterData:true});
   function hide(){ sheetWant=[0,0]; sizeWindow(); on=false; el.classList.remove('on'); document.body.classList.remove('term'); clearTimeout(offT); offT=setTimeout(()=>{ if(!on&&wide){ wide=false; native('code:off'); } },400); }
 
@@ -4999,7 +5028,7 @@ const CP=(()=>{
     result(ev){ RES[ev.id]={text:ev.text||'',is_error:!!ev.is_error}; },
     answer(){ answering=true; sync(); },   // (every streamed delta: sync() leaves an unchanged sheet alone)
     done(){ answering=false; sync(); },
-    hide,
+    hide, refit,
   };
 })();
 
