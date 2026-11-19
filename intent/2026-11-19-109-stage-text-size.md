@@ -38,8 +38,8 @@ setting, which also enlarges Nixi himself, and it tops out at 1.25.
   space available.
 - That size stays the same whatever Nixi's size setting is (0.5-1.25).
   Changing the setting resizes Nixi, not the card's text.
-- Nixi himself, his message bubble (`#him`) and his other panels
-  (settings, chat) keep their current size. The collapsed stage tab
+- Nixi himself keeps his current size. (His bubble and panels follow
+  the cards; see Decisions 3.) The collapsed stage tab
   (`#stgTab`) is part of the stage and follows the stage's size.
 - The window grows to fit the bigger card: nothing is clipped. If a
   monitor is too small for the whole card, readability wins: the card
@@ -111,7 +111,9 @@ setting, which also enlarges Nixi himself, and it tops out at 1.25.
    `#stgTab`), the approval card (`#appr`), the password box (`#pwbox`),
    the mail pop-up (`#mailPop`), the music card (`#musCard`), the code
    sheet (`#code`), and notification cards (`.ncard`, `:3014`, shown
-   inside the bubble). Nixi's plain message bubble text (`#him`), his
-   menu and his panels (settings, history; `.pn`) keep their size.
+   inside the bubble). Amended 2026-11-19 by the user when choosing
+   the spec design: Nixi's message bubble, menu and panels (settings,
+   history; `.pn`) now grow with the cards too; only Nixi himself keeps
+   his size.
    Each card keeps the window-space request it already makes
    (`cardWant`, `sheetWant`, `popWant`, `stageWant`; `:4714`), scaled.
