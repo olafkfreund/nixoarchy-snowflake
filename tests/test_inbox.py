@@ -157,6 +157,13 @@ class InboxTest(_ServerEnv):
             self.rows(self.row(rich="your sign-in code is <b>482</b>910"))
         seen.assert_called_once_with("nabc12")
 
+    def test_code_check_is_linear_on_an_unclosed_tag(self):
+        S = self.server
+        start = time.monotonic()
+        with mock.patch.object(S.CodePause, "seen"):
+            self.rows(self.rich_row(rich="<" + "a" * 300000))
+        self.assertLess(time.monotonic() - start, 1.0)
+
     def test_card_gate_uses_full_text_verdict(self):
         S = self.server                                          # digits inside the shown 600 chars, the code word after them
         with mock.patch.object(S.CodePause, "seen"):

@@ -252,3 +252,8 @@ reviewers:
   - A code split by tags (`<b>482</b>910`) now triggers too.
   - New tests cover this, the card gate's full-text verdict, Flux's `expires` being kept, and eviction by age. Each
     fails when its fix is reverted.
+- **Codex PR review:** the full-length tag strip uses `STRIP = <(?=/?[A-Za-z])[^<>]*>`, not `TAG`.
+  - `TAG`'s overlapping groups were quadratic on an unclosed tag: 4.9 s on 30,000 characters, which stalled the inbox
+    loop.
+  - `STRIP` is linear: under 0.05 s on 1 MB of adversarial input.
+  - A timing test covers it.

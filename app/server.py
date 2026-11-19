@@ -3310,6 +3310,8 @@ class Inbox:
     alock = threading.Lock()                                  # acts: the tick thread writes, handler threads compare-and-pop
     legacy = 0.0                                              # until then the shell had no delegateRich: use delegate, then ask again
     TAG = re.compile(r"<(/?)([A-Za-z][A-Za-z0-9]*)([^<>]*)>")
+    STRIP = re.compile(r"<(?=/?[A-Za-z])[^<>]*>")                  # (TAG's overlapping groups are quadratic on an unclosed tag; this is linear)
+    BR = re.compile(r"</?br\b", re.I)
     ENT = re.compile(r"&(lt|gt|amp|quot);")
     ENTS = {"lt": "<", "gt": ">", "amp": "&", "quot": '"'}
     HREF = re.compile(r'\s+href="([^"]*)"\s*')
@@ -3423,7 +3425,7 @@ class Inbox:
                 x["category"] = "mail" if cls.MAIL.search(who) else "chat" if cls.CHAT.search(who) else "video" if cls.FEED.search(who) else Plug.category(str(x.get("app") or ""), str(x.get("source") or ""))
             if not isinstance(x, dict) or not isinstance(x.get("key"), str) or not cls.KEY.fullmatch(x["key"]) or x.get("category") not in cls.CATS:
                 continue
-            rich = cls.TAG.sub(lambda m: "\n" if m[2].lower() == "br" else "", str(x.get("rich") or ""))   # (the visible text: a long link id is not a code)
+            rich = cls.STRIP.sub(lambda m: "\n" if cls.BR.match(m[0]) else "", str(x.get("rich") or ""))   # (the visible text: a long link id is not a code)
             parts = [str(x.get("summary") or ""), str(x.get("body") or ""), cls.ENT.sub(lambda m: cls.ENTS[m[1]], rich)]
             if isinstance(x.get("actions"), list):
                 parts.extend(a["text"] for a in x["actions"] if isinstance(a, dict) and isinstance(a.get("text"), str))
