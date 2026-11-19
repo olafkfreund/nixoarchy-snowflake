@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 109
 spec: spec/2026-11-19-109-stage-text-size.md
 coders:
