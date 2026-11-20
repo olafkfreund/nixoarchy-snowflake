@@ -1,7 +1,10 @@
 """The user's terminal font size in CSS px, read from the terminal's own main config (#109). Stdlib only."""
 import math
 import os
-import tomllib
+try:
+    import tomllib
+except ImportError:   # Python < 3.11 (a distro's /usr/bin/python3): Alacritty falls back to 16 px
+    tomllib = None
 from pathlib import Path
 
 _IDS = {"kitty": "kitty", "alacritty": "alacritty", "com.mitchellh.ghostty": "ghostty", "ghostty": "ghostty",
@@ -71,7 +74,7 @@ def term_px(env, config_home):
             pt = _last(config_home / "kitty/kitty.conf", "font_size", None)
         elif t == "ghostty":
             pt = _last(config_home / "ghostty/config", "font-size", "=")
-        elif t == "alacritty":
+        elif t == "alacritty" and tomllib:
             size = tomllib.loads((config_home / "alacritty/alacritty.toml").read_text())["font"]["size"]
             pt = None if isinstance(size, bool) else float(size)
         elif t == "foot":
@@ -80,6 +83,6 @@ def term_px(env, config_home):
         else:
             return None
         px = pt * 96 / 72 if pt is not None else None
-    except (OSError, ValueError, KeyError, TypeError, tomllib.TOMLDecodeError):
+    except (OSError, ValueError, KeyError, TypeError):   # (TOMLDecodeError is a ValueError)
         return None
     return px if px is not None and math.isfinite(px) and 5 <= px <= 96 else None
