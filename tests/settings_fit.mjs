@@ -557,6 +557,15 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
     "Enter, Space, typing and shortcuts inside Settings are isolated; Esc and Ctrl+, still work", JSON.stringify(iso));
 }
 
+// 12b. Ctrl and Ctrl+Shift change the card text (#109): on a UK/US layout Shift turns - into _ and 0 into )
+{ await clearMsgs();
+  const sent = await ev(`const real=setSetting, keep=info.card_text; setSetting=async()=>true; info.card_text=1;
+    for(const key of ['=','+','-','_','0',')']){ dispatchEvent(new KeyboardEvent('keydown',{key,ctrlKey:true,shiftKey:'+_)'.includes(key),bubbles:true,cancelable:true})); await new Promise(r=>setTimeout(r,20)); }
+    setSetting=real; info.card_text=keep; return __msgs.filter(m=>m.startsWith('text:'))`);
+  check(sent.join(",") === "text:1.1,text:1.1,text:0.9,text:0.9,text:1,text:1",
+    "Ctrl or Ctrl+Shift with =/+, -/_ and 0/) step the card text", JSON.stringify(sent));
+}
+
 // 13. Radial-menu item and openPanel('plugins') title are "Claude Code plug-ins"
 { const lbl = await ev(`const mb=document.querySelector('#menu .mb[data-a="plugins"]');
     const menuTitle=mb?.getAttribute('title'), menuSpan=mb?.querySelector('span')?.textContent;
