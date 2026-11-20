@@ -56,6 +56,7 @@ import eleven  # noqa: E402
 import quick  # noqa: E402
 import recall  # noqa: E402
 import stages  # noqa: E402
+import size  # noqa: E402
 Phone = phone.Phone()
 STATIC = APP_DIR / "static"
 try:                                            # written by the release build (and kept in git for git installs)
@@ -249,6 +250,7 @@ DEFAULTS = {
     # how he looks: body + each eye + each eye white, a skin (accessory), and whether to roll random colours each time
     "look": {},
     "size": 0.75,
+    "card_text": 1.0,
     # lambda-tip cues: failed user units + new generation (local); next calendar item (gog) and weather look (network): off
     "follow_focus": False,                  # move to the screen you focus (Hyprland)
     "answer_stages": True,                  # a board/notebook beside him for commands and facts (#144); off = captions only
@@ -310,7 +312,7 @@ SHARED_RULES = {
         ("compact_tokens", 0, 5000000), ("whisper_beam", 1, 20), ("eleven_daily_chars", 1000, 500000),
         ("speak_max_chars", 1, 10000), ("follow_up", 0, 60), ("live_minutes", 1, 1440))},
     **{k: ("float", lo, hi) for k, lo, hi in (
-        ("max_cost_usd", 0, 1000), ("compact_at", 0.3, 0.95), ("size", 0.5, 1.25))},
+        ("max_cost_usd", 0, 1000), ("compact_at", 0.3, 0.95), ("size", 0.5, 1.25), ("card_text", 0.6, 2.0))},
     **{k: ("enum", values) for k, values in (
         ("trust", ("ask", "trust", "readonly")), ("effort", ("low", "medium", "high", "xhigh", "max")),
         ("whisper_model", ("auto", "tiny.en", "base.en", "small.en", "medium.en", "tiny", "base", "small", "medium")),
@@ -6586,6 +6588,10 @@ NOTIFY_FLAGS = ("proactive", "reactions", "news_watch", "notifications_takeover"
 NOTIFY_CATS = ("mail", "chat", "meeting", "video", "download", "other")
 
 
+def card_text_value(raw):
+    return size.text_clamp(raw)
+
+
 def size_value(raw):
     try:
         value = float(raw)
@@ -9445,7 +9451,7 @@ def state_info():
         "popup_done": bool(CFG.get("popup_done")), "hover": bool(CFG.get("hover")), "code_panel": CFG.get("code_panel", True) is not False, "live_minutes": int(CFG.get("live_minutes") or 10), "voice_native": Speaker.available(), "code_face": "you" if CFG.get("code_face") == "you" else "him",
         "click_through": bool(CFG.get("click_through")), "mirror": Mirror.snapshot(),
         "autostart": bool(CFG.get("autostart")), "listen_on_show": bool(CFG.get("listen_on_show")),
-        "barge_in": bool(CFG.get("barge_in")), "sfx": bool(CFG.get("sfx")), "size": size_value(CFG.get("size")), "look": look(), "skins": SKINS, "plugin_props": (Plug.ensure(), Plug.props)[1], "plugin_characters": Plug.characters, "ambient": Ambient.snapshot(),
+        "barge_in": bool(CFG.get("barge_in")), "sfx": bool(CFG.get("sfx")), "size": size_value(CFG.get("size")), "card_text": card_text_value(CFG.get("card_text")), "look": look(), "skins": SKINS, "plugin_props": (Plug.ensure(), Plug.props)[1], "plugin_characters": Plug.characters, "ambient": Ambient.snapshot(),
         "weather": {"sky": Ambient.sky, "cold": Ambient.cold, "windy": Ambient.windy, "lean": Ambient.lean,
                     "heavy": Ambient.heavy, "feel": Ambient.feel, "wind": Ambient.wspeed, "day": Ambient.day, "source": Ambient.wsrc},
         "follow_focus": bool(CFG.get("follow_focus")), "step_aside": CFG.get("step_aside", True) is not False, "answer_stages": CFG.get("answer_stages", True) is not False,
@@ -9879,6 +9885,8 @@ class Handler(BaseHTTPRequestHandler):
                             upd[key] = ec
                 if "size" in b:
                     upd["size"] = size_value(b["size"])
+                if "card_text" in b:
+                    upd["card_text"] = card_text_value(b["card_text"])
                 if isinstance(b.get("look"), dict):
                     cur = dict(CFG.get("look") or {})
                     cur.update(b["look"])

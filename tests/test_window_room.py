@@ -10,7 +10,10 @@ from unittest.mock import Mock
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 import room  # noqa: E402
-from size import step  # noqa: E402
+import aside  # noqa: E402
+import size  # noqa: E402
+import termfont  # noqa: E402
+from size import page_zoom, step, text_clamp, text_step, zooms  # noqa: E402
 
 
 def window_methods(*names):
@@ -24,7 +27,8 @@ def window_methods(*names):
     ns = dict(split_room=room.split_room, W=340, H=460, WIDE=470, GLIDE=0.3, CODE_SIDE=100,
               BAR_SIDE=70, json=json, os=__import__("os"), GLib=SimpleNamespace(
                   timeout_add=Mock(return_value=1), source_remove=Mock()),
-              time=__import__("time"), math=__import__("math"),
+              time=__import__("time"), math=__import__("math"), size=size, termfont=termfont,
+              window_size=size.clamp,
               GtkLayerShell=SimpleNamespace(Edge=SimpleNamespace(LEFT=0, TOP=1),
                                             set_margin=Mock(), set_monitor=Mock()),
               screens=__import__("screens"), threading=SimpleNamespace(Thread=Mock()), log=Mock())
@@ -33,10 +37,85 @@ def window_methods(*names):
 
 
 class RoomTest(unittest.TestCase):
+    def test_window_zoom_applies_only_changed_page_and_always_pushes(self):
+        ns = window_methods("_apply_zoom", "_push_zoom")
+        w = ns["Window"]()
+        w.size, w.card_text, w.term_px, w.z = 0.75, 1.0, 16, 16 / 14
+        w.layer = True
+        w._geom = lambda: (None, SimpleNamespace(width=2560, height=1440))
+        w._push_zoom, w.set_wide, w._apply_region = Mock(), Mock(), Mock()
+        w.view = SimpleNamespace(set_zoom_level=Mock())
+        w.bar = None
+        w.want_xw = w.want_h = 0
+        w._apply_zoom()
+        w.view.set_zoom_level.assert_not_called()
+        w._push_zoom.assert_called_once()
+        w.card_text = 1.2
+        w._apply_zoom()
+        w.view.set_zoom_level.assert_called_once_with(19.2 / 14)
+        self.assertEqual(w.z, 19.2 / 14)
+        self.assertEqual(w._push_zoom.call_count, 2)
+
+    def test_window_pushes_zoom_values_for_current_monitor(self):
+        ns = window_methods("_push_zoom")
+        w = ns["Window"]()
+        w.size, w.card_text, w.term_px, w.layer = 0.75, 1.0, 16, True
+        w._geom = lambda: (None, SimpleNamespace(width=2560, height=1440))
+        w._js = Mock()
+        w._push_zoom()
+        script = w._js.call_args.args[0]
+        self.assertEqual(json.loads(script.removeprefix("window.nixiZoom&&nixiZoom(").removesuffix(")")),
+                         {"page": 16 / 14, "nk": 0.75 / (16 / 14), "cardPx": 16,
+                          "monW": 2560, "size": 0.75, "cardText": 1.0})
+
+    def test_zoom_and_text_messages_update_separate_settings(self):
+        ns = window_methods("_on_msg", "set_zoom", "set_text")
+        w = ns["Window"]()
+        w.size, w.card_text = 0.75, 1.0
+        w._apply_zoom = Mock()
+        for msg in ("zoom:1.25", "text:1.5", "rezoom"):
+            w._on_msg(None, SimpleNamespace(get_js_value=lambda msg=msg: SimpleNamespace(to_string=lambda: msg)))
+        self.assertEqual((w.size, w.card_text), (1.25, 1.5))
+        self.assertEqual(w._apply_zoom.call_count, 3)
+        w._apply_zoom.assert_called_with(reread=True)
+
+    def test_aside_plan_uses_scaled_strip_and_visible_width(self):
+        self.assertEqual(aside.plan(1920, True), "monitor")
+        self.assertEqual(aside.plan(1920, True, 340 * 0.75, aside.VISIBLE_W * 0.75), "side")
+
     def test_keyboard_size_steps_and_limits(self):
         self.assertEqual(step(1.2, "up"), 1.25)
         self.assertEqual(step(0.55, "down"), 0.5)
         self.assertEqual(step(0.6, "reset"), 0.75)
+
+    def test_card_zoom(self):
+        page, nixi, target = zooms(0.75, 1.0, 16, 2560, 1440)
+        self.assertAlmostEqual(page, 16 / 14)
+        self.assertAlmostEqual(nixi, 0.75 / page)
+        self.assertEqual(target, 16)
+        self.assertEqual(zooms(1.25, 1.0, 16, 2560, 1440)[:2], (1.25, 1.0))
+        self.assertEqual(zooms(0.75, 1.0, None, 2560, 1440)[2], 16)
+        self.assertAlmostEqual(zooms(0.75, 2.0, 16, 1280, 720)[0], 720 / 460)
+        self.assertEqual(zooms(1.25, 1.0, 16, 960, 540)[:2], (1.25, 1.0))
+        self.assertEqual(zooms(0.75, 2.0, 28, None, None)[0], 2.5)
+        for size in (0.5, 0.75, 1.0, 1.25):
+            for card_text in (0.6, 1.0, 2.0):
+                for monitor in ((None, None), (960, 540), (1280, 720), (2560, 1440)):
+                    with self.subTest(size=size, card_text=card_text, monitor=monitor):
+                        page, nixi, _ = zooms(size, card_text, 16, *monitor)
+                        self.assertLessEqual(nixi, 1.0)
+                        self.assertAlmostEqual(page * nixi, size)
+
+    def test_card_text_steps_and_limits(self):
+        self.assertEqual((text_step(1.0, "up"), text_step(1.0, "down")), (1.1, 0.9))
+        self.assertEqual(text_step(1.5, "reset"), 1.0)
+        self.assertEqual((text_step(2.0, "up"), text_step(0.6, "down")), (2.0, 0.6))
+        self.assertEqual((text_clamp("bad"), text_clamp(float("inf"))), (1.0, 1.0))
+        self.assertEqual((text_clamp(0.1), text_clamp(3)), (0.6, 2.0))
+        self.assertEqual((page_zoom("bad"), page_zoom(float("nan"))), (1.0, 1.0))
+        self.assertEqual((page_zoom(0.1), page_zoom(3)), (0.5, 2.5))
+        with self.assertRaises(ValueError):
+            text_step(1.0, "sideways")
 
     def test_layer_size_growth_clamps_base_before_room(self):
         ns = window_methods("set_wide")
@@ -152,6 +231,7 @@ class RoomTest(unittest.TestCase):
         w.layer = False
         w._mon_at = lambda x, y: (1, SimpleNamespace(x=1920, y=200, width=1000, height=900))
         w._js = Mock()
+        w._apply_zoom = Mock()
         with tempfile.TemporaryDirectory() as tmp:
             ns["POS_FILE"] = str(Path(tmp) / "pos.json")
             self.assertFalse(w._moved(SimpleNamespace(get_position=lambda: (1940, 550)), None))
@@ -202,6 +282,7 @@ class RoomTest(unittest.TestCase):
                                SimpleNamespace(get_geometry=lambda: SimpleNamespace(
                                    x=3000, y=200, width=1000, height=900))]
         w._save_xpos, w._xmove, w._rewide, w._send_corner = Mock(), Mock(), Mock(), Mock()
+        w._apply_zoom = Mock()
         w.set_wide = Mock()
         w._js, w.cursor_hidden, w._follow = Mock(), Mock(), Mock()
         w.glide_n = 0
@@ -248,6 +329,7 @@ class RoomTest(unittest.TestCase):
         w.hypr = SimpleNamespace(ok=lambda: False)
         w._geom = lambda: (None, SimpleNamespace(width=1000, height=900))
         w._glide_to, w._place, w._js, w.set_wide = Mock(), Mock(), Mock(), Mock()
+        w._apply_zoom = Mock()
         w.set_bar("top")
         self.assertEqual(w.bar_home, (0, 300, 440))
         w._glide_to.assert_called_with(230, -100, None)

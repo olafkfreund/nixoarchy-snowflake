@@ -593,6 +593,7 @@ All subcommands handled by `bin/nixi-companion`:
 | `nixi-companion hover` · `nixi-companion hover-on` · `nixi-companion hover-off` | toggle, turn on, or turn off hover mode |
 | `nixi-companion monitor` | move to another screen (`next`, `prev`, `focused`, or an output name like `DP-1`) |
 | `nixi-companion size up\|down\|reset` | change size by 10 percentage points or reset to 75%; bound to SUPER+CTRL+ALT+= → `up`, SUPER+CTRL+ALT+- → `down`, SUPER+CTRL+ALT+0 → `reset` in `nixos_config` (SUPER+ALT+-/= are Omarchy's window nudges) |
+| `nixi-companion text up\|down\|reset` | change the size of the card text by 10 percentage points or reset to 100% (Size is Nixi's own size; the window follows the cards). In the page, Ctrl+= / Ctrl+- / Ctrl+0 do the same while Nixi has the keyboard. Proposed Hyprland binds: SUPER+CTRL+ALT+SHIFT+= → `up`, SUPER+CTRL+ALT+SHIFT+- → `down`, SUPER+CTRL+ALT+SHIFT+0 → `reset`; they live in `nixos_config`, a separate PR |
 | `nixi-companion attention` | receive a terminal agent alert (`--from claude\|codex\|agy --hook`) |
 | `nixi-companion approve` · `nixi-companion result` | agent hooks (`--from claude\|codex`): ask for a click and report the result; see "Approve or deny from Nixi" |
 | `nixi-companion doctor` | check the window, list your mics, record 3 seconds with a level meter and test the voice |

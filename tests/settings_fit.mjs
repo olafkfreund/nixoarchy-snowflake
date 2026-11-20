@@ -153,7 +153,7 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   await ev("setEl.querySelector('[data-close]').click(); return 1");
   const m2 = nonRegion(await msgs());
   const st2 = await ev("return [setEl.classList.contains('on'), panelEl.classList.contains('on'), setWant[0], setWant[1], document.body.classList.contains('pnl')]");
-  check(st1[0] && !st1[1] && st1[2] && st1[3] === 244 && st1[4] === 266 && m1.join(",") === "wide:off,size:244,266"
+  check(st1[0] && !st1[1] && st1[2] && st1[3] === 244 && st1[4] === 266 && m1.includes("rezoom") && m1.filter(x => x !== "rezoom").join(",") === "wide:off,size:244,266"   // rezoom: Settings re-reads the terminal font (#109)
     && !st2[0] && !st2[1] && st2[2] === 0 && st2[3] === 0 && !st2[4] && m2.join(",") === "wide:off,size:0,0",
     "transition: Quick actions (#qaEditBtn) -> Settings (wide:off before size:244,266) -> ✕ close", JSON.stringify({ m1, st1, m2, st2 }));
 }

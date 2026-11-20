@@ -78,11 +78,11 @@ await ev("attnPend=null; return 1");
 await ev("onEvent({t:'attention',from:'claude',name:'Claude',kind:'working',project:'p',text:''}); return 1");
 check(await waitFor("!document.querySelector('#code').classList.contains('on')&&getComputedStyle(document.querySelector('#eL .ce')).display!=='none'"), "working shows code in his eyes, no panel");
 check(await ev("return attnPend===null && !chip.classList.contains('act')"), "working sets no attnPend and no chip");
-// his own tool run still opens the sheet (busy keeps it out after the tool): full size, at 70%, beside him
+// his own tool run still opens the sheet (busy keeps it out after the tool): beside him, at 14/15 in native (#109: 380 px -> 355)
 await ev("busy=true; CP.tool({t:'tool',id:'geo1',name:'Bash',input:{command:'true',description:'geometry'}}); return 1");
 await sleep(1500);
 const fz = await ev("const c=document.querySelector('#code').getBoundingClientRect(), b=document.querySelector('#body > .ball').getBoundingClientRect(); const over=Math.max(0,Math.min(c.right,b.right)-Math.max(c.left,b.left))*Math.max(0,Math.min(c.bottom,b.bottom)-Math.max(c.top,b.top)); return {w:Math.round(c.width), over:Math.round(over), ball:Math.round(b.width*b.height)};");
-check(fz.w <= 300 && fz.over < fz.ball * 0.1, "the sheet is drawn small (<=300 px) and doesn't cover him", JSON.stringify(fz));
+check(fz.w <= 360 && fz.over < fz.ball * 0.1, "the sheet is drawn at 14/15 (<=360 px) and doesn't cover him", JSON.stringify(fz));
 // he shrinks to the corner when idle (peek): the panel shrinks with him and stays beside him, not over him
 await ev("document.body.classList.add('peek'); return 1"); await sleep(1500);
 const pk = await ev("const c=document.querySelector('#code').getBoundingClientRect(), b=document.querySelector('#body > .ball').getBoundingClientRect(); const over=Math.max(0,Math.min(c.right,b.right)-Math.max(c.left,b.left))*Math.max(0,Math.min(c.bottom,b.bottom)-Math.max(c.top,b.top)); return {w:Math.round(c.width), over:Math.round(over), ball:Math.round(b.width*b.height)};");
