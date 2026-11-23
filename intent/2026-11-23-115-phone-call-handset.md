@@ -59,6 +59,16 @@ What exists today:
   cancellation so the caller doesn't hear themselves. Nixi stops listening
   and speaking for the whole call, including anything he was still saying
   when it was answered.
+- Side buttons on the handset turn the call volume up and down, and a mute
+  button mutes the desk mic for the caller (the screen shows it).
+- While it shakes, the host plays a short old-phone ring of our own, quiet
+  enough not to compete with the phone, and off in quiet times.
+- When the phone isn't linked to the host over Bluetooth, the handset still
+  rings and shows the caller, and its green and red buttons answer and reject
+  through Flux. The audio then stays on the phone, and the screen says so
+  ("Answer on phone"). A Flux button only acts on the one call the handset
+  shows: with a second call waiting, or when Flux can't tell which call it
+  is, the buttons are disabled instead of guessing.
 - When the call ends, from either side, the handset shows "Call ended" for a
   moment and leaves. A call nobody answers becomes the missed-call card it is
   today, with the name readable. When the handset can't tell how a call
@@ -74,8 +84,9 @@ What exists today:
   phone code (`app/server.py`, `app/phone.py`), and the language files.
 - `nixos_config`: PipeWire/WirePlumber Bluetooth roles and echo cancellation
   on p620 and razer, and pairing the phone with each host.
-- `nixarchy-flux`: only if open question 2 says the buttons should also work
-  without Bluetooth.
+- `nixarchy-flux`: the Android app answers and rejects a ringing call (a new
+  `ANSWER_PHONE_CALLS` permission the owner grants), and the daemon offers
+  those actions on its socket.
 
 ## Constraints
 
@@ -105,19 +116,18 @@ What exists today:
 - Out of scope: outgoing calls, call waiting (a second call while one is
   active), and app calls (WhatsApp, Signal).
 
+## Decisions (owner, 2026-11-23)
+
+1. **Audio path:** Bluetooth hands-free. p620 first; razer once audio, echo,
+   the Pixel Buds and both hosts in range are tested on p620.
+2. **Without Bluetooth:** answer and reject through Flux as well, audio on the
+   phone, with the one-call guard above.
+3. **Numbers on screen:** the number shows for a caller who isn't a contact,
+   desk unlocked only.
+4. **In-call extras:** mute and volume buttons.
+5. **Ringtone:** a short old-phone ring on the host while the handset shakes.
+
 ## Open questions
 
-1. **Audio path:** Bluetooth hands-free with the phone paired to p620 and
-   razer, so the host the phone is linked to takes the call? Recommended:
-   yes, first on p620 alone, then razer once the buds and both hosts are
-   tested.
-2. **Without Bluetooth:** caller only (recommended by both reviewers: it
-   avoids deprecated Android APIs, a new permission and a call left on the
-   phone's earpiece), or answer and hang up through Flux anyway?
-3. **Numbers on screen:** show the number for a caller who isn't in your
-   contacts (recommended, desk unlocked only), or only "Unknown caller"?
-4. **Extras in the call:** a mute button (recommended), volume, or only
-   answer and hang up?
-5. **Ringtone and notification:** silent handset, since the phone already
-   rings (recommended), or a short old-phone ring on the host? And should
-   Flux's own desktop notification stay as well?
+- Should Flux's own desktop call notification stay while the handset is up?
+  The spec will propose hiding it while Nixi shows the handset.
