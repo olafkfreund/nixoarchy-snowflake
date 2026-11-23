@@ -1,5 +1,6 @@
 import sys
 import unittest
+import unittest.mock
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -141,6 +142,18 @@ class HfpTest(unittest.TestCase):
         self.assertIn(["wpctl", "set-volume", "-l", "1.5", "41", "5%-"], commands)
         self.assertIn(["wpctl", "set-mute", "42", "toggle"], commands)
         self.assertFalse(any("SpeakerVolume" in str(c) for c in commands))
+
+
+class StopTest(unittest.TestCase):
+    def test_stop_during_connect_never_runs_the_loop(self):
+        loop = SimpleNamespace(run=unittest.mock.Mock(), quit=unittest.mock.Mock())
+        ctx = SimpleNamespace(push_thread_default=lambda: None, pop_thread_default=lambda: None)
+        glib = SimpleNamespace(MainContext=SimpleNamespace(new=lambda: ctx),
+                               MainLoop=SimpleNamespace(new=lambda c, r: loop))
+        hfp = Hfp(gio=object(), glib=glib)
+        hfp.connect = lambda: (hfp.stop(), True)[1]     # (Phone off arrives while connecting)
+        hfp._run()
+        loop.run.assert_not_called()
 
 
 if __name__ == "__main__":

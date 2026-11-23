@@ -27,6 +27,7 @@ class Hfp:
         self.logged = False
         self._subscriptions = []
         self._thread = self._loop = None
+        self._stopping = threading.Event()
 
     def _load(self):
         if self.Gio is None or self.GLib is None:
@@ -71,6 +72,7 @@ class Hfp:
     def start(self):
         if self._thread and self._thread.is_alive():
             return
+        self._stopping.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
@@ -80,19 +82,22 @@ class Hfp:
             context = self.GLib.MainContext.new()
             context.push_thread_default()
             try:
-                if self.connect():
+                if self.connect() and not self._stopping.is_set():
                     self._loop = self.GLib.MainLoop.new(context, False)
-                    self._loop.run()
+                    if not self._stopping.is_set():      # (a stop() that came while we connected)
+                        self._loop.run()
             finally:
                 context.pop_thread_default()
         except Exception as error:
             self._log(error)
 
     def stop(self):
+        self._stopping.set()
         if self._loop:
             self._loop.quit()
         if self._thread and self._thread is not threading.current_thread():
-            self._thread.join()
+            self._thread.join(2)                         # (never hang the caller: Phone off runs this)
+        self._loop = None
         if self.conn:
             for ident in self._subscriptions:
                 self.conn.signal_unsubscribe(ident)
