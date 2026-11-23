@@ -19,7 +19,7 @@ class NotSent(ConnectionError):
 class Phone:
     METHODS = frozenset({"ring", "share.url", "share.text", "share.files", "clipboard.send",
                          "sms.refresh", "sms.send", "dnd.set", "notify.send", "sms.thread",
-                         "notification.reply", "clipboard.pauseOwned"})
+                         "notification.reply", "clipboard.pauseOwned", "call.action"})
 
     def __init__(self):
         self.snap = {}
@@ -126,12 +126,12 @@ class Phone:
                 if not d.get("paired"):
                     continue
                 can = {name for plugin, name in (("findmyphone", "ring"), ("share", "share"),
-                                                  ("sms", "sms"), ("dnd", "dnd"))
+                                                  ("sms", "sms"), ("dnd", "dnd"), ("telephony.action", "answer"))
                        if plugin in d.get("plugins", [])}
                 row = {key: d.get(key) for key in ("id", "name", "online", "lastSeen", "battery", "fingerprint", "ip")}
                 row["can"] = can
                 if "approvals" in self.snap:
-                    for key in ("call", "missedCall", "dnd"):
+                    for key in ("call", "missedCall", "lastCall", "dnd"):
                         if key in d:
                             row[key] = d[key]
                 result.append(row)

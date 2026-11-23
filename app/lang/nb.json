@@ -137,7 +137,23 @@
     "phone.notify_none": "Jeg finner ikke noe varsel fra den avsenderen som du kan svare på.",
     "phone.notify_changed": "Det varselet er endret. Åpne listen på nytt.",
     "phone.notify_sent": "Svaret er sendt.",
-    "phone.notify_draft_title": "Svar på varsel"
+    "phone.notify_draft_title": "Svar på varsel",
+    "call.second": "Nytt anrop: bruk telefonen",
+    "call.watch": "Ringer på {host}",
+    "call.on_phone": "På telefonen",
+    "call.ringing": "Ringer",
+    "call.active": "I samtale",
+    "call.ended": "Samtale avsluttet",
+    "call.failed": "Det gikk ikke. Bruk telefonen",
+    "call.host": "Maskin",
+    "call.phone": "Telefon",
+    "call.answer": "Svar",
+    "call.reject": "Avvis",
+    "call.hangup": "Legg på",
+    "call.mute": "Demp",
+    "call.vol_up": "Volum opp",
+    "call.vol_down": "Volum ned",
+    "call.unknown": "Ukjent innringer"
   },
   "phrases": {
     "phone_generic": [

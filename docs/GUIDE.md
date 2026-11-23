@@ -173,6 +173,24 @@ renews the pause, for about 10 minutes at most; after that it isn't paused again
 - A copy made before the notification can still go out, and so can a send already past Flux's check.
 - A notification seen again after 10 minutes, or after 64 other code notifications, counts as new.
 
+### Take calls on Nixi
+
+When a call comes in on your phone, a retro handset pops up beside him (or as a compact pill in bar mode). It works over three paths:
+
+- **Host:** the phone is linked to this computer over Bluetooth, so the call's sound is on the computer. You can answer, reject, hang up, mute the mic and adjust the call volume on the handset.
+- **Phone:** only Flux connects the phone to this computer, so **Answer** and **Reject** work on the handset, but the call's sound stays on the phone (**On phone**).
+- **Watch:** another of your computers holds the Bluetooth hands-free link. The handset shows who is calling (**Ringing on `<host>`**) with no keys.
+
+**What it needs:**
+
+- In the Flux app on your phone, allow **Answer phone calls** and **Nearby devices** under **Call alerts**.
+- In your NixOS config, set `calls.enable = true` on the companion module to turn on the echo-cancelled mic (`nixi-call-echo-cancel-source`) and the WirePlumber rules that keep the phone link for calls only.
+
+**One-time Bluetooth pairing (per computer):**
+
+1. Pair, trust and connect the phone with `bluetoothctl`: `bluetoothctl pair <addr>`, `bluetoothctl trust <addr>`, `bluetoothctl connect <addr>`.
+2. On the phone, open that computer's Bluetooth settings and turn **Phone calls** on and **Media audio** off.
+
 ## Agent alerts
 
 Coding agents in your terminal (Claude Code, Codex, agy) can tell the snowflake when they need you or when they are

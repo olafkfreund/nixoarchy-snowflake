@@ -79,15 +79,18 @@ class VoiceSettingsTest(_ServerEnv):
     def test_phone_on_is_a_bool_setting_that_starts_and_resets_the_client(self):
         s = self.server
         self.assertIs(s.DEFAULTS["phone_on"], False)
-        with mock.patch.object(s.Phone, "start") as start, mock.patch.object(s.Phone, "stop") as stop:
+        with mock.patch.object(s.Phone, "start") as start, mock.patch.object(s.Phone, "stop") as stop, \
+                mock.patch.object(s.Hfp, "start") as hstart, mock.patch.object(s.Hfp, "stop") as hstop:
             code, r = self.post({"phone_on": 1})
             self.assertEqual((code, r["phone_on"], s.CFG["phone_on"]), (200, True, True))
             self.assertEqual(json.loads(s.CONF_PATH.read_text())["phone_on"], True)
             start.assert_called_once()
+            hstart.assert_called_once()                          # (#115: the HFP client follows the Phone switch)
             gen = s.PHONE_GEN
             code, r = self.post({"phone_on": False})
             self.assertEqual((code, r["phone_on"], r["phone_status"], s.CFG["phone_on"]), (200, False, "", False))
             stop.assert_called_once()
+            hstop.assert_called_once()
             self.assertEqual(s.PHONE_GEN, gen + 1)
             self.post({"phone_on": False})                       # (no change: no second reset)
             stop.assert_called_once()

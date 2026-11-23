@@ -137,7 +137,23 @@
     "phone.notify_none": "I don't see a notification from that sender you can answer.",
     "phone.notify_changed": "That notification changed. Open the list again.",
     "phone.notify_sent": "Reply sent.",
-    "phone.notify_draft_title": "Notification reply"
+    "phone.notify_draft_title": "Notification reply",
+    "call.second": "Second call: use your phone",
+    "call.watch": "Ringing on {host}",
+    "call.on_phone": "On phone",
+    "call.ringing": "Ringing",
+    "call.active": "In call",
+    "call.ended": "Call ended",
+    "call.failed": "Didn't work. Use your phone",
+    "call.host": "Host",
+    "call.phone": "Phone",
+    "call.answer": "Answer",
+    "call.reject": "Reject",
+    "call.hangup": "Hang up",
+    "call.mute": "Mute",
+    "call.vol_up": "Volume up",
+    "call.vol_down": "Volume down",
+    "call.unknown": "Unknown caller"
   },
   "phrases": {
     "phone_generic": [

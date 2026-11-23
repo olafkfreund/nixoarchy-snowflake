@@ -1395,5 +1395,36 @@ class PhoneReviewFixes(_FluxCase):
         self.assertEqual(client.silenced, {})
 
 
+class CallHandset(unittest.TestCase):
+    """Phone.devices() for the handset: the answer capability and the call fields pass through (no server import)."""
+
+    def rows(self, **kw):
+        client = phone.Phone()
+        client.snap = snapshot([device(**kw)])
+        return client.devices()
+
+    def test_call_action_is_allowed_and_others_still_refused(self):
+        self.assertIn("call.action", phone.Phone.METHODS)
+        for method in ("call.hangup", "call.dial", "commands.run"):
+            self.assertNotIn(method, phone.Phone.METHODS)
+
+    def test_telephony_action_plugin_maps_to_answer(self):
+        self.assertIn("answer", self.rows(plugins=("telephony.action",))[0]["can"])
+        self.assertNotIn("answer", self.rows()[0]["can"])
+
+    def test_new_call_fields_pass_through(self):
+        call = {"state": "ringing", "id": "a1", "waiting": False, "handsFree": ["laptop"]}
+        row = self.rows(call=call, missed={"id": "m1"})[0]
+        row_last = self.rows(dnd=None)[0]
+        self.assertEqual(row["call"], call)
+        self.assertEqual(row["missedCall"], {"id": "m1"})
+        self.assertNotIn("lastCall", row_last)
+        client = phone.Phone()
+        d = device()
+        d["lastCall"] = {"id": "a1", "end": "hangup", "at": 5}
+        client.snap = snapshot([d])
+        self.assertEqual(client.devices()[0]["lastCall"], {"id": "a1", "end": "hangup", "at": 5})
+
+
 if __name__ == "__main__":
     unittest.main()

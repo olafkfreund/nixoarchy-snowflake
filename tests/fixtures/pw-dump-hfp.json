@@ -1,0 +1,7 @@
+[
+  {"id": 41, "type": "PipeWire:Interface:Node", "info": {"props": {"api.bluez5.address": "AA:BB:CC:DD:EE:FF", "api.bluez5.profile": "headset-audio-gateway", "media.class": "Stream/Output/Audio"}}},
+  {"id": 42, "type": "PipeWire:Interface:Node", "info": {"props": {"api.bluez5.address": "AA:BB:CC:DD:EE:FF", "api.bluez5.profile": "headset-audio-gateway", "media.class": "Stream/Input/Audio"}}},
+  {"id": 43, "type": "PipeWire:Interface:Node", "info": {"props": {"api.bluez5.address": "11:22:33:44:55:66", "api.bluez5.profile": "headset-audio-gateway", "media.class": "Stream/Output/Audio"}}},
+  {"id": 44, "type": "PipeWire:Interface:Node", "info": {"props": {"api.bluez5.address": "AA:BB:CC:DD:EE:FF", "api.bluez5.profile": "a2dp-sink", "media.class": "Stream/Output/Audio"}}},
+  {"id": 45, "type": "PipeWire:Interface:Device", "info": {"props": {"api.bluez5.address": "AA:BB:CC:DD:EE:FF", "api.bluez5.profile": "headset-audio-gateway", "media.class": "Stream/Output/Audio"}}}
+]

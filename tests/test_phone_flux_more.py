@@ -27,7 +27,7 @@ class ClientTest(unittest.TestCase):
     def test_methods_are_exactly_the_allowed_set(self):
         self.assertEqual(phone.Phone.METHODS, {"ring", "share.url", "share.text", "share.files", "clipboard.send",
                                                "sms.refresh", "sms.send", "dnd.set", "notify.send", "sms.thread",
-                                               "notification.reply", "clipboard.pauseOwned"})
+                                               "notification.reply", "clipboard.pauseOwned", "call.action"})
 
     def test_devices_carry_fingerprint_and_ip(self):
         p = phone.Phone()
