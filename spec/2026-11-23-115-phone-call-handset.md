@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 115
 intent: intent/2026-11-23-115-phone-call-handset.md
 ---
