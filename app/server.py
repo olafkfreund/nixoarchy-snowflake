@@ -49,6 +49,7 @@ sys.path.insert(0, str(APP_DIR))
 import plugins  # noqa: E402
 import peers  # noqa: E402
 import phone  # noqa: E402
+import hfp  # noqa: E402
 from floor import FLOOR, pdeathsig_preexec  # noqa: E402
 import day  # noqa: E402
 import lang  # noqa: E402
@@ -58,6 +59,7 @@ import recall  # noqa: E402
 import stages  # noqa: E402
 import size  # noqa: E402
 Phone = phone.Phone()
+Hfp = hfp.Hfp()
 STATIC = APP_DIR / "static"
 try:                                            # written by the release build (and kept in git for git installs)
     VERSION = (APP_DIR / "VERSION").read_text(encoding="utf-8").strip() or "0.0.0"
@@ -7912,6 +7914,238 @@ def phone_on_missed(key, rec):
     phone_tick()
 
 
+class Call:
+    """The one handset call, reconciled from Flux and PipeWire snapshots."""
+
+    def __init__(self):
+        self.lock = threading.RLock()
+        self.row = None
+        self.hfp_seen = {}
+        self.flux_seen = {}
+        self.missed = set()
+        self.busy = False
+        self.watchdog = self.end_timer = None
+        self.on_answered = self.on_missed = None
+
+    @staticmethod
+    def _number(value):
+        return re.sub(r"\D", "", value or "")[-8:]
+
+    def _emit(self, row):
+        if row["phase"] == "gone":
+            BUS.pub(t="call", phase="gone")
+            return
+        if not CFG.get("phone_on") or Desk.locked() is not False:
+            return
+        BUS.pub(t="call", **{k: row[k] for k in ("id", "gen", "phase", "path", "who", "number",
+                                                   "answered_at", "audio_here", "muted", "volume", "keys", "note")})
+
+    def publish(self):
+        with self.lock:
+            if self.row and CFG.get("phone_on") and Desk.locked() is False:
+                self._emit(self.row)
+
+    def _cancel(self):
+        for timer in (self.watchdog, self.end_timer):
+            if timer:
+                timer.cancel()
+        self.watchdog = self.end_timer = None
+
+    def clear(self):
+        with self.lock:
+            self._cancel()
+            self.hfp_seen.clear()
+            self.flux_seen.clear()
+            if self.row:
+                self.row = None
+                self._emit({"phase": "gone"})
+
+    def visible(self):
+        with self.lock:
+            return self.row is not None
+
+    def current_event(self):
+        with self.lock:
+            if not self.row or not CFG.get("phone_on") or Desk.locked() is not False:
+                return None
+            return {"t": "call", **{k: self.row[k] for k in ("id", "gen", "phase", "path", "who", "number",
+                                                        "answered_at", "audio_here", "muted", "volume", "keys", "note")}}
+
+    def _later_end(self, ident):
+        with self.lock:
+            if self.row and self.row["id"] == ident and self.row["phase"] == "ended":
+                self.clear()
+
+    def _watch(self, ident, gen, phase):
+        with self.lock:
+            if not CFG.get("phone_on") or Desk.locked() is not False:
+                self.clear()
+                return
+            if self.row and (self.row["id"], self.row["gen"], self.row["phase"]) == (ident, gen, phase):
+                self.row["note"] = lang.t("call.failed")
+                self.row["keys"] = []
+                self.row["gen"] += 1
+                self._emit(self.row)
+            self.watchdog = None
+
+    def sync(self):
+        with self.lock:
+            if not CFG.get("phone_on") or Desk.locked() is not False:
+                self.clear()
+                return
+            now = time.monotonic()
+            with Hfp.lock:
+                calls = [c.copy() for c in Hfp.calls.values()]
+            h = next((c for c in calls if c.get("state") not in ("disconnected", "waiting")), None)
+            old = self.row
+            if not h and old and old.get("hfp_path"):
+                h = next((c for c in calls if c.get("path") == old["hfp_path"]), None)
+            devices = Phone.devices() if Phone.connected else []
+            fdev = next((d for d in devices if isinstance(d.get("call"), dict)), None)
+            f = fdev.get("call") if fdev else None
+            hid = h.get("path") if h else None
+            fid = f.get("id") if f else None
+            if hid:
+                self.hfp_seen.setdefault(hid, now)
+            if fid:
+                self.flux_seen.setdefault(fid, now)
+            if h and f:
+                hn, fn = self._number(h.get("number")), self._number(f.get("number"))
+                correlated = (abs(self.hfp_seen[hid] - self.flux_seen[fid]) <= 15 and
+                              (not hn or not fn or hn == fn))
+                if not correlated:
+                    if old and old.get("flux_id") == fid:
+                        h = hid = None
+                    else:
+                        f = fdev = fid = None
+            if old and old.get("hfp_path") and h and hid != old["hfp_path"]:
+                h = hid = None
+            if old and old.get("flux_id") and f and fid != old["flux_id"]:
+                f = fdev = fid = None
+            last = next((d.get("lastCall") for d in devices if d.get("lastCall") and
+                         old and d["lastCall"].get("id") == old.get("flux_id")), None)
+            missed_flux = next((d.get("missedCall") for d in devices if d.get("missedCall") and
+                                old and d["missedCall"].get("id") == old.get("flux_id")), None)
+            disconnected = bool(h and h.get("state") == "disconnected")
+            ended = bool(old and old["phase"] == "active" and
+                         ((disconnected and old.get("hfp_active")) or (last and last.get("end") == "hangup")))
+            missed = bool(old and old["phase"] == "ringing" and
+                          (missed_flux or (disconnected and old.get("hfp_incoming"))))
+            if missed and old["id"] not in self.missed:
+                self.missed.add(old["id"])
+                if self.on_missed:
+                    self.on_missed(old["id"], old["who"], old.get("number"), old.get("device"))
+            if missed:
+                self.clear()
+                return
+            if old and last and last.get("end") == "lost":
+                self.clear()
+                return
+            if ended:
+                self._cancel()
+                self.row = {**old, "phase": "ended", "keys": [], "note": lang.t("call.ended"), "gen": old["gen"] + 1}
+                self._emit(self.row)
+                self.end_timer = threading.Timer(2, self._later_end, args=(old["id"],))
+                self.end_timer.daemon = True
+                self.end_timer.start()
+                return
+            if old and old["phase"] == "ended":
+                return
+            if not (h and not disconnected) and not f:
+                self.clear()
+                return
+            hands = f.get("handsFree") or [] if f else []
+            watch = next((p for p in peers.current() if p.get("name") in hands), None)
+            path = "host" if h and (h["state"] == "incoming" or Hfp.audio_here(h)) else "watch" if watch else "phone"
+            audio = bool(h and Hfp.audio_here(h))
+            phase = "active" if (h and h["state"] == "active") or (f and f.get("state") == "talking") else "ringing"
+            second = bool((h and len(Hfp.calls_on(h["ag"])) > 1) or (f and f.get("waiting")))
+            who = (f.get("caller") if f and f.get("caller") != "Unknown caller" else None) or (h.get("name") if h else None)
+            number = (h.get("number") if h else None) or (f.get("number") if f else None)
+            keys = (["answer", "reject"] if phase == "ringing" else ["hangup", "mute", "vol_up", "vol_down"] if audio else []) if path == "host" else (["answer", "reject"] if phase == "ringing" else []) if path == "phone" else []
+            if second:
+                keys = []
+            if path == "phone" and (not fid or not fdev or "answer" not in fdev.get("can", [])):
+                keys = []
+            note = (lang.t("call.second") if second else lang.t("call.watch", host=watch["name"]) if path == "watch" else
+                    lang.t("call.on_phone") if phase == "active" and not audio else "")
+            ident = old["id"] if old and (old.get("hfp_path") == hid or old.get("flux_id") == fid) else secrets.token_urlsafe(12)
+            answered_at = old.get("answered_at") if old and old["id"] == ident else None
+            if phase == "active" and answered_at is None:
+                answered_at = time.time()
+            row = {"id": ident, "gen": old["gen"] if old and old["id"] == ident else 1,
+                   "phase": phase, "path": path, "who": who, "number": number if not who else None,
+                   "answered_at": answered_at, "audio_here": audio,
+                   "muted": old.get("muted", False) if old else False,
+                   "volume": old.get("volume") if old else None, "keys": keys, "note": note,
+                   "hfp_path": hid or (old.get("hfp_path") if old and old["id"] == ident else None),
+                   "flux_id": fid or (old.get("flux_id") if old and old["id"] == ident else None),
+                   "device": fdev.get("id") if fdev else old.get("device") if old else None,
+                   "hfp_incoming": bool((old and old.get("hfp_incoming")) or (h and h["state"] == "incoming")),
+                   "hfp_active": bool((old and old.get("hfp_active")) or (h and h["state"] == "active"))}
+            if old and old["id"] == ident:
+                if any(old[k] != row[k] for k in ("path", "keys", "phase")):
+                    row["gen"] += 1
+                if old["phase"] != phase:
+                    self._cancel()
+            self.row = row
+            if not old or any(old.get(k) != row.get(k) for k in row):
+                self._emit(row)
+            if phase == "active" and (not old or old["phase"] != "active") and self.on_answered:
+                self.on_answered()
+
+    def act(self, ident, gen, action):
+        with self.lock:
+            if self.busy:
+                return {"ok": False, "busy": True}
+            row = self.row
+            if (not CFG.get("phone_on") or Desk.locked() is not False or not row or
+                    not isinstance(ident, str) or type(gen) is not int or row["id"] != ident or
+                    row["gen"] != gen or action not in row["keys"]):
+                return {"ok": False, "stale": True}
+            self.busy = True
+            path, hpath, device, fid, phase = row["path"], row["hfp_path"], row["device"], row["flux_id"], row["phase"]
+            if action in ("answer", "reject", "hangup"):
+                self.watchdog = threading.Timer(6, self._watch, args=(ident, gen, phase))
+                self.watchdog.daemon = True
+                self.watchdog.start()
+        try:
+            if path == "phone":
+                result = Phone.call("call.action", device=device, action=action, id=fid)
+            elif action == "answer":
+                result = Hfp.answer(hpath)
+            elif action in ("reject", "hangup"):
+                result = Hfp.hangup(hpath)
+            elif action == "mute":
+                result = Hfp.mute()
+            else:
+                result = Hfp.volume(1 if action == "vol_up" else -1)
+            ok = result is None or result.get("ok", True)
+            with self.lock:
+                if not ok and self.watchdog:
+                    self.watchdog.cancel()
+                    self.watchdog = None
+                if ok and self.row and (self.row["id"], self.row["gen"], self.row["phase"]) == (ident, gen, phase):
+                    if isinstance(result, dict):
+                        self.row["muted"] = result.get("muted", self.row["muted"])
+                        self.row["volume"] = result.get("volume", self.row["volume"])
+                    self._emit(self.row)
+            return {"ok": bool(ok)}
+        except Exception as error:
+            print(f"[nixi] call action: {type(error).__name__}", file=sys.stderr)
+            with self.lock:
+                if self.watchdog:
+                    self.watchdog.cancel()
+                    self.watchdog = None
+            return {"ok": False}
+        finally:
+            with self.lock:
+                self.busy = False
+
+
+Call = Call()
+
+
 def phone_status():
     """The one status line under the Phone switch. Names and fixed words only: no numbers, texts or notifications."""
     if not CFG.get("phone_on"):
@@ -10084,6 +10318,12 @@ class Handler(BaseHTTPRequestHandler):
                 b = json.loads(self._body() or b"{}")
                 r = phone_send(b.get("draft"), b.get("text"), click_ok(self.headers.get("X-Nixi-Click") or "")) if isinstance(b, dict) else {"ok": False}
                 return self._json(r, 200 if r.get("ok") else 403)
+            if p == "/api/call":
+                b = json.loads(self._body() or b"{}")
+                if not click_ok(self.headers.get("X-Nixi-Click") or ""):
+                    return self._json({"ok": False}, 403)
+                r = Call.act(b.get("id"), b.get("gen"), b.get("act")) if isinstance(b, dict) else {"ok": False, "stale": True}
+                return self._json(r)
             if p == "/api/mail/open":                # the menu; the window's token only (not in TOOL_PATHS)
                 return self._json(mail_open())
             if p == "/api/mail/hear":
@@ -10330,6 +10570,9 @@ class Handler(BaseHTTPRequestHandler):
             emit(t="hello")
             emit(t="situation", **Ambient.situation())
             emit(t="mirror", **Mirror.snapshot())
+            current = Call.current_event()
+            if current is not None:
+                emit(**current)
             while alive[0]:
                 try:
                     ev = q.get(timeout=15)
