@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 115
 spec: spec/2026-11-23-115-phone-call-handset.md
 coders:
