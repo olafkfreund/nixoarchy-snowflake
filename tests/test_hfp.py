@@ -87,6 +87,13 @@ class HfpTest(unittest.TestCase):
         bus.emit("NameOwnerChanged", "/org/freedesktop/DBus", (Hfp.NAME, "", ":new"))
         self.assertIn(CALL, self.hfp.calls)
 
+    def test_removed_call_is_seen_disconnected_before_it_goes(self):
+        seen = []
+        self.hfp.on_change = lambda: seen.append(self.hfp.calls.get(CALL, {}).get("state"))
+        self.bus.emit("InterfacesRemoved", AG, (CALL, [Hfp.CALL]))
+        self.assertEqual(seen, ["disconnected", None])
+        self.assertNotIn(CALL, self.hfp.calls)
+
     def test_signals_transport_and_second_call(self):
         self.assertFalse(self.hfp.audio_here(self.hfp.calls[CALL]))
         self.bus.emit("PropertiesChanged", AG, (Hfp.TRANSPORT, {"State": "active"}, []))
@@ -145,6 +152,13 @@ class HfpTest(unittest.TestCase):
 
 
 class StopTest(unittest.TestCase):
+    def test_stop_clears_records(self):
+        hfp = Hfp(gio=object(), glib=object())
+        hfp.calls = {"/ag/c": {"path": "/ag/c", "ag": "/ag", "state": "active", "number": None, "name": None}}
+        hfp.gateways = {"/ag": {"path": "/ag", "address": "A", "transport": "active"}}
+        hfp.stop()
+        self.assertEqual((hfp.calls, hfp.gateways), ({}, {}))
+
     def test_stop_during_connect_never_runs_the_loop(self):
         loop = SimpleNamespace(run=unittest.mock.Mock(), quit=unittest.mock.Mock())
         ctx = SimpleNamespace(push_thread_default=lambda: None, pop_thread_default=lambda: None)

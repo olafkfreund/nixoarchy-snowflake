@@ -26,7 +26,7 @@ class Hfp:
         self.lock = threading.RLock()
         self.logged = False
         self._subscriptions = []
-        self._thread = self._loop = None
+        self._thread = self._loop = self._context = None
         self._stopping = threading.Event()
 
     def _load(self):
@@ -79,7 +79,7 @@ class Hfp:
     def _run(self):
         try:
             self._load()
-            context = self.GLib.MainContext.new()
+            context = self._context = self.GLib.MainContext.new()
             context.push_thread_default()
             try:
                 if self.connect() and not self._stopping.is_set():
@@ -93,8 +93,16 @@ class Hfp:
 
     def stop(self):
         self._stopping.set()
-        if self._loop:
-            self._loop.quit()
+        loop, context = self._loop, self._context
+        if loop:
+            loop.quit()
+            if context is not None:                      # (queued on its own context: also quits a run() that starts later)
+                try:
+                    src = self.GLib.idle_source_new()
+                    src.set_callback(lambda *_: (loop.quit(), False)[1])
+                    src.attach(context)
+                except Exception as error:
+                    self._log(error)
         if self._thread and self._thread is not threading.current_thread():
             self._thread.join(2)                         # (never hang the caller: Phone off runs this)
         self._loop = None
@@ -102,6 +110,9 @@ class Hfp:
             for ident in self._subscriptions:
                 self.conn.signal_unsubscribe(ident)
         self._subscriptions.clear()
+        with self.lock:
+            self.gateways.clear()
+            self.calls.clear()
 
     def _managed(self, path):
         return self._call(path, self.OM, "GetManagedObjects").unpack()[0]
@@ -155,6 +166,7 @@ class Hfp:
     def _signal(self, conn, sender, path, interface, member, parameters, data):
         try:
             values = parameters.unpack()
+            gone = []
             with self.lock:
                 if member == "InterfacesAdded":
                     obj, interfaces = values
@@ -166,13 +178,12 @@ class Hfp:
                         self.calls[obj] = self._record(obj, interfaces[self.CALL])
                 elif member == "InterfacesRemoved":
                     obj, interfaces = values
+                    gone = [c for c in self.calls if (self.AG in interfaces and self.calls[c]["ag"] == obj)
+                            or (self.CALL in interfaces and c == obj)]
+                    for c in gone:                       # (Call sees the end, then the call goes)
+                        self.calls[c]["state"] = "disconnected"
                     if self.AG in interfaces:
                         self.gateways.pop(obj, None)
-                        for call in list(self.calls):
-                            if self.calls[call]["ag"] == obj:
-                                del self.calls[call]
-                    if self.CALL in interfaces:
-                        self.calls.pop(obj, None)
                 elif member == "PropertiesChanged":
                     changed_interface, props, invalidated = values
                     if changed_interface == self.CALL and path in self.calls:
@@ -193,6 +204,11 @@ class Hfp:
                         with self.lock:
                             self.calls[call_path] = self._record(call_path, call_interfaces[self.CALL])
             self._notify()
+            if member == "InterfacesRemoved" and gone:
+                with self.lock:
+                    for c in gone:
+                        self.calls.pop(c, None)
+                self._notify()
         except Exception as error:
             self._log(error)
 
@@ -232,7 +248,7 @@ class Hfp:
 
     def streams(self, address):
         dump = subprocess.run(["pw-dump"], check=True, capture_output=True, text=True,
-                              preexec_fn=pdeathsig_preexec)
+                              preexec_fn=pdeathsig_preexec, timeout=5)
         found = {"down": None, "up": None}
         for item in json.loads(dump.stdout):
             if item.get("type") != "PipeWire:Interface:Node" or type(item.get("id")) is not int:
@@ -263,16 +279,16 @@ class Hfp:
                 argv = ["wpctl", "set-volume", "-l", "1.5", str(ids["down"]), f"5%{'+' if step > 0 else '-'}"]
             else:
                 argv = ["wpctl", "set-mute", str(ids["up"]), "toggle"]
-            subprocess.run(argv, check=True, capture_output=True, text=True, preexec_fn=pdeathsig_preexec)
+            subprocess.run(argv, check=True, capture_output=True, text=True, preexec_fn=pdeathsig_preexec, timeout=5)
             down = subprocess.run(["wpctl", "get-volume", str(ids["down"])], check=True, capture_output=True,
-                                  text=True, preexec_fn=pdeathsig_preexec).stdout
+                                  text=True, preexec_fn=pdeathsig_preexec, timeout=5).stdout
             up = subprocess.run(["wpctl", "get-volume", str(ids["up"])], check=True, capture_output=True,
-                                text=True, preexec_fn=pdeathsig_preexec).stdout
+                                text=True, preexec_fn=pdeathsig_preexec, timeout=5).stdout
             match = re.search(r"Volume:\s*([0-9]+(?:\.[0-9]+)?)", down)
             if not match:
                 return {"ok": False, "error": "Failed"}
             return {"ok": True, "error": None, "volume": float(match[1]), "muted": "[MUTED]" in up}
-        except (OSError, ValueError, subprocess.CalledProcessError):
+        except (OSError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
             return {"ok": False, "error": "Failed"}
 
     def volume(self, step):

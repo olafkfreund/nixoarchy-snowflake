@@ -381,5 +381,62 @@ class ReviewFixes(Calls):
         self.assertEqual(s.Call.row["gen"], gen + 1)
 
 
+class AgyFixes(Calls):
+    """agy review on #116."""
+
+    def test_one_missed_card_when_hfp_reports_first(self):
+        s = self.s
+        with mock.patch.object(s, "phone_tick"):
+            s.PHONE_MISSED.clear()
+            s.call_missed("c1", "Ada", None, None)
+            self.assertIn(("hfp", "c1"), s.PHONE_MISSED)
+            self.phone.devices.return_value = [{"id": "pixel", "name": "Pixel", "can": set()}]
+            s.phone_on_missed(("missed", "pixel", 5), {"caller": "Ada"})
+            self.assertEqual([k[0] for k in s.PHONE_MISSED], ["missed"])
+            s.PHONE_MISSED.clear()
+
+    def test_failure_note_survives_an_unrelated_sync(self):
+        s = self.s
+        self.host(state="incoming")
+        s.Call.sync()
+        self.hfp.answer.return_value = {"ok": False, "error": "Failed"}
+        s.Call.act(s.Call.row["id"], s.Call.row["gen"], "answer")
+        s.Call.sync()
+        self.assertEqual(s.Call.row["note"], s.lang.t("call.failed"))
+        self.assertEqual(s.Call.row["keys"], ["answer", "reject"])   # (it can be tried again)
+
+    def test_watchdog_starts_only_after_a_sent_action(self):
+        s = self.s
+        self.host(state="incoming")
+        s.Call.sync()
+        seen = []
+        self.hfp.answer.side_effect = lambda path: (seen.append(s.Call.watchdog), {"ok": True})[1]
+        s.Call.act(s.Call.row["id"], s.Call.row["gen"], "answer")
+        self.assertEqual(seen, [None])
+        self.assertIsNotNone(s.Call.watchdog)
+        s.Call.clear()
+
+    def test_a_new_call_does_not_inherit_the_old_ones_fields(self):
+        s = self.s
+        self.host(state="active")
+        self.hfp.audio_here.return_value = True
+        s.Call.sync()
+        s.Call.row["muted"] = True
+        self.hfp.calls = {"/ag1/call9": {"path": "/ag1/call9", "ag": "/ag1", "state": "incoming",
+                                           "number": "777", "name": None}}
+        s.Call.clear()
+        s.Call.sync()
+        self.assertFalse(s.Call.row["muted"])
+
+    def test_lastcall_without_id_never_matches_an_hfp_only_call(self):
+        s = self.s
+        self.host(state="active")
+        s.Call.sync()
+        self.phone.devices.return_value = [{"id": "pixel", "name": "Pixel", "can": set(),
+                                            "lastCall": {"end": "lost", "at": 1}}]
+        s.Call.sync()
+        self.assertTrue(s.Call.visible())
+
+
 if __name__ == "__main__":
     unittest.main()
