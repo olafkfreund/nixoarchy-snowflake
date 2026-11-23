@@ -2374,8 +2374,9 @@ class Ambient:
             cls.last_lock_len, cls.unlocked_at, cls.lock_since = t - cls.lock_since, t, 0.0
         lock_changed = locked != cls.locked
         cls.locked = locked
-        if lock_changed or (Call.visible() and Desk.locked() is not False):
-            Call.sync()                                      # (clears the handset and its ring on lock, proactive or not)
+        if lock_changed or (Call.visible() and Desk.locked() is not False) or \
+                (not Call.visible() and (Phone.call_active or Hfp.any_call()) and Desk.locked() is False):
+            Call.sync()                                      # (clears on lock and brings it back on unlock, proactive or not)
         cls.machine(t, proc)
         cls.fullscreen = on and Desk.fullscreen
         cls.coding = bool(on and CFG.get("look_coding") and Desk.coding_since and t - Desk.coding_since >= 60)
@@ -7946,7 +7947,7 @@ class Ring:
     @staticmethod
     def allowed():
         return (bool(CFG.get("phone_on")) and Desk.locked() is False and not Ambient.meeting
-                and not Ambient.dnd and not Wake.asleep and audio_player_cmd(RING_RATE) is not None)
+                and not phone_meeting_now() and not Ambient.dnd and not Wake.asleep and audio_player_cmd(RING_RATE) is not None)
 
     @classmethod
     def follow(cls, phase):

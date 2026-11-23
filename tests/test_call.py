@@ -438,5 +438,32 @@ class AgyFixes(Calls):
         self.assertTrue(s.Call.visible())
 
 
+class GithubCodexFixes(Calls):
+    """Codex on GitHub, #116: unlock brings the handset back, Meeting Mode silences the ring, proactive off."""
+
+    def test_unlock_brings_back_a_ringing_call_with_proactive_off(self):
+        s = self.s
+        s.CFG["proactive"] = False
+        self.flux()
+        self.phone.call_active = True
+        self.hfp.any_call = lambda: False
+        with mock.patch.object(s.Desk, "locked", lambda: True), mock.patch.object(s.Ambient, "locked", False):
+            s.Ambient.sense()
+        self.assertFalse(s.Call.visible())
+        with mock.patch.object(s.Ambient, "locked", False):
+            s.Ambient.sense()                              # (Desk.locked() is False again)
+        self.assertTrue(s.Call.visible())
+
+    def test_meeting_mode_silences_the_ring_even_with_proactive_off(self):
+        s = self.s
+        with mock.patch.object(s, "audio_player_cmd", return_value=["paplay"]), \
+                mock.patch.object(s.Wake, "asleep", False), mock.patch.object(s.Ambient, "meeting", False), \
+                mock.patch.object(s.Ambient, "dnd", False):
+            with mock.patch.object(s, "phone_meeting_now", return_value=False):
+                self.assertTrue(s.Ring.allowed())
+            with mock.patch.object(s, "phone_meeting_now", return_value=True):
+                self.assertFalse(s.Ring.allowed())
+
+
 if __name__ == "__main__":
     unittest.main()
