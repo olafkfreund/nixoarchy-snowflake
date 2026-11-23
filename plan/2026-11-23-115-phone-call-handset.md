@@ -89,7 +89,11 @@ This plan is self-contained. Implement from it, not from the spec.
 - **Android guard.** Act only when `ANSWER_PHONE_CALLS` is held, the shared
   tracker's state is ringing, the call is not waiting, and the id matches.
   The check and the action run under the tracker's lock. Then
-  `acceptRingingCall()` or `endCall()`. `getCallState()` is never used.
+  `acceptRingingCall()` or `endCall()`. The tracker is the guard. Right before
+  acting, two live checks are added on top: Telecom has a managed call, and the
+  line is ringing now (`getCallStateForSubscription()`, or `callState` before
+  API 31). This closes the gap where the tracker lags an answer on the phone
+  (Codex on #81). The hidden `TelecomManager.isRinging()` isn't available.
 
 ### Nixi `Call` (`app/server.py`)
 
@@ -283,7 +287,8 @@ bare `gh` targets the upstream `bjarneo/flux`.
    - both actions allowed.
 
    Traps:
-   - `getCallState()` is never used.
+   - The live line state is only an extra condition and never replaces the
+     tracker check (deviation recorded during step 4, review of #81).
    - Never act on a waiting call.
 3. **fluxd: fields, end reason, `call.action`** (codex).
    - `internal/proto/identity.go`: `TypeFluxTelephonyAction =
