@@ -9,89 +9,115 @@ author: olafkfreund
 ## Problem
 
 When the phone rings, Nixi says who is calling (`phone_on_call`,
-`app/server.py:7993`) and goes quiet while the call lasts. That is all he can
-do. To answer, the owner has to find the phone, and the call then runs on the
-phone, away from the desk's speakers and mic.
+`app/server.py:7993`) and goes quiet while the call lasts
+(`phone_call_sync`, `:7974`). That is all he can do. To answer, the owner has
+to find the phone, and the call then runs on the phone, away from the desk's
+speakers and mic.
 
-On screen there is nothing to see or press for a call. A missed call is a small
-card title ("Missed call from …").
+Flux already posts a plain desktop notification while the phone rings
+(`nixarchy-flux` `internal/core/telephony.go:196-206`). Nothing next to Nixi
+can be pressed for a call. A missed call ends up as a small card title
+("Missed call from …").
 
 What exists today:
 
-- Flux (`nixarchy-flux`) sends `ringing` / `talking` / cancel events with the
-  number and the contact name (`internal/core/telephony.go`). Nixi reads them
-  through `app/phone.py`.
-- The Flux Android app can read call state and contacts. It cannot answer or
-  hang up.
-- An ordinary Android app cannot carry mobile-call audio over the network:
-  Android keeps call audio away from apps. The way a computer can carry the
-  call's audio is Bluetooth hands-free (HFP), with the computer acting as the
-  phone's headset.
+- Flux sends `ringing` / `talking` / cancel events with the number and the
+  contact name, sometimes in two `ringing` packets (`telephony.go:74-206`).
+  Nixi reads them through `app/phone.py`. Flux keeps one call per phone with
+  no call id, and its `since` is when ringing started, not when the call was
+  answered (`telephony.go:135-158`).
+- The Flux Android app (minSdk 29, targetSdk 36) can read call state, the
+  call log and contacts. It cannot answer or hang up. Android's
+  `acceptRingingCall()` / `endCall()` are deprecated, take no call id
+  (`endCall()` can end the active call instead of rejecting a waiting one),
+  and are restricted for apps that are not the phone's dialer.
+- An ordinary Android app cannot carry mobile-call audio: Android keeps call
+  audio away from apps. The way a computer carries a call's audio is
+  Bluetooth hands-free (HFP), with the computer acting as the phone's
+  headset.
 - p620 and razer both have a Bluetooth controller and PipeWire 1.6.11.
-  PipeWire already runs `org.pipewire.Telephony` on the user bus, an
-  oFono-compatible API that can answer and hang up a call and give the
-  caller's number when the host is the phone's hands-free unit. The phone is
-  not paired with either host over Bluetooth today.
+  PipeWire runs `org.pipewire.Telephony` on the user bus (seen on p620). It
+  offers its own `org.pipewire.Telephony.*` interfaces and oFono-compatible
+  ones (`org.ofono.Manager` is live), and can answer, reject and hang up a
+  call and give the caller's number when the host is the phone's
+  hands-free unit (WirePlumber role `hfp_hf`). The phone is not paired with
+  either host over Bluetooth today.
+- When the phone starts ringing, Nixi stops speaking and cancels a listen.
+  He does that once, as the ringing starts. An announcement he starts after
+  that point is not cut off when the call is answered.
 
 ## Proposed outcome
 
 - A call rings: next to Nixi a small, old-style candybar mobile phone appears,
   shaking and ringing. Its screen, lit in the theme's colours, shows the
-  contact name, or the number when there is no contact.
-- The phone's green button answers and its red button rejects. With the call
-  answered, the screen shows the name and a running call timer, and the red
-  button hangs up.
-- An answered call's audio runs on the host's speakers and mic. Nixi stops
-  listening and speaking for the whole call, so he neither hears nor talks
-  over it.
-- When the call ends, from either side, the handset shows "call ended" for
-  a moment and leaves. A call nobody answers becomes the missed-call card it
-  is today, with the name readable.
+  contact name, the number when there is no contact, or "Unknown" for a
+  withheld number.
+- When the host carries the call's audio, the phone's green button answers
+  and its red button rejects. With the call answered, the screen shows the
+  name and a timer that starts at the answer, and the red button hangs up.
+- An answered call's audio runs on the host's speakers and mic, with echo
+  cancellation so the caller doesn't hear themselves. Nixi stops listening
+  and speaking for the whole call, including anything he was still saying
+  when it was answered.
+- When the call ends, from either side, the handset shows "Call ended" for a
+  moment and leaves. A call nobody answers becomes the missed-call card it is
+  today, with the name readable. When the handset can't tell how a call
+  ended, for example because the link dropped, it says nothing it doesn't
+  know.
 - The handset is our own drawing in the spirit of a late-90s candybar phone.
   It uses no real brand, logo or product shape.
-- When the phone is not connected to the host over Bluetooth, the handset
-  still rings and shows the caller. Its buttons work through Flux, with the
-  audio staying on the phone, and the handset says so.
 
 ## Affected users and systems
 
 - The owner on p620 and razer. p510 has no companion and is not affected.
 - `nixoarchy-snowflake`: the page (`app/static/index.html`), the server's
   phone code (`app/server.py`, `app/phone.py`), and the language files.
-- `nixarchy-flux`: the Android app (answer and hang up) and the daemon's
-  socket methods.
-- `nixos_config`: PipeWire/WirePlumber Bluetooth roles (the hands-free role)
+- `nixos_config`: PipeWire/WirePlumber Bluetooth roles and echo cancellation
   on p620 and razer, and pairing the phone with each host.
+- `nixarchy-flux`: only if open question 2 says the buttons should also work
+  without Bluetooth.
 
 ## Constraints
 
 - Answering and hanging up need an explicit click on the handset. No voice
   command and no automatic answer in this task.
 - Phone features stay off until the owner turns Phone on (`phone_on`), as
-  today. The call buttons run only for a paired Flux device or a Bluetooth
-  device the owner paired.
+  today. The buttons act only on a phone the owner paired.
 - Call audio never leaves the host: no recording, no transcription, nothing
   sent to the agent or to ElevenLabs.
-- Nixi's mic capture (wake word, push-to-talk) must give the mic up for the
-  call and take it back afterwards.
+- Nixi's wake word and push-to-talk are off for the whole call, so a caller
+  over the speakers can't wake him. They come back only when the call has
+  ended, even if Flux drops while Bluetooth still carries the call.
 - The Pixel Buds and other headsets keep working. A call answered on the
-  phone or on the buds is left alone.
+  phone or on the buds is left alone. Pairing the phone with a host must not
+  pull call audio off the buds.
+- The phone's media (music, videos) does not start playing on the desk
+  speakers because it is paired.
+- Two hosts can be awake at once. Only the host that holds the phone's
+  hands-free link offers answer. The other may show the caller.
+- The handset and its numbers follow the existing quiet rules: nothing while
+  the desk is locked. The Phone tab and status line keep their "never
+  numbers" rule (`app/server.py:7915`, `:7930`).
 - Changes in `nixos_config` follow that repo's rules: deploy from `main`,
   announce on the agent bus, and never touch p510.
 - The page stays readable at the page zoom (#109) and honours reduced motion:
   no shaking, a still ringing state instead.
+- Out of scope: outgoing calls, call waiting (a second call while one is
+  active), and app calls (WhatsApp, Signal).
 
 ## Open questions
 
-1. **Audio path:** is Bluetooth hands-free the way to go, with the phone
-   paired to p620 and razer? A phone usually holds one hands-free link at a
-   time, so it links to the host it is near.
-2. **Without Bluetooth:** should the handset still offer answer and hang up
-   through Flux, which needs an Android change and a new permission, with the
-   audio staying on the phone? Or should it show the caller only?
-3. **Outgoing calls:** out of scope for this task (dialling from the
-   handset)?
-4. **Extras in the call:** mute and volume buttons on the handset, or only
-   answer and hang up for now?
-5. **Ringtone:** a short old-phone ring played on the host while the handset
-   shakes, or silent (the phone rings anyway)?
+1. **Audio path:** Bluetooth hands-free with the phone paired to p620 and
+   razer, so the host the phone is linked to takes the call? Recommended:
+   yes, first on p620 alone, then razer once the buds and both hosts are
+   tested.
+2. **Without Bluetooth:** caller only (recommended by both reviewers: it
+   avoids deprecated Android APIs, a new permission and a call left on the
+   phone's earpiece), or answer and hang up through Flux anyway?
+3. **Numbers on screen:** show the number for a caller who isn't in your
+   contacts (recommended, desk unlocked only), or only "Unknown caller"?
+4. **Extras in the call:** a mute button (recommended), volume, or only
+   answer and hang up?
+5. **Ringtone and notification:** silent handset, since the phone already
+   rings (recommended), or a short old-phone ring on the host? And should
+   Flux's own desktop notification stay as well?
