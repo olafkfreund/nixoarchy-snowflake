@@ -152,7 +152,8 @@
     "call.hangup": "Hang up",
     "call.mute": "Mute",
     "call.vol_up": "Volume up",
-    "call.vol_down": "Volume down"
+    "call.vol_down": "Volume down",
+    "call.unknown": "Unknown caller"
   },
   "phrases": {
     "phone_generic": [

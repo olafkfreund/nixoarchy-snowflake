@@ -149,7 +149,9 @@ This plan is self-contained. Implement from it, not from the spec.
     player expects, about 0.8 s, played every 3 s while ringing and quietly
     (amplitude about 0.2).
   - Its own gate: `phone_on`, positively unlocked, not in a meeting, no DND,
-    not asleep, not muted. Proactive mode and the voice engine don't matter.
+    not asleep. Proactive mode and the voice engine don't matter. (Deviation,
+    step 8: Nixi's mute lives only in the page's `localStorage`, so the
+    server-side ring cannot follow it.)
   - It waits until `Speaker` is idle (nothing queued or playing), so Nixi's
     "X is calling" announcement comes first.
   - It stops on any phase change, on lock and on Phone off.
@@ -158,7 +160,10 @@ This plan is self-contained. Implement from it, not from the spec.
     `/api/capture` refuses.
   - The lock edge in `Ambient.sense` and `phone_reset()` both call
     `Call.clear()` → `gone`, and the ring stops without waiting for a
-    telephony event.
+    telephony event. (Deviation, step 8: `Ambient.sense` reads the lock only
+    with proactive on, so it also re-checks `Desk.locked()` on every tick while
+    a handset is shown. `Hfp.on_change` runs `phone_call_sync` as well, so an
+    HFP-only call quiets him.)
   - The Phone tab and status line never show numbers.
 
 ### Handset (`app/static/index.html`)

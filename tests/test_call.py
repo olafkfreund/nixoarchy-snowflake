@@ -55,8 +55,10 @@ class Calls(unittest.TestCase):
         self.hfp.audio_here.return_value = False
         self.hfp.calls_on.side_effect = lambda ag: [c for c in self.hfp.calls.values() if c["ag"] == ag and c["state"] != "disconnected"]
         self.pub = mock.Mock()
+        self.ring = mock.Mock()
         for obj, name, value in ((s, "Phone", self.phone), (s, "Hfp", self.hfp), (s.BUS, "pub", self.pub),
-                                 (s.Desk, "locked", lambda: False), (s.peers, "current", lambda: [])):
+                                 (s.Desk, "locked", lambda: False), (s.peers, "current", lambda: []),
+                                 (s.Ring, "follow", self.ring)):   # (never a real ring from a test)
             patch = mock.patch.object(obj, name, value)
             patch.start()
             self.addCleanup(patch.stop)
@@ -212,6 +214,110 @@ class Calls(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(req)
         self.assertEqual(error.exception.code, 403)
+
+
+class Wiring(Calls):
+    """Plan step 8: the ring, the quiet, the lock edge, Phone off and HFP-only misses."""
+
+    def test_ring_pcm_is_quiet_raw_mono(self):
+        pcm = self.s.ring_pcm()
+        rate = self.s.RING_RATE
+        self.assertEqual(len(pcm), 2 * (2 * int(rate * .32) + int(rate * .12)))
+        samples = __import__("array").array("h", pcm)
+        self.assertLessEqual(max(abs(x) for x in samples), int(32767 * .2) + 1)
+        self.assertGreater(max(samples), 1000)
+
+    def test_ring_follows_phase_and_ignores_proactive(self):
+        self.s.CFG["proactive"] = False
+        self.ring.reset_mock()
+        self.flux()
+        self.s.Call.sync()
+        self.ring.assert_called_with("ringing")
+        self.flux(state="talking")
+        self.s.Call.sync()
+        self.ring.assert_called_with("active")
+        self.s.CFG["proactive"] = True
+
+    def test_ring_waits_for_speech_then_plays(self):
+        s = self.s
+        played = threading.Event()
+        proc = mock.Mock()
+        proc.poll.return_value = 0
+        proc.stdin.write.side_effect = lambda b: played.set()
+        idle = iter([False, False, True, True, True, True])
+        with mock.patch.object(s, "make_player", return_value=proc) as mk, \
+                mock.patch.object(s.Speaker, "idle", side_effect=lambda: next(idle, True)), \
+                mock.patch.object(s.Ring, "allowed", return_value=True):
+            ev = threading.Event()
+            t = threading.Thread(target=s.Ring._loop, args=(ev,), daemon=True)
+            t.start()
+            self.assertTrue(played.wait(3))
+            ev.set()
+            t.join(5)
+        mk.assert_called_with(s.RING_RATE)
+        proc.stdin.write.assert_called_with(s.ring_pcm())
+
+    def test_ring_gate(self):
+        s = self.s
+        with mock.patch.object(s, "audio_player_cmd", return_value=["paplay"]), \
+                mock.patch.object(s.Wake, "asleep", False), mock.patch.object(s.Ambient, "meeting", False), \
+                mock.patch.object(s.Ambient, "dnd", False):
+            self.assertTrue(s.Ring.allowed())
+            with mock.patch.object(s.Ambient, "dnd", True):
+                self.assertFalse(s.Ring.allowed())
+            with mock.patch.object(s.Desk, "locked", lambda: None):
+                self.assertFalse(s.Ring.allowed())
+
+    def test_lock_clears_handset_and_ring_without_a_telephony_event(self):
+        s = self.s
+        self.flux()
+        s.Call.sync()
+        self.assertTrue(s.Call.visible())
+        self.assertTrue(s.phone_on_screen())
+        s.CFG["proactive"] = False                      # (sense reads no lock state then: the handset still clears)
+        with mock.patch.object(s.Desk, "locked", lambda: True), mock.patch.object(s.Ambient, "locked", False):
+            s.Ambient.sense()
+        self.assertFalse(s.Call.visible())
+        self.ring.assert_called_with("gone")
+        self.pub.assert_called_with(t="call", phase="gone")
+
+    def test_phone_off_stops_hfp_and_clears(self):
+        s = self.s
+        self.flux()
+        s.Call.sync()
+        self.phone.devices.return_value = []
+        self.phone.outgoing = set()
+        s.phone_reset()
+        self.hfp.stop.assert_called_once()
+        self.assertFalse(s.Call.visible())
+
+    def test_hfp_only_call_quiets_him(self):
+        s = self.s
+        self.phone.call_active = False
+        self.hfp.any_call = lambda: True               # (mock reserves the name any_call)
+        with mock.patch.object(s.Ambient, "phone_call", False), mock.patch.object(s.Speaker, "stop") as stop, \
+                mock.patch.object(s.Wake, "end_follow"):
+            s.phone_call_sync()
+            self.assertTrue(s.Ambient.phone_call)
+            stop.assert_called_once()
+
+    def test_answered_edge_stops_speech(self):
+        s = self.s
+        with mock.patch.object(s.Speaker, "stop") as stop, mock.patch.object(s.Wake, "end_follow") as follow:
+            s.call_answered()
+        stop.assert_called_once()
+        follow.assert_called_once_with("cancel")
+
+    def test_hfp_only_miss_makes_one_card_flux_miss_none(self):
+        s = self.s
+        with mock.patch.object(s, "phone_tick"):
+            s.PHONE_MISSED.clear()
+            s.call_missed("c1", None, "5551234", None)
+            self.assertIn(("hfp", "c1"), s.PHONE_MISSED)
+            self.assertIsNone(s.PHONE_MISSED[("hfp", "c1")]["number"])
+            s.call_missed("c2", "Ada", None, "pixel")
+            self.assertNotIn(("hfp", "c2"), s.PHONE_MISSED)
+            s.PHONE_MISSED.clear()
 
 
 if __name__ == "__main__":
