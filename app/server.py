@@ -8102,6 +8102,9 @@ class Call:
                         f = fdev = fid = None
             if old and old.get("hfp_path") and h and hid != old["hfp_path"]:
                 h = hid = None
+            if old and old.get("flux_id") and f and f.get("waiting") and fid != old["flux_id"]:
+                f = {**f, "state": "talking" if old["phase"] == "active" else "ringing"}   # (the first call stays; "Second call")
+                fid = old["flux_id"]
             if old and old.get("flux_id") and f and fid != old["flux_id"]:
                 f = fdev = fid = None
             last = next((d.get("lastCall") for d in devices if d.get("lastCall") and
@@ -8120,7 +8123,7 @@ class Call:
             if missed:
                 self.clear()
                 return
-            if old and last and last.get("end") == "lost":
+            if old and last and last.get("end") == "lost" and not (h and not disconnected):   # (HFP still has it: keep the keys)
                 self.clear()
                 return
             if ended:
@@ -8140,7 +8143,7 @@ class Call:
             watch = next((p for p in peers.current() if p.get("name") in hands), None)
             path = "host" if h and (h["state"] == "incoming" or Hfp.audio_here(h)) else "watch" if watch else "phone"
             audio = bool(h and Hfp.audio_here(h))
-            phase = "active" if (h and h["state"] == "active") or (f and f.get("state") == "talking") else "ringing"
+            phase = "ringing" if (h["state"] == "incoming" if h else bool(f and f.get("state") == "ringing")) else "active"
             second = bool((h and len(Hfp.calls_on(h["ag"])) > 1) or (f and f.get("waiting")))
             who = (f.get("caller") if f and f.get("caller") != "Unknown caller" else None) or (h.get("name") if h else None)
             number = (h.get("number") if h else None) or (f.get("number") if f else None)
@@ -8176,6 +8179,13 @@ class Call:
             if phase == "active" and (not old or old["phase"] != "active") and self.on_answered:
                 self.on_answered()
 
+    def _failed(self, ident, gen):
+        """The action failed outright: say so now (the keys stay, so it can be tried again)."""
+        if self.row and (self.row["id"], self.row["gen"]) == (ident, gen):
+            self.row["note"] = lang.t("call.failed")
+            self.row["gen"] += 1
+            self._emit(self.row)
+
     def act(self, ident, gen, action):
         with self.lock:
             if self.busy:
@@ -8207,6 +8217,8 @@ class Call:
                 if not ok and self.watchdog:
                     self.watchdog.cancel()
                     self.watchdog = None
+                if not ok:
+                    self._failed(ident, gen)
                 if ok and self.row and (self.row["id"], self.row["gen"], self.row["phase"]) == (ident, gen, phase):
                     if isinstance(result, dict):
                         self.row["muted"] = result.get("muted", self.row["muted"])
@@ -8219,6 +8231,7 @@ class Call:
                 if self.watchdog:
                     self.watchdog.cancel()
                     self.watchdog = None
+                self._failed(ident, gen)
             return {"ok": False}
         finally:
             with self.lock:

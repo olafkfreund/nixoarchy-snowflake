@@ -320,5 +320,66 @@ class Wiring(Calls):
             s.PHONE_MISSED.clear()
 
 
+class ReviewFixes(Calls):
+    """Codex review on #116: lost Flux with live HFP, held/outgoing calls, a waiting Flux call, failed actions."""
+
+    def test_flux_lost_keeps_a_live_hfp_call(self):
+        s = self.s
+        self.flux(state="talking")
+        self.host(state="active")
+        s.Call.sync()
+        self.assertEqual(s.Call.row["phase"], "active")
+        self.phone.devices.return_value = [{"id": "pixel", "name": "Pixel", "can": {"answer"},
+                                            "lastCall": {"id": "flux-1", "end": "lost", "at": 1}}]
+        s.Call.sync()
+        self.assertTrue(s.Call.visible())
+        self.hfp.calls = {}
+        s.Call.sync()
+        self.assertFalse(s.Call.visible())
+
+    def test_held_and_outgoing_never_ring(self):
+        s = self.s
+        for state in ("held", "dialing", "alerting", "active"):
+            s.Call.clear()
+            self.ring.reset_mock()
+            self.host(state=state)
+            s.Call.sync()
+            self.assertEqual(s.Call.row["phase"], "active", state)
+            self.assertNotIn(mock.call("ringing"), self.ring.call_args_list, state)
+        s.Call.clear()
+        self.host(state="incoming")
+        s.Call.sync()
+        self.assertEqual(s.Call.row["phase"], "ringing")
+
+    def test_waiting_flux_call_keeps_the_first_and_says_second(self):
+        s = self.s
+        self.flux(state="talking")
+        s.Call.sync()
+        first = s.Call.row["id"]
+        self.phone.devices.return_value = [{"id": "pixel", "name": "Pixel", "can": {"answer"},
+                                            "call": {"id": "flux-2", "state": "ringing", "number": "999",
+                                                     "caller": "Bob", "handsFree": [], "waiting": True, "since": 2}}]
+        s.Call.sync()
+        self.assertTrue(s.Call.visible())
+        self.assertEqual(s.Call.row["id"], first)
+        self.assertEqual(s.Call.row["phase"], "active")
+        self.assertEqual(s.Call.row["keys"], [])
+        self.assertEqual(s.Call.row["note"], s.lang.t("call.second"))
+
+    def test_a_failed_action_says_so_at_once(self):
+        s = self.s
+        self.host(state="incoming")
+        s.Call.sync()
+        row = s.Call.row
+        self.hfp.answer.return_value = {"ok": False, "error": "Failed"}
+        self.assertEqual(s.Call.act(row["id"], row["gen"], "answer"), {"ok": False})
+        self.assertEqual(s.Call.row["note"], s.lang.t("call.failed"))
+        self.assertIsNone(s.Call.watchdog)
+        self.hfp.answer.side_effect = OSError
+        ident, gen = s.Call.row["id"], s.Call.row["gen"]
+        self.assertEqual(s.Call.act(ident, gen, "answer"), {"ok": False})
+        self.assertEqual(s.Call.row["gen"], gen + 1)
+
+
 if __name__ == "__main__":
     unittest.main()
