@@ -539,6 +539,9 @@ Step 9 deviations, as built:
 
 ### nixos_config (`~/.config/nixos`)
 
+Step 12 deviation: the option is `features.nixiCalls.enable` (the repo's `features.*` convention), defined in a new `hosts/common/nixos/nixi-calls.nix` imported by `omarchy-nixi-companion.nix`.
+
+
 12. **`calls.enable` and the bump** (Claude).
     - Create a worktree on `feat/115-nixi-calls` from `origin/main`.
     - Add the option in `hosts/common/nixos/omarchy-nixi-companion.nix`
