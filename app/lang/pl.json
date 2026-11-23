@@ -198,7 +198,23 @@
     "phone.notify_none": "Nie widzę powiadomienia od tego nadawcy, na które można odpowiedzieć.",
     "phone.notify_changed": "To powiadomienie się zmieniło. Otwórz listę ponownie.",
     "phone.notify_sent": "Odpowiedź wysłana.",
-    "phone.notify_draft_title": "Odpowiedź na powiadomienie"
+    "phone.notify_draft_title": "Odpowiedź na powiadomienie",
+    "call.second": "Drugie połączenie: użyj telefonu",
+    "call.watch": "Dzwoni na {host}",
+    "call.on_phone": "W telefonie",
+    "call.ringing": "Dzwoni",
+    "call.active": "Trwa rozmowa",
+    "call.ended": "Połączenie zakończone",
+    "call.failed": "Nie udało się. Użyj telefonu",
+    "call.host": "Komputer",
+    "call.phone": "Telefon",
+    "call.answer": "Odbierz",
+    "call.reject": "Odrzuć",
+    "call.hangup": "Rozłącz",
+    "call.mute": "Wycisz",
+    "call.vol_up": "Głośniej",
+    "call.vol_down": "Ciszej",
+    "call.unknown": "Nieznany rozmówca"
   },
   "phrases": {
     "phone_generic": [
