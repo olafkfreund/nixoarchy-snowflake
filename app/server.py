@@ -10659,8 +10659,7 @@ class Handler(BaseHTTPRequestHandler):
             emit(t="situation", **Ambient.situation())
             emit(t="mirror", **Mirror.snapshot())
             current = Call.current_event()
-            if current is not None:
-                emit(**current)
+            emit(**(current or {"t": "call", "phase": "gone"}))   # (a reconnect also drops a handset whose call ended meanwhile)
             while alive[0]:
                 try:
                     ev = q.get(timeout=15)

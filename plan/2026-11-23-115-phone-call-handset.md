@@ -529,6 +529,14 @@ bare `gh` targets the upstream `bjarneo/flux`.
 
     Verify: the PR is merged, and the CI on the merge commit is green.
 
+Step 9 deviations, as built:
+- The handset places itself with its own `HS.place()`, using the room test from `stagePlace()`, and takes the side away from an open stage board.
+- `callWant` asks for 230 px.
+- `sendRegion` builds its rects before the hover branch, so hover can return the handset.
+- The red key is `reject` while ringing and `hangup` in a call.
+- The reduced-motion rules sit in their own `@media` block.
+- SSE sends `{t:"call", phase:"gone"}` on connect when there is no call, so a reconnect drops a stale handset.
+
 ### nixos_config (`~/.config/nixos`)
 
 12. **`calls.enable` and the bump** (Claude).
