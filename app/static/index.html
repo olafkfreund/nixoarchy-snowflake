@@ -375,7 +375,8 @@ body.appr #stg{opacity:.35;pointer-events:none}
 #stg .mbody{margin:5px 0;padding:5px 7px;max-height:120px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.4 var(--mono);background:#fff;border:1px solid var(--sline);border-radius:6px}
 #stg .mmsg{font-size:12px;margin-top:5px;overflow-wrap:anywhere}
 #stgTab{position:absolute;top:96px;left:350px;max-width:150px;z-index:7;padding:6px 12px;border-radius:10px;border:2px solid var(--acc);background:#1d2a27;color:#eef3ee;font:600 18px/1.2 Chalk,cursive;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;opacity:0;pointer-events:none;transform:translateX(-10px);transition:transform .18s var(--ease),opacity .18s}
+  overflow-wrap:anywhere;cursor:pointer;opacity:0;pointer-events:none;transform:translateX(-10px);transition:transform .18s var(--ease),opacity .18s}
+#stgTab span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}   /* two lines, then …: "Missed call from <name>" keeps the name */
 #stgTab.l{left:-160px;transform:translateX(10px)}
 #stgTab.on{opacity:1;transform:none;pointer-events:auto}
 #chalk{position:absolute;left:222px;top:190px;width:26px;height:7px;border-radius:3px;background:linear-gradient(90deg,#fff,#e8e4d8);box-shadow:0 0 0 1px #0003;--ox:calc(65px * (var(--nk) - 1));--oy:calc(28.5px * (var(--nk) - 1));transform:translate(var(--ox),var(--oy)) rotate(-24deg) scale(var(--nk));opacity:0;pointer-events:none;z-index:5;transition:opacity .18s}
@@ -3437,7 +3438,7 @@ function stageHide(toTab){
   stgTm.forEach(clearTimeout); stgTm=[]; clearInterval(stgTimer); stgTimer=null; gaugeStop(); if(!toTab){ gaugeHist={}; gaugeExp=null; }
   stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on'); popEl.classList.remove('on'); wtcEl.classList.remove('on'); stgEl.setAttribute('aria-hidden','true'); stgEl.inert=true; stgTab.inert=!toTab;
   if(!toTab){ stgPosted=false; mailCardDrop(true); }
-  if(toTab){ stagePost(false); stgState='tab'; stgTab.textContent=$('#stgT').textContent; stagePlace(); stgSize(300); void stgTab.offsetWidth; stgTab.classList.add('on'); }
+  if(toTab){ stagePost(false); stgState='tab'; stgTab.replaceChildren(Object.assign(document.createElement('span'),{textContent:$('#stgT').textContent})); stagePlace(); stgSize(300); void stgTab.offsetWidth; stgTab.classList.add('on'); }
   else { stgState='closed'; stgTab.classList.remove('on'); stgOffT=setTimeout(()=>{ if(stgState==='closed') stgSize(0); sendRegion(true); },200); }
   sendRegion(true); setTimeout(()=>sendRegion(true),260);
 }
