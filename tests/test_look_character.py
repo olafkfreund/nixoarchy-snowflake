@@ -12,7 +12,7 @@ class LookCharacterTest(CharEnv):
             return self.server.look()["character"]
 
     def test_each_value_kept(self):
-        for c in ("snowflake", "terminal", "robot", "devil"):
+        for c in ("snowflake", "terminal", "robot", "devil", "einstein", "skull"):
             self.assertEqual(self.character(character=c), c)
 
     def test_unknown_dropped(self):

@@ -242,6 +242,20 @@ class CharacterVoiceSettingsTest(_ServerEnv):
                 self.assertFalse(s.CONF_PATH.exists())
                 s.fetch_voice.assert_not_called()
 
+    def test_einstein_and_skull_character_and_voice_saved(self):
+        s = self.server
+        for c in ("einstein", "skull"):
+            self.assertEqual(self.post({"look": {"character": c}})[0], 200)
+            self.assertEqual(s.CFG["look"]["character"], c)
+            self.assertEqual(json.loads(s.CONF_PATH.read_text())["look"]["character"], c)
+            self.assertEqual(s.load_config()["look"]["character"], c)
+        self.assertEqual(self.post({"voice_by_character": {"skull": "deep"}})[0], 200)
+        self.assertEqual(s.CFG["voice_by_character"], {"skull": "deep"})
+        self.assertEqual(json.loads(s.CONF_PATH.read_text())["voice_by_character"], {"skull": "deep"})
+        self.assertEqual(s.voice_key(), "deep")
+        self.assertEqual(self.post({"look": {"character": "einstein"}})[0], 200)
+        self.assertEqual(s.voice_key(), "girl")
+
 
 class PluginCharacterVoiceTest(CharEnv):
     def test_loaded_plugin_id_accepted_and_unknown_refused(self):
