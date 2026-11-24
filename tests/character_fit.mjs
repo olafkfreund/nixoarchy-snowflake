@@ -1,9 +1,9 @@
 // Characters (#178): the registry contract in the page (CHARACTERS, BODY, setCharacter), and what each character must hold to.
 //   node tests/character_fit.mjs <cdp-port> <page-url> char <id>          one character's cases (exit 77 = id not in CHARACTERS)
-//   node tests/character_fit.mjs <cdp-port> <page-url> pixels <base-url>  Snowflake here vs the same page on origin/main
+//   node tests/character_fit.mjs <cdp-port> <page-url> pixels <base-url> [id]  here vs the same character on origin/main
 // Needs a headless Chromium started with --disable-gpu (never a desktop browser: an animated page on a forced-GPU
 // Chrome hung an AMD GPU twice, #138). Exit 0 = pass.
-const [port, url, mode, arg] = process.argv.slice(2);
+const [port, url, mode, arg, pixelId='snowflake'] = process.argv.slice(2);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 class Tab {
@@ -26,7 +26,7 @@ class Tab {
 const fails = [], check = (ok, name, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} ${name}${extra ? "  " + extra : ""}`); if (!ok) fails.push(name); };
 const done = async (...tabs) => { for (const t of tabs) await t.close(); console.log(fails.length ? `\n${fails.length} failed: ${fails.join(", ")}` : "\nall ok"); process.exit(fails.length ? 1 : 0); };
 
-// ---------- the Snowflake pixel comparison: the same state drawn by this page and by origin/main ----------
+// ---------- the pixel comparison: the same state drawn by this page and by origin/main ----------
 if (mode === "pixels") {
   // a fixed clock and a fixed dice; the rAF loop is ours (frame(ts) is called by hand), animations and transitions are off
   const PRE = `(()=>{ let T=1000; performance.now=()=>T; Date.now=()=>1.7e12+T; Math.random=()=>.5;
@@ -51,7 +51,8 @@ if (mode === "pixels") {
       await tab.ev(`document.body.classList.remove('bar','bar-done','e-top'); ORBS.length=0;
         for(const k of Object.keys(SIT)) if(typeof SIT[k]==='boolean') SIT[k]=false; SIT.weather=null; SIT.day=true;
         AMB={sys:[],cal:null,weather:null}; attnPend=null; AM=null; propOn=null; FID=null; lowFx=true;
-        applyLook({body:'#1b2a4a',pupL:'#3e5993',pupR:'#3e5993',whiteL:'#ffffff',whiteR:'#ffffff',skin:'none',skinColor:'',link:true,random:false,follow_theme:false});
+        applyLook({body:'#1b2a4a',pupL:'#3e5993',pupR:'#3e5993',whiteL:'#ffffff',whiteR:'#ffffff',skin:'none',skinColor:'',link:true,random:false,follow_theme:false,character:${JSON.stringify(pixelId)}});
+        if(BODY!==CHARACTERS[${JSON.stringify(pixelId)}]) throw Error('wrong character');
         ${js}
         // timers parked far in the future, the eyes open; then settle the springs on a fixed 16 ms clock
         nextBlink=nextFidAt=saccadeAt=idleSwapAt=1e15; openAt=0; lastMouse=-1e9; lastActive=1000; lastTs=0;
@@ -61,17 +62,22 @@ if (mode === "pixels") {
       out[name] = { png: (await tab.send("Page.captureScreenshot", { format: "png" })).result.data,
         opacity: name === "music" ? await tab.ev("return +SIT_P.hf.getAttribute('opacity')") : null };
     }
+    await tab.ev(`info.look={...LOOK,character:${JSON.stringify(pixelId)}}; renderSettings(); settings(true,'look'); return 1`);
+    await sleep(300);
+    const tile = await tab.ev(`const el=document.querySelector('#characterGrid [data-character=${JSON.stringify(pixelId)}]'); if(!el) throw Error('missing tile');
+      el.scrollIntoView({block:'center'}); const r=el.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height,scale:1};`);
+    out.tile = {png:(await tab.send("Page.captureScreenshot",{format:"png",clip:tile})).result.data};
     await tab.close(); return out;
   };
   const mine = await shoot(url), base = await shoot(arg);
   const cmp = await Tab.open();
-  for (const name of Object.keys(STATES)) {
+  for (const name of [...Object.keys(STATES),'tile']) {
     const r = await cmp.ev(`const px=async b=>{ const bm=await createImageBitmap(await (await fetch('data:image/png;base64,'+b)).blob()); const c=new OffscreenCanvas(bm.width,bm.height).getContext('2d'); c.drawImage(bm,0,0); return c.getImageData(0,0,bm.width,bm.height); };
       const a=await px(${JSON.stringify(mine[name].png)}), b=await px(${JSON.stringify(base[name].png)}); if(a.width!==b.width||a.height!==b.height) return [-1,0,0];
-      let off=0, worst=0; for(let i=0;i<a.data.length;i+=4){ const d=Math.max(Math.abs(a.data[i]-b.data[i]),Math.abs(a.data[i+1]-b.data[i+1]),Math.abs(a.data[i+2]-b.data[i+2])); if(d>${name === "music" ? 0 : 8}) off++; if(d>worst) worst=d; }
+      let off=0, worst=0; for(let i=0;i<a.data.length;i+=4){ const d=Math.max(Math.abs(a.data[i]-b.data[i]),Math.abs(a.data[i+1]-b.data[i+1]),Math.abs(a.data[i+2]-b.data[i+2])); if(d>${pixelId === 'devil' || name === "music" ? 0 : 8}) off++; if(d>worst) worst=d; }
       return [off,a.width*a.height,worst];`);
-    check(r[0] >= 0 && (name === "music" ? mine[name].opacity === 1 && base[name].opacity === 1 && r[0] === 0 : r[0] <= r[1] * 0.0005),
-      `snowflake pixels match origin/main: ${name}`, `${r[0]} of ${r[1]} px off by >${name === "music" ? 0 : 8} (worst ${r[2]})${name === "music" ? `, opacity ${mine[name].opacity}/${base[name].opacity}` : ""}`);
+    check(r[0] >= 0 && (name === "music" ? mine[name].opacity === 1 && base[name].opacity === 1 : true) && (pixelId === 'devil' || name === 'music' ? r[0] === 0 : r[0] <= r[1] * 0.0005),
+      `${pixelId} pixels match origin/main: ${name}`, `${r[0]} of ${r[1]} px off by >${pixelId === 'devil' || name === "music" ? 0 : 8} (worst ${r[2]})${name === "music" ? `, opacity ${mine[name].opacity}/${base[name].opacity}` : ""}`);
   }
   await done(cmp);
 }
@@ -81,8 +87,10 @@ if (mode === "plugpage") {
   const tab = await Tab.open();
   await tab.go(url);
   const r = await tab.ev(`const bad=[], c=CHARACTERS['plug:fixture']; if(!c) return ['no plug:fixture'];
-    applyLook({...LOOK, character:'plug:fixture'}); await new Promise(r=>setTimeout(r,400));
+    setCharacter('devil'); applyLook({...LOOK, character:'plug:fixture'}); await new Promise(r=>setTimeout(r,400));
     if(BODY!==c) bad.push('BODY'); if(document.querySelector('#body>path.ball').getAttribute('fill')!=='#778899') bad.push('flat fill');
+    if($('#stage').style.getPropertyValue('--rim')) bad.push('inherited rim');
+    if(getComputedStyle($('#rim')).stroke==='rgb(92, 10, 28)') bad.push('devil rim');
     if(document.getElementById('rim').getAttribute('fill')!=='none') bad.push('rim filled');
     const clipped=(inner,where)=>{ if(!inner) return bad.push('no nested svg '+where);   // dots past each edge of x ±96, y -120…+100
       for(const [cx,cy] of [[-130,0],[130,0],[0,-150],[0,130]]){ const d=sv('circle',{cx,cy,r:20,fill:'#ff00ff'},inner), r=d.getBoundingClientRect();
@@ -92,7 +100,7 @@ if (mode === "plugpage") {
     const b=document.querySelector('#characterGrid [data-character="plug:fixture"]');
     if(!b) bad.push('not in the grid'); else { settings(true,'look'); await new Promise(r=>setTimeout(r,300));
       const g=document.querySelector('#characterGrid [data-character="plug:fixture"]'); g.scrollIntoView({block:'center'}); await new Promise(r=>setTimeout(r,100));
-      if(!g.getBoundingClientRect().width) bad.push('grid not shown'); clipped(g.querySelector('g[data-part="body"]>svg'),'grid'); if(!b.textContent.includes('<b>x</b>')) bad.push('label not text'); if(b.querySelector('b')) bad.push('label is markup'); }
+      if(!g.getBoundingClientRect().width) bad.push('grid not shown'); clipped(g.querySelector('g[data-part="body"]>svg'),'grid'); if(g.querySelector('path[data-part="body"]')?.getAttribute('fill')!=='#778899') bad.push('grid flat fill'); if(!b.textContent.includes('<b>x</b>')) bad.push('label not text'); if(b.querySelector('b')) bad.push('label is markup'); }
     info.look={...(info.look||{}),character:'plug:fixture',random:true}; syncLook(true);   // random colours: a changed plugin is still redrawn
     info.plugin_characters=info.plugin_characters.map(p=>({...p,fill:'#112233'})); syncLook();
     if(BODY!==CHARACTERS['plug:fixture']||document.querySelector('#body>path.ball').getAttribute('fill')!=='#112233') bad.push('random mode kept the old art');
