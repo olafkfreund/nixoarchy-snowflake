@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 118
 intent: intent/2026-11-24-118-einstein-skull.md
 ---
