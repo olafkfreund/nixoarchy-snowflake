@@ -9,7 +9,7 @@ HTML = Path(__file__).resolve().parent.parent / "app/static/index.html"
 BAD = re.compile(r"<\s*(script|image|foreignObject|iframe|use|a|style)\b|\son\w+\s*=|https?:|javascript:|@import|expression\(|\bfilter\s*[=:]|</style", re.I)
 IDS = ("load", "memory", "error", "soon", "meeting", "notice", "ask", "done", "open", "music", "rain", "snow", "wind", "workout")
 PROP_IDS = IDS[:10] + ("video",) + IDS[10:]                                 # (#226: the TV has no per-character touch)
-CHARS = ("snowflake", "terminal", "robot", "devil")
+CHARS = ("snowflake", "terminal", "robot", "devil", "einstein", "skull")
 
 
 def _load_react():
@@ -66,6 +66,14 @@ class ReactArtTest(unittest.TestCase):
         self.assertIn(self.react["defs"], self.html)
         self.assertRegex(self.html, r'<g class="whole">\s*<g id="body">\s*<g id="rxSky"></g>\s*<g id="accBack"></g>\s*<g id="sitBack"></g>\s*<g id="rxBack"></g>')
         self.assertRegex(self.html, r'<g id="accFront"></g>\s*<g id="sitFront"></g>\s*<g id="rxFront"></g>')
+
+    def test_einstein_and_skull_body_art_passes_bad_regex(self):
+        i_ein = self.html.index("einstein:{")
+        i_skl = self.html.index("skull:{", i_ein)
+        i_end = self.html.index("}};", i_skl) + 3
+        for name, chunk in (("einstein", self.html[i_ein:i_skl]), ("skull", self.html[i_skl:i_end])):
+            m = BAD.search(chunk)
+            self.assertIsNone(m, f"{name} body art matched BAD: {m.group(0) if m else ''!r}")
 
 
 if __name__ == "__main__":

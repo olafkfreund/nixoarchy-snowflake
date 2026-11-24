@@ -26,6 +26,10 @@ body.still .tCursor,body.still .tAntenna,body.still .tTail,body.still .tHair,bod
 @keyframes tail-swish{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(9deg)}}
 @keyframes hair-sway{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(6deg)}}
 @keyframes jaw-rest{0%,100%{transform:translateY(0)}50%{transform:translateY(1px)}}
+@keyframes fxHair{from{transform:rotate(-14deg)}to{transform:rotate(14deg)}}
+@keyframes fxHairD{to{transform:rotate(18deg)}}
+@keyframes fxJaw{from{transform:translateY(0)}to{transform:translateY(3px)}}
+@keyframes fxJawO{to{transform:translateY(4px)}}
 .tCursor{animation:cursor-blink 1.05s steps(1) infinite}
 .tAntenna{transform-origin:0px -102px;animation:antenna-pulse 1.8s ease-in-out infinite}
 .tTail{transform-origin:44px 48px;animation:tail-swish 2.5s ease-in-out infinite}
@@ -1849,6 +1853,150 @@ const REACT={
     "back": "",
     "front": "",
     "css": ".c-devil.r-workout .tTail{transform-box:fill-box;transform-origin:0 100%;animation:fxTail .5s ease-in-out infinite alternate}@keyframes fxTail{from{transform:rotate(-16deg)}to{transform:rotate(16deg)}}"
+   }
+  },
+  "einstein": {
+   "load": {
+    "back": "",
+    "front": "",
+    "css": ".c-einstein.r-load .tHair{animation:fxHair .2s infinite alternate}"
+   },
+   "memory": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "error": {
+    "back": "",
+    "front": "",
+    "css": ".c-einstein.r-error .tHair{animation:fxHairD .4s forwards}"
+   },
+   "soon": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "meeting": {
+    "back": "",
+    "front": "",
+    "css": ".c-einstein.r-meeting .tHair{animation:none}"
+   },
+   "notice": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "ask": {
+    "back": "",
+    "front": "",
+    "css": ".c-einstein.r-ask .tHair{animation:fxHair .2s infinite alternate}"
+   },
+   "done": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "open": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "music": {
+    "back": "",
+    "front": "",
+    "css": ".c-einstein.r-music .tHair{animation:fxHair .2s infinite alternate}"
+   },
+   "rain": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "snow": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "wind": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "workout": {
+    "back": "",
+    "front": "",
+    "css": ".c-einstein.r-workout .tHair{animation:fxHair .2s infinite alternate}"
+   }
+  },
+  "skull": {
+   "load": {
+    "back": "",
+    "front": "",
+    "css": ".c-skull.r-load .tJaw{animation:fxJaw .2s infinite alternate}"
+   },
+   "memory": {
+    "back": "",
+    "front": "",
+    "css": ".c-skull.r-memory .tJaw{animation:fxJawO .3s forwards}"
+   },
+   "error": {
+    "back": "",
+    "front": "",
+    "css": ".c-skull.r-error .tJaw{animation:fxJawO .3s forwards}"
+   },
+   "soon": {
+    "back": "",
+    "front": "",
+    "css": ".c-skull.r-soon .tJaw{animation:fxJaw .2s infinite alternate}"
+   },
+   "meeting": {
+    "back": "",
+    "front": "",
+    "css": ".c-skull.r-meeting .tJaw{animation:none}"
+   },
+   "notice": {
+    "back": "",
+    "front": "",
+    "css": ".c-skull.r-notice .tJaw{animation:fxJaw .2s infinite alternate}"
+   },
+   "ask": {
+    "back": "",
+    "front": "",
+    "css": ".c-skull.r-ask .tJaw{animation:fxJaw .2s infinite alternate}"
+   },
+   "done": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "open": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "music": {
+    "back": "",
+    "front": "",
+    "css": ".c-skull.r-music .tJaw{animation:fxJaw .2s infinite alternate}"
+   },
+   "rain": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "snow": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "wind": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "workout": {
+    "back": "",
+    "front": "",
+    "css": ""
    }
   }
  }

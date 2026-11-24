@@ -101,7 +101,7 @@ check(mailAfter.focus==='work'&&!mailAfter.on, "after the mail: back to work (co
 await ev(`onEvent({t:'approve',id:'work-a1',agent:'codex',tool:'Bash',detail:'true',confirm:'click',always:false}); return 1;`); await settle();
 eq(await ev(`return [document.body.dataset.focus,$('#code').classList.contains('on')];`), ["answer",false], "approval card during work: answer focus, no sheet");
 await ev(`approvalGone('work-a1'); return 1;`); await sleep(500); await settle();
-for (const c of ["snowflake", "terminal", "robot", "devil"]) {   // Nixi at work: his eyes become the code screen, the keyboard shows
+for (const c of ["snowflake", "terminal", "robot", "devil", "einstein", "skull"]) {   // Nixi at work: his eyes become the code screen, the keyboard shows
   await ev(`setCharacter('${c}'); return 1;`); await settle();
   const w = await ev(`const B=document.body.classList, d=e=>getComputedStyle($(e)).display, v=e=>getComputedStyle($(e)).visibility;
     transient=null; const r={focus:B.contains('bar')?'bar':document.body.dataset.focus,eL:d('#eL'),ce:d('#eL .ce'),flow:document.querySelectorAll('#eR .ce rect').length,mood:mood(performance.now())};
@@ -120,7 +120,7 @@ if (process.env.NIXI_SHOTS) {   // screenshots for the PR: the sheet with two ag
   const shot = async n => { await sleep(3500); await settle(); const r = await send("Page.captureScreenshot", { format: "png" }); writeFileSync(`${process.env.NIXI_SHOTS}/${n}.png`, Buffer.from(r.result.data, "base64")); };
   await ev(`onEvent({t:'attention',kind:'done',from:'zed',name:'Zed',project:'p3',text:''}); document.body.style.background='#1b1e24'; return 1;`); await shot("terminal-dark");
   await ev(`applyThemeVars({mode:'light',background:'#f5f5f5',darker_background:'#e5e5e5',lighter_background:'#fafafa',foreground:'#222',accent:'#2060d0',red:'#c00',green:'#080',yellow:'#a80',selection:'#ccc'}); document.body.style.background='#f0f0f0'; return 1;`); await shot("terminal-light");
-  for (const c of ["snowflake", "terminal", "robot", "devil"]) for (const z of [60, 100]) {   // work look at the 60% and 100% size (page zoom stands in for the window zoom)
+  for (const c of ["snowflake", "terminal", "robot", "devil", "einstein", "skull"]) for (const z of [60, 100]) {   // work look at the 60% and 100% size (page zoom stands in for the window zoom)
     await ev(`setCharacter('${c}'); document.documentElement.style.zoom=${z / 100}; return 1;`); await shot(`work-${c}-${z}`); }
 }
 // his own turn: a spoken reply with no tool is not work; his own tool run shows the tool, then returns to the agents' line
