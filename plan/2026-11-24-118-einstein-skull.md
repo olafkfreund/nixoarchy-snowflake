@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 118
 spec: spec/2026-11-24-118-einstein-skull.md
 coders:
