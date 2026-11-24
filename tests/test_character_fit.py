@@ -142,6 +142,10 @@ class CharacterFit(unittest.TestCase):
         r = self.node("char", "einstein")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
+    def test_skull(self):
+        r = self.node("char", "skull")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
     def test_plugin_character(self):
         """#213: plug:fixture holds to the contract; its label is text, its art is clipped, and it goes when the plugin does."""
         self._char("plug:fixture")
