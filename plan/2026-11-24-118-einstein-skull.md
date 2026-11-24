@@ -286,7 +286,7 @@ This plan is self-contained. Implement from it, not from the spec.
   `back`, not `.avoid`, so it cannot cover the eyes; the fit test passes.
 - In the live body, `#rim` draws over `back`, so Einstein's head outline shows
   across his hair; the Settings tile draws the hair over it. Kept: changing the
-  tile order would break the Devil's zero-pixel test.
+  tile order would break the Devil's zero-pixel test. Fixed after merge (#120): the hair and tuft moved from `back` to the start of `front`, which draws after `#rim`; the eyes stay clear of it in every mood and gaze.
 - Review fixes: "The Einstein speaks as" (`otherVoiceLine`) now uses `the:false`
   too; the forehead wrinkles that drew on the hair are removed; the tuft moves
   to the end of `back` so it draws over the hair.
