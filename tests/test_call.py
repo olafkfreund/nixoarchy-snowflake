@@ -58,7 +58,8 @@ class Calls(unittest.TestCase):
         self.ring = mock.Mock()
         for obj, name, value in ((s, "Phone", self.phone), (s, "Hfp", self.hfp), (s.BUS, "pub", self.pub),
                                  (s.Desk, "locked", lambda: False), (s.peers, "current", lambda: []),
-                                 (s.Ring, "follow", self.ring)):   # (never a real ring from a test)
+                                 (s.Ring, "follow", self.ring),   # (never a real ring from a test)
+                                 (s.Ambient, "phone_call", False)):   # (phone_tick sets it from the mock phone; a truthy leftover silenced later suites)
             patch = mock.patch.object(obj, name, value)
             patch.start()
             self.addCleanup(patch.stop)
