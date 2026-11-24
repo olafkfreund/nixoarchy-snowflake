@@ -18,15 +18,23 @@ body{position:relative;width:340px;height:460px;margin:0;overflow:visible}   /* 
 html{background:transparent}
 body{background:radial-gradient(70% 52% at 50% 36%,var(--panel2) 0%,#090909 78%);color:var(--text);
   font:14px/1.45 "Inter",system-ui,sans-serif;user-select:none;-webkit-user-select:none}
-body.still .tCursor,body.still .tAntenna,body.still .tTail{animation-play-state:paused}
-@media (prefers-reduced-motion:reduce){.tCursor,.tAntenna,.tTail{animation:none!important}}
+body.still .tCursor,body.still .tAntenna,body.still .tTail,body.still .tHair,body.still .tJaw{animation-play-state:paused!important}   /* (!important: a reaction's animation shorthand would set it running again) */
+@media (prefers-reduced-motion:reduce){.tCursor,.tAntenna,.tTail,.tHair,.tJaw{animation:none!important}}
 @media (prefers-reduced-motion:reduce){#code *{animation:none!important}}
 @keyframes cursor-blink{0%,49%{opacity:1}50%,100%{opacity:.12}}
 @keyframes antenna-pulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.18);opacity:1}}
 @keyframes tail-swish{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(9deg)}}
+@keyframes hair-sway{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(6deg)}}
+@keyframes jaw-rest{0%,100%{transform:translateY(0)}50%{transform:translateY(1px)}}
+@keyframes fxHair{from{transform:rotate(-14deg)}to{transform:rotate(14deg)}}
+@keyframes fxHairD{to{transform:rotate(18deg)}}
+@keyframes fxJaw{from{transform:translateY(0)}to{transform:translateY(3px)}}
+@keyframes fxJawO{to{transform:translateY(4px)}}
 .tCursor{animation:cursor-blink 1.05s steps(1) infinite}
 .tAntenna{transform-origin:0px -102px;animation:antenna-pulse 1.8s ease-in-out infinite}
 .tTail{transform-origin:44px 48px;animation:tail-swish 2.5s ease-in-out infinite}
+.tHair{transform-box:fill-box;transform-origin:50% 100%;animation:hair-sway 3s ease-in-out infinite}
+.tJaw{transform-box:fill-box;transform-origin:50% 0;animation:jaw-rest 4s ease-in-out infinite}
 .dFork{transition:opacity .18s ease-in-out}
 #stage.c-devil:is(.r-load,.r-memory,.r-error,.r-done,.r-workout) .dFork,
 #stage.c-devil:has(#rxFront .mc,#rxFront .sk,#rxFront .wr,#rxFront .bx,#rxFront .db) .dFork{opacity:0}
@@ -856,8 +864,7 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <linearGradient id="termGlare" x1="-74" y1="-64" x2="26" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".09"/><stop offset=".5" stop-color="#fff" stop-opacity=".02"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
       <linearGradient id="botShell" x1="0" y1="-78" x2="0" y2="82" gradientUnits="userSpaceOnUse"><stop offset="0" class="b0"/><stop offset=".55" class="b1"/><stop offset="1" class="b2"/></linearGradient>
       <linearGradient id="botTrim" x1="0" y1="-80" x2="0" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0" class="b1"/><stop offset="1" class="b2"/></linearGradient>
-      <radialGradient id="devBody" cx="-24" cy="-30" r="118" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e0334f"/><stop offset=".55" stop-color="#c81e3a"/><stop offset="1" stop-color="#7a0f24"/></radialGradient>
-      <linearGradient id="devWing" x1="0" y1="-16" x2="0" y2="86" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e0334f"/><stop offset=".55" stop-color="#c81e3a"/><stop offset="1" stop-color="#7a0f24"/></linearGradient>
+      <g id="paintDefs"></g>
       <clipPath id="clipL"><path id="cpL"/></clipPath>
       <clipPath id="clipR"><path id="cpR"/></clipPath>
       <linearGradient id='fx-gold' x2='0' y2='1'><stop offset='0' stop-color='#ffe27a'/><stop offset='1' stop-color='#f5a524'/></linearGradient><linearGradient id='fx-red' x2='0' y2='1'><stop offset='0' stop-color='#ff9a94'/><stop offset='1' stop-color='#e5484d'/></linearGradient><linearGradient id='fx-green' x2='0' y2='1'><stop offset='0' stop-color='#7fe8a0'/><stop offset='1' stop-color='#22b573'/></linearGradient><linearGradient id='fx-blue' x2='0' y2='1'><stop offset='0' stop-color='#a6e0ff'/><stop offset='1' stop-color='#4a9fe8'/></linearGradient><linearGradient id='fx-pink' x2='0' y2='1'><stop offset='0' stop-color='#ffbdd7'/><stop offset='1' stop-color='#ff6fa5'/></linearGradient><linearGradient id='fx-paper' x2='0' y2='1'><stop offset='0' stop-color='#fffdf6'/><stop offset='1' stop-color='#f1e6d0'/></linearGradient><linearGradient id='fx-steel' x2='0' y2='1'><stop offset='0' stop-color='#f2f5f9'/><stop offset='1' stop-color='#9aa7ba'/></linearGradient><linearGradient id='fx-shade' x2='0' y2='1'><stop offset='0' stop-color='#4a5068'/><stop offset='1' stop-color='#12141c'/></linearGradient><radialGradient id='fx-sun'><stop offset='0' stop-color='#fff2a8'/><stop offset='1' stop-color='#ffc23d'/></radialGradient><linearGradient id='fx-hat' x2='0' y2='1'><stop offset='0' stop-color='#3b3b44'/><stop offset='1' stop-color='#111115'/></linearGradient><linearGradient id='fx-shirt' x2='0' y2='1'><stop offset='0' stop-color='#55b56d'/><stop offset='1' stop-color='#2b7a45'/></linearGradient><linearGradient id='fx-grey' x2='0' y2='1'><stop offset='0' stop-color='#cfd1d5'/><stop offset='1' stop-color='#8d9096'/></linearGradient><linearGradient id="fx-cap" x1="0" y1="-112" x2="0" y2="-48" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#3a3f4b"/><stop offset="1" stop-color="#14161d"/></linearGradient>
@@ -1394,13 +1401,12 @@ function miniNixi(svg,L,clickable){
   svg.innerHTML=''; const id='mg'+(miniN++), [b0,b1,b2]=bodyStops(L.body), character=CHARACTERS[L.character]||CHARACTERS.snowflake;
   const defs=sv('defs',{},svg), gr=sv('radialGradient',{id,cx:-24,cy:-30,r:112,gradientUnits:'userSpaceOnUse'},defs);
   [[0,b0],[.55,b1],[1,b2]].forEach(([o,c])=>sv('stop',{offset:o,'stop-color':c},gr));
-  const devil=character===CHARACTERS.devil, red=['#e0334f','#c81e3a','#7a0f24'];
-  if(devil) for(const [name,kind,attrs] of [['devBody','radialGradient',{cx:-24,cy:-30,r:118}],['devWing','linearGradient',{x1:0,y1:-16,x2:0,y2:86}]]){
+  if(character.paint) for(const [name,kind,attrs,colors] of character.paint.grads){
     const g=sv(kind,{id:id+name,gradientUnits:'userSpaceOnUse',...attrs},defs);
-    [[0,red[0]],[.55,red[1]],[1,red[2]]].forEach(([o,c])=>sv('stop',{offset:o,'stop-color':c},g)); }
-  const rim=devil?'#5c0a1c':lum(L.body)<.12?'#2a2a2a':shade(L.body,-.12);
-  const back=sv('g',{'data-part':clickable?'skin':''},svg), ball=sv('path',{d:character.ball,'stroke-linejoin':'round',fill:character.nodes?character.fill:`url(#${devil?id+'devBody':id})`,stroke:rim,'stroke-width':1.6,'data-part':'body'},svg);
-  const art=html=>devil?html.replaceAll('url(#devBody)',`url(#${id}devBody)`).replaceAll('url(#devWing)',`url(#${id}devWing)`).replaceAll('var(--rim)',rim):html;
+    [[0,colors[0]],[.55,colors[1]],[1,colors[2]]].forEach(([o,c])=>sv('stop',{offset:o,'stop-color':c},g)); }
+  const rim=character.paint?character.paint.rim:lum(L.body)<.12?'#2a2a2a':shade(L.body,-.12);
+  const back=sv('g',{'data-part':clickable?'skin':''},svg), ball=sv('path',{d:character.ball,'stroke-linejoin':'round',fill:character.nodes?character.fill:character.paint?`url(#${id+character.paint.ball})`:`url(#${id})`,stroke:rim,'stroke-width':1.6,'data-part':'body'},svg);
+  const art=html=>character.paint?character.paint.grads.reduce((s,[name])=>s.replaceAll(`url(#${name})`,`url(#${id+name})`),html).replaceAll('var(--rim)',rim):html;
   const layer=k=>{ const g=sv('g',{'data-part':'body'},svg); if(character.nodes) drawNodes(g,character.nodes[k],PLUG_BOX); else g.innerHTML=art(character[k]); };
   layer('back');
   for(const s of [-1,1]){ const k=s<0?'L':'R';
@@ -1438,20 +1444,33 @@ const CHARACTERS={snowflake:{label:'Snowflake',ball:snowPath(),back:nixLambdas()
     back:'<line x1="0" y1="-78" x2="0" y2="-96" stroke="#94a3b8" stroke-width="4.5" stroke-linecap="round"/><path d="M-15 -78A15 9 0 0 1 15 -78Z" fill="url(#botTrim)" stroke="var(--rim)" stroke-width="2"/><circle class="tAntenna" cx="0" cy="-102" r="11" fill="#38bdf8" opacity=".28"/><circle class="accent" cx="0" cy="-102" r="7.5" fill="#38bdf8" stroke="#082038" stroke-width="2"/><g fill="url(#botTrim)" stroke="var(--rim)" stroke-width="2"><rect x="-94" y="-20" width="12" height="32" rx="5"/><rect x="82" y="-20" width="12" height="32" rx="5"/><circle cx="-88" cy="-4" r="2.5" fill="#082038" stroke="none"/><circle cx="88" cy="-4" r="2.5" fill="#082038" stroke="none"/></g><rect x="-84" y="-78" width="168" height="160" rx="56" fill="url(#botShell)" stroke="var(--rim)" stroke-width="2"/><path d="M-48 -68Q0 -60 48 -68" fill="none" stroke="var(--rim)" stroke-width="2" opacity=".7"/><circle cx="-56" cy="-58" r="2.2" fill="#94a3b8" opacity=".75"/><circle cx="56" cy="-58" r="2.2" fill="#94a3b8" opacity=".75"/><rect class="accent" x="-74" y="-62" width="148" height="118" rx="28" fill="#0b1d36" stroke="#38bdf8" stroke-width="2"/><ellipse class="avoid" cx="-62" cy="40" rx="6" ry="3.5" fill="#38bdf8" opacity=".4"/><ellipse class="avoid" cx="62" cy="40" rx="6" ry="3.5" fill="#38bdf8" opacity=".4"/><g stroke="var(--rim)" stroke-width="3.2" stroke-linecap="round"><line x1="-18" y1="65" x2="18" y2="65"/><line x1="-12" y1="72" x2="12" y2="72"/></g>',
     front:'',gloss:false,faceBox:[-72,-61,144,116],anchors:{head:[0,-20],face:[0,0],neck:[0,12],base:[0,2],left:[0,0],right:[0,0]},
     cupX:104,band:'M-103 -30C-124 -146 124 -146 103 -30',pivot:82,shadow:64,fits:new Set(['none','halo','bow','scarf','tie','headphones','shades','glasses','chat','feed','plug']),touch:'tAntenna'},
-  devil:{label:'Devil',ball:'M0 -78C56 -78 86 -42 86 8C86 56 54 84 0 84C-54 84 -86 56 -86 8C-86 -42 -56 -78 0 -78Z',
+  devil:{label:'Devil',paint:{ball:'devBody',rim:'#5c0a1c',grads:[['devBody','radialGradient',{cx:-24,cy:-30,r:118},['#e0334f','#c81e3a','#7a0f24']],['devWing','linearGradient',{x1:0,y1:-16,x2:0,y2:86},['#e0334f','#c81e3a','#7a0f24']]]},ball:'M0 -78C56 -78 86 -42 86 8C86 56 54 84 0 84C-54 84 -86 56 -86 8C-86 -42 -56 -78 0 -78Z',
     back:'<g class="tTail"><path d="M44 48C76 62 81 29 82 8" fill="none" stroke="#7a0f24" stroke-width="6" stroke-linecap="round"/><path d="M82 8L77 -5L84 3L83 16Z" fill="url(#devWing)" stroke="#5c0a1c" stroke-width="1.8" stroke-linejoin="round"/></g>'+
       '<g class="dFork"><path d="M-87 84V-35" fill="none" stroke="#5c0a1c" stroke-width="5" stroke-linecap="round"/><path d="M-93 -50V-69M-87 -48V-74M-81 -50V-69M-93 -50Q-87 -36 -81 -50" fill="none" stroke="#c81e3a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></g>'+
       '<path d="M-76 4C-94 -12 -96 8 -89 26C-83 19 -79 24 -74 32Z" fill="url(#devWing)" stroke="var(--rim)" stroke-width="2" stroke-linejoin="round"/><path d="M76 4C94 -12 96 8 89 26C83 19 79 24 74 32Z" fill="url(#devWing)" stroke="var(--rim)" stroke-width="2" stroke-linejoin="round"/><ellipse cx="-32" cy="82" rx="15" ry="9" fill="url(#devWing)" stroke="var(--rim)" stroke-width="1.8"/><ellipse cx="32" cy="82" rx="15" ry="9" fill="url(#devWing)" stroke="var(--rim)" stroke-width="1.8"/><path d="M0 -78C56 -78 86 -42 86 8C86 56 54 84 0 84C-54 84 -86 56 -86 8C-86 -42 -56 -78 0 -78Z" fill="url(#devBody)"/><ellipse cx="0" cy="62" rx="34" ry="14" fill="#fda4af" opacity=".16"/><path class="accent" d="M-54 -56C-68 -88 -46 -108 -28 -94C-35 -82 -35 -68 -30 -62Z" fill="#fbbf24" stroke="#451a03" stroke-width="2" stroke-linejoin="round"/><path class="accent" d="M54 -56C68 -88 46 -108 28 -94C35 -82 35 -68 30 -62Z" fill="#fbbf24" stroke="#451a03" stroke-width="2" stroke-linejoin="round"/><ellipse class="avoid" cx="-64" cy="40" rx="7" ry="4" fill="#fecdd3" opacity=".45"/><ellipse class="avoid" cx="64" cy="40" rx="7" ry="4" fill="#fecdd3" opacity=".45"/>',
     front:'<path class="avoid" d="M-46 -64Q-26 -60 -10 -62" fill="none" stroke="#3b0714" stroke-width="3.2" stroke-linecap="round"/><path class="avoid" d="M46 -64Q26 -60 10 -62" fill="none" stroke="#3b0714" stroke-width="3.2" stroke-linecap="round"/><path class="avoid" d="M-18 55Q0 63 20 53" fill="none" stroke="#3b0714" stroke-width="3.2" stroke-linecap="round"/><polygon class="accent avoid" points="8,57 15,54 12,64" fill="#fef3c7" stroke="#3b0714" stroke-width="1.6" stroke-linejoin="round"/>',
     gloss:false,faceBox:[-74,-66,148,128],anchors:{head:[0,-20],face:[0,0],neck:[0,10],base:[0,4],left:[0,0],right:[0,0]},
-    cupX:106,band:'M-105 -30C-128 -140 128 -140 105 -30',pivot:84,shadow:64,fits:new Set(['none','halo','crown','sprout','bow','nightcap','beanie','party','scarf','tie','headphones','shades','glasses','chat','feed','plug']),touch:'tTail'}};
+    cupX:106,band:'M-105 -30C-128 -140 128 -140 105 -30',pivot:84,shadow:64,fits:new Set(['none','halo','crown','sprout','bow','nightcap','beanie','party','scarf','tie','headphones','shades','glasses','chat','feed','plug']),touch:'tTail'},
+  einstein:{label:'Einstein',the:false,paint:{ball:'einSkin',rim:'#6e4328',grads:[['einSkin','radialGradient',{cx:-24,cy:-30,r:118},['#f8d9bd','#eab894','#b47a55']],['einHair','linearGradient',{x1:0,y1:-120,x2:0,y2:0},['#ffffff','#e4e7ec','#aeb4bf']]]},ball:'M0 -80C54 -80 80 -44 80 6C80 54 50 84 0 84C-50 84 -80 54 -80 6C-80 -44 -54 -80 0 -80Z',
+    back:'<ellipse cx="-78" cy="-4" rx="11" ry="18" fill="url(#einSkin)" stroke="var(--rim)" stroke-width="2"/><ellipse cx="78" cy="-4" rx="11" ry="18" fill="url(#einSkin)" stroke="var(--rim)" stroke-width="2"/><path d="M-78 -12C-83 -8 -83 0 -78 4M78 -12C83 -8 83 0 78 4" fill="none" stroke="var(--rim)" stroke-width="1.6" stroke-linecap="round"/><path d="M0 -80C54 -80 80 -44 80 6C80 54 50 84 0 84C-50 84 -80 54 -80 6C-80 -44 -54 -80 0 -80Z" fill="url(#einSkin)"/><path d="M-76 -18C-94 -22 -96 -44 -82 -56C-96 -72 -82 -94 -62 -90C-58 -108 -34 -112 -22 -98C-10 -114 10 -114 22 -98C34 -112 58 -108 62 -90C82 -94 96 -72 82 -56C96 -44 94 -22 76 -18C76 -46 58 -68 32 -68C14 -68 8 -65 0 -65C-8 -65 -14 -68 -32 -68C-58 -68 -76 -46 -76 -18Z" fill="url(#einHair)" stroke="var(--rim)" stroke-width="2" stroke-linejoin="round"/><g class="tHair"><path d="M-16 -92C-22 -112 -4 -116 4 -102C12 -114 26 -108 18 -90Z" fill="url(#einHair)" stroke="var(--rim)" stroke-width="2" stroke-linejoin="round"/></g>',
+    front:'<path class="avoid" d="M-54 -63C-44 -71 -20 -71 -10 -63C-22 -61 -42 -61 -54 -63Z" fill="url(#einHair)" stroke="var(--rim)" stroke-width="1.8" stroke-linejoin="round"/><path class="avoid" d="M54 -63C44 -71 20 -71 10 -63C22 -61 42 -61 54 -63Z" fill="url(#einHair)" stroke="var(--rim)" stroke-width="1.8" stroke-linejoin="round"/><ellipse class="accent avoid" cx="0" cy="43" rx="6.5" ry="4.5" fill="#e9a184" stroke="#6e4328" stroke-width="2"/><path class="avoid" d="M0 48C-8 48 -14 55 -40 57C-26 62 -12 58 0 54C12 58 26 62 40 57C14 55 8 48 0 48Z" fill="url(#einHair)" stroke="var(--rim)" stroke-width="2" stroke-linejoin="round"/>',
+    gloss:false,faceBox:[-74,-66,148,128],anchors:{head:[0,-20],face:[0,0],neck:[0,10],base:[0,4],left:[0,0],right:[0,0]},
+    cupX:106,band:'M-105 -30C-128 -140 128 -140 105 -30',pivot:84,shadow:64,fits:new Set(['none','halo','bow','scarf','tie','headphones','shades','glasses','chat','feed','plug']),touch:'tHair'},
+  skull:{label:'Skull',paint:{ball:'sklBone',rim:'#5f533f',grads:[['sklBone','radialGradient',{cx:-24,cy:-30,r:118},['#fdfaf2','#ece3cc','#b3a68a']]]},ball:'M0 -84C50 -84 86 -52 86 -10C86 16 76 34 64 44L58 56V74Q58 88 44 88H-44Q-58 88 -58 74V56L-64 44C-76 34 -86 16 -86 -10C-86 -52 -50 -84 0 -84Z',
+    back:'<ellipse cx="-27.5" cy="-4.5" rx="26" ry="44" transform="rotate(9 -27.5 -4.5)" fill="#2f281f"/><ellipse cx="27.5" cy="-4.5" rx="26" ry="44" transform="rotate(-9 27.5 -4.5)" fill="#2f281f"/>',
+    front:'<path class="accent avoid" d="M0 40C-5 46 -11 47 -10 52C-9 56 -4 54 0 50C4 54 9 56 10 52C11 47 5 46 0 40Z" fill="#2f281f" stroke="#d9cfb6" stroke-width="2" stroke-linejoin="round"/><g class="tJaw" fill="#fdfaf2" stroke="#81745d" stroke-width="1.5" stroke-linejoin="round"><path class="avoid" d="M-36 61H-25V76Q-30 82 -36 77Z"/><path class="avoid" d="M-24 61H-13V78Q-18 83 -24 78Z"/><path class="avoid" d="M-12 61H-1V79Q-6 84 -12 79Z"/><path class="avoid" d="M1 61H12V79Q6 84 1 79Z"/><path class="avoid" d="M13 61H24V78Q18 83 13 78Z"/><path class="avoid" d="M25 61H36V76Q30 82 25 77Z"/></g>',
+    gloss:false,faceBox:[-74,-66,148,128],anchors:{head:[0,-20],face:[0,0],neck:[0,10],base:[0,4],left:[0,0],right:[0,0]},
+    cupX:106,band:'M-105 -30C-128 -140 128 -140 105 -30',pivot:84,shadow:64,fits:new Set(['none','halo','crown','bow','nightcap','beanie','party','scarf','tie','headphones','shades','glasses','chat','feed','plug']),touch:'tJaw'}};
+for(const c of Object.values(CHARACTERS).filter(c=>c.paint)) for(const [name,kind,attrs,colors] of c.paint.grads){
+  const g=sv(kind,{id:name,gradientUnits:'userSpaceOnUse',...attrs},$('#paintDefs'));
+  [[0,colors[0]],[.55,colors[1]],[1,colors[2]]].forEach(([o,color])=>sv('stop',{offset:o,'stop-color':color},g)); }
 // a plugin's character (#213): the Devil's numbers, flat fill, art as sanitised nodes; rebuilt on every state update
 const PLUG_BOX=[-96,-120,192,220];
 let plugSeen;
 function plugChars(list){   // (unchanged list: keep the objects, so BODY stays one of them)
   const k0=JSON.stringify(list||[]); if(k0===plugSeen) return false; plugSeen=k0;
   for(const k in CHARACTERS) if(k.startsWith('plug:')) delete CHARACTERS[k];
-  for(const c of list||[]) CHARACTERS['plug:'+c.id]={...CHARACTERS.devil,label:c.name,back:'',front:'',nodes:{back:c.back,front:c.front},fill:c.fill,fits:new Set(c.fits),touch:null};
+  for(const c of list||[]) CHARACTERS['plug:'+c.id]={...CHARACTERS.devil,label:c.name,back:'',front:'',nodes:{back:c.back,front:c.front},fill:c.fill,paint:null,fits:new Set(c.fits),touch:null};
   return true; }
 const REACT={
  "defs": "<linearGradient id='fx-gold' x2='0' y2='1'><stop offset='0' stop-color='#ffe27a'/><stop offset='1' stop-color='#f5a524'/></linearGradient><linearGradient id='fx-red' x2='0' y2='1'><stop offset='0' stop-color='#ff9a94'/><stop offset='1' stop-color='#e5484d'/></linearGradient><linearGradient id='fx-green' x2='0' y2='1'><stop offset='0' stop-color='#7fe8a0'/><stop offset='1' stop-color='#22b573'/></linearGradient><linearGradient id='fx-blue' x2='0' y2='1'><stop offset='0' stop-color='#a6e0ff'/><stop offset='1' stop-color='#4a9fe8'/></linearGradient><linearGradient id='fx-pink' x2='0' y2='1'><stop offset='0' stop-color='#ffbdd7'/><stop offset='1' stop-color='#ff6fa5'/></linearGradient><linearGradient id='fx-paper' x2='0' y2='1'><stop offset='0' stop-color='#fffdf6'/><stop offset='1' stop-color='#f1e6d0'/></linearGradient><linearGradient id='fx-steel' x2='0' y2='1'><stop offset='0' stop-color='#f2f5f9'/><stop offset='1' stop-color='#9aa7ba'/></linearGradient><linearGradient id='fx-shade' x2='0' y2='1'><stop offset='0' stop-color='#4a5068'/><stop offset='1' stop-color='#12141c'/></linearGradient><radialGradient id='fx-sun'><stop offset='0' stop-color='#fff2a8'/><stop offset='1' stop-color='#ffc23d'/></radialGradient><linearGradient id='fx-hat' x2='0' y2='1'><stop offset='0' stop-color='#3b3b44'/><stop offset='1' stop-color='#111115'/></linearGradient><linearGradient id='fx-shirt' x2='0' y2='1'><stop offset='0' stop-color='#55b56d'/><stop offset='1' stop-color='#2b7a45'/></linearGradient><linearGradient id='fx-grey' x2='0' y2='1'><stop offset='0' stop-color='#cfd1d5'/><stop offset='1' stop-color='#8d9096'/></linearGradient><linearGradient id=\"fx-cap\" x1=\"0\" y1=\"-112\" x2=\"0\" y2=\"-48\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#3a3f4b\"/><stop offset=\"1\" stop-color=\"#14161d\"/></linearGradient>",
@@ -1835,6 +1854,150 @@ const REACT={
     "front": "",
     "css": ".c-devil.r-workout .tTail{transform-box:fill-box;transform-origin:0 100%;animation:fxTail .5s ease-in-out infinite alternate}@keyframes fxTail{from{transform:rotate(-16deg)}to{transform:rotate(16deg)}}"
    }
+  },
+  "einstein": {
+   "load": {
+    "back": "",
+    "front": "",
+    "css": ".c-einstein.r-load .tHair{animation:fxHair .2s infinite alternate}"
+   },
+   "memory": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "error": {
+    "back": "",
+    "front": "",
+    "css": ".c-einstein.r-error .tHair{animation:fxHairD .4s forwards}"
+   },
+   "soon": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "meeting": {
+    "back": "",
+    "front": "",
+    "css": ".c-einstein.r-meeting .tHair{animation:none}"
+   },
+   "notice": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "ask": {
+    "back": "",
+    "front": "",
+    "css": ".c-einstein.r-ask .tHair{animation:fxHair .2s infinite alternate}"
+   },
+   "done": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "open": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "music": {
+    "back": "",
+    "front": "",
+    "css": ".c-einstein.r-music .tHair{animation:fxHair .2s infinite alternate}"
+   },
+   "rain": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "snow": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "wind": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "workout": {
+    "back": "",
+    "front": "",
+    "css": ".c-einstein.r-workout .tHair{animation:fxHair .2s infinite alternate}"
+   }
+  },
+  "skull": {
+   "load": {
+    "back": "",
+    "front": "",
+    "css": ".c-skull.r-load .tJaw{animation:fxJaw .2s infinite alternate}"
+   },
+   "memory": {
+    "back": "",
+    "front": "",
+    "css": ".c-skull.r-memory .tJaw{animation:fxJawO .3s forwards}"
+   },
+   "error": {
+    "back": "",
+    "front": "",
+    "css": ".c-skull.r-error .tJaw{animation:fxJawO .3s forwards}"
+   },
+   "soon": {
+    "back": "",
+    "front": "",
+    "css": ".c-skull.r-soon .tJaw{animation:fxJaw .2s infinite alternate}"
+   },
+   "meeting": {
+    "back": "",
+    "front": "",
+    "css": ".c-skull.r-meeting .tJaw{animation:none}"
+   },
+   "notice": {
+    "back": "",
+    "front": "",
+    "css": ".c-skull.r-notice .tJaw{animation:fxJaw .2s infinite alternate}"
+   },
+   "ask": {
+    "back": "",
+    "front": "",
+    "css": ".c-skull.r-ask .tJaw{animation:fxJaw .2s infinite alternate}"
+   },
+   "done": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "open": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "music": {
+    "back": "",
+    "front": "",
+    "css": ".c-skull.r-music .tJaw{animation:fxJaw .2s infinite alternate}"
+   },
+   "rain": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "snow": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "wind": {
+    "back": "",
+    "front": "",
+    "css": ""
+   },
+   "workout": {
+    "back": "",
+    "front": "",
+    "css": ""
+   }
   }
  }
 };
@@ -1909,8 +2072,8 @@ document.addEventListener('visibilitychange',()=>rxCheck());
 new MutationObserver(()=>rxCheck()).observe(document.body,{attributes:true,attributeFilter:['class']});
 function setCharacter(id){
   const next=CHARACTERS[id]||CHARACTERS.snowflake, changed=BODY!==next;
-  document.querySelectorAll('#body>path.ball').forEach(e=>{ e.setAttribute('d',next.ball); if(e.id!=='rim') e.setAttribute('fill',next.nodes?next.fill:next===CHARACTERS.devil?'url(#devBody)':'url(#ballG)'); });   // (#rim is a ball too, and stays unfilled)
-  const stage=$('#stage'); if(next===CHARACTERS.devil) stage.style.setProperty('--rim','#5c0a1c'); else stage.style.removeProperty('--rim');
+  document.querySelectorAll('#body>path.ball').forEach(e=>{ e.setAttribute('d',next.ball); if(e.id!=='rim') e.setAttribute('fill',next.nodes?next.fill:next.paint?`url(#${next.paint.ball})`:'url(#ballG)'); });   // (#rim is a ball too, and stays unfilled)
+  const stage=$('#stage'); if(next.paint) stage.style.setProperty('--rim',next.paint.rim); else stage.style.removeProperty('--rim');
   const art=(g,k)=>{ g.innerHTML=next[k]; if(next.nodes) drawNodes(g,next.nodes[k],PLUG_BOX); };   // (plugin art: nodes only, never markup)
   document.querySelectorAll('#body>.nix').forEach(g=>{ art(g,'back'); if(next!==CHARACTERS.snowflake) g.classList.remove('glint'); });
   document.querySelectorAll('#body>.bfront').forEach(g=>art(g,'front'));
@@ -4252,7 +4415,7 @@ function voiceSample(){ if(muted) toggleMute(); shush(); say([pageLine('page.voi
 function otherVoiceLine(){ if(!info.voice_speaking||info.voice_speaking===info.voice) return '';
   if(info.tts_choice==='elevenlabs'||(info.voice_pinned&&info.voice_speaking!=='robot')) return '';   // (the cloud or a pinned voice is what speaks)
   const v=(info.voices||[]).find(x=>x.id===info.voice_speaking);
-  return `The ${(CHARACTERS[curLook().character]||CHARACTERS.snowflake).label} speaks as ${v?v.label:info.voice_speaking}. Change it in Look.`; }
+  const c=CHARACTERS[curLook().character]||CHARACTERS.snowflake; return `${c.the===false?'':'The '}${c.label} speaks as ${v?v.label:info.voice_speaking}. Change it in Look.`; }
 function curLook(){ return themed({...LOOK_DEFAULT,...(info.look||{})}); }
 function partColour(L,p){ return p==='skin'?(L.skinColor||L.body):L[p]; }
 function editKeys(L,p){ if(L.link&&(p==='pupL'||p==='pupR')) return ['pupL','pupR']; if(L.link&&(p==='whiteL'||p==='whiteR')) return ['whiteL','whiteR'];
@@ -4444,7 +4607,7 @@ function renderSettings(){
   $('#characterGrid').innerHTML=Object.entries(CHARACTERS).map(([id,c])=>`<button type="button" data-character="${id}" class="${(L.character||'snowflake')===id?'on':''}" aria-pressed="${(L.character||'snowflake')===id}"><svg viewBox="-125 -150 250 250" aria-hidden="true"></svg>${esc(c.label)}</button>`).join('');
   $$('#characterGrid button').forEach(b=>miniNixi(b.querySelector('svg'),{...L,character:b.dataset.character,skin:'none'},false));
   const worn=wornSkin(L), bodyL=CHARACTERS[L.character]||CHARACTERS.snowflake;
-  { const ch=L.character||'snowflake', sel=$('#charVoice'); $('#charVoiceLabel').textContent=`Voice for the ${bodyL.label}`;
+  { const ch=L.character||'snowflake', sel=$('#charVoice'); $('#charVoiceLabel').textContent=`Voice for ${bodyL.the===false?'':'the '}${bodyL.label}`;
     const opts=[['My voice','',false],...(info.voices||[]).map(v=>[v.label+(v.downloading?' ⇣':''),v.id,v.id==='robot'&&v.ready===false])], sig=JSON.stringify(opts);
     if(sel.dataset.sig!==sig){ sel.dataset.sig=sig; sel.replaceChildren(...opts.map(([l,id,off])=>{ const o=new Option(l,id); o.disabled=off; return o; })); }   // (settings redraw every 2 s during a download: an open list stays open)
     sel.value=(info.voice_by_character||{})[ch]||'';

@@ -434,7 +434,7 @@ plugins.phone_feed = lambda: [{"name": d["name"], "online": bool(d["online"]), "
                                "charging": bool((d.get("battery") or {}).get("charging"))} for d in Phone.devices()]
 
 SKINS = ["none", "halo", "crown", "sprout", "bow"]
-CHARACTERS = ("snowflake", "terminal", "robot", "devil")
+CHARACTERS = ("snowflake", "terminal", "robot", "devil", "einstein", "skull")
 HEX = re.compile(r"#[0-9a-f]{6}")
 
 

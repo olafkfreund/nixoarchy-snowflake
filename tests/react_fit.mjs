@@ -26,7 +26,7 @@ await ev(`
   nixiIdleScale(1000); const f0=window.fetch.bind(window);   // the page re-reads /api/state every few seconds: keep its current flags
   window.fetch=async(u,o)=>{ const r=await f0(u,o); if(!/\\/api\\/state/.test(String(u))) return r; const j=await r.json(); return new Response(JSON.stringify({...j,proactive:info.proactive,reactions:info.reactions,look_meeting:true,look_weather:true,look_music:true,click_through:true})); };
   window.IDS=['load','memory','error','soon','meeting','notice','ask','done','open','rain','snow','wind','workout'];
-  window.CH=['snowflake','terminal','robot','devil'];
+  window.CH=['snowflake','terminal','robot','devil','einstein','skull'];
   window.grp=()=>['#rxSky','#rxBack','#rxFront'].map(s=>document.querySelector(s).innerHTML.length);
   window.empty=()=>grp().every(n=>n===0);
   window.sit=o=>onEvent({t:'situation',...Object.fromEntries(Object.entries(SIT).filter(([k])=>k!=='weather')),weather:SIT.weather,...o});
@@ -47,7 +47,7 @@ const centre = sel => ev(`const r=(${sel}).getBoundingClientRect(); return [r.le
 
 // 1. every in-scope reaction on every character: draws, stays inside the viewBox, keeps off the eyes, leaves the groups empty
 // (#227: music paints only in the music focus, so its case turns music on first)
-for (const ch of ["snowflake", "terminal", "robot", "devil"]) for (const id of ["load","memory","error","soon","meeting","notice","ask","done","open","rain","snow","wind","workout","music"]) {
+for (const ch of ["snowflake", "terminal", "robot", "devil", "einstein", "skull"]) for (const id of ["load","memory","error","soon","meeting","notice","ask","done","open","rain","snow","wind","workout","music"]) {
   const r = await ev(`rxReset(); setCharacter('${ch}'); ${id === 'music' ? 'sit({music:true}); sitOn.music=true; sitSeen.music=true; sitAt.music=performance.now();' : ''} const ok=rxPlay('${id}'); await new Promise(r=>setTimeout(r,120)); document.getAnimations().forEach(a=>{ a.pause(); a.currentTime=0; });
     const sv=document.querySelector('#guy').getBoundingClientRect(), eyes=[E.eL,E.eR].map(e=>e.getBoundingClientRect()), out=[], hit=[];
     for(const s of ['#rxSky','#rxBack','#rxFront']) for(const c of document.querySelector(s).querySelectorAll('rect,circle,path,ellipse,line,polygon,text')){ const b=c.getBoundingClientRect(); if(!b.width&&!b.height) continue;
@@ -169,7 +169,7 @@ const sc = await ev(`rxReset(); const b0=document.querySelector('#body>path.ball
   rxPlay('load',true); for(const c of CH){ setCharacter(c); o.push(document.querySelector('#stage').classList.contains('c-'+c), document.querySelector('#body>path.ball').getAttribute('d')===CHARACTERS[c].ball); }
   setCharacter('snowflake'); RXS.clear(); rxEnd(); document.body.classList.add('bar'); await new Promise(r=>setTimeout(r,80)); o.push(rxPlay('rain')); document.body.classList.remove('bar');
   await new Promise(r=>setTimeout(r,80)); o.push(document.querySelector('#body>path.ball').getAttribute('d')===b0, empty()); return o;`);
-eq(sc, [true, true, true, true, true, true, true, true, false, true, true], "setCharacter round trip and the notch");
+eq(sc, [true, true, true, true, true, true, true, true, true, true, true, true, false, true, true], "setCharacter round trip and the notch");
 
 // Step 5: the Devil keeps his own reds while the other characters use the selected body colour.
 const red = await ev(`rxReset(); const out=[];
@@ -198,6 +198,35 @@ for(let i=0;i<red.length;i+=7){
     `the other three characters use the selected body colour ${i/7}`,red.slice(i+4,i+7));
 }
 
+const painted = await ev(`rxReset(); const out=[];
+  for(const [ch,grad] of [['einstein','einSkin'],['skull','sklBone']]) for(const colour of ['#1b2a4a','#50c878']){
+    const L={...LOOK,body:colour,character:ch,follow_theme:false}; info.look=L; applyLook(L);
+    const stops=id=>[...document.querySelectorAll('#'+id+' stop')].map(s=>s.getAttribute('stop-color'));
+    renderSettings(); drawPreview();
+    const prevs=['#lookPrev','#characterGrid [data-character="'+ch+'"] svg','#set .hd .logo'].map(sel=>{
+      const svg=document.querySelector(sel), b=svg.querySelector('path[data-part="body"]'), g=svg.querySelector('radialGradient[id$="'+grad+'"]');
+      return {preview:!!b&&!!g&&b.getAttribute('fill')==='url(#'+g.id+')',stops:g?[...g.querySelectorAll('stop')].map(s=>s.getAttribute('stop-color')):[]}; });
+    out.push({ch,grad,ball:document.querySelector('#body>path.ball').getAttribute('fill'),rim:getComputedStyle($('#rim')).stroke,stops:stops(grad),prevs});
+  } rxReset(); return out;`);
+for(const p of painted){
+  const want = p.ch === 'einstein'
+    ? { grad: 'einSkin', rim: 'rgb(110, 67, 40)', stops: ['#f8d9bd', '#eab894', '#b47a55'] }
+    : { grad: 'sklBone', rim: 'rgb(95, 83, 63)', stops: ['#fdfaf2', '#ece3cc', '#b3a68a'] };
+  check(p.ball === `url(#${want.grad})` && p.rim === want.rim && JSON.stringify(p.stops) === JSON.stringify(want.stops),
+    `${p.ch} ball, rim and stops stay fixed across body colours`, p);
+  check(p.prevs.every(x => x.preview && JSON.stringify(x.stops) === JSON.stringify(want.stops)),
+    `${p.ch} previews use fixed ${want.grad} stops`, p.prevs);
+}
+const touchRx = await ev(`const out=[];
+  for(const [ch,sel,anim] of [['einstein','.tHair','fxHair'],['skull','.tJaw','fxJaw']]){
+    rxReset(); setCharacter(ch); rxPlay('load',true); await new Promise(r=>setTimeout(r,80));
+    const el=document.querySelector('#body '+sel), name=getComputedStyle(el).animationName;
+    document.body.classList.add('still'); const ps=getComputedStyle(el).animationPlayState; document.body.classList.remove('still');
+    out.push([ch,name,anim,ps]);
+  } rxReset(); return out;`);
+check(touchRx.every(([,,,ps])=>ps==='paused'), "a touch reaction pauses under body.still", touchRx);
+check(touchRx.every(([,got,want])=>got===want), "during rxPlay('load',true), .tHair / .tJaw has animationName fxHair / fxJaw", touchRx);
+
 const forks = await ev(`rxReset(); setCharacter('devil'); const stage=$('#stage'), fork=()=>document.querySelector('#body>.nix .dFork'); const out=[];
   for(const id of ['load','memory','error','done','workout']){
     stage.classList.add('c-devil','r-'+id); await new Promise(r=>setTimeout(r,220)); out.push([id,getComputedStyle(fork()).opacity]);
@@ -211,7 +240,7 @@ check(forks.every(([,opacity])=>+opacity===0),"Devil fork hides for all five lef
 
 // 11. music: the boombox stands in for the headphones, bops on start and on a track change, and the chip and card follow it
 // video uses the same look switch and quiet rules, with its own sustained TV.
-for (const ch of ["snowflake", "terminal", "robot", "devil"]) {
+for (const ch of ["snowflake", "terminal", "robot", "devil", "einstein", "skull"]) {
   const v = await ev(`rxReset(); setCharacter('${ch}'); sit({video:true,music:true}); const t=performance.now(); sitStep(t); sitStep(t+3100);
     const tv=document.querySelector('#rxFront .tv'), box=document.querySelector('#guy').getBoundingClientRect(), b=tv&&tv.getBoundingClientRect();
     const eyes=[E.eL,E.eR].map(e=>e.getBoundingClientRect());
@@ -296,7 +325,7 @@ for (const [name, js] of Object.entries({ fullscreen: "sit({fullscreen:true})", 
 }
 // 12. review fixes, each pinned
 // (a) setCharacter leaves #rim unfilled (it carries class "ball" but is only the outline)
-eq(await ev(`return CH.map(c=>{ setCharacter(c); return document.querySelector('#rim').getAttribute('fill'); });`), ["none", "none", "none", "none"], "setCharacter leaves #rim's fill at none for every character");
+eq(await ev(`return CH.map(c=>{ setCharacter(c); return document.querySelector('#rim').getAttribute('fill'); });`), ["none", "none", "none", "none", "none", "none"], "setCharacter leaves #rim's fill at none for every character");
 await ev(`setCharacter('snowflake'); return 1;`);
 // (b) Escape closes only the music card, not a pending approval
 const apprEsc = async () => { await ev(`rxReset(); window.__q.length=0; window.__ap=[]; const f2=window.fetch; window.fetch=async(u,o)=>{ if(/\\/api\\/approve/.test(String(u))){ window.__ap.push(String(u)); return new Response('{"ok":true}'); } return f2(u,o); };

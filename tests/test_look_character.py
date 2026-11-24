@@ -5,14 +5,14 @@ from test_plugin_character import CharEnv
 
 
 class LookCharacterTest(CharEnv):
-    """#178: look() keeps one of the four character ids, defaults to snowflake and drops anything else."""
+    """#178: look() keeps one of the built-in character ids, defaults to snowflake and drops anything else."""
 
     def character(self, **look):
         with mock.patch.dict(self.server.CFG, {"look": look}):
             return self.server.look()["character"]
 
     def test_each_value_kept(self):
-        for c in ("snowflake", "terminal", "robot", "devil"):
+        for c in ("snowflake", "terminal", "robot", "devil", "einstein", "skull"):
             self.assertEqual(self.character(character=c), c)
 
     def test_unknown_dropped(self):

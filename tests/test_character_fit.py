@@ -101,18 +101,24 @@ class CharacterFit(unittest.TestCase):
         return subprocess.run(["node", str(REPO / "tests/character_fit.mjs"), str(self.cdp), self.url, *args],
                               capture_output=True, text=True, timeout=900)
 
-    def test_snowflake_pixels_match_origin_main(self):
+    def pixels_match_origin_main(self, cid):
         if subprocess.run(["git", "rev-parse", "--verify", "-q", BASE_REF], cwd=REPO, capture_output=True).returncode:
             self.skipTest(f"no {BASE_REF} to compare with")
         wt = Path(tempfile.mkdtemp(prefix="nixi-charbase-")) / "base"
         subprocess.run(["git", "worktree", "add", "--detach", str(wt), BASE_REF], cwd=REPO, check=True, capture_output=True)
         try:
             base_url = self._serve(wt)
-            r = self.node("pixels", base_url)
+            r = self.node("pixels", base_url, cid)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         finally:
             subprocess.run(["git", "worktree", "remove", "--force", str(wt)], cwd=REPO, capture_output=True)
             shutil.rmtree(wt.parent, ignore_errors=True)
+
+    def test_snowflake_pixels_match_origin_main(self):
+        self.pixels_match_origin_main("snowflake")
+
+    def test_devil_pixels_match_origin_main(self):
+        self.pixels_match_origin_main("devil")
 
     def _char(self, cid):
         r = self.node("char", cid)
@@ -131,6 +137,14 @@ class CharacterFit(unittest.TestCase):
 
     def test_devil(self):
         self._char("devil")
+
+    def test_einstein(self):
+        r = self.node("char", "einstein")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_skull(self):
+        r = self.node("char", "skull")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_plugin_character(self):
         """#213: plug:fixture holds to the contract; its label is text, its art is clipped, and it goes when the plugin does."""

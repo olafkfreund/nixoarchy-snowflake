@@ -330,6 +330,8 @@ Settings → Look → **Character** picks who sits on your desk (`look.character
 | **Terminal** | `terminal` |
 | **Robot** | `robot` |
 | **Devil** | `devil` |
+| **Einstein** | `einstein` |
+| **Skull** | `skull` |
 
 **Voices.** In Settings → Voice → **His voice**, pick the default preset (`voice`):
 
