@@ -306,7 +306,7 @@ if (ID === "snowflake" || ID === "robot") {
     const rm = await ev(`${q} return els.map(e=>st(e).animationName)`);
     await tab.send("Emulation.setEmulatedMedia", { features: [] });
     check(rm.length > 0 && rm.every(n => n === "none"), `${ID}: no touch animation under reduced motion`, rm.join());
-  } else check(await ev(`return document.querySelectorAll('#body [class*=tCursor],#body [class*=tAntenna],#body [class*=tTail]').length===0`), `${ID}: no touch (null) draws none`);
+  } else check(await ev(`return document.querySelectorAll('#body [class*=tCursor],#body [class*=tAntenna],#body [class*=tTail],#body [class*=tHair],#body [class*=tJaw]').length===0`), `${ID}: no touch (null) draws none`);
   // body.still: not at startup, not 1 s after wake(), set after 60 s of nobody there (the clock faked through performance.now)
   await tab.go(url); await prep();
   const s0 = await ev(`return document.body.classList.contains('still')`);

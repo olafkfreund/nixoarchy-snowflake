@@ -5,7 +5,7 @@ from test_plugin_character import CharEnv
 
 
 class LookCharacterTest(CharEnv):
-    """#178: look() keeps one of the four character ids, defaults to snowflake and drops anything else."""
+    """#178: look() keeps one of the built-in character ids, defaults to snowflake and drops anything else."""
 
     def character(self, **look):
         with mock.patch.dict(self.server.CFG, {"look": look}):

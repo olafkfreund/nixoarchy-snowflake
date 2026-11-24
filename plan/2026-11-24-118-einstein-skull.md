@@ -278,6 +278,24 @@ This plan is self-contained. Implement from it, not from the spec.
      did, and says no plugin sandbox run was needed (no `app/plugins.py`,
      sandbox test or `nix/package.nix` change). Then comment "@codex review".
 
+## Deviations found in step 6
+
+- Einstein keeps the Devil's `cupX:106` and `band`: the cups sit just outside
+  the hair (x ±96) rather than on it. The headphone fit test passes.
+- Einstein's hair cloud reaches into the top corners of `faceBox`. It is in
+  `back`, not `.avoid`, so it cannot cover the eyes; the fit test passes.
+- In the live body, `#rim` draws over `back`, so Einstein's head outline shows
+  across his hair; the Settings tile draws the hair over it. Kept: changing the
+  tile order would break the Devil's zero-pixel test.
+- Review fixes: "The Einstein speaks as" (`otherVoiceLine`) now uses `the:false`
+  too; the forehead wrinkles that drew on the hair are removed; the tuft moves
+  to the end of `back` so it draws over the hair.
+- Owner asked to fix a pre-existing bug both reviews found: a reaction's
+  `animation` shorthand (e.g. `.c-skull.r-load .tJaw`, and the Devil's
+  `.c-devil.r-workout .tTail`) out-ranked `body.still`, so touch parts kept
+  moving while still. The pause rule at `:21` is now `!important`, with a
+  `react_fit.mjs` check.
+
 ## Tests
 
 All run as `nix develop -c python3 -B -m unittest discover -s tests -p '<file>'`.

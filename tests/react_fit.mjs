@@ -220,8 +220,11 @@ for(const p of painted){
 const touchRx = await ev(`const out=[];
   for(const [ch,sel,anim] of [['einstein','.tHair','fxHair'],['skull','.tJaw','fxJaw']]){
     rxReset(); setCharacter(ch); rxPlay('load',true); await new Promise(r=>setTimeout(r,80));
-    out.push([ch,getComputedStyle(document.querySelector(sel)).animationName,anim]);
+    const el=document.querySelector('#body '+sel), name=getComputedStyle(el).animationName;
+    document.body.classList.add('still'); const ps=getComputedStyle(el).animationPlayState; document.body.classList.remove('still');
+    out.push([ch,name,anim,ps]);
   } rxReset(); return out;`);
+check(touchRx.every(([,,,ps])=>ps==='paused'), "a touch reaction pauses under body.still", touchRx);
 check(touchRx.every(([,got,want])=>got===want), "during rxPlay('load',true), .tHair / .tJaw has animationName fxHair / fxJaw", touchRx);
 
 const forks = await ev(`rxReset(); setCharacter('devil'); const stage=$('#stage'), fork=()=>document.querySelector('#body>.nix .dFork'); const out=[];
