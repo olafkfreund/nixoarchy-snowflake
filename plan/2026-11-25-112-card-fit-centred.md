@@ -257,9 +257,9 @@ page = page_zoom(max(min(target / 14, fit), z))
      grows the view to `340 + want`, so it cannot make a narrow window.
      The helper sets an explicit view size and `nixiLayout(ox)`, then
      waits more than 220 ms for `#stg.on`.
-     - Asymmetric short rooms force each side: for example a 640 px window
-       with `ox=150` (right room 150 → left) and `ox=150` mirrored
-       (left room 150 → right). The standard card (`facts`) and News
+     - Asymmetric short rooms force each side: a 700 px window with
+       `ox=100` (left 100, right 260, so the card goes right) and with
+       `ox=260` (left 260, right 100, so it goes left). The standard card (`facts`) and News
        (`headlines`) each lie inside the window (`left ≥ 0`,
        `right ≤ innerWidth`).
      - A real click on a card button, sent with
