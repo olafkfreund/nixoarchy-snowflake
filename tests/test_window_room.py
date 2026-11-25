@@ -292,8 +292,9 @@ class RoomTest(unittest.TestCase):
                 move.assert_called_with(100 if layer else 2020, 440 if layer else 640)
 
     def test_floating_drag_saves_base_after_upward_growth(self):
-        ns = window_methods("_moved", "_save_xpos", "_send_corner")
+        ns = window_methods("_moved", "_arm_settle", "_settle_xpos", "_save_xpos", "_send_corner")
         w = ns["Window"]()
+        w._button_held = lambda: False
         w.mx, w.my, w.wide_shift, w.top_shift = 1920, 540, 100, 100
         w.hover = w.bar = False
         w.save_t = None
@@ -309,6 +310,53 @@ class RoomTest(unittest.TestCase):
             w.wide_shift = w.top_shift = 0
             w.mx, w.my = 2040, 650
             self.assertEqual((w.mx, w.my), (2040, 650))
+
+    def _settle_window(self, held):
+        ns = window_methods("_moved", "_arm_settle", "_settle_xpos")
+        live = set()
+        ids = iter(range(1, 100))
+
+        def add(ms, fn):
+            i = next(ids)
+            live.add(i)
+            return i
+        ns["GLib"] = SimpleNamespace(timeout_add=add, source_remove=lambda i: live.discard(i))
+        w = ns["Window"]()
+        w.mx = w.my = 0
+        w.hover = w.bar = False
+        w.save_t = None
+        w._button_held = lambda: held[0]
+        w._save_xpos = Mock()
+        return w, live
+
+    def test_settle_waits_for_release_with_one_timer(self):
+        held = [True]
+        w, live = self._settle_window(held)
+        w._moved(SimpleNamespace(get_position=lambda: (10, 10)), None)
+        w._moved(SimpleNamespace(get_position=lambda: (20, 10)), None)
+        self.assertEqual(len(live), 1)                       # a second move replaces the timer
+        for _ in range(3):
+            self.assertTrue(w._settle_xpos())                 # still held: the same source runs again
+            self.assertEqual(len(live), 1)
+        w._save_xpos.assert_not_called()
+        held[0] = False
+        live.discard(w.save_t)                               # (GLib drops a source that returns False)
+        self.assertFalse(w._settle_xpos())
+        w._save_xpos.assert_called_once()
+        self.assertIsNone(w.save_t)
+
+    def test_undock_settle_and_direct_save_keep_one_timer(self):
+        held = [True]
+        w, live = self._settle_window(held)
+        w._moved(SimpleNamespace(get_position=lambda: (10, 10)), None)
+        w._arm_settle(0)                                     # the delayed undock save while a configure timer is pending
+        self.assertEqual(len(live), 1)
+        self.assertTrue(w._settle_xpos())                    # pulling him out of the notch: still held, no save
+        w._save_xpos.assert_not_called()
+        pending = w.save_t
+        w._save_xpos()                                       # a direct save (go_monitor) leaves the pending timer alone
+        self.assertEqual(w.save_t, pending)
+        self.assertIn(pending, live)
 
     def test_layer_place_and_saved_base(self):
         ns = window_methods("_place", "_save_pos")

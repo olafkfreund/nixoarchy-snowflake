@@ -612,13 +612,31 @@ class NixiWindow:
         self.mx, self.my = x, y
         if self.bar:                                      # docked: his blob spot (bar_home) stays where it was
             return False
-        if self.save_t:
-            GLib.source_remove(self.save_t)
-        self.save_t = GLib.timeout_add(700, self._save_xpos)
+        self._arm_settle(700)
         return False
 
-    def _save_xpos(self):
+    def _arm_settle(self, ms):
+        """The one owner of save_t: (re)start the wait before saving a window-mode spot."""
+        if self.save_t:
+            GLib.source_remove(self.save_t)
+        self.save_t = GLib.timeout_add(ms, self._settle_xpos)
+
+    def _settle_xpos(self):
+        """Save (and re-zoom) only once the mouse is up: a pause mid-drag must not resize the window under the pointer."""
+        if self._button_held():
+            return True
         self.save_t = None
+        self._save_xpos()
+        return False
+
+    def _button_held(self):
+        try:
+            dev = Gdk.Display.get_default().get_default_seat().get_pointer()
+            return bool(self.win.get_window().get_device_position(dev)[3] & Gdk.ModifierType.BUTTON1_MASK)
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _save_xpos(self):
         try:
             try:
                 p = json.load(open(POS_FILE))
@@ -1052,12 +1070,7 @@ class NixiWindow:
         t0 = time.monotonic()
 
         def check():
-            gw = self.win.get_window()
-            try:
-                dev = Gdk.Display.get_default().get_default_seat().get_pointer()
-                held = bool(gw.get_device_position(dev)[3] & Gdk.ModifierType.BUTTON1_MASK)
-            except Exception:  # noqa: BLE001
-                held = False
+            held = self._button_held()
             if held and time.monotonic() - t0 < 30:
                 return True
             self._dock_if_edge()
@@ -1181,7 +1194,7 @@ class NixiWindow:
                 else:
                     self._glide_to(hx - self.wide_shift, hy - self.top_shift)
             if was:
-                GLib.timeout_add(int(GLIDE * 1000) + 150, lambda: (None if self.dragging or self.pmoving or self.dpos else (self._save_pos() if self.layer else self._save_xpos()), False)[1])
+                GLib.timeout_add(int(GLIDE * 1000) + 150, lambda: (None if self.dragging or self.pmoving or self.dpos else (self._save_pos() if self.layer else self._arm_settle(0)), False)[1])
         # (pulled out by the mouse: the page just pops him out under it, nothing trailing behind)
         pulled = bool(to) and to != "here" and not edge
         self._js("window.nixiDock&&nixiDock(%s,%s)" % (json.dumps(edge or ""), json.dumps("pull" if pulled else "")))

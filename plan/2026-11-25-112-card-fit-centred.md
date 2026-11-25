@@ -345,3 +345,9 @@ bumping `nixi-companion` back, or with `nixos-rebuild switch --rollback`.
   spec's "recompute once" wording, as Step 3 says. Also folded in: a
   `hover_n` counter, so only the latest glide home clears `hover_return`
   (a race the coder found in Step 2).
+- Step 4: done by the lead, not the coder. The coder went idle without
+  starting it, so it was stopped and the step taken over. As planned:
+  `_button_held()` is shared with the X11 release poll, and
+  `_arm_settle()` is the only owner of `save_t`. `_settle_xpos()` waits
+  while the button is held, and the window-mode undock save goes through
+  `_arm_settle(0)`.
