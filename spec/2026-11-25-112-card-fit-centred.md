@@ -66,11 +66,13 @@ does not know which card will open, so one rule for all cards is kept.
 The cap reads one cached **zoom spot**: the monitor geometry together with
 `x0` on that monitor. `_apply_zoom` updates the spot and then computes the
 zoom from it. `_push_zoom` sends the zoom and the spot `_apply_zoom` last
-used, and does not look them up again. Native and page zoom therefore
+used, and does not look them up again (before the first `_apply_zoom` it
+falls back to today's lookup). Native and page zoom therefore
 always agree, even on a monitor seam.
 
 The spot is refreshed from Nixi's current strip only while he is **free**:
-not docked (`self.bar`) and not hovering (`self.hover`). Cards are hidden
+not docked (`self.bar`) and not hovering (`self.hover`, from the moment
+hover starts until the glide home lands). Cards are hidden
 while docked or hovering (`stageVisSync`, `index.html:3322`). In those
 states the spot stays where it was before he docked or started hovering. A
 size, text or terminal change still recomputes, from that kept spot.
@@ -81,25 +83,35 @@ size, text or terminal change still recomputes, from that kept spot.
 - **Drag-to-dock** keeps the zoom. `:1174` runs with `self.bar` already
   set, so it reuses the pre-drag spot and finds the zoom unchanged. Nothing
   calls `set_bar(..., glide=False)` mid-glide.
+- **A monitor move while docked** (`go_monitor`, `:759-767`) sets the
+  spot to the destination monitor and the saved spot there (`bar_home`'s
+  new `x`), or `x0 = None` when there is none. A drag that docks on a
+  different monitor sets it to that monitor with `x0 = None`, so the zoom
+  may change there and that dock snaps instead of gliding. That is rare and
+  accepted.
 - **Undock** recomputes after the glide: `set_bar` already saves at
   `:1129` (skipped while dragging), and `_save_pos` now calls
   `_apply_zoom`, as `_save_xpos` does (`:585`).
-- **Hover exit** recomputes when the glide home lands: `_glide_home`
-  calls `_apply_zoom` at its end. While hovering on another monitor, the
+- **Hover exit** recomputes when the glide home lands: `_glide_home` runs
+  on a worker thread, so each of its three exits queues
+  `GLib.idle_add(self._apply_zoom)`. While hovering on another monitor, the
   kept spot pairs the home monitor with its own `x0`, so the two never
   get mixed.
 - **Step-aside** counts as free. Cards can show while he is aside, and on
   `mode == "monitor"` he is on another monitor. The spot follows him:
-  `go_monitor` recomputes on the destination, the side glide parks him at
-  an edge where the term never binds, and `aside_off` recomputes through
+  `go_monitor` recomputes on the destination, the side glide's landing
+  (`_parked`, `:842`) calls `_apply_zoom`, and `aside_off` recomputes through
   `_save_pos` when he returns (`:867`). A manual move while aside
   recomputes through `_drag_finished`, like any move.
 - **Window-mode drags:** the 700 ms debounce in `_moved` (`:570`) now
-  fires a small `_settle_xpos`. It cancels and re-arms the one `save_t`
-  timer while button 1 is held, using the check the X11 release poll
+  fires a small `_settle_xpos`. It owns the one `save_t` timer: while
+  button 1 is held it returns `True` to run again, and it clears `save_t`
+  when it finishes. It uses using the check the X11 release poll
   already does (`:1002-1006`, moved into a helper both call). Once the
-  button is up, it calls `_save_xpos`. Direct `_save_xpos` calls
-  (`go_monitor`, `:1129`) are unchanged. A size or text key pressed in
+  button is up, it calls `_save_xpos`. The window-mode branch of the delayed undock save
+  (`:1129`) also goes through `_settle_xpos`, because pulling Nixi out of the
+  notch is a drag that sets no drag flag. The direct calls in `go_monitor`
+  stay as they are. A size or text key pressed in
   the middle of a drag still applies at once. That is rare, and it is
   today's behaviour.
 
@@ -114,15 +126,26 @@ before the cap sees it.
 New order, in `_load_pos`, `_load_xpos` and `go_monitor`:
 
 1. Resolve the target monitor and the saved spot on it.
-2. Compute `self.z` from that monitor and the saved `x0`. With no saved
-   spot, the default bottom-right corner is an edge, where the term never
-   binds, so use `x0 = None`. This uses a small `_zoom_for(g, x0)` that
-   sets `self.z` without resizing anything.
-3. Compute the default corner, if needed, with that `self.z`.
-4. Place or clamp the strip as today.
+2. Compute the zoom from that monitor and the saved `x0`. With no saved
+   spot, the default bottom-right corner is computed with `x0 = None` and
+   then checked. The corner is 10 px in from the edge, so on a small
+   monitor the term can still bind there (600 px wide at zoom 0.8 gives
+   0.795). In that case the zoom is recomputed once with the corner's `x0`.
+3. **Apply** that zoom before placing: the WebKit zoom level, `self.z`,
+   and the base window size (`cur_w`, `cur_h` and the size request). This
+   is the part of `_apply_zoom` that runs today when `page != self.z`,
+   moved into an `_apply_page(page)` that both call. `_place(...,
+   clamp=True)` clamps with `cur_w`/`cur_h` (`:619`), so they must already
+   be the destination size, or a saved right-edge spot gets pulled in.
+4. Compute the default corner, if needed, and place or clamp the strip as
+   today.
 
-The first `_apply_zoom` (`:460`) then finds the zoom already right. It
-refreshes the spot, resizes and pushes as usual. The saved spot is written
+`_load_xpos` also checks whether the saved spot's monitor still exists,
+using `self._px(W)` (`:552`). It uses the zoom from step 2 for that check,
+so a spot saved near a right edge at a small zoom is not thrown away.
+
+The first `_apply_zoom` (`:460`) then finds the zoom already applied. It
+refreshes the spot and pushes it. The saved spot is written
 before `_apply_zoom` runs, and the zoom does not move the strip's left
 edge, so the position on disk stays right.
 
@@ -158,8 +181,11 @@ For an open card of rendered width `w` (390, or 340 for News), the shift
   `stgSize(800)` asks `split_room` for room on both sides. The card's
   z-index (7) draws it above Nixi.
 - `--stgIn` is reset to `0px` at the top of `stagePlace`, before its early
-  return for a closed stage. It is set only when `stgState === 'open'`, so
-  the tab is never shifted (Decision 3).
+  return for a closed stage, and also in the close path of `stageHide`
+  (`:3671`), which does not call `stagePlace`. It is set only when
+  `stgState === 'open'`, so the tab is never shifted (Decision 3).
+- `stagePlace` reads `stgEl.offsetWidth`, so borders on some card styles
+  (`board`, `notebook`) are counted whatever the box sizing is.
 - `stagePlace()` also runs from the `resize` listener (`:5000`), before
   `sendRegion`, so a late resize cannot leave the shift stale.
 - `sendRegion` measures the card's rectangle, so the click-through region
@@ -168,8 +194,9 @@ For an open card of rendered width `w` (390, or 340 for News), the shift
   their places. In the slide-over case the card may cover them. Accepted
   under Decision 1.
 - If the window is narrower than the card itself (only on a monitor under
-  about 490 px wide at Nixi's largest size), no shift can fit it. The card
-  then starts at the window's left edge.
+  about 490 px wide at Nixi's largest size), no shift can fit it. The shift
+  is then chosen so the card starts at the window's left edge, on either
+  side, keeping its title and left-hand buttons visible.
 
 With room to spare, `s` is 0 and the layout is exactly today's.
 
@@ -212,6 +239,11 @@ With room to spare, `s` is 0 and the layout is exactly today's.
 - **Window mode does not clamp** (`set_wide`, `:691`). A zoom growth near
   the right edge can push the strip off the monitor. That is true today,
   and the new term only ever lowers the cap.
+- **A drag from a larger monitor to a smaller one** is clamped with the
+  source size before the zoom is recomputed (`_drag_finished`), as today.
+  The cap then sees the clamped spot. The card still fits there, but the
+  text can be smaller than that spot strictly needs until Nixi is moved
+  again. Fixing the drag clamp is out of scope.
 - **Tiny monitors.** With Nixi's size above `mon_w / 750` (only below about
   940 px wide), the outer bound cannot hold. The slide-over then keeps the
   card on screen, unless the window is narrower than the card.
@@ -241,11 +273,17 @@ With room to spare, `s` is 0 and the layout is exactly today's.
   - `_push_zoom` sends the cached spot's values.
 - Drag-to-dock: start at `x0=374` and drop at `x0=740`. `_drag_finished`
   makes no zoom change and no `set_bar(..., glide=False)` call.
-- `_save_pos` calls `_apply_zoom`. `_glide_home` calls it at its end.
-- `_settle_xpos` re-arms (leaving exactly one timer) while the button is
-  held. Once it is released, it calls `_save_xpos` once.
+- `_save_pos` calls `_apply_zoom`. `_parked` calls it too, and so does
+  each exit of `_glide_home` (via `idle_add`). A zoom request during the
+  hover return glide uses the kept spot.
+- A docked `go_monitor` moves the spot to the destination monitor.
+- `_settle_xpos` keeps exactly one timer while the button is held, and
+  calls `_save_xpos` once after release. The same holds for the
+  window-mode undock save at `:1129`.
 - Startup with a saved right-edge spot (`x=748` on 1280×720 at 16 px /
-  200 %) keeps `x0=748` and zoom 1.565. With no saved spot, the corner sits
+  200 %) keeps `x0=748` and zoom 1.565, and asserts `cur_w`, the size
+  request and `set_zoom_level`. A 600 px monitor with no saved spot gets
+  the corner rule from Design 3, step 2. With no saved spot, the corner sits
   10 px from the edge at the capped zoom. The same holds for `go_monitor`
   from 2560×1440 to 1280×720, docked and free.
 
@@ -257,7 +295,8 @@ With room to spare, `s` is 0 and the layout is exactly today's.
   - a click on a card button lands on it.
 - The same at `fitK < 1`, after a `resize`.
 - News on the left with 370 px of room is shifted, not clipped.
-- Collapsing to the tab, and closing, resets `--stgIn`. The tab sits at
+- Collapsing to the tab, and closing with no window resize, each reset
+  `--stgIn`. The tab sits at
   its usual place.
 - With room to spare, `#stg` sits at `left:350px` (right) and `-400px`
   (left), as today.
@@ -269,8 +308,10 @@ discover -s tests`).
 `RemainAfterExit`, with its own test config. Screenshots come from headless
 Chromium with `--disable-gpu`. On razer at Card text 200 %:
 
-- drop Nixi in the middle, open News, and check the card and its buttons
-  are on screen;
+- drop Nixi in the middle, open News and a standard card, and check each
+  card and its buttons are on screen. Click a button for real, with
+  click-through on, since a page hit test does not exercise the GTK input
+  region;
 - drop him at each edge and check the text size matches today's build;
 - drag him to dock, undock him, and step aside with a card: the zoom does
   not change during the dock glide, and the card fits after each return;
