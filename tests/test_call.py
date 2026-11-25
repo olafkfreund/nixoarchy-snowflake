@@ -619,6 +619,7 @@ class Names(Calls):
         s = self.s
         self.phone.call_active = False
         self.hfp.any_call = lambda: False
+        gen = s.PHONE_GEN
         with mock.patch.object(s, "phone_call_gateway_lost") as lost:
             s.hfp_changed()
             self.pbap.drop.assert_not_called()
@@ -627,10 +628,13 @@ class Names(Calls):
         self.pbap.drop.assert_called_once_with("AA:BB")
         lost.assert_called_once_with("/ag1")
         self.pbap.drop.reset_mock()
+        s.phone_call_gateway_lost("/ag1")
+        self.assertEqual(s.PHONE_GEN, gen + 1)
         with mock.patch.object(s.Desk, "locked", lambda: True), mock.patch.object(s.Ambient, "locked", False), \
                 mock.patch.dict(s.CFG, {"proactive": True}):
             s.Ambient.sense()
         self.pbap.drop.assert_called_once_with()
+        self.assertEqual(s.PHONE_GEN, gen + 2)
 
 
 if __name__ == "__main__":

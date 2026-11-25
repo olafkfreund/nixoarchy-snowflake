@@ -8213,7 +8213,7 @@ class Call:
                 self._emit(row)
             if phase == "active" and (not old or old["phase"] != "active") and self.on_answered:
                 self.on_answered()
-            if addr and Pbap.state(addr) == "cold":           # (last: a callback run at once must see this row)
+            if addr and not Ambient.locked and Pbap.state(addr) == "cold":   # (never read contacts while locked; last: a callback run at once must see this row)
                 Pbap.ensure(addr, lambda st: st == "ready" and self.sync())
 
     def _failed(self, ident, gen):
@@ -8286,11 +8286,17 @@ HFP_SEEN = {}                     # gateway path -> address at the last HFP chan
 
 def phone_call_lock():
     """The desktop locked: forget the phonebooks."""
+    global PHONE_GEN
     Pbap.drop()
+    with PHONE_LOCK:
+        PHONE_GEN += 1
 
 
 def phone_call_gateway_lost(path):
     """A Bluetooth phone went away."""
+    global PHONE_GEN
+    with PHONE_LOCK:
+        PHONE_GEN += 1
 
 
 def hfp_changed():
@@ -11108,10 +11114,10 @@ def main():
     Ambient.start()
     Mirror.start()
     Inbox.start()
+    Pbap.start()                                      # (also removes contact files a crash left behind)
     if CFG.get("phone_on"):
         Phone.start()
         Hfp.start()
-    Pbap.start()                                      # (also removes contact files a crash left behind)
     Desk.start()
     if not BRIDGED:
         Updates.start()
