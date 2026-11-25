@@ -1140,6 +1140,156 @@ class Messages(_PhoneEnv):
             self.assertIn("say", s.phone_quick(s.quick.handle("find my phone")["phone"]))
 
 
+class PhoneCallCards(_PhoneEnv):
+    post = Messages.post
+
+    def setUp(self):
+        s = self.server
+        self.saved_cfg = dict(s.CFG)
+        self.addCleanup(lambda: (s.CFG.clear(), s.CFG.update(self.saved_cfg)))
+        s.CFG["phone_on"] = True
+        s.STAGES.clear()
+        mock.patch.object(s.BUS, "pub").start()
+        mock.patch.object(s.Desk, "locked", return_value=False).start()
+        self.addCleanup(mock.patch.stopall)
+        with s.CLICK_LOCK:
+            old = dict(s.CLICK)
+            s.CLICK.update(claimed=True, spoiled=False)
+        self.addCleanup(lambda: s.CLICK.update(old))
+        self.srv = s.ThreadingHTTPServer(("127.0.0.1", 0), s.Handler)
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        self.addCleanup(self.srv.server_close)
+        self.addCleanup(self.srv.shutdown)
+        s.PHONE_CALL = s.DIAL_PENDING = None
+        s.Hfp.gateways = {"/ag/a": {"address": "AA:11:22:33:44:55"},
+                          "/ag/b": {"address": "BB:11:22:33:44:66"}}
+        for patch in (mock.patch.object(s.Call, "visible", return_value=False),
+                      mock.patch.object(s.Hfp, "any_call", return_value=False),
+                      mock.patch.object(s.Hfp, "dial", return_value={"ok": True}),
+                      mock.patch.object(s.Hfp, "stop"),
+                      mock.patch.object(s.Pbap, "drop"),
+                      mock.patch.object(s.Pbap, "state", return_value="failed"),
+                      mock.patch.object(s, "Phone", StubPhone([]))):
+            patch.start()
+            self.addCleanup(patch.stop)
+        self.addCleanup(lambda: setattr(s, "PHONE_CALL", None))
+        self.addCleanup(lambda: setattr(s, "DIAL_PENDING", None))
+
+    def confirm(self, number="+4791234567"):
+        s = self.server
+        ident = s.phone_call_new("/ag/a", "AA:11:22:33:44:55")
+        self.assertTrue(s.phone_call_lookup(ident, "/ag/a", "AA:11:22:33:44:55", number)["ok"])
+        return s.STAGES.current()["token"]
+
+    def test_click_key_required_for_all_three_endpoints(self):
+        for route in ("call-gateway", "call-pick", "dial"):
+            status, _ = self.post("/api/phone/" + route, {"token": "x"})
+            self.assertEqual(status, 403)
+
+    def test_replay_expiry_and_replacement(self):
+        s = self.server
+        old = self.confirm()
+        new = self.confirm()
+        self.assertEqual(s.phone_call_dial(old)["say"], s.lang.t("phone.call_stale"))
+        s.PHONE_CALL["created"] -= 61
+        self.assertFalse(s.phone_call_dial(new)["ok"])
+        new = self.confirm()
+        self.assertTrue(s.phone_call_dial(new)["ok"])
+        self.assertFalse(s.phone_call_dial(new)["ok"])
+        s.Hfp.dial.assert_called_once()
+
+    def test_gateway_pick_then_lookup(self):
+        s = self.server
+        ident = s.phone_call_new(None, None)
+        s.PHONE_CALL["target"] = "+4791234567"
+        self.assertTrue(s.phone_call_gateway_card(ident, [("/ag/a", "AA:11:22:33:44:55", "Pixel")]))
+        token = s.STAGES.current()["rows"][0]["token"]
+        self.assertEqual(s.STAGES.current()["rows"][0]["masked"], "…4455")
+        status, reply = self.post("/api/phone/call-gateway", {"token": token}, s.CLICK_KEY)
+        self.assertEqual((status, reply), (200, {"ok": True}))
+        self.assertEqual(s.STAGES.current()["kind"], "phone_call_confirm")
+        self.assertEqual(s.PHONE_CALL["gateway_path"], "/ag/a")
+
+    def test_pick_never_dials_and_stale_after_invalidation(self):
+        s = self.server
+        for invalidate in (s.phone_call_lock, s.phone_reset, lambda: s.phone_call_gateway_lost("/ag/a")):
+            s.CFG["phone_on"] = True
+            s.Hfp.gateways = {"/ag/a": {"address": "AA:11:22:33:44:55"}}
+            ident = s.phone_call_new("/ag/a", "AA:11:22:33:44:55")
+            s.phone_call_pick_card(ident, [{"name": "Anna", "numbers": [("mobile", "+4791234567")]}])
+            token = s.STAGES.current()["rows"][0]["token"]
+            status, reply = self.post("/api/phone/call-pick", {"token": token}, s.CLICK_KEY)
+            self.assertEqual((status, reply), (200, {"ok": True}))
+            s.Hfp.dial.assert_not_called()
+            invalidate()
+            self.assertFalse(s.phone_call_pick_act(token)["ok"])
+            self.assertFalse(s.phone_call_dial(token)["ok"])
+
+    def test_pending_blocks_second_dial_and_expires(self):
+        s = self.server
+        first = self.confirm()
+        status, reply = self.post("/api/phone/dial", {"token": first}, s.CLICK_KEY)
+        self.assertEqual((status, reply), (200, {"ok": True}))
+        second = self.confirm()
+        self.assertFalse(s.phone_call_dial(second)["ok"])
+        s.Hfp.dial.assert_called_once()
+        s.DIAL_PENDING["since"] -= 31
+        self.assertFalse(s.phone_dial_pending())
+        self.assertTrue(s.phone_call_dial(second)["ok"])
+
+    def test_unknown_keeps_pending_and_slow_failure_preserves_newer(self):
+        s = self.server
+        s.Hfp.dial.return_value = {"ok": False, "error": "unknown"}
+        self.assertFalse(s.phone_call_dial(self.confirm())["ok"])
+        self.assertTrue(s.phone_dial_pending())
+        old = s.DIAL_PENDING
+        def slow(*_):
+            s.DIAL_PENDING = {"id": "newer", "gateway_path": "/ag/a", "number": "0", "since": time.monotonic()}
+            return {"ok": False, "error": "failed"}
+        s.Hfp.dial.side_effect = slow
+        s.DIAL_PENDING = None
+        self.assertFalse(s.phone_call_dial(self.confirm())["ok"])
+        self.assertEqual(s.DIAL_PENDING["id"], "newer")
+        self.assertNotEqual(old["id"], "newer")
+
+    def test_hfp_call_clears_pending(self):
+        s = self.server
+        s.DIAL_PENDING = {"id": "x", "gateway_path": "/ag/a", "number": "0", "since": time.monotonic()}
+        with mock.patch.object(s.Hfp, "calls", {"/call": {"path": "/call", "ag": "/ag/a", "state": "dialing", "number": "+4791234567"}}):
+            s.Call.sync()
+        self.assertIsNone(s.DIAL_PENDING)
+        s.Call.clear()
+
+    def test_missed_call_during_dial_does_not_deadlock(self):
+        s = self.server
+        token = self.confirm()
+        barrier = threading.Barrier(2)
+        s.Hfp.dial.side_effect = lambda *_: (barrier.wait(), {"ok": True})[1]
+        missed_seen = threading.Event()
+        def on_missed(*_):
+            with s.PHONE_LOCK:
+                missed_seen.set()
+        old_cb = s.Call.on_missed
+        s.Call.on_missed = on_missed
+        self.addCleanup(lambda: setattr(s.Call, "on_missed", old_cb))
+        s.Call.row = {"id": "old", "phase": "ringing", "hfp_path": "/call", "hfp_incoming": True,
+                      "phone_who": "", "number": None, "device": None}
+        s.Hfp.calls = {"/call": {"path": "/call", "ag": "/ag/a", "state": "disconnected"}}
+        dial = threading.Thread(target=lambda: s.phone_call_dial(token))
+        missed = threading.Thread(target=lambda: (barrier.wait(), s.Call.sync()))
+        dial.start(); missed.start()
+        dial.join(5); missed.join(5)
+        self.assertFalse(dial.is_alive() or missed.is_alive())
+        self.assertTrue(missed_seen.is_set())
+        s.Call.clear()
+
+    def test_cards_count_as_phone_on_screen(self):
+        s = self.server
+        for kind in s.PHONE_CALL_KINDS:
+            s.STAGES.put({"v": 1, "kind": kind})
+            self.assertTrue(s.phone_on_screen())
+
+
 class Silence(_PhoneEnv, _FluxCase):
     def setUp(self):
         super().setUp()

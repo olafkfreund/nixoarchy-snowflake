@@ -427,7 +427,7 @@ class Store:
     @staticmethod
     def _keep(e):
         """Private mail and phone stages, and stale choosers, never come back."""
-        return None if e and e[0].get("kind") in ("mail", "phone_pick", "phone_sms", "phone_threads", "phone_draft", "phone_missed", "phone_thread", "phone_notes", "phone_note_draft") else e
+        return None if e and e[0].get("kind") in ("mail", "phone_pick", "phone_sms", "phone_threads", "phone_draft", "phone_missed", "phone_thread", "phone_notes", "phone_note_draft", "phone_call_gateway", "phone_call_pick", "phone_call_confirm") else e
 
     def put(self, stage, refresh=None):
         """-> the stage for the page: items (or the stage) carry a token, nothing else added."""
@@ -541,6 +541,8 @@ class Store:
                     row["open"] = secrets.token_urlsafe(12)
                     toks[row["open"]] = ("link", {"url": it["url"]})
                 page["items"].append(row)
+        elif stage["kind"] in ("phone_call_gateway", "phone_call_pick", "phone_call_confirm"):
+            pass  # tokens belong to PHONE_CALL; the stage only displays them
         else:  # facts: one token, Copy takes the whole text
             t = secrets.token_urlsafe(12)
             toks[t] = ("facts", {"text": "\n".join([stage["title"], *stage["points"]])})
