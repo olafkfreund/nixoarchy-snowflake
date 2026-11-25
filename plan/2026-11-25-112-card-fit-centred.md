@@ -327,3 +327,15 @@ Revert the PR. The change is confined to `app/size.py`, `app/window.py`,
 `app/static/index.html` and their tests, with no config or saved-state
 format change: `pos.json` keeps its fields. Deployed hosts roll back by
 bumping `nixi-companion` back, or with `nixos-rebuild switch --rollback`.
+
+## Deviations
+
+- Step 2 (coder): `_apply_page` sets `self.cur_w = 0` after `_size_page`,
+  before `set_wide`. `_size_page` already writes the new base size, so with
+  no extra room `set_wide` would take its "nothing changed" early return and
+  skip the re-clamp, `nixiLayout` and the Hyprland resize that a zoom change
+  does today. Covered by
+  `test_page_change_without_extra_room_still_reclamps_and_tells_page`.
+- Step 2 (coder): `_parked` calls `_apply_zoom` first, not last. A larger
+  page at the parked edge re-clamps him, and `aside["parked"]` must hold the
+  clamped spot, or `may_return` (an exact match) never lets him glide home.
