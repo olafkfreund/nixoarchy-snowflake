@@ -18,9 +18,10 @@ class Hfp:
     OM = "org.freedesktop.DBus.ObjectManager"
     PROPS = "org.freedesktop.DBus.Properties"
 
-    def __init__(self, on_change=None, conn=None, gio=None, glib=None):
+    def __init__(self, on_change=None, conn=None, gio=None, glib=None, sys_conn=None):
         self.on_change = on_change
         self.conn, self.Gio, self.GLib = conn, gio, glib
+        self.sys_conn = sys_conn
         self.gateways = {}
         self.calls = {}
         self.lock = threading.RLock()
@@ -215,6 +216,49 @@ class Hfp:
     def any_call(self):
         with self.lock:
             return any(c["state"] != "disconnected" for c in self.calls.values())
+
+    def dial(self, ag_path, number):
+        with self.lock:
+            if self.any_call():
+                return {"ok": False, "error": "busy"}
+            if ag_path not in self.gateways:
+                return {"ok": False, "error": "gone"}
+        try:
+            self.conn.call_sync(self.NAME, ag_path, self.AG, "Dial",
+                                self.GLib.Variant("(s)", (number,)), None,
+                                self.Gio.DBusCallFlags.NONE, 10000, None)
+            return {"ok": True}
+        except Exception as error:
+            try:
+                remote = self.Gio.DBusError.get_remote_error(error)
+            except Exception:  # noqa: BLE001 - not a GLib error (e.g. a plain TimeoutError)
+                remote = None
+            timed_out = isinstance(error, TimeoutError)
+            if hasattr(error, "matches") and hasattr(self.Gio, "IOErrorEnum"):
+                timed_out |= error.matches(self.Gio.io_error_quark(), self.Gio.IOErrorEnum.TIMED_OUT)
+            return {"ok": False, "error": "unknown" if timed_out or remote and remote.endswith((".NoReply", ".Timeout")) else "failed"}
+
+    def gateway_list(self):
+        with self.lock:
+            gateways = [(path, row["address"]) for path, row in self.gateways.items()]
+        aliases = {}
+        try:
+            self._load()
+            if self.sys_conn is None:
+                self.sys_conn = self.Gio.bus_get_sync(self.Gio.BusType.SYSTEM, None)
+            objects = self.sys_conn.call_sync("org.bluez", "/", self.OM, "GetManagedObjects", None,
+                                              None, self.Gio.DBusCallFlags.NONE, 10000, None).unpack()[0]
+            for interfaces in objects.values():
+                device = interfaces.get("org.bluez.Device1")
+                if device:
+                    address = self._value(device.get("Address"))
+                    aliases[address] = self._value(device.get("Alias")) or address
+        except Exception:
+            pass
+        rows = [(path, address, aliases.get(address, address)) for path, address in gateways]
+        duplicates = {alias for _, _, alias in rows if sum(row[2] == alias for row in rows) > 1}
+        return [(path, address, f"{alias} (…{address[-4:]})" if alias in duplicates else alias)
+                for path, address, alias in rows]
 
     def calls_on(self, ag):
         with self.lock:
