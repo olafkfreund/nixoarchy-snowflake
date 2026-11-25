@@ -1289,6 +1289,83 @@ class PhoneCallCards(_PhoneEnv):
             s.STAGES.put({"v": 1, "kind": kind})
             self.assertTrue(s.phone_on_screen())
 
+    def test_call_phrases_and_existing_matchers(self):
+        s = self.server
+        for phrase, target in (("call Anna", "anna"), ("dial *#06#", "*#06#"),
+                               ("call 112", "112"), ("call +47 912 34 567", "+47 912 34 567")):
+            self.assertEqual(s.quick.handle(phrase), {"phone": {"do": "call", "target": target}})
+        for phrase in ("call that function", "call me at 5", "ring my phone", "phone timer 5 minutes"):
+            self.assertNotEqual((s.quick.handle(phrase) or {}).get("phone", {}).get("do"), "call")
+        with mock.patch.object(s.lang, "active", "nb"):
+            self.assertEqual(s.quick.handle("ring Anna")["phone"]["do"], "call")
+            with mock.patch.object(s.quick, "phone_device_name", return_value=True):
+                self.assertEqual(s.quick.handle("ring Anna")["phone"]["do"], "ring")
+        with mock.patch.object(s.lang, "active", "pl"):
+            self.assertEqual(s.quick.handle("zadzwoń do Anna")["phone"]["do"], "call")
+            self.assertEqual(s.quick.handle("call Anna")["phone"]["do"], "call")
+
+    def test_call_gate_order_and_number_refusals(self):
+        s = self.server
+        with mock.patch.object(s.Hfp, "gateway_list", return_value=[]):
+            s.CFG["phone_on"] = False
+            self.assertEqual(s.phone_quick({"do": "call", "target": "112"})["say"], s.lang.t("phone.off"))
+            s.CFG["phone_on"] = True
+            with mock.patch.object(s.Desk, "locked", return_value=True):
+                self.assertEqual(s.phone_quick({"do": "call", "target": "112"})["say"], s.lang.t("phone.call_locked"))
+            with mock.patch.object(s.Call, "visible", return_value=True):
+                self.assertEqual(s.phone_quick({"do": "call", "target": "112"})["say"], s.lang.t("phone.call_busy"))
+            self.assertEqual(s.phone_quick({"do": "call", "target": "112"})["say"], s.lang.t("phone.call_no_bt"))
+        with mock.patch.object(s.Hfp, "gateway_list", return_value=[("/ag/a", "AA:11:22:33:44:55", "Pixel")]):
+            for target, key in (("112", "phone.call_short"), ("*#06#", "phone.call_not_allowed")):
+                self.assertEqual(s.phone_quick({"do": "call", "target": target})["say"], s.lang.t(key))
+            self.assertTrue(s.phone_quick({"do": "call", "target": "+47 912 34 567"})["ok"])
+            self.assertEqual(s.STAGES.current()["kind"], "phone_call_confirm")
+        with mock.patch.object(s.Hfp, "gateway_list", return_value=[("/ag/a", "AA:11:22:33:44:55", "Pixel"),
+                                                                      ("/ag/b", "BB:11:22:33:44:66", "Other")]):
+            self.assertTrue(s.phone_quick({"do": "call", "target": "Anna"})["ok"])
+            self.assertEqual(s.PHONE_CALL["target"], "Anna")
+            self.assertEqual(s.STAGES.current()["kind"], "phone_call_gateway")
+
+    def test_lookup_states_and_late_completion(self):
+        s = self.server
+        address = "AA:11:22:33:44:55"
+        with mock.patch.object(s.Pbap, "state", return_value="ready"), mock.patch.object(s.Pbap, "search", return_value=[]) as search:
+            ident = s.phone_call_new("/ag/a", address)
+            self.assertEqual(s.phone_call_lookup(ident, "/ag/a", address, "Anna")["say"], s.lang.t("phone.call_not_found"))
+            search.return_value = [{"name": "Anna", "numbers": [("mobile", "+4791234567")]}]
+            self.assertTrue(s.phone_call_lookup(ident, "/ag/a", address, "Anna")["ok"])
+            self.assertEqual(s.STAGES.current()["kind"], "phone_call_confirm")
+            search.return_value = [{"name": "Anna", "numbers": [("mobile", "+4791234567"), ("home", "+4791234568")]}]
+            self.assertTrue(s.phone_call_lookup(ident, "/ag/a", address, "Anna")["ok"])
+            self.assertEqual(s.STAGES.current()["kind"], "phone_call_pick")
+        for state, key in (("sharing", "phone.call_sharing_off"), ("unreachable", "phone.call_lookup_failed"),
+                           ("failed", "phone.call_lookup_failed")):
+            with mock.patch.object(s.Pbap, "state", return_value=state):
+                self.assertEqual(s.phone_call_lookup(ident, "/ag/a", address, "Anna")["say"], s.lang.t(key))
+        for state in ("cold", "loading"):
+            old = s.phone_call_new("/ag/a", address)
+            with mock.patch.object(s.Pbap, "state", return_value=state), mock.patch.object(s.Pbap, "ensure") as ensure:
+                self.assertEqual(s.phone_call_lookup(old, "/ag/a", address, "Anna")["say"], s.lang.t("phone.call_loading"))
+                callback = ensure.call_args.args[1]
+                s.phone_call_new("/ag/a", address)
+                before = s.STAGES.current()
+                s.BUS.pub.reset_mock()
+                callback("ready")
+                self.assertIs(s.STAGES.current(), before)
+                s.BUS.pub.assert_not_called()
+        ident = s.phone_call_new("/ag/a", address)
+        with mock.patch.object(s.Pbap, "state", return_value="loading"), mock.patch.object(s.Pbap, "ensure") as ensure, \
+             mock.patch.object(s.Pbap, "search", return_value=[{"name": "Anna", "numbers": [("mobile", "+4791234567")]}]):
+            reply = s.phone_call_lookup(ident, "/ag/a", address, "Anna")
+            self.assertNotIn("Anna", reply["say"])
+            ensure.call_args.args[1]("ready")
+            self.assertEqual(s.STAGES.current()["kind"], "phone_call_confirm")
+        ident = s.phone_call_new("/ag/a", address)
+        with mock.patch.object(s.Pbap, "state", return_value="cold"), mock.patch.object(s.Pbap, "ensure") as ensure:
+            s.phone_call_lookup(ident, "/ag/a", address, "Anna")
+            ensure.call_args.args[1]("sharing")
+            s.BUS.pub.assert_any_call(t="toast", text=s.lang.t("phone.call_sharing_off"))
+
 
 class Silence(_PhoneEnv, _FluxCase):
     def setUp(self):

@@ -4089,6 +4089,7 @@ class Desk:
 
 def _wire_quick():
     quick.notify, quick.publish, quick.cfg, quick.save_config = notify, BUS.pub, CFG, save_config
+    quick.phone_device_name = lambda name: any(d["name"].casefold() == name.casefold() for d in Phone.devices())
 
 
 # ---------------------------------------------------------------- speech to text
@@ -7894,19 +7895,50 @@ def phone_call_confirm_card(ident, token):
 
 
 def phone_call_lookup(ident, gateway_path, address, target):
-    """Step 5 fills in contact lookup; number targets can already be confirmed."""
     if not phone_call_live(ident):
         return {"ok": False, "say": lang.t("phone.call_stale")}
-    status, number = pbap.allowed_number(target or "")
-    if status != "ok":
-        return {"ok": False, "say": lang.t("phone.call_loading")}
-    with PHONE_LOCK:
-        if not PHONE_CALL or PHONE_CALL["id"] != ident:
+    number_like = bool(re.fullmatch(r"(?:tel:)?[\d+*#(),;.pw\s\u2010-\u2015]+", target or "") and
+                       (sum(c.isdigit() for c in target) >= 3 or any(c in target for c in "*#")))
+    if number_like:
+        status, number = pbap.allowed_number(target)
+        if status != "ok":
+            return {"ok": False, "say": lang.t("phone.call_short" if status == "short" else "phone.call_not_allowed")}
+        with PHONE_LOCK:
+            if not PHONE_CALL or PHONE_CALL["id"] != ident:
+                return {"ok": False, "say": lang.t("phone.call_stale")}
+            token = secrets.token_urlsafe(18)
+            PHONE_CALL["rows"] = {token: ("", "", number)}
+        return {"ok": bool(phone_call_confirm_card(ident, token))}
+
+    def publish(state, async_reply=False):
+        if not phone_call_live(ident):
             return {"ok": False, "say": lang.t("phone.call_stale")}
-        token = secrets.token_urlsafe(18)
-        PHONE_CALL["rows"] = {token: ("", "", number)}
-    phone_call_confirm_card(ident, token)
-    return {"ok": True}
+        if state == "ready":
+            people = Pbap.search(address, target)
+            if not people:
+                key = "phone.call_not_found"
+            elif len(people) == 1 and len(people[0]["numbers"]) == 1:
+                with PHONE_LOCK:
+                    if not PHONE_CALL or PHONE_CALL["id"] != ident:
+                        return {"ok": False, "say": lang.t("phone.call_stale")}
+                    token = secrets.token_urlsafe(18)
+                    label, number = people[0]["numbers"][0]
+                    PHONE_CALL["rows"] = {token: (people[0]["name"], label, number)}
+                return {"ok": bool(phone_call_confirm_card(ident, token))}
+            else:
+                return {"ok": bool(phone_call_pick_card(ident, people))}
+        else:
+            key = "phone.call_sharing_off" if state == "sharing" else "phone.call_lookup_failed"
+        say = lang.t(key)
+        if async_reply and phone_call_live(ident):
+            BUS.pub(t="toast", text=say)                  # (shown, not spoken: the page has no "say" event)
+        return {"ok": False, "say": say}
+
+    state = Pbap.state(address)
+    if state in ("cold", "loading"):
+        Pbap.ensure(address, lambda result: publish(result, True))
+        return {"ok": True, "say": lang.t("phone.call_loading")}
+    return publish(state)
 
 
 def phone_call_gateway_act(token):
@@ -9164,6 +9196,30 @@ def phone_quick(r):
     """quick.handle matched a phone phrase {do: ring|clip|shot|status, name} -> the reply, or None if it isn't for the phone."""
     do, name = r.get("do"), r.get("name")
     gen = PHONE_GEN
+    if do == "call":
+        if not CFG.get("phone_on"):
+            return {"say": lang.t("phone.off")}
+        if Desk.locked() is not False:
+            return {"say": lang.t("phone.call_locked")}
+        if Call.visible() or Hfp.any_call() or phone_dial_pending():
+            return {"say": lang.t("phone.call_busy")}
+        gateways = Hfp.gateway_list()
+        if not gateways:
+            return {"say": lang.t("phone.call_no_bt")}
+        target = r.get("target") or ""
+        if len(gateways) > 1:
+            ident = phone_call_new(None, None)
+            with PHONE_LOCK:
+                PHONE_CALL["target"] = target
+            phone_call_gateway_card(ident, gateways)
+            return {"ok": True}
+        path, address, _ = gateways[0]
+        if re.fullmatch(r"(?:tel:)?[\d+*#(),;.pw\s\u2010-\u2015]+", target) and (sum(c.isdigit() for c in target) >= 3 or any(c in target for c in "*#")):
+            status, _ = pbap.allowed_number(target)
+            if status != "ok":
+                return {"say": lang.t("phone.call_short" if status == "short" else "phone.call_not_allowed")}
+        ident = phone_call_new(path, address)
+        return phone_call_lookup(ident, path, address, target)
     if do not in ("ring", "clip", "shot", "status", "read", "reply", "note", "when_done", "notes", "notify_reply"):   # an unknown action must never fall through to phone_share
         return None
     if not CFG.get("phone_on") or not Phone.connected:
