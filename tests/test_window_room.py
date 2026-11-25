@@ -44,7 +44,8 @@ def run_idle(ns):
         fn(*args)
 
 
-ZOOM = ("_apply_zoom", "_zoom_spot", "_size_page", "_apply_page", "_push_zoom")
+ZOOM = ("_apply_zoom", "_zoom_spot", "_page_at", "_size_page", "_apply_page", "_push_zoom")
+PLACE = ("_size_spot", "_page_at", "_size_page", "_apply_page")
 
 
 def zoom_window(ns, x0=0, layer=True):
@@ -60,6 +61,27 @@ def zoom_window(ns, x0=0, layer=True):
     w.win = SimpleNamespace(set_size_request=Mock(), resize=Mock())
     w.set_wide, w.set_bar, w._apply_region, w._js = Mock(), Mock(), Mock(), Mock()
     return w
+
+
+def startup(ns, tmp, saved, *mons, layer=True):
+    """A window as __init__ has it when it loads the saved spot: unplaced, zoomed for no monitor."""
+    w = zoom_window(ns, layer=layer)
+    w.z = 32 / 14
+    w.hypr = SimpleNamespace(ok=lambda: False)
+    w._monitors = lambda: [SimpleNamespace(get_geometry=lambda g=g: g) for g in mons]
+    w._geom = lambda i=None: (None, mons[w.mon_i if i is None else i])
+    w._set_monitor = Mock()
+    w.win.move = Mock()
+    if layer:
+        del w.view
+    ns["POS_FILE"] = str(Path(tmp) / "pos.json")
+    if saved is not None:
+        Path(ns["POS_FILE"]).write_text(json.dumps(saved))
+    return w
+
+
+def screen(x, width, height):
+    return SimpleNamespace(x=x, y=0, width=width, height=height)
 
 
 def pushed(w):
@@ -319,7 +341,7 @@ class RoomTest(unittest.TestCase):
         w._js.assert_called_with("window.nixiCorner&&nixiCorner('bl')")
 
     def test_hover_and_monitor_use_base(self):
-        ns = window_methods("set_hover", "go_monitor")
+        ns = window_methods("set_hover", "go_monitor", *PLACE)
         w = ns["Window"]()
         w.mx, w.my, w.wide_shift, w.top_shift = 1920, 540, 100, 100
         w.mon_i, w.layer, w.hover, w.bar, w.cur_w, w.cur_h = 0, False, False, False, 340, 460
@@ -334,7 +356,9 @@ class RoomTest(unittest.TestCase):
         w.set_wide = Mock()
         w._js, w.cursor_hidden, w._follow = Mock(), Mock(), Mock()
         w.glide_n = 0
-        w.hover_return, w.zoom_spot = True, None
+        w.hover_return, w.zoom_spot, w.hover_n = True, None, 0
+        w.size, w.card_text, w.term_px, w.z = 0.75, 1.0, 14, 1.0
+        w.win = SimpleNamespace(set_size_request=Mock(), resize=Mock())
         with tempfile.TemporaryDirectory() as tmp:
             ns["POS_FILE"] = str(Path(tmp) / "pos.json")
             self.assertTrue(w.go_monitor("second"))
@@ -355,7 +379,7 @@ class RoomTest(unittest.TestCase):
         w.wide_shift, w.top_shift, w.cur_w, w.cur_h = 100, 100, 540, 560
         w.want_panel = w.want_code = w.want_bar = w.bar = False
         w.want_xw, w.want_h = 200, 100
-        w.hover, w.hover_return, w.hpos = False, False, None
+        w.hover, w.hover_return, w.hover_n, w.hpos = False, False, 0, None
         w._apply_zoom = Mock(side_effect=lambda: self.assertFalse(w.hover_return))
         w.hypr = SimpleNamespace(ok=lambda: True, addr=None)
         w.win = SimpleNamespace(set_size_request=Mock(), resize=Mock(), queue_draw=Mock(), move=Mock())
@@ -508,7 +532,7 @@ class RoomTest(unittest.TestCase):
         self.assertEqual(w.aside["parked"], (0, 748, 0))
 
     def test_docked_monitor_move_sets_destination_spot(self):
-        ns = window_methods("go_monitor")
+        ns = window_methods("go_monitor", *PLACE)
         dest = SimpleNamespace(x=1280, y=0, width=1920, height=1080)
         for memory, expected in (({"mons": {"second": [600, 20]}}, 600), ({}, None)):
             with self.subTest(memory=memory), tempfile.TemporaryDirectory() as tmp:
@@ -524,6 +548,103 @@ class RoomTest(unittest.TestCase):
                 Path(ns["POS_FILE"]).write_text(json.dumps(memory))
                 self.assertTrue(w.go_monitor("second"))
                 self.assertEqual(seen, [(dest, expected)])
+
+    def test_only_the_latest_hover_return_frees_him(self):
+        ns = window_methods("set_hover", "_hover_landed")
+        w = zoom_window(ns)
+        w.hover_n, w.cur_w, w.cur_h = 0, 340, 460
+        w.hypr = SimpleNamespace(ok=lambda: True)
+        w.cursor_hidden, w._follow, w._glide_home = Mock(), Mock(), Mock()
+        w._rewide, w._apply_zoom = Mock(), Mock()
+        for on in (True, False, True, False):
+            w.set_hover(on)
+        w._hover_landed(1)
+        self.assertTrue(w.hover_return)
+        w._apply_zoom.assert_not_called()
+        w._hover_landed(2)
+        self.assertFalse(w.hover_return)
+        w._apply_zoom.assert_called_once_with()
+        self.assertEqual(w._rewide.call_count, 2)
+
+    def test_layer_startup_sizes_for_the_saved_spot_before_placing(self):
+        ns = window_methods("_load_pos", "_place", *PLACE)
+        with tempfile.TemporaryDirectory() as tmp:
+            w = startup(ns, tmp, {"mon": 0, "x": 748, "y": 0}, screen(0, 1280, 720))
+            w._load_pos()
+        self.assertEqual((w.mx, w.my, w.cur_w), (748, 0, 532))
+        self.assertAlmostEqual(w.z, 1.565, places=3)
+        w.win.set_size_request.assert_called_once_with(532, 720)
+        w.set_wide.assert_not_called()
+        w.set_bar.assert_not_called()
+
+    def test_window_startup_sizes_for_the_saved_spot(self):
+        ns = window_methods("_load_xpos", *PLACE)
+        with tempfile.TemporaryDirectory() as tmp:
+            w = startup(ns, tmp, {"gx": 748, "gy": 0}, screen(0, 1280, 720), layer=False)
+            w._load_xpos()
+        self.assertEqual((w.mx, w.my, w.cur_w), (748, 0, 532))
+        w.view.set_zoom_level.assert_called_once_with(w.z)
+        self.assertAlmostEqual(w.z, 1.565, places=3)
+        w.win.set_size_request.assert_called_once_with(532, 720)
+        w.win.move.assert_called_once_with(748, 0)
+
+    def test_default_corner_is_placed_once_and_stable(self):
+        for layer in (True, False):
+            ns = window_methods("_load_pos" if layer else "_load_xpos", "_place", *PLACE, *ZOOM)
+            # 600x800: the corner's own page is smaller than the one it was placed at, so the gap is 12, not 10
+            for mon, page, x, gap in ((screen(0, 1280, 720), 1.565, 738, 10), (screen(0, 600, 800), 0.795, 318, 12)):
+                with self.subTest(layer=layer, mon=mon), tempfile.TemporaryDirectory() as tmp:
+                    w = startup(ns, tmp, None, mon, layer=layer)
+                    (w._load_pos if layer else w._load_xpos)()
+                    w._mon_at = lambda *c: (0, mon)
+                    self.assertEqual((w.mx, mon.width - w.mx - w.cur_w), (x, gap))
+                    self.assertAlmostEqual(w.z, page, places=3)
+                    z = w.z
+                    w._apply_zoom()
+                    self.assertEqual(w.z, z)
+                    w.set_wide.assert_not_called()
+
+    def test_window_startup_keeps_a_spot_on_a_seam(self):
+        ns = window_methods("_load_xpos", *PLACE)
+        mons = screen(0, 2560, 1440), screen(2560, 1280, 720)
+        # 2400: the right monitor's own page puts the centre on it. 2260: neither monitor's own page does.
+        for gx, page in ((2400, 720 / 460), (2260, 32 / 14)):
+            with self.subTest(gx=gx), tempfile.TemporaryDirectory() as tmp:
+                w = startup(ns, tmp, {"gx": gx, "gy": 0}, *mons, layer=False)
+                w._load_xpos()
+                self.assertEqual((w.mx, w.my), (gx, 0))
+                self.assertAlmostEqual(w.z, page)
+
+    def test_window_startup_falls_back_when_the_monitor_is_gone(self):
+        ns = window_methods("_load_xpos", *PLACE)
+        with tempfile.TemporaryDirectory() as tmp:
+            w = startup(ns, tmp, {"gx": 4000, "gy": 0}, screen(0, 1280, 720), layer=False)
+            w._load_xpos()
+        self.assertEqual((w.mx, w.my), (738, -10))
+
+    def test_monitor_move_sizes_for_the_destination_before_placing(self):
+        ns = window_methods("go_monitor", "_place", *PLACE, *ZOOM)
+        source, dest = screen(0, 2560, 1440), screen(2560, 1280, 720)
+        for bar in (None, "right"):
+            with self.subTest(bar=bar), tempfile.TemporaryDirectory() as tmp:
+                w = startup(ns, tmp, {"mons": {"second": [748, 0]}}, source, dest)
+                w.bar, w.bar_home, w.glide_n = bar, None, 0
+                w.zoom_spot = (source, 0) if bar else None
+                w.hypr = SimpleNamespace(ok=lambda: True)
+                w._hmons = lambda: [("first", 0, False), ("second", 1, True)]
+                w._save_pos, w._rewide, w._send_corner = Mock(), Mock(), Mock()
+                events = []
+                ns["GtkLayerShell"].set_margin.side_effect = lambda *a: events.append(("place", w.cur_w))
+                w.set_wide.side_effect = lambda *a: events.append(("set_wide", w.mon_i))
+                w.set_bar.side_effect = lambda *a, **k: events.append(("set_bar", w.mon_i))
+                self.assertTrue(w.go_monitor("second"))
+                self.assertEqual(events[0], ("place", 532))
+                self.assertEqual((w.mon_i, w.mx), (1, 748))
+                self.assertAlmostEqual(w.z, 1.565, places=3)
+                # the room, dock and region work of a page change still happens, once, on the destination
+                self.assertEqual([e for e in events if e[0] != "place"],
+                                 [("set_wide", 1)] + ([("set_bar", 1)] if bar else []))
+                w._apply_region.assert_called_once_with()
 
 
 if __name__ == "__main__":

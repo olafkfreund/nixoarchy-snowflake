@@ -339,3 +339,9 @@ bumping `nixi-companion` back, or with `nixos-rebuild switch --rollback`.
 - Step 2 (coder): `_parked` calls `_apply_zoom` first, not last. A larger
   page at the parked edge re-clamps him, and `aside["parked"]` must hold the
   clamped spot, or `may_return` (an exact match) never lets him glide home.
+- Step 3 (coder): the default corner is placed once, at the page computed
+  with `x0=None`, and the final page comes from that corner's `x0`. It is
+  not moved again, so the first `_apply_zoom` is stable. This replaces the
+  spec's "recompute once" wording, as Step 3 says. Also folded in: a
+  `hover_n` counter, so only the latest glide home clears `hover_return`
+  (a race the coder found in Step 2).

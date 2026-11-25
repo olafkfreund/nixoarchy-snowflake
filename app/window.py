@@ -385,6 +385,7 @@ class NixiWindow:
         self.dragging = False                   # (set before _place() can run — it checks this)
         self.hover = False
         self.hover_return = False               # gliding home from hover mode: not free yet
+        self.hover_n = 0                        # the current glide home (an older one lands without freeing him)
         self.bar, self.bar_home = None, None    # top bar: merged into a screen edge as a notch (None = the blob)
         self.pmoving = False                    # moving a panel by its header: no docking, no undocking
         self.hypr = Hypr()                      # (before _load_pos: a saved connector name needs it)
@@ -498,6 +499,18 @@ class NixiWindow:
         self.win.set_size_request(self.cur_w, self.cur_h)
         self.win.resize(self.cur_w, self.cur_h)
 
+    def _page_at(self, g, x0):
+        return size.zooms(self.size, self.card_text, self.term_px, g.width, g.height, x0)[0]
+
+    def _size_spot(self, g, spot):
+        """Size him for monitor `g` before he is placed on it; returns `spot` (x, y on g), or the bottom-right corner.
+        The corner is placed once, at the page without a position cap: its own page may leave a wider gap."""
+        if spot is None:
+            z = self._page_at(g, None)
+            spot = g.width - round(W * z) - 10, g.height - round(H * z) - 10
+        self._size_page(self._page_at(g, spot[0]))
+        return spot
+
     def _apply_page(self, page):
         self._size_page(page)
         self.cur_w = 0             # set_wide must not return early: it re-clamps him and tells the page and Hyprland
@@ -509,8 +522,7 @@ class NixiWindow:
     def _apply_zoom(self, reread=False):
         if reread:
             self.term_px = termfont.term_px(os.environ, self.config_home)
-        g, x0 = self._zoom_spot()
-        page, _, _ = size.zooms(self.size, self.card_text, self.term_px, g.width, g.height, x0)
+        page = self._page_at(*self._zoom_spot())
         if page != self.z:
             self._apply_page(page)
         self._push_zoom()
@@ -561,11 +573,10 @@ class NixiWindow:
             i = screens.pick_monitor(p if pairs else dict(p, name=None), pairs, len(self._monitors()))
             if i is None:
                 raise ValueError
-            self.mon_i, self.mx, self.my = i, int(p["x"]), int(p["y"])
+            self.mon_i, spot = i, (int(p["x"]), int(p["y"]))
         except Exception:  # noqa: BLE001
-            self.mon_i = 0
-            _, g = self._geom()
-            self.mx, self.my = g.width - self._px(W) - 10, g.height - self._px(H) - 10       # default: bottom-right corner
+            self.mon_i, spot = 0, None                       # default: bottom-right corner
+        self.mx, self.my = self._size_spot(self._geom()[1], spot)
         self._set_monitor(self._geom()[0])
         self._place(self.mx, self.my, clamp=True)
 
@@ -574,12 +585,23 @@ class NixiWindow:
         try:
             p = json.load(open(POS_FILE))
             x, y = int(p["gx"]), int(p["gy"])
-            if not any(g.x <= x + self._px(W) // 2 < g.x + g.width and g.y <= y + self._px(H) // 2 < g.y + g.height
-                       for g in (m.get_geometry() for m in self._monitors())):
-                raise ValueError                              # that monitor is gone
         except Exception:  # noqa: BLE001
+            x = y = None
+        fits = []
+        if x is not None:
+            mons = [m.get_geometry() for m in self._monitors()]
+            pages = [(g, self._page_at(g, x - g.x)) for g in mons]
+
+            def on(g, z):                                     # is his centre, at page z, on monitor g?
+                return g.x <= x + round(W * z) // 2 < g.x + g.width and g.y <= y + round(H * z) // 2 < g.y + g.height
+            # (at a seam each monitor's own page can put the centre on the other one: still on screen, so keep the spot)
+            fits = ([z for g, z in pages if on(g, z)] or [z for _, z in pages if any(on(g, z) for g in mons)])
+        if fits:
+            self._size_page(fits[0])
+        else:                                                 # nothing saved, or that monitor is gone: bottom-right corner
             g = self._geom(0)[1]
-            x, y = g.x + g.width - self._px(W) - 10, g.y + g.height - self._px(H) - 10     # default: bottom-right corner
+            x, y = self._size_spot(g, None)
+            x, y = g.x + x, g.y + y
         self.mx, self.my = x, y
         self.win.move(x, y)
 
@@ -778,14 +800,14 @@ class NixiWindow:
         g = self._monitors()[tgt[1]].get_geometry()
         try:
             mem = json.load(open(POS_FILE)).get("mons", {}).get(tgt[0])
-            x, y = int(mem[0]), int(mem[1])
-            saved_x = x
+            saved = int(mem[0]), int(mem[1])
         except Exception:  # noqa: BLE001
-            x, y = g.width - self._px(W) - 10, g.height - self._px(H) - 10
-            saved_x = None
+            saved = None                                                       # default: bottom-right corner
         self.glide_n += 1                                                      # (cancel any glide in progress)
+        old_z = self.z
+        x, y = self._size_spot(g, saved)
         if self.bar:
-            self.zoom_spot = g, saved_x
+            self.zoom_spot = g, saved and saved[0]
             gw, gh = g.width, g.height
             if self.bar_home:
                 self.bar_home = (tgt[1], x, y)
@@ -796,6 +818,8 @@ class NixiWindow:
             self._place(x - self.wide_shift, y - self.top_shift, True, tgt[1])
         else:
             self._xmove(g.x + x - self.wide_shift, g.y + y - self.top_shift)
+        if self.z != old_z:   # sized early, so _apply_zoom sees no change: do its room, dock and region work, now he's there
+            self._apply_page(self.z)
         self._rewide()
         self._apply_zoom()
         self._send_corner()
@@ -1297,11 +1321,13 @@ class NixiWindow:
             threading.Thread(target=self._follow, daemon=True).start()
         elif getattr(self, "home", None):                          # glide from the cursor back to where he was parked
             self.hover_return = True
+            self.hover_n += 1
             threading.Thread(target=self._glide_home, daemon=True).start()
         self._js(f"window.nixiHover&&nixiHover({'true' if on else 'false'})")
 
     def _glide_home(self):
         m, hx, hy = self.home
+        n = self.hover_n
         if not self.layer:                                 # window mode: plain screen coordinates
             start, (sx, sy) = self.hpos, (self.hpos or (hx, hy))
             t0, dur = time.monotonic(), 0.65
@@ -1313,13 +1339,13 @@ class NixiWindow:
                     break
                 time.sleep(0.008)
             GLib.idle_add(self._xmove, int(hx), int(hy))
-            GLib.idle_add(self._hover_landed)
+            GLib.idle_add(self._hover_landed, n)
             return
         _, g = self._geom(m)
         start = self.hpos                     # global position he was at as the cursor
         if not start:
             GLib.idle_add(self._place, hx, hy, True, m)
-            GLib.idle_add(self._hover_landed)
+            GLib.idle_add(self._hover_landed, n)
             return
         sx, sy = start[0] - g.x, start[1] - g.y      # in home-monitor coordinates
         t0, dur = time.monotonic(), 0.65
@@ -1332,13 +1358,14 @@ class NixiWindow:
                 break
             time.sleep(0.008)
         GLib.idle_add(self._place, hx, hy, True, m)
-        GLib.idle_add(self._hover_landed)
+        GLib.idle_add(self._hover_landed, n)
 
-    def _hover_landed(self):
+    def _hover_landed(self, n=None):
         """Home from hover mode (on the GTK thread, after the last move): re-fit, then free to re-zoom."""
         self._rewide()
-        self.hover_return = False
-        self._apply_zoom()
+        if n == self.hover_n:
+            self.hover_return = False
+            self._apply_zoom()
         return False
 
     def cursor_hidden(self, hide):
