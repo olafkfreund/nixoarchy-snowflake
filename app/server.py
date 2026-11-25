@@ -1941,7 +1941,7 @@ class Ambient:
     dnd_due = 0.0
     track = 0                                                  # goes up when the followed player's track changes (#208); the title is never kept
     followed = None                                            # (player name, hash of its trackid+title) of the player being followed
-    cpu_hot = ram_low = fullscreen = locked = False
+    cpu_hot = ram_low = fullscreen = locked = phone_locked = False
     coding = night = party = False
     weather = sky = None
     storm = hot = False
@@ -2376,8 +2376,11 @@ class Ambient:
             cls.last_lock_len, cls.unlocked_at, cls.lock_since = t - cls.lock_since, t, 0.0
         lock_changed = locked != cls.locked
         cls.locked = locked
-        if lock_changed and locked:
-            phone_call_lock()
+        if CFG.get("phone_on"):                          # (the phone's own lock edge: tracked even with proactive off)
+            plocked = locked if on else bool(Desk.locked())
+            if plocked and not cls.phone_locked:
+                phone_call_lock()
+            cls.phone_locked = plocked
         if lock_changed or (Call.visible() and Desk.locked() is not False) or \
                 (not Call.visible() and (Phone.call_active or Hfp.any_call()) and Desk.locked() is False):
             Call.sync()                                      # (clears on lock and brings it back on unlock, proactive or not)
@@ -7861,7 +7864,7 @@ def phone_call_gateway_card(ident, gateways):
         for path, address, alias in gateways:
             token = secrets.token_urlsafe(18)
             PHONE_CALL["gateways"][token] = path
-            rows.append({"token": token, "name": alias, "label": "", "masked": "…" + "".join(c for c in address if c.isdigit())[-4:]})
+            rows.append({"token": token, "name": alias, "label": "", "masked": "…" + (address or "")[-5:]})
     return _phone_call_stage(ident, "phone_call_gateway", {"title": lang.t("phone.call_gateway_title"), "rows": rows,
                                                           "button": lang.t("phone.call_button")})
 
@@ -7897,7 +7900,7 @@ def phone_call_confirm_card(ident, token):
 def phone_call_lookup(ident, gateway_path, address, target):
     if not phone_call_live(ident):
         return {"ok": False, "say": lang.t("phone.call_stale")}
-    number_like = bool(re.fullmatch(r"(?:tel:)?[\d+*#(),;.pw\s\u2010-\u2015]+", target or "") and
+    number_like = bool(re.fullmatch(r"(?:tel:)?[\d+*#(),;.pw\s\-\u2010-\u2015]+", target or "") and
                        (sum(c.isdigit() for c in target) >= 3 or any(c in target for c in "*#")))
     if number_like:
         status, number = pbap.allowed_number(target)
@@ -7914,7 +7917,8 @@ def phone_call_lookup(ident, gateway_path, address, target):
         if not phone_call_live(ident):
             return {"ok": False, "say": lang.t("phone.call_stale")}
         if state == "ready":
-            people = Pbap.search(address, target)
+            people = Pbap.search(address, target) or (     # (Polish cases: "Anny", "Annie" for Anna)
+                Pbap.search(address, target[:-1]) if len(target) > 3 else [])
             if not people:
                 key = "phone.call_not_found"
             elif len(people) == 1 and len(people[0]["numbers"]) == 1:
@@ -8503,12 +8507,13 @@ def phone_call_gateway_lost(path):
     """A Bluetooth phone went away."""
     global PHONE_GEN, PHONE_CALL, DIAL_PENDING
     with PHONE_LOCK:
-        PHONE_GEN += 1
-        if PHONE_CALL and (PHONE_CALL["gateway_path"] == path or path in PHONE_CALL["gateways"].values()):
+        mine = bool(PHONE_CALL and (PHONE_CALL["gateway_path"] == path or path in PHONE_CALL["gateways"].values()))
+        if mine:                                         # (another phone's card and the SMS flows are left alone)
+            PHONE_GEN += 1
             PHONE_CALL = None
         if DIAL_PENDING and DIAL_PENDING["gateway_path"] == path:
             DIAL_PENDING = None
-    if STAGES.forget_where(lambda pg: pg.get("kind") in PHONE_CALL_KINDS):
+    if mine and STAGES.forget_where(lambda pg: pg.get("kind") in PHONE_CALL_KINDS):
         BUS.pub(t="stage_close")
 
 
@@ -9210,11 +9215,12 @@ def phone_quick(r):
         if len(gateways) > 1:
             ident = phone_call_new(None, None)
             with PHONE_LOCK:
-                PHONE_CALL["target"] = target
+                if PHONE_CALL and PHONE_CALL["id"] == ident:  # (a lock or a lost phone may have cleared it already)
+                    PHONE_CALL["target"] = target
             phone_call_gateway_card(ident, gateways)
             return {"ok": True}
         path, address, _ = gateways[0]
-        if re.fullmatch(r"(?:tel:)?[\d+*#(),;.pw\s\u2010-\u2015]+", target) and (sum(c.isdigit() for c in target) >= 3 or any(c in target for c in "*#")):
+        if re.fullmatch(r"(?:tel:)?[\d+*#(),;.pw\s\-\u2010-\u2015]+", target) and (sum(c.isdigit() for c in target) >= 3 or any(c in target for c in "*#")):
             status, _ = pbap.allowed_number(target)
             if status != "ok":
                 return {"say": lang.t("phone.call_short" if status == "short" else "phone.call_not_allowed")}

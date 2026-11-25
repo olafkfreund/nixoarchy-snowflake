@@ -253,8 +253,32 @@
       "zadzwoń na {name}",
       "gdzie jest {name}"
     ],
-    "phone_call": ["zadzwoń do", "dzwoń do", "wybierz"],
-    "phone_call_stop": ["ten", "ta", "to", "tę", "tego", "mnie", "nas", "ich", "mój", "moja", "moje", "twój", "twoja", "twoje", "funkcja", "metoda", "api", "skrypt", "punkt", "hak"],
+    "phone_call": [
+      "zadzwoń do",
+      "dzwoń do"
+    ],
+    "phone_call_stop": [
+      "ten",
+      "ta",
+      "to",
+      "tę",
+      "tego",
+      "mnie",
+      "nas",
+      "ich",
+      "mój",
+      "moja",
+      "moje",
+      "twój",
+      "twoja",
+      "twoje",
+      "funkcja",
+      "metoda",
+      "api",
+      "skrypt",
+      "punkt",
+      "hak"
+    ],
     "phone_send": [
       "wyślij to na mój telefon",
       "wyślij to na telefon",

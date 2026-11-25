@@ -629,7 +629,11 @@ class Names(Calls):
         lost.assert_called_once_with("/ag1")
         self.pbap.drop.reset_mock()
         s.phone_call_gateway_lost("/ag1")
+        self.assertEqual(s.PHONE_GEN, gen)                 # (no request on that phone: SMS drafts and the rest keep their gen)
+        ident = s.phone_call_new("/ag1", "AA:BB")
+        s.phone_call_gateway_lost("/ag1")
         self.assertEqual(s.PHONE_GEN, gen + 1)
+        self.assertIsNone(s.PHONE_CALL)
         with mock.patch.object(s.Desk, "locked", lambda: True), mock.patch.object(s.Ambient, "locked", False), \
                 mock.patch.dict(s.CFG, {"proactive": True}):
             s.Ambient.sense()

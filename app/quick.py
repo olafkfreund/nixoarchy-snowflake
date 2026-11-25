@@ -369,10 +369,11 @@ def _phone_call(t):
             if not m:
                 continue
             target = m[1].strip()
-            number = re.fullmatch(r"(?:tel:)?[\d+*#(),;.pw\s\u2010-\u2015]+", target) and (sum(c.isdigit() for c in target) >= 3 or
+            number = re.fullmatch(r"(?:tel:)?[\d+*#(),;.pw\s\-\u2010-\u2015]+", target) and (sum(c.isdigit() for c in target) >= 3 or
                                                                                                any(c in target for c in "*#"))
             name = re.fullmatch(r"[^\W\d_]+(?:['-]?[^\W\d_]+)*(?:\s+[^\W\d_]+(?:['-]?[^\W\d_]+)*){0,3}", target)
-            if (number or name) and target.split()[0] not in phrases.get("phone_call_stop", []):
+            stop = set(phrases.get("phone_call_stop", [])) | set(lang.load("en").get("phrases", {}).get("phone_call_stop", []))
+            if (number or name) and target.split()[0] not in stop:
                 return {"phone": {"do": "call", "target": target}}
     return None
 

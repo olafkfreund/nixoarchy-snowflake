@@ -199,8 +199,33 @@
       "ring {name}",
       "hvor er {name}"
     ],
-    "phone_call": ["ring", "ring til", "slå"],
-    "phone_call_stop": ["den", "det", "dette", "en", "et", "meg", "oss", "dem", "min", "mitt", "mine", "din", "ditt", "dine", "funksjon", "metode", "api", "skript", "endepunkt", "krok", "my"],
+    "phone_call": [
+      "ring",
+      "ring til"
+    ],
+    "phone_call_stop": [
+      "den",
+      "det",
+      "dette",
+      "en",
+      "et",
+      "meg",
+      "oss",
+      "dem",
+      "min",
+      "mitt",
+      "mine",
+      "din",
+      "ditt",
+      "dine",
+      "funksjon",
+      "metode",
+      "api",
+      "skript",
+      "endepunkt",
+      "krok",
+      "my"
+    ],
     "phone_send": [
       "send dette til telefonen min",
       "send dette til mobilen min",

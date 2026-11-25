@@ -49,9 +49,9 @@ def _parse(data):
         if line.upper() == "BEGIN:VCARD":
             fields = []
         elif line.upper() == "END:VCARD":
-            fn = next((_unescape(v) for k, v in fields if k.upper() == "FN"), None)
+            fn = next((_unescape(v) for k, v in fields if k.upper().split(";")[0] == "FN"), None)
             if not fn:
-                n = next((v for k, v in fields if k.upper() == "N"), "")
+                n = next((v for k, v in fields if k.upper().split(";")[0] == "N"), "")
                 parts = n.split(";")
                 fn = " ".join(_unescape(p) for p in (parts[1:2] + parts[:1]) if p)
             numbers = []
@@ -65,8 +65,9 @@ def _parse(data):
                 label = next((name for typ, name in (("CELL", "mobile"), ("HOME", "home"),
                                                    ("WORK", "work")) if typ in types), "other")
                 number = _unescape(raw)
+                ok, dial = allowed_number(number)
                 numbers.append({"label": label, "number": number, "key": _key(number),
-                                "dialable": allowed_number(number)[0] == "ok"})
+                                "dialable": ok == "ok", "dial": dial})
             if fn and numbers:
                 people.append({"name": fn, "numbers": numbers})
         elif ":" in line:
@@ -158,12 +159,14 @@ class Pbap:
             key = _key(number)
             exact = [(p["name"], n["label"]) for p in people for n in p["numbers"]
                      if n["key"] == key]
+            exact = list(dict.fromkeys(exact))              # (a contact saved twice is still one person)
             if exact:
                 return exact[0] if len(exact) == 1 else None
             if len(key.lstrip("+")) < 8:
                 return None
             suffix = [(p["name"], n["label"]) for p in people for n in p["numbers"]
                       if n["key"].endswith(key[-8:])]
+            suffix = list(dict.fromkeys(suffix))
             return suffix[0] if len(suffix) == 1 else None
 
     def search(self, address, query):
@@ -178,7 +181,7 @@ class Pbap:
         for person in people:
             name = _fold(person["name"])
             rank = 0 if name == q else 1 if any(w.startswith(q) for w in name.split()) else 2 if q in name else 3
-            numbers = [(n["label"], n["number"]) for n in person["numbers"] if n["dialable"]]
+            numbers = [(n["label"], n.get("dial") or n["number"]) for n in person["numbers"] if n["dialable"]]   # (the normalised number: what Dial gets)
             if rank < 3 and numbers:
                 found.append((rank, {"name": person["name"], "numbers": numbers}))
         return [row for _, row in sorted(found, key=lambda x: x[0])[:8]]
@@ -247,21 +250,24 @@ class Pbap:
             try:
                 phase = "select"
                 self._call(session, self.ACCESS, "Select", self.GLib.Variant("(ss)", ("int", "pb")))
+                phase = "setup"                                  # (local trouble from here on is "failed", not "sharing")
                 directory = Path(tempfile.mkdtemp(prefix="nixi-pbap-", dir=os.environ["XDG_RUNTIME_DIR"]))
                 path = directory / "pb.vcf"
                 done = threading.Event()
+                guard = threading.Lock()                         # (the GLib thread and this one share `result`)
                 result = {"status": None, "path": None, "early": {}}
 
                 def changed(conn, sender, obj, interface, member, params, data):
                     iface, props, _ = self._value(params)
                     if iface == self.TRANSFER and "Status" in props:
                         value = self._value(props["Status"])
-                        if result["path"] is None:
-                            result["early"][obj] = value
-                        elif obj == result["path"]:
-                            result["status"] = value
-                            if value in ("complete", "error"):
-                                done.set()
+                        with guard:
+                            if result["path"] is None:
+                                result["early"][obj] = value
+                            elif obj == result["path"]:
+                                result["status"] = value
+                                if value in ("complete", "error"):
+                                    done.set()
 
                 subscription = self._on_context(lambda: self.conn.signal_subscribe(
                     self.NAME, self.PROPS, "PropertiesChanged", None, None,
@@ -272,13 +278,14 @@ class Pbap:
                                                  "Format": self.GLib.Variant("s", "vcard30"),
                                                  "Fields": self.GLib.Variant("as", ["FN", "N", "TEL"])})))
                 phase = "transfer"
-                result["path"] = transfer
-                initial = self._value(props.get("Status"))
-                if initial in ("complete", "error"):
-                    result["status"] = initial
-                elif result["early"].get(transfer) in ("complete", "error"):
-                    result["status"] = result["early"][transfer]
-                elif not done.wait(20):
+                with guard:
+                    result["path"] = transfer
+                    initial = self._value(props.get("Status"))
+                    if initial in ("complete", "error"):
+                        result["status"] = initial
+                    elif result["early"].get(transfer) in ("complete", "error"):
+                        result["status"] = result["early"][transfer]
+                if result["status"] not in ("complete", "error") and not done.wait(20):
                     try:
                         self._call(transfer, self.TRANSFER, "Cancel", None)
                     except Exception:
@@ -292,7 +299,7 @@ class Pbap:
                         status = "failed"
             except Exception as error:
                 print(f"[nixi] PBAP: {type(error).__name__}", file=sys.stderr)
-                status = "sharing" if phase in ("select", "pull") else "failed"
+                status = "sharing" if phase in ("select", "pull") else "failed"   # (setup: our own trouble)
         except Exception as error:
             print(f"[nixi] PBAP: {type(error).__name__}", file=sys.stderr)
         finally:

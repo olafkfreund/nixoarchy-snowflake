@@ -108,7 +108,7 @@ class PbapTest(unittest.TestCase):
         self.assertFalse(people[1]["numbers"][1]["dialable"])
         p = pbap(Bus())
         p.entries[ADDRESS] = ("ready", time.monotonic(), people)
-        self.assertEqual(p.search(ADDRESS, "anna"), [{"name": "Ánna Smith", "numbers": [("mobile", "tel:+47 912‐34 567")]}])
+        self.assertEqual(p.search(ADDRESS, "anna"), [{"name": "Ánna Smith", "numbers": [("mobile", "+4791234567")]}])
         self.assertEqual(p.name_for(ADDRESS, "+4791234567"), ("Ánna Smith", "mobile"))
         self.assertEqual(p.name_for(ADDRESS, "991234567"), ("Ánna Smith", "mobile"))
         self.assertEqual(p.name_for(ADDRESS, "00000000"), None)
@@ -116,9 +116,12 @@ class PbapTest(unittest.TestCase):
                                                  "key": "0091234567", "dialable": True}]}
         p.entries[ADDRESS] = ("ready", time.monotonic(), people + [collision])
         self.assertIsNone(p.name_for(ADDRESS, "991234567"))
-        p.entries[ADDRESS] = ("ready", time.monotonic(), people + [people[0]])
+        p.entries[ADDRESS] = ("ready", time.monotonic(), people + [people[0]])   # saved twice: still one person
+        self.assertEqual(p.name_for(ADDRESS, "+4791234567"), ("Ánna Smith", "mobile"))
+        self.assertEqual(p.name_for(ADDRESS, "991234567"), ("Ánna Smith", "mobile"))
+        twin = {"name": "Someone Else", "numbers": [dict(people[0]["numbers"][0])]}
+        p.entries[ADDRESS] = ("ready", time.monotonic(), people + [twin])         # two people, one number: no name
         self.assertIsNone(p.name_for(ADDRESS, "+4791234567"))
-        self.assertIsNone(p.name_for(ADDRESS, "991234567"))
 
     def test_search_order_and_limit(self):
         names = ["Jo", "Joanna", "Mary Jo", "Banjo", "Jó Doe"] + [f"Jo {i}" for i in range(10)]

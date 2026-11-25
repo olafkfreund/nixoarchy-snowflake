@@ -1204,7 +1204,7 @@ class PhoneCallCards(_PhoneEnv):
         s.PHONE_CALL["target"] = "+4791234567"
         self.assertTrue(s.phone_call_gateway_card(ident, [("/ag/a", "AA:11:22:33:44:55", "Pixel")]))
         token = s.STAGES.current()["rows"][0]["token"]
-        self.assertEqual(s.STAGES.current()["rows"][0]["masked"], "…4455")
+        self.assertEqual(s.STAGES.current()["rows"][0]["masked"], "…44:55")
         status, reply = self.post("/api/phone/call-gateway", {"token": token}, s.CLICK_KEY)
         self.assertEqual((status, reply), (200, {"ok": True}))
         self.assertEqual(s.STAGES.current()["kind"], "phone_call_confirm")
@@ -1282,6 +1282,16 @@ class PhoneCallCards(_PhoneEnv):
         self.assertFalse(dial.is_alive() or missed.is_alive())
         self.assertTrue(missed_seen.is_set())
         s.Call.clear()
+
+    def test_everyday_commands_are_not_calls(self):
+        import quick
+        for code, phrases in (("en", ("call back later", "phone home", "call setup function", "call that function")),
+                              ("nb", ("slå av lyset", "slå på wifi", "slå opp ordet hei")),
+                              ("pl", ("wybierz plik", "wybierz motyw ciemny"))):
+            with mock.patch.object(self.server.lang, "active", code):
+                for t in phrases:
+                    self.assertIsNone(quick._phone_call(t), t)
+        self.assertEqual(quick._phone_call("call 912-34-567"), {"phone": {"do": "call", "target": "912-34-567"}})
 
     def test_cards_count_as_phone_on_screen(self):
         s = self.server
