@@ -221,7 +221,8 @@ const acts = () => ev("return __acts.slice()");
   check(d[0] === "closed" && d[1] === null && d[2] === true && d[3] && !a3.includes("close") && !a3.includes("shown"), "declined replacement: old frame gone locally, no close, no shown", JSON.stringify([d, a3]));
   // shrunk to the tab: the frame is inert and the tab is live; restoring flips it back
   await show(FIX["commands (mechanic)"], w => 0);
-  const t1 = await ev("document.getElementById('stgT').textContent='Missed call from Somebody Long'; stageHide(true); await new Promise(r=>setTimeout(r,300)); const b=document.getElementById('stgTab'); return [document.getElementById('stg').inert, b.inert, b.offsetWidth]");
+  const t1 = await ev("document.getElementById('stgT').textContent='Missed call from Somebody Long'; stageHide(true); await new Promise(r=>setTimeout(r,300)); const b=document.getElementById('stgTab'); return [document.getElementById('stg').inert, b.inert, b.offsetWidth, stageWant[0]]");
+  check(350 + t1[2] <= 340 + Math.floor(t1[3] / 2), "tab fits in half its size request (the window splits it evenly, so it was clipped at 300)", JSON.stringify(t1));
   check(t1[2] >= 140, "tab keeps its width when the window has no room beside the face (a one-letter column, #114 follow-up)", JSON.stringify(t1));
   await ev("stageRestore(); await new Promise(r=>setTimeout(r,400)); return 1");
   const t2 = await ev("return [document.getElementById('stg').inert, document.getElementById('stgTab').inert]");
