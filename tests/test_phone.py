@@ -1283,6 +1283,15 @@ class PhoneCallCards(_PhoneEnv):
         self.assertTrue(missed_seen.is_set())
         s.Call.clear()
 
+    def test_a_busy_refusal_uses_the_card_up(self):
+        s = self.server
+        token = self.confirm()
+        with mock.patch.object(s.Call, "visible", lambda: True):
+            self.assertEqual(s.phone_call_dial(token)["say"], s.lang.t("phone.call_busy"))
+        self.assertIsNone(s.PHONE_CALL)
+        self.assertEqual(s.phone_call_dial(token)["say"], s.lang.t("phone.call_stale"))
+        s.Hfp.dial.assert_not_called()
+
     def test_everyday_commands_are_not_calls(self):
         import quick
         for code, phrases in (("en", ("call back later", "phone home", "call setup function", "call that function")),

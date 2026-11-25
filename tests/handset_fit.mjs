@@ -30,6 +30,7 @@ const FIX = {
   "host ringing": base,
   "host ringing (number)": { ...base, who: null, number: "+4791234567" },
   "host ringing (long name)": { ...base, who: long + " " + long },
+  "host dialing": { ...base, phase: "dialing", label: "mobile", keys: ["hangup"] },
   "host active": { ...base, phase: "active", answered_at: Date.now() / 1000 - 75, audio_here: true, volume: 0.6, keys: ["hangup", "mute", "vol_up", "vol_down"] },
   "host active (muted, long)": { ...base, phase: "active", who: long, answered_at: Date.now() / 1000 - 4000, audio_here: true, muted: true, volume: 1.2, keys: ["hangup", "mute", "vol_up", "vol_down"] },
   "phone ringing": { ...base, path: "phone", keys: ["answer", "reject"] },
@@ -65,6 +66,9 @@ for (const [pn, ox] of Object.entries(POS)) for (const [fn, fx] of Object.entrie
 }
 { await show(FIX["host ringing"]); const s = await state();
   check(/Ada Lovelace/i.test(s.lcd) && /Ringing/i.test(s.lcd), "ringing LCD shows the name and Ringing", s.lcd.replace(/\n/g, "|"));
+  await show({ ...FIX["host dialing"], answered_at: Date.now() / 1000 - 30 }); const d = await state();
+  const dl = await ev("return [document.getElementById('hsWho').textContent, document.getElementById('hsSt').textContent, document.getElementById('hsTm').textContent, document.getElementById('pillTxt').textContent, !document.getElementById('hsIc').innerHTML.includes('3.2') && document.getElementById('hsIc').innerHTML.includes('<path')]");
+  check(dl[0] === "Ada Lovelace \u00b7 mobile" && dl[1] === "Calling\u2026" && dl[2] === "" && dl[3] === "Ada Lovelace \u00b7 mobile" && dl[4] && !d.ring && d.en.join() === "hangup", "dialing shows who \u00b7 label in display and pill, Calling\u2026, phone icon, hangup only, and no clock", JSON.stringify(dl));
   await show(FIX["host active"]); const a = await state();
   check(/01:\d\d/.test(a.lcd) && /In call/i.test(a.lcd), "active LCD shows the timer from answered_at", a.lcd.replace(/\n/g, "|"));
   check(await ev("return document.querySelectorAll('#hsVol i.f').length===5"), "volume bar shows 0.6 as 5 of 8");

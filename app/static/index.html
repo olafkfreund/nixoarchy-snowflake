@@ -3342,6 +3342,9 @@ function stageBuild(ev){
   else if(ev.kind==='phone_note_draft') stagePhoneNoteDraft(ev,bd,fn);
   else if(ev.kind==='phone_missed') stagePhoneMissed(ev,bd,acts,fn);
   else if(ev.kind==='phone_draft') stagePhoneDraft(ev,bd,fn);
+  else if(ev.kind==='phone_call_gateway') stagePhoneCallGateway(ev,bd,fn);
+  else if(ev.kind==='phone_call_pick') stagePhoneCallPick(ev,bd,fn);
+  else if(ev.kind==='phone_call_confirm') stagePhoneCallConfirm(ev,bd,fn);
   else if(gau) stageGauges(ev,bd,acts,fn);
   else if(press) stagePress(ev,bd,acts,fn);
   else if(cal) stageCal(ev,bd,acts,fn);
@@ -3426,6 +3429,32 @@ function stagePhoneDraft(ev,bd,fn){
     post('/api/phone/send',{draft:ev.draft,text:ta.value},{headers:hdr(Object.assign({'Content-Type':'application/json'},CLICKKEY.hdr()))})
       .then(r=>r.json()).then(j=>{ msg.textContent=j.say||ev.send_error; if(!j.ok) send.disabled=false; }).catch(()=>{ msg.textContent=ev.send_error; send.disabled=false; }); });
   act.appendChild(send); card.appendChild(act); card.appendChild(msg); bd.appendChild(card); ta.focus();
+}
+function phoneCallBtn(label,token,url,msg,stay){
+  const b=hx('button','sb',label||pageLine('phone.call_button','Call')); b.type='button';
+  b.addEventListener('click',e=>{ e.stopPropagation(); if(!e.isTrusted||!['mouse','pen','touch'].includes(e.pointerType)) return;
+    b.disabled=true; stgUse=performance.now();
+    post(url,{token},{headers:hdr(Object.assign({'Content-Type':'application/json'},CLICKKEY.hdr()))})
+      .then(r=>r.json()).then(j=>{ msg.textContent=(j&&j.say)||(j&&j.ok?'':pageLine('phone.call_failed',"The call didn't start. Check your phone.")); if(!stay&&(!j||!j.ok)) b.disabled=false; })
+      .catch(()=>{ msg.textContent=pageLine('phone.call_failed',''); if(!stay) b.disabled=false; }); });
+  return b;
+}
+function stagePhoneCallRows(ev,bd,url){
+  const msg=hx('div','vm');
+  (ev.rows||[]).forEach(r=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab'), sub=[r.label&&pageLine('call.label_'+r.label,r.label),r.masked].filter(Boolean).join(' \u00b7 ');
+    tx.appendChild(hx('div','lb',r.name)); if(sub) tx.appendChild(hx('div','vm',sub));
+    ab.appendChild(phoneCallBtn(ev.button,r.token,url,msg,false));
+    row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
+  bd.appendChild(msg);
+}
+function stagePhoneCallGateway(ev,bd,fn){ stagePhoneCallRows(ev,bd,'/api/phone/call-gateway'); }
+function stagePhoneCallPick(ev,bd,fn){ stagePhoneCallRows(ev,bd,'/api/phone/call-pick'); }
+function stagePhoneCallConfirm(ev,bd,fn){
+  const card=hx('div','mcard'), msg=hx('div','mmsg'), act=hx('div','mact'), head=[ev.name,ev.label&&pageLine('call.label_'+ev.label,ev.label)].filter(Boolean).join(' \u00b7 ');
+  if(head) card.appendChild(hx('div','lb',head));
+  card.appendChild(hx('div',head?'mln':'lb',ev.number||''));
+  act.appendChild(phoneCallBtn(ev.button,ev.token,'/api/phone/dial',msg,true));
+  card.appendChild(act); card.appendChild(msg); bd.appendChild(card);
 }
 function stageMail(ev,bd,acts,fn){
   const rows=ev.rows||[];
@@ -3647,7 +3676,7 @@ function stagePress(ev,bd,acts,fn){
     bd.appendChild(row); });
   pressAges(); pressWatch(ev.clips,bd,fn,false); fn.textContent=ev.source||''; if(ev.copy) acts.appendChild(stageBtn('Copy',b=>stageAct('copy',ev.copy,b))); }
 const clipLine=c=>{ const m=[c.channel,c.duration].filter(Boolean).join(', '); return c.title+(m?' \u2014 '+m:''); };
-function stageText(ev){ if(ev.from_phone) return ''; if(ev.kind==='mail'||ev.kind==='phone_pick') return ''; if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>{ const st=h.state||'up'; if(st==='down'||st==='stale') return [h.name+': '+gaugeOneText(h)]; return [...(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))), ...(h.badges||[]).map(b=>(many?h.name+' ':'')+b.k+': '+b.v), ...(h.lists||[]).map(l=>(many?h.name+' ':'')+l.title+': '+(l.items||[]).join(', '))]; })).join('\n'); } if(ev.kind==='headlines') return [ev.title||'News',...(ev.items||[]).map(it=>it.title+' \u2014 '+it.source+', '+pressAge(it.at)),...(ev.clips&&ev.clips.length?['Watch:',...ev.clips.map(clipLine)]:[]),...(ev.source?[ev.source]:[])].join('\n'); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
+function stageText(ev){ if(ev.from_phone) return ''; if(ev.kind==='mail'||ev.kind.startsWith('phone_')) return ''; if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>{ const st=h.state||'up'; if(st==='down'||st==='stale') return [h.name+': '+gaugeOneText(h)]; return [...(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))), ...(h.badges||[]).map(b=>(many?h.name+' ':'')+b.k+': '+b.v), ...(h.lists||[]).map(l=>(many?h.name+' ':'')+l.title+': '+(l.items||[]).join(', '))]; })).join('\n'); } if(ev.kind==='headlines') return [ev.title||'News',...(ev.items||[]).map(it=>it.title+' \u2014 '+it.source+', '+pressAge(it.at)),...(ev.clips&&ev.clips.length?['Watch:',...ev.clips.map(clipLine)]:[]),...(ev.source?[ev.source]:[])].join('\n'); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
   if(document.body.classList.contains('pnl')){ stgHeld=ev; return; }
@@ -3708,17 +3737,18 @@ const HS=(()=>{ const el=$('#handset'), pill=$('#callPill'), B=document.body.cla
   for(const e of [el,pill]) for(const k of ['keydown','keyup']) e.addEventListener(k,ev=>{ if(ev.key==='Enter'||ev.key===' ') ev.stopPropagation(); });   // (a focused key keeps its own Enter/Space; the window's shortcuts must not see them. No pointer-type check: the keyboard works)
   const shows=()=>!!cur&&!B.contains('calm');
   const clock=()=>{ if(!cur||cur.phase!=='active'||!cur.answered_at) return ''; const s=Math.max(0,Math.floor(Date.now()/1000-cur.answered_at)), p=n=>String(n).padStart(2,'0'); return p(s/60|0)+':'+p(s%60); };
-  function text(){ if(!cur) return; const name=cur.who||cur.number||pageLine('call.unknown','Unknown caller'), ph=cur.phase, c=clock(),
-      line=cur.note||(ph==='ringing'?pageLine('call.ringing','Ringing'):ph==='ended'?pageLine('call.ended','Call ended'):pageLine('call.active','In call'));
+  function text(){ if(!cur) return; const base=cur.who||cur.number||pageLine('call.unknown','Unknown caller'),
+      name=base+(cur.label?' \u00b7 '+pageLine('call.label_'+cur.label,cur.label):''), ph=cur.phase, c=clock(),
+      line=cur.note||(ph==='ringing'?pageLine('call.ringing','Ringing'):ph==='dialing'?pageLine('call.dialing','Calling\u2026'):ph==='ended'?pageLine('call.ended','Call ended'):pageLine('call.active','In call'));
     $('#hsLcd').classList.toggle('nt',!!cur.note); $('#hsWho').textContent=name; $('#hsTm').textContent=c; $('#hsSt').textContent=line;
     $('#pillTxt').textContent=name+(c?'  '+c:cur.note?'  '+cur.note:ph==='ended'?'  '+line:'');
     pill.title=$('#pillTxt').textContent; }
   function render(){ const on=!!cur;
     for(const e of [el,pill]){ e.classList.toggle('on',on); e.inert=!on; e.setAttribute('aria-hidden',on?'false':'true'); }
     if(!on){ clearInterval(tmr); tmr=null; sync(); return; }
-    const ring=cur.phase==='ringing', act=cur.phase==='active', vol=act&&cur.audio_here&&cur.volume!=null?Math.round(Math.min(1,Math.max(0,+cur.volume))*8):-1;
+    const ring=cur.phase==='ringing', act=cur.phase==='active', dial=cur.phase==='dialing', vol=act&&cur.audio_here&&cur.volume!=null?Math.round(Math.min(1,Math.max(0,+cur.volume))*8):-1;
     for(const e of [el,pill]) e.classList.toggle('ring',ring);
-    el.classList.toggle('act',act); el.classList.toggle('end',cur.phase==='ended'); el.classList.toggle('muted',!!cur.muted);
+    el.classList.toggle('act',act||dial); el.classList.toggle('end',cur.phase==='ended'); el.classList.toggle('muted',!!cur.muted);
     $('#hsIc').innerHTML=ring?BELL:HAND; $('#hsPath').textContent=pageLine(cur.path==='host'?'call.host':'call.phone',cur.path==='host'?'Host':'Phone');
     const vb=$('#hsVol'); vb.classList.toggle('on',vol>=0); vb.textContent=''; for(let i=0;i<8&&vol>=0;i++){ const t=hx('i',i<vol?'f':''); t.style.height=(2+i)+'px'; vb.appendChild(t); }
     for(const b of [...el.querySelectorAll('[data-act]'),...pill.querySelectorAll('[data-act]')]){ const a=b.dataset.act;

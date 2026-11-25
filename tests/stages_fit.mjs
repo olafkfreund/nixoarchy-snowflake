@@ -157,6 +157,7 @@ for (const [pn, ox] of Object.entries(POS)) for (const [fn, fx] of Object.entrie
   check(o[0] === "couldn\u2019t refresh \u00b7 09:30|couldn\u2019t refresh \u00b7 09:55|not set up" && o[1] === 0 && o[2] === "", "day desk: stale and off rows say so", JSON.stringify(o));
   await show(FIX["day (empty)"], w => 0);
   check(await ev("const x=document.getElementById('stg').textContent; return x.includes('Nothing else timed today') && x.includes('Nothing')"), "day desk: empty day");
+  check(await ev("return ['phone_call_gateway','phone_call_pick','phone_call_confirm'].every(k=>stageText({kind:k,title:'Call',rows:[{name:'Anna Test',masked:'…1234'}],name:'Anna Test',number:'+4700000000'})==='')"), "phone call cards: never in the text fallback");
   check(await ev("const t=stageText(" + JSON.stringify(FIX["day (stale and off)"]) + "); return t.includes('GitHub: not set up') && t.includes('Next: 10:40 Stand-up') && t.includes('Release day')"), "day desk: text fallback");
   check(await ev("const t=stageText({kind:'day',wd:'Wed',md:'4 Nov',next:{when:'now',title:'Stand-up',in:'now'},rows:[]}); return t.includes('Next: now Stand-up') && !t.includes('now)')"), "day desk: an event under way says now once");
   await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }); await sleep(200);
@@ -676,6 +677,52 @@ const acts = () => ev("return __acts.slice()");
   const spR = await showIn(FIX.facts, 1140, 0);
   const spL = await showIn(FIX.facts, 1140, 800);
   check(spR.side === "r" && spR.in === "0px" && Math.round(spR.left) === 350 && spL.side === "l" && spL.in === "0px" && Math.round(spL.left) === 400, "room to spare: #stg at 350 / -400 as today", JSON.stringify([spR, spL]));
+}
+
+// Phone call cards (#121): gateway picker, number picker, and confirm card fit, ignore untrusted clicks and Enter/Space, and post {token} with CLICKKEY on a trusted pointer click.
+{ const CALL_FIX = {
+    "phone_call_gateway": { t: "stage", v: 1, kind: "phone_call_gateway", title: "Which phone?", button: "Call", rows: [{ token: "gw1", name: "Pixel", label: "", masked: "\u20261111" }, { token: "gw2", name: "Work phone", label: "", masked: "\u20262222" }] },
+    "phone_call_pick": { t: "stage", v: 1, kind: "phone_call_pick", title: "Which number?", button: "Call", rows: [{ token: "pk1", name: "Ada Lovelace", label: "mobile", masked: "\u20261234" }, { token: "pk2", name: "Grace Hopper", label: "work", masked: "\u20265678" }] },
+    "phone_call_confirm": { t: "stage", v: 1, kind: "phone_call_confirm", title: "Call", token: "cf1", name: "Ada Lovelace", label: "mobile", number: "+4700001234", button: "Call" },
+  };
+  for (const [pn, ox] of Object.entries(POS)) for (const [fn, fx] of Object.entries(CALL_FIX)) {
+    const { want, box } = await show(fx, ox), [l, tp, r, b, W, H] = box, strip = [ox(want), ox(want) + 340];
+    const inside = l >= 0 && r <= W && tp >= 0 && b <= H, clear = r <= strip[0] || l >= strip[1];
+    check(want > 0 && inside && clear, `${fn} / ${pn}`, `box ${[l, tp, r, b].map(v => v.toFixed(0))} in ${W}x${H}, Nixi ${strip}`);
+  }
+  await ev(`window.__callPosts=[]; window.__callAns={ok:true,say:'Looking up your contacts\\u2026'}; const ofCall=window.fetch;
+    window.fetch=(u,o)=>{ const p=new URL(String(u),location.href).pathname;
+      if(p.startsWith('/api/phone/call-')||p==='/api/phone/dial'){ __callPosts.push([p,JSON.parse(o.body),!!(o.headers&&o.headers['X-Nixi-Click'])]); return Promise.resolve(new Response(JSON.stringify(__callAns))); }
+      return ofCall(u,o); }; window.__ofCall=ofCall; return 1`);
+  const keyPress = async (k, code, vk, text) => { for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, key: k, code, windowsVirtualKeyCode: vk, ...(type === "keyDown" && text ? { text } : {}) }); };
+  const mouseClick = async (x, y) => {
+    await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+  };
+  for (const [fn, fx, route, tok, ans, stay] of [
+    ["phone_call_gateway", CALL_FIX.phone_call_gateway, "/api/phone/call-gateway", "gw1", { ok: true, say: "Looking up your contacts\u2026" }, false],
+    ["phone_call_pick", CALL_FIX.phone_call_pick, "/api/phone/call-pick", "pk1", { ok: false, say: "That card has expired. Ask again." }, false],
+    ["phone_call_confirm", CALL_FIX.phone_call_confirm, "/api/phone/dial", "cf1", { ok: false, say: "The call didn't start. Check your phone." }, true],
+  ]) {
+    await show(fx, w => 0);
+    await ev(`__callPosts.length=0; __callAns=${JSON.stringify(ans)};
+      const b=document.querySelector('#stg .sb');
+      b.click();
+      b.dispatchEvent(new PointerEvent('click',{bubbles:true,cancelable:true,pointerType:'mouse'}));
+      b.focus(); return 1`);
+    await keyPress("Enter", "Enter", 13, "\r");
+    await keyPress(" ", "Space", 32, " ");
+    await sleep(80);
+    const before = await ev("return [__callPosts.length, document.querySelector('#stg .sb').disabled]");
+    check(before[0] === 0 && before[1] === false, `${fn}: untrusted clicks and Enter/Space do not post`, JSON.stringify(before));
+    const [x, y] = await ev("const r=document.querySelector('#stg .sb').getBoundingClientRect(); return [r.left+r.width/2, r.top+r.height/2]");
+    await mouseClick(x, y);
+    await sleep(80);
+    const after = await ev("const f=document.getElementById('stg'); return [__callPosts.slice(), f.classList.contains('desk'), f.textContent.includes(__callAns.say), f.querySelector('.sb').disabled]");
+    check(after[0].length === 1 && after[0][0][0] === route && after[0][0][1]?.token === tok && after[0][0][2] === true && after[1] && after[2] && after[3] === (stay || ans.ok), `${fn}: trusted click posts token with CLICKKEY and shows say`, JSON.stringify(after));
+  }
+  await ev("window.fetch=window.__ofCall; stageClose(); return 1");
+  await sleep(320);
 }
 
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});

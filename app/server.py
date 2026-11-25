@@ -7984,6 +7984,9 @@ def phone_dial_pending():
 def phone_call_dial(token):
     global PHONE_CALL, DIAL_PENDING
     if Call.visible() or Hfp.any_call():
+        with PHONE_LOCK:                                  # (refused: the card is used up, so a re-shown card can't dial later)
+            if PHONE_CALL and isinstance(token, str) and token == PHONE_CALL.get("confirm"):
+                PHONE_CALL = None
         return {"ok": False, "say": lang.t("phone.call_busy")}
     with Hfp.lock:
         gateways = {path: row.get("address") for path, row in Hfp.gateways.items()}
