@@ -351,3 +351,30 @@ bumping `nixi-companion` back, or with `nixos-rebuild switch --rollback`.
   `_arm_settle()` is the only owner of `save_t`. `_settle_xpos()` waits
   while the button is held, and the window-mode undock save goes through
   `_arm_settle(0)`.
+- Step 3 (coder): `go_monitor` calls `_apply_page(self.z)` after it places
+  him when the size changed. `_size_spot` has already set `z`, so
+  `_apply_zoom` would see no change and skip the room, dock and region
+  work.
+- Step 6 review fixes (fresh Opus review, plus the Codex and agy
+  cross-reviews):
+  - **Window-mode monitor.** It is picked by the unscaled ball point
+    (`x0 + BALL[0]`, `y + BALL[1]`), both in `_zoom_spot` and in
+    `_load_xpos`. With the scaled centre, the zoom could flip between two
+    monitors at a seam. This replaces the plan's "each monitor's own
+    page" rule in Step 3.
+  - **Docking keeps the zoom only on the same screen.** `_dock_if_edge`
+    compares the dock screen with the kept spot's screen on every dock
+    path, not only for a layer drop on the next screen. A drag already
+    carries `mon_i` over, so that check missed it.
+  - **The settle timer.** The undock save polls at 50 ms, not 0 ms
+    (0 ms spun the main loop while the button was held). `_settle_xpos`
+    skips the save once docked, so a quick drop into the notch is not
+    saved as his free spot.
+  - **Hover glides.** `hover_n` is bumped on every hover on/off, and
+    `_glide_home(n, home)` gets its generation and home when it starts.
+    Its queued moves and its landing do nothing once stale.
+  - **The default corner** is never above or left of the monitor
+    (`max(0, …)`).
+  - **The collapsed tab** uses the corrected `fitK` room formula too, so
+    under scaling it can choose a different side than before. The old
+    formula's right-side room was wrong when `fitK < 1`.

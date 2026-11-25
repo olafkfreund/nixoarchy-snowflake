@@ -24,7 +24,7 @@ def window_methods(*names):
     code = compile(ast.fix_missing_locations(ast.Module(body=[ast.ClassDef(
         name="Window", bases=[], keywords=[], body=methods, decorator_list=[])], type_ignores=[])),
         str(ROOT / "app/window.py"), "exec")
-    ns = dict(split_room=room.split_room, W=340, H=460, WIDE=470, GLIDE=0.3, CODE_SIDE=100,
+    ns = dict(split_room=room.split_room, W=340, H=460, BALL=(170, 165), WIDE=470, GLIDE=0.3, CODE_SIDE=100,
               BAR_SIDE=70, json=json, os=__import__("os"), GLib=SimpleNamespace(
                   timeout_add=Mock(return_value=1), source_remove=Mock()),
               time=__import__("time"), math=__import__("math"), size=size, termfont=termfont,
@@ -345,6 +345,18 @@ class RoomTest(unittest.TestCase):
         w._save_xpos.assert_called_once()
         self.assertIsNone(w.save_t)
 
+    def test_settle_skips_the_save_once_docked(self):
+        held = [False]
+        w, live = self._settle_window(held)
+        w._moved(SimpleNamespace(get_position=lambda: (10, 10)), None)
+        w.bar = "top"                                         # a quick drop into the notch before the timer fired
+        self.assertFalse(w._settle_xpos())
+        w._save_xpos.assert_not_called()
+
+    def test_undock_save_polls_at_50ms(self):
+        src = (ROOT / "app/window.py").read_text()
+        self.assertIn("self._arm_settle(50)), False)[1])", src)  # (0 ms would spin the main loop while the button is held)
+
     def test_undock_settle_and_direct_save_keep_one_timer(self):
         held = [True]
         w, live = self._settle_window(held)
@@ -433,8 +445,8 @@ class RoomTest(unittest.TestCase):
         w.win = SimpleNamespace(set_size_request=Mock(), resize=Mock(), queue_draw=Mock(), move=Mock())
         w._x11, w._js, w.cursor_hidden, w._follow = lambda: False, Mock(), Mock(), Mock()
         w._xmove = lambda x, y: (setattr(w, "mx", x), setattr(w, "my", y))
-        w._glide_home = Mock(side_effect=lambda: ns["Window"]._glide_home(w))
-        ns["threading"].Thread = Mock(side_effect=lambda target, daemon: SimpleNamespace(start=target))
+        w._glide_home = Mock(side_effect=lambda n, home: ns["Window"]._glide_home(w, n, home))
+        ns["threading"].Thread = Mock(side_effect=lambda target, daemon, args=(): SimpleNamespace(start=lambda: target(*args)))
         w.set_hover(True)
         self.assertEqual((w.wide_shift, w.top_shift, w.cur_w, w.cur_h), (0, 0, 340, 460))
         self.assertEqual(w.home, (0, 300, 440))
@@ -502,7 +514,7 @@ class RoomTest(unittest.TestCase):
         right = SimpleNamespace(x=1920, y=0, width=1280, height=720)
         w._mon_at = Mock(return_value=(1, right))
         self.assertEqual(w._zoom_spot(), (right, 100))
-        w._mon_at.assert_called_once_with(2190, 230)
+        w._mon_at.assert_called_once_with(2020 + 170, w.my + w.top_shift + 165)   # the unscaled ball: a zoom change can't flip it
 
     def test_push_zoom_uses_cached_spot_or_falls_back(self):
         ns = window_methods("_push_zoom")
@@ -565,10 +577,21 @@ class RoomTest(unittest.TestCase):
         other = SimpleNamespace(x=1280, y=0, width=1920, height=1080)
         w._cursor_or_none, w._mon_at = lambda: (3199, 300), lambda *c: (1, other)
         w._geoms = lambda: [(0, 0, 1280, 720), (1280, 0, 1920, 1080)]
+        w._place = Mock(side_effect=lambda *a: setattr(w, "mon", other))   # (placing him there moves him onto it)
+        w.set_bar = Mock(side_effect=lambda edge: self.assertEqual(w.zoom_spot, (other, None)))
+        w._dock_if_edge()
+        w.set_bar.assert_called_once_with("right")
+        # the drag already carried him over (mon_i is the dock screen): the kept spot is still the old screen's
+        w = zoom_window(ns, x0=374)
+        w.zoom_spot = (SimpleNamespace(x=0, y=0, width=2560, height=1440), 900)
+        w.mon, w.mon_i = other, 1
+        w._cursor_or_none, w._mon_at = lambda: (3199, 300), lambda *c: (1, other)
+        w._geoms = lambda: [(0, 0, 1280, 720), (1280, 0, 1920, 1080)]
         w._place = Mock()
         w.set_bar = Mock(side_effect=lambda edge: self.assertEqual(w.zoom_spot, (other, None)))
         w._dock_if_edge()
         w.set_bar.assert_called_once_with("right")
+        w._place.assert_not_called()
 
     def test_parked_rezooms_before_recording_the_spot(self):
         ns = window_methods("_parked", "_spot")
@@ -606,13 +629,20 @@ class RoomTest(unittest.TestCase):
         w._rewide, w._apply_zoom = Mock(), Mock()
         for on in (True, False, True, False):
             w.set_hover(on)
-        w._hover_landed(1)
+        w._hover_landed(2)                           # the first return's landing: stale, does nothing at all
         self.assertTrue(w.hover_return)
         w._apply_zoom.assert_not_called()
-        w._hover_landed(2)
+        w._rewide.assert_not_called()
+        w._hover_landed(4)
         self.assertFalse(w.hover_return)
         w._apply_zoom.assert_called_once_with()
-        self.assertEqual(w._rewide.call_count, 2)
+        self.assertEqual(w._rewide.call_count, 1)
+        w.set_hover(True)                            # back on during a return: that return is stale too
+        w.set_hover(False)
+        w.set_hover(True)
+        w._hover_landed(6)
+        self.assertTrue(w.hover)
+        self.assertEqual(w._apply_zoom.call_count, 1)
 
     def test_layer_startup_sizes_for_the_saved_spot_before_placing(self):
         ns = window_methods("_load_pos", "_place", *PLACE)
@@ -653,7 +683,7 @@ class RoomTest(unittest.TestCase):
                     w.set_wide.assert_not_called()
 
     def test_window_startup_keeps_a_spot_on_a_seam(self):
-        ns = window_methods("_load_xpos", *PLACE)
+        ns = window_methods("_load_xpos", "_zoom_spot", *PLACE)
         mons = screen(0, 2560, 1440), screen(2560, 1280, 720)
         # 2400: the right monitor's own page puts the centre on it. 2260: neither monitor's own page does.
         for gx, page in ((2400, 720 / 460), (2260, 32 / 14)):
@@ -662,13 +692,16 @@ class RoomTest(unittest.TestCase):
                 w._load_xpos()
                 self.assertEqual((w.mx, w.my), (gx, 0))
                 self.assertAlmostEqual(w.z, page)
+                w._mon_at = lambda x, y: next((i, g) for i, g in enumerate(mons) if g.x <= x < g.x + g.width)
+                w.wide_shift = w.top_shift = 0
+                self.assertAlmostEqual(w._page_at(*w._zoom_spot()), w.z)   # the first re-zoom keeps it: no flip
 
     def test_window_startup_falls_back_when_the_monitor_is_gone(self):
         ns = window_methods("_load_xpos", *PLACE)
         with tempfile.TemporaryDirectory() as tmp:
             w = startup(ns, tmp, {"gx": 4000, "gy": 0}, screen(0, 1280, 720), layer=False)
             w._load_xpos()
-        self.assertEqual((w.mx, w.my), (738, -10))
+        self.assertEqual((w.mx, w.my), (738, 0))      # (never above the monitor: 720 px tall at this page)
 
     def test_monitor_move_sizes_for_the_destination_before_placing(self):
         ns = window_methods("go_monitor", "_place", *PLACE, *ZOOM)
