@@ -212,10 +212,10 @@ body.bar #mailPop,body.hover #mailPop,body.calm #mailPop{display:none}
 /* answer stages (#144): one frame beside him for commands and facts. Only transform, opacity and stroke-dashoffset move; the grain is a static gradient. */
 @font-face{font-family:Chalk;src:url(fonts/caveat.woff2) format("woff2");font-weight:600;font-display:swap}
 @font-face{font-family:MapInk;src:url(fonts/imfell.woff2) format("woff2");font-display:swap}
-#stg{position:absolute;top:10px;left:350px;width:390px;min-height:300px;max-height:440px;z-index:7;display:flex;flex-direction:column;border-radius:14px;overflow:hidden;
+#stg{position:absolute;top:10px;left:calc(350px - var(--stgIn,0px));width:390px;min-height:300px;max-height:440px;z-index:7;display:flex;flex-direction:column;border-radius:14px;overflow:hidden;
   opacity:0;pointer-events:none;transform:translateX(-14px) scale(.97);transition:transform .18s var(--ease),opacity .18s;
   --sbg:#1d2a27;--sfg:#eef3ee;--sdim:#9fb2a8;--sline:#ffffff22;background:var(--sbg);color:var(--sfg);box-shadow:0 10px 28px #000a,0 0 0 2px var(--acc);user-select:text;-webkit-user-select:text}
-#stg.l{left:-400px;transform:translateX(14px) scale(.97)}
+#stg.l{left:calc(-400px + var(--stgIn,0px));transform:translateX(14px) scale(.97)}
 #stg.on{opacity:1;transform:none;pointer-events:auto;transition-duration:.22s}
 #stg.board{background:repeating-linear-gradient(115deg,#ffffff06 0 2px,transparent 2px 7px),linear-gradient(160deg,#25352f,#1b2623);border:6px solid #6b4a2b}
 #stg.notebook{--sbg:#f6f0e0;--sfg:#2a2620;--sdim:#7a705e;--sline:#2a262026;background:repeating-linear-gradient(180deg,transparent 0 27px,#4d6fb71f 27px 28px),#f6f0e0;border-left:14px solid var(--acc)}
@@ -3320,10 +3320,11 @@ const stgOpen=()=>stgState==='open';
 function stgSize(w){ stageWant=[w,0]; sizeWindow(); }
 function stagePost(v){ if(stgPosted===v) return; stgPosted=v; post('/api/stage/act',{act:v?'shown':'hidden'}).catch(()=>{}); }
 function stageVisSync(){ const B=document.body.classList; stagePost(stgState==='open'&&stgEl.classList.contains('on')&&!B.contains('calm')&&!B.contains('bar')&&!B.contains('hover')); }
-function stagePlace(){ if(stgState==='closed') return;
-  const right=innerWidth/fitK-layoutX-340, left=layoutX/fitK, need=stgState==='open'?400:160;
-  stgSide=right>=need?'r':left>=need?'l':right>=left?'r':'l';
-  for(const e of [stgEl,stgTab,chalkEl,popEl,wtcEl]) e.classList.toggle('l',stgSide==='l'); }
+function stagePlace(){ stgEl.style.setProperty('--stgIn','0px'); if(stgState==='closed') return;
+  const R=(innerWidth-layoutX)/fitK-340, L=layoutX/fitK, need=stgState==='open'?400:160;
+  stgSide=R>=need?'r':L>=need?'l':R>=L?'r':'l';
+  for(const e of [stgEl,stgTab,chalkEl,popEl,wtcEl]) e.classList.toggle('l',stgSide==='l');
+  if(stgState==='open'){ const w=stgEl.offsetWidth, r=stgSide==='r', s=340+L+R<w?(r?350+L:400-L):Math.max(0,Math.min(r?10+w-R:400-L,r?350+L:740+R-w)); stgEl.style.setProperty('--stgIn',s+'px'); } }
 function stageBtn(label,fn,dis){ const b=hx('button','sb',label); b.type='button'; b.disabled=!!dis; b.addEventListener('click',e=>{ e.stopPropagation(); stgUse=performance.now(); fn(b); }); return b; }
 function stageBuild(ev){
   const bd=$('#stgBd'), acts=$('#stgActs'), fn=$('#stgFn'); bd.textContent=''; acts.textContent=''; fn.textContent='';
@@ -3668,7 +3669,7 @@ function stageHide(toTab){
   stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on'); popEl.classList.remove('on'); wtcEl.classList.remove('on'); stgEl.setAttribute('aria-hidden','true'); stgEl.inert=true; stgTab.inert=!toTab;
   if(!toTab){ stgPosted=false; mailCardDrop(true); }
   if(toTab){ stagePost(false); stgState='tab'; stgTab.replaceChildren(Object.assign(document.createElement('span'),{textContent:$('#stgT').textContent})); stagePlace(); stgSize(300); void stgTab.offsetWidth; stgTab.classList.add('on'); }
-  else { stgState='closed'; stgTab.classList.remove('on'); stgOffT=setTimeout(()=>{ if(stgState==='closed') stgSize(0); sendRegion(true); },200); }
+  else { stgState='closed'; stgEl.style.setProperty('--stgIn','0px'); stgTab.classList.remove('on'); stgOffT=setTimeout(()=>{ if(stgState==='closed') stgSize(0); sendRegion(true); },200); }
   sendRegion(true); setTimeout(()=>sendRegion(true),260);
 }
 function stageClose(){ if(stgState==='closed') return; stageHide(false); post('/api/stage/act',{act:'close'}).catch(()=>{}); }
@@ -4997,7 +4998,7 @@ function fit(){ const k=Math.min(1, innerWidth/340, innerHeight/460); fitK=k>0.9
   if(NATIVE&&fitK<1) console.log(`[nixi] window is ${innerWidth}x${innerHeight} (expected 340x460) — scaling the page to fit`); }
 // the window widened for a panel: it grew to the left by ox px, so shift the page back and he stays exactly where he was
 window.nixiLayout=(ox,oy)=>{ layoutX=+ox; layoutY=+oy; fit(); cardPlace(); stagePlace(); HS.place(); sendRegion(true); requestAnimationFrame(moveInd); };
-addEventListener('resize',()=>{ fit(); cardPlace(); sendRegion(true); moveInd(); }); fit();
+addEventListener('resize',()=>{ fit(); cardPlace(); stagePlace(); sendRegion(true); moveInd(); }); fit();
 if(NATIVE){ native('wide:off'); sizeWindow(); }   // (a reload forgets any panel: the window must not keep its size)
 function sendRegion(force){
   calmCheck();

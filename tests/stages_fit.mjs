@@ -625,6 +625,59 @@ const acts = () => ev("return __acts.slice()");
   await ev("window.fetch=__micFetch; send=__micSend; return 1");
 }
 
+// Slide-over in narrow windows (#112): the card slides over Nixi just enough to stay inside the monitor.
+{ const showIn = async (fx, w, ox, h = 460) => {
+    await ev(`stageClose(); await new Promise(r=>setTimeout(r,320)); onEvent(${JSON.stringify(fx)}); return 1`);
+    await sleep(60);
+    await view(w, h);
+    await ev(`window.nixiLayout(${ox},0); return 1`);
+    await sleep(420);
+    return ev(`const f=document.getElementById('stg'), r=f.getBoundingClientRect(); return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,W:innerWidth,H:innerHeight,side:stgSide,in:f.style.getPropertyValue('--stgIn'),k:fitK}`);
+  };
+  for (const [ox, side] of [[100, "r"], [260, "l"]]) for (const k of ["facts", "headlines"]) {
+    const b = await showIn(FIX[k], 700, ox);
+    check(b.side === side && b.left >= 0 && b.right <= b.W && parseFloat(b.in) > 0, `narrow 700 ox=${ox} (${side}): ${k} stays inside`, JSON.stringify(b));
+  }
+  // A real mouse click on a shifted card button (over the strip) posts its action.
+  await showIn(FIX.facts, 700, 100);
+  const pt = await ev("window.__clickAct=null; const of5=window.fetch; window.__of5=of5; window.fetch=(u,o)=>{ if(String(u).includes('/api/stage/act')&&o?.body){ const b=JSON.parse(o.body); if(b.token) __clickAct=b; } return of5(u,o); }; const r=document.querySelector('#stg .sb').getBoundingClientRect(); return [r.left+r.width/2, r.top+r.height/2]");
+  await send("Input.dispatchMouseEvent", { type: "mousePressed", x: pt[0], y: pt[1], button: "left", clickCount: 1 });
+  await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: pt[0], y: pt[1], button: "left", clickCount: 1 });
+  await sleep(80);
+  const cAct = await ev("window.fetch=window.__of5; return __clickAct");
+  check(cAct?.token === "f1" && cAct?.act === "copy", "narrow: real click on shifted card button triggers its action", JSON.stringify([pt, cAct]));
+  // Resize without a new nixiLayout recalculates the shift via the resize listener.
+  const in0 = await ev("return document.getElementById('stg').style.getPropertyValue('--stgIn')");
+  await view(640, 460); await sleep(120);
+  const rz = await ev("const f=document.getElementById('stg'), r=f.getBoundingClientRect(); return {left:r.left,right:r.right,W:innerWidth,in:f.style.getPropertyValue('--stgIn')}");
+  check(rz.in !== in0 && parseFloat(rz.in) === parseFloat(in0) + 60 && rz.left >= 0 && rz.right <= rz.W, "narrow: resize listener recalculates --stgIn", JSON.stringify([in0, rz]));
+  // At height 400 (fitK < 1), the card is still inside.
+  for (const [ox, side] of [[100, "r"], [260, "l"]]) {
+    const h4 = await showIn(FIX.facts, 650, ox, 400);
+    check(h4.k < 1 && h4.side === side && h4.left >= -0.5 && h4.right <= h4.W + 0.5 && h4.top >= -0.5 && h4.bottom <= h4.H + 0.5, `narrow height 400 (fitK<1) ox=${ox}: card inside`, JSON.stringify(h4));
+  }
+  // News on the left with 370 px of room: shifted by 30, not clipped.
+  const nwL = await showIn(FIX.headlines, 710, 370);
+  check(nwL.side === "l" && nwL.in === "30px" && Math.round(nwL.left) === 0 && nwL.right <= nwL.W, "narrow: News on the left with 370 px room is shifted by 30, not clipped", JSON.stringify(nwL));
+  // A 300 px window narrower than the card: its left edge is at the window's left.
+  for (const [ox, side] of [[0, "r"], [200, "l"]]) {
+    const n3 = await showIn(FIX.facts, 300, ox);
+    check(n3.side === side && Math.abs(n3.left) < 0.5, `narrow 300 px window ox=${ox} (${side}): left edge at 0`, JSON.stringify(n3));
+  }
+  // Collapse to the tab, and close with no resize: --stgIn is 0px, and #stgTab's rectangle matches its pre-change place for that side.
+  for (const [ox, side, tabLeft] of [[100, "r", 450], [260, "l", 100]]) {
+    await showIn(FIX["commands (mechanic)"], 700, ox);
+    const tb = await ev("stageHide(true); await new Promise(r=>setTimeout(r,260)); const tr=document.getElementById('stgTab').getBoundingClientRect(); return [stgSide, document.getElementById('stg').style.getPropertyValue('--stgIn'), Math.round(tr.left), Math.round(tr.top)]");
+    check(tb[0] === side && tb[1] === "0px" && tb[2] === tabLeft && tb[3] === 96, `narrow collapse to tab (${side}): --stgIn is 0px and #stgTab is unshifted`, JSON.stringify(tb));
+    const cl = await ev("stageRestore(); await new Promise(r=>setTimeout(r,360)); const openIn=document.getElementById('stg').style.getPropertyValue('--stgIn'); stageClose(); return [openIn, document.getElementById('stg').style.getPropertyValue('--stgIn')]");
+    check(parseFloat(cl[0]) > 0 && cl[1] === "0px", `narrow close with no resize (${side}): --stgIn resets to 0px`, JSON.stringify(cl));
+  }
+  // Room to spare: #stg at 350 / -400 as today.
+  const spR = await showIn(FIX.facts, 1140, 0);
+  const spL = await showIn(FIX.facts, 1140, 800);
+  check(spR.side === "r" && spR.in === "0px" && Math.round(spR.left) === 350 && spL.side === "l" && spL.in === "0px" && Math.round(spL.left) === 400, "room to spare: #stg at 350 / -400 as today", JSON.stringify([spR, spL]));
+}
+
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
 console.log(fails.length ? `\n${fails.length} failed: ${fails.join(", ")}` : "\nall pass");
 process.exit(fails.length ? 1 : 0);
