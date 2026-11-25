@@ -106,6 +106,25 @@ class RoomTest(unittest.TestCase):
                         self.assertLessEqual(nixi, 1.0)
                         self.assertAlmostEqual(page * nixi, size)
 
+    def test_card_zoom_position_cap(self):
+        self.assertEqual(zooms(0.75, 2.0, 16, 1280, 720, None),
+                         zooms(0.75, 2.0, 16, 1280, 720))
+        self.assertEqual(zooms(0.75, 2.0, 16, None, None, 500),
+                         zooms(0.75, 2.0, 16, None, None))
+        for mon_w, mon_h, size_value, x0, expected in (
+            (1280, 720, 0.75, 0, 1.565),
+            (1280, 720, 0.75, 748, 1.565),
+            (1280, 720, 0.75, 374, 1.224),
+            (1280, 720, 0.75, 100, 1.565),
+            (2560, 1440, 0.75, 900, 2.25),
+            (1024, 768, 1.25, 320, 1.25),
+        ):
+            with self.subTest(monitor=(mon_w, mon_h), size=size_value, x0=x0):
+                page, nixi, target = zooms(size_value, 2.0, 16, mon_w, mon_h, x0)
+                self.assertAlmostEqual(page, expected, places=3)
+                self.assertAlmostEqual(page * nixi, size_value)
+                self.assertEqual(target, 32)
+
     def test_card_text_steps_and_limits(self):
         self.assertEqual((text_step(1.0, "up"), text_step(1.0, "down")), (1.1, 0.9))
         self.assertEqual(text_step(1.5, "reset"), 1.0)

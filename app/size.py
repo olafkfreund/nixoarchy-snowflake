@@ -42,9 +42,11 @@ def text_step(current, direction):
     return text_clamp(round(text_clamp(current) + (0.1 if direction == "up" else -0.1), 2))
 
 
-def zooms(size, card_text, term_px, mon_w, mon_h):
+def zooms(size, card_text, term_px, mon_w, mon_h, x0=None):
     z = clamp(size)
     target = max(10, min(28, term_px or 16)) * text_clamp(card_text)
     fit = min(mon_w / 750, mon_h / 460) if mon_w is not None and mon_h is not None else math.inf
+    if x0 is not None and mon_w is not None:
+        fit = min(fit, max((mon_w - x0) / 740, x0 / 400))
     page = page_zoom(max(min(target / 14, fit), z))
     return page, z / page, target
