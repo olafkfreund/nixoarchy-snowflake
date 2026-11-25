@@ -106,7 +106,7 @@ size, text or terminal change still recomputes, from that kept spot.
 - **Window-mode drags:** the 700 ms debounce in `_moved` (`:570`) now
   fires a small `_settle_xpos`. It owns the one `save_t` timer: while
   button 1 is held it returns `True` to run again, and it clears `save_t`
-  when it finishes. It uses using the check the X11 release poll
+  when it finishes. It uses the button check the X11 release poll
   already does (`:1002-1006`, moved into a helper both call). Once the
   button is up, it calls `_save_xpos`. The window-mode branch of the delayed undock save
   (`:1129`) also goes through `_settle_xpos`, because pulling Nixi out of the
