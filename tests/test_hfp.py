@@ -26,6 +26,7 @@ class Bus:
     def __init__(self):
         self.subs = []
         self.methods = []
+        self.requests = []
         self.objects = {
             Hfp.ROOT: {AG: {Hfp.AG: {"Address": ADDRESS}, Hfp.TRANSPORT: {"State": "idle"}}},
             AG: {CALL: {Hfp.CALL: {"State": "incoming", "LineIdentification": "withheld", "Name": "Alex"}}},
@@ -41,7 +42,8 @@ class Bus:
 
     def call_sync(self, name, path, interface, method, args, reply_type, flags, timeout, cancellable):
         self.methods.append((path, interface, method))
-        if self.error and method in ("Answer", "Hangup"):
+        self.requests.append((name, path, interface, method, args, timeout))
+        if self.error and method in ("Answer", "Hangup", "Dial", "GetManagedObjects"):
             raise self.error
         if method == "GetManagedObjects":
             return Variant((self.objects[path],))
@@ -62,7 +64,8 @@ class HfpTest(unittest.TestCase):
         gio = SimpleNamespace(DBusCallFlags=SimpleNamespace(NONE=0),
                               DBusSignalFlags=SimpleNamespace(NONE=0),
                               DBusError=SimpleNamespace(get_remote_error=lambda e: getattr(e, "remote", None)))
-        self.hfp = Hfp(lambda: self.events.append(True), self.bus, gio, SimpleNamespace())
+        self.hfp = Hfp(lambda: self.events.append(True), self.bus, gio,
+                       SimpleNamespace(Variant=lambda signature, value: Variant(value)))
         self.assertTrue(self.hfp.connect())
 
     def test_discovery_both_levels_and_reseed(self):
@@ -123,6 +126,57 @@ class HfpTest(unittest.TestCase):
         error.remote = "org.freedesktop.DBus.Error.Failed"
         self.assertEqual(self.hfp.hangup(CALL)["error"], "Failed")
         self.assertFalse(any(m == "Set" for _, _, m in self.bus.methods))
+
+    def test_dial_and_errors(self):
+        self.assertEqual(self.hfp.dial(AG, "123456"), {"ok": False, "error": "busy"})
+        self.bus.emit("InterfacesRemoved", AG, (CALL, [Hfp.CALL]))
+        self.assertEqual(self.hfp.dial("/gone", "123456"), {"ok": False, "error": "gone"})
+        self.assertEqual(self.hfp.dial(AG, "123456"), {"ok": True})
+        name, path, interface, method, args, timeout = self.bus.requests[-1]
+        self.assertEqual((name, path, interface, method, args.unpack(), timeout),
+                         (Hfp.NAME, AG, Hfp.AG, "Dial", ("123456",), 10000))
+        self.bus.error = TimeoutError()
+        self.assertEqual(self.hfp.dial(AG, "123456"), {"ok": False, "error": "unknown"})
+        error = RuntimeError()
+        error.remote = "org.freedesktop.DBus.Error.NoReply"
+        self.bus.error = error
+        self.assertEqual(self.hfp.dial(AG, "123456"), {"ok": False, "error": "unknown"})
+        error.remote = "org.freedesktop.DBus.Error.Timeout"
+        self.assertEqual(self.hfp.dial(AG, "123456"), {"ok": False, "error": "unknown"})
+        error.remote = "org.freedesktop.DBus.Error.Failed"
+        self.assertEqual(self.hfp.dial(AG, "123456"), {"ok": False, "error": "failed"})
+
+    def test_gateway_list_alias_fallback_and_duplicates(self):
+        system = Bus()
+        system.objects["/"] = {
+            "/org/bluez/hci0/dev_1": {"org.bluez.Device1": {"Address": ADDRESS, "Alias": "Phone"}},
+            "/org/bluez/hci0/dev_2": {"org.bluez.Device1": {"Address": "11:22:33:44:55:66", "Alias": "Phone"}},
+        }
+        self.hfp.sys_conn = system
+        self.hfp.gateways["/ag1"] = {"address": "11:22:33:44:55:66"}
+        self.assertEqual(self.hfp.gateway_list(), [
+            (AG, ADDRESS, "Phone (…E:FF)"),
+            ("/ag1", "11:22:33:44:55:66", "Phone (…5:66)"),
+        ])
+        self.assertEqual(system.requests[-1][:4], ("org.bluez", "/", Hfp.OM, "GetManagedObjects"))
+        system.error = RuntimeError()
+        self.assertEqual(self.hfp.gateway_list(), [(AG, ADDRESS, ADDRESS),
+                                                   ("/ag1", "11:22:33:44:55:66", "11:22:33:44:55:66")])
+        system.error = None
+        system.objects["/"] = {}
+        self.assertEqual(self.hfp.gateway_list()[0], (AG, ADDRESS, ADDRESS))
+
+    def test_gateway_list_gets_system_bus_lazily(self):
+        system = Bus()
+        system.objects["/"] = {
+            "/org/bluez/hci0/dev_1": {"org.bluez.Device1": {"Address": Variant(ADDRESS),
+                                                             "Alias": Variant("My phone")}},
+        }
+        self.hfp.Gio.BusType = SimpleNamespace(SYSTEM=1)
+        self.hfp.Gio.bus_get_sync = unittest.mock.Mock(return_value=system)
+        self.assertEqual(self.hfp.gateway_list(), [(AG, ADDRESS, "My phone")])
+        self.assertEqual(self.hfp.gateway_list(), [(AG, ADDRESS, "My phone")])
+        self.hfp.Gio.bus_get_sync.assert_called_once_with(1, None)
 
     def test_streams_and_wpctl(self):
         fixture = Path(__file__).with_name("fixtures") / "pw-dump-hfp.json"

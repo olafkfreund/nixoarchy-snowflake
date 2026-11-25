@@ -24,6 +24,17 @@ class LangModuleTest(unittest.TestCase):
         self.assertEqual({k: (v["whisper"], v["locale"], v["date"]) for k, v in L.items()},
                          {"en": ("en", "en", "en-GB"), "nb": ("no", "nb", "nb-NO"), "pl": ("pl", "pl", "pl-PL")})
 
+    def test_phone_call_lines_and_phrases_in_each_language(self):
+        keys = ("call.dialing", *(f"call.label_{label}" for label in ("mobile", "home", "work", "other")),
+                *(f"phone.call_{name}" for name in ("locked", "busy", "no_bt", "not_allowed", "short", "loading",
+                    "sharing_off", "lookup_failed", "not_found", "failed", "stale", "gateway_title", "pick_title",
+                    "confirm_title", "button")))
+        for code in ("en", "nb", "pl"):
+            data = self.lang.load(code)
+            self.assertTrue(all(data["lines"].get(key) for key in keys), code)
+            self.assertTrue(data["phrases"]["phone_call"], code)
+            self.assertTrue(data["phrases"]["phone_call_stop"], code)
+
     def test_first_run_precedence(self):
         d = self.lang.detect
         self.assertEqual(d({"LC_ALL": "pl_PL.UTF-8", "LANG": "nb_NO.UTF-8"}), "pl")

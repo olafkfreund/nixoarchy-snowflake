@@ -22,6 +22,7 @@ notify = None          # notify(title, body)
 publish = None         # publish(**event) → page
 cfg = None             # the live config dict
 save_config = None     # save_config(**kw)
+phone_device_name = None  # read-only Flux device-name check for Norwegian "ring"
 
 NUM = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
        "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "fifteen": 15, "twenty": 20, "thirty": 30, "forty": 40,
@@ -352,8 +353,28 @@ def _phone(t):
     for key, do in (("phone_find", "ring"), ("phone_send", "clip"), ("phone_send_shot", "shot"), ("phone_status", "status")):
         name = _phone_phrase(t, key)
         if name is not None:
+            if key == "phone_find" and lang.active == "nb" and t.startswith("ring ") and t != "ring my phone" and name and not (
+                    phone_device_name and phone_device_name(name)):
+                continue
             generic = bool(re.search(r"\b(?:my phone|telefonen min|mobilen min|mój telefon)\b", t))
             return {"phone": {"do": do, "name": name or None, **({"generic": True} if generic else {})}}
+    return None
+
+
+def _phone_call(t):
+    for code in dict.fromkeys((lang.active, "en")):
+        phrases = lang.load(code).get("phrases", {})
+        for verb in sorted(phrases.get("phone_call", []), key=len, reverse=True):
+            m = re.fullmatch(re.escape(verb) + r"\s+(.+)", t)
+            if not m:
+                continue
+            target = m[1].strip()
+            number = re.fullmatch(r"(?:tel:)?[\d+*#(),;.pw\s\-\u2010-\u2015]+", target) and (sum(c.isdigit() for c in target) >= 3 or
+                                                                                               any(c in target for c in "*#"))
+            name = re.fullmatch(r"[^\W\d_]+(?:['-]?[^\W\d_]+)*(?:\s+[^\W\d_]+(?:['-]?[^\W\d_]+)*){0,3}", target)
+            stop = set(phrases.get("phone_call_stop", [])) | set(lang.load("en").get("phrases", {}).get("phone_call_stop", []))
+            if (number or name) and target.split()[0] not in stop:
+                return {"phone": {"do": "call", "target": target}}
     return None
 
 
@@ -480,6 +501,10 @@ def handle(text):
         r = _timer(t)
         if r:
             return r
+
+    r = _phone_call(t)
+    if r:
+        return r
 
     # time & date
     if re.fullmatch(r"(what'?s the |what is the )?time( is it)?( now)?|what time is it( now)?", t):

@@ -52,11 +52,16 @@ class Calls(unittest.TestCase):
         self.hfp = mock.Mock()
         self.hfp.lock = threading.RLock()
         self.hfp.calls = {}
+        self.hfp.gateways = {}
+        self.pbap = mock.Mock()                          # (never the real obexd)
+        self.pbap.name_for.return_value = None
+        self.pbap.state.return_value = "ready"
         self.hfp.audio_here.return_value = False
         self.hfp.calls_on.side_effect = lambda ag: [c for c in self.hfp.calls.values() if c["ag"] == ag and c["state"] != "disconnected"]
         self.pub = mock.Mock()
         self.ring = mock.Mock()
         for obj, name, value in ((s, "Phone", self.phone), (s, "Hfp", self.hfp), (s.BUS, "pub", self.pub),
+                                 (s, "Pbap", self.pbap), (s, "HFP_SEEN", {}),
                                  (s.Desk, "locked", lambda: False), (s.peers, "current", lambda: []),
                                  (s.Ring, "follow", self.ring),   # (never a real ring from a test)
                                  (s.Ambient, "phone_call", False)):   # (phone_tick sets it from the mock phone; a truthy leftover silenced later suites)
@@ -290,6 +295,7 @@ class Wiring(Calls):
         self.phone.outgoing = set()
         s.phone_reset()
         self.hfp.stop.assert_called_once()
+        self.pbap.drop.assert_called_once_with()
         self.assertFalse(s.Call.visible())
 
     def test_hfp_only_call_quiets_him(self):
@@ -340,12 +346,12 @@ class ReviewFixes(Calls):
 
     def test_held_and_outgoing_never_ring(self):
         s = self.s
-        for state in ("held", "dialing", "alerting", "active"):
+        for state, phase in (("held", "active"), ("dialing", "dialing"), ("alerting", "dialing"), ("active", "active")):
             s.Call.clear()
             self.ring.reset_mock()
             self.host(state=state)
             s.Call.sync()
-            self.assertEqual(s.Call.row["phase"], "active", state)
+            self.assertEqual(s.Call.row["phase"], phase, state)
             self.assertNotIn(mock.call("ringing"), self.ring.call_args_list, state)
         s.Call.clear()
         self.host(state="incoming")
@@ -464,6 +470,175 @@ class GithubCodexFixes(Calls):
                 self.assertTrue(s.Ring.allowed())
             with mock.patch.object(s, "phone_meeting_now", return_value=True):
                 self.assertFalse(s.Ring.allowed())
+
+
+class Outgoing(Calls):
+    """Calls we place (#121): the dialing phase, its keys and its end."""
+
+    def test_dialing_to_active_to_ended(self):
+        s = self.s
+        missed = s.Call.on_missed = mock.Mock()
+        for state in ("dialing", "alerting"):
+            self.host(state=state)
+            s.Call.sync()
+            row = s.Call.row
+            self.assertEqual((row["phase"], row["path"], row["keys"], row["answered_at"]),
+                             ("dialing", "host", ["hangup"], None), state)
+            self.assertTrue(row["hfp_outgoing"])
+            self.assertFalse(row["hfp_incoming"])
+        self.ring.assert_called_with("dialing")
+        self.hfp.audio_here.return_value = True
+        self.host(state="active")
+        s.Call.sync()
+        self.assertEqual(s.Call.row["phase"], "active")
+        self.assertEqual(s.Call.row["keys"], ["hangup", "mute", "vol_up", "vol_down"])
+        self.assertIsNotNone(s.Call.row["answered_at"])
+        self.assertTrue(s.Call.row["hfp_outgoing"])
+        self.host(state="disconnected")
+        s.Call.sync()
+        self.assertEqual((s.Call.row["phase"], s.Call.row["note"]), ("ended", "Call ended"))
+        missed.assert_not_called()
+
+    def test_cancel_before_answer(self):
+        s = self.s
+        missed = s.Call.on_missed = mock.Mock()
+        self.host(state="alerting")
+        s.Call.sync()
+        self.host(state="disconnected")
+        s.Call.sync()
+        self.assertEqual((s.Call.row["phase"], s.Call.row["note"], s.Call.row["keys"]), ("ended", "Call ended", []))
+        self.assertEqual(s.Call.end_timer.interval, 2)
+        missed.assert_not_called()
+
+    def test_second_call_while_dialing_has_no_keys(self):
+        self.host(state="dialing")
+        self.hfp.calls["/ag1/call2"] = {"path": "/ag1/call2", "ag": "/ag1", "state": "waiting",
+                                        "number": "5551234", "name": None}
+        self.s.Call.sync()
+        self.assertEqual((self.s.Call.row["phase"], self.s.Call.row["keys"]), ("dialing", []))
+
+    def test_flux_only_talking_and_incoming_with_flux_are_unchanged(self):
+        s = self.s
+        self.flux(state="talking")
+        s.Call.sync()
+        self.assertEqual((s.Call.row["phase"], s.Call.row["path"], s.Call.row["keys"]), ("active", "phone", []))
+        s.Call.clear()
+        self.flux()
+        self.host()
+        s.Call.sync()
+        self.assertEqual((s.Call.row["phase"], s.Call.row["path"], s.Call.row["keys"], s.Call.row["who"]),
+                         ("ringing", "host", ["answer", "reject"], "Ada"))
+        self.assertFalse(s.Call.row["hfp_outgoing"])
+
+
+class Names(Calls):
+    """Contact names on the handset (#121): shown, never spoken."""
+
+    def setUp(self):
+        super().setUp()
+        self.hfp.gateways = {"/ag1": {"path": "/ag1", "address": "AA:BB"}}
+
+    def test_warm_cache_names_a_number_only_call(self):
+        s = self.s
+        self.pbap.name_for.return_value = ("Anna Test", "mobile")
+        for sent in (None, "+47 (912) 34\u2013567.8"):
+            s.Call.clear()
+            self.host(name=sent)
+            s.Call.sync()
+            self.assertEqual((s.Call.row["who"], s.Call.row["label"], s.Call.row["number"], s.Call.row["phone_who"]),
+                             ("Anna Test", "mobile", None, sent))
+        self.pbap.name_for.assert_called_with("AA:BB", "12345678")
+        self.pbap.ensure.assert_not_called()
+        self.assertEqual(s.Call.current_event()["label"], "mobile")
+        self.assertEqual(self.pub.call_args.kwargs["label"], "mobile")
+        self.assertNotIn("phone_who", s.Call.current_event())
+        self.assertNotIn("phone_who", self.pub.call_args.kwargs)
+
+    def test_cold_cache_shows_the_number_then_the_name_after_one_load(self):
+        s = self.s
+        self.pbap.state.return_value = "cold"
+        self.host()
+        s.Call.sync()
+        self.assertEqual((s.Call.row["who"], s.Call.row["number"]), (None, "12345678"))
+        self.pbap.ensure.assert_called_once()
+        address, cb = self.pbap.ensure.call_args.args
+        self.assertEqual(address, "AA:BB")
+        self.pbap.state.return_value = "ready"
+        self.pbap.name_for.return_value = ("Anna Test", "home")
+        cb("ready")
+        self.assertEqual((s.Call.row["who"], s.Call.row["label"]), ("Anna Test", "home"))
+        self.pbap.ensure.assert_called_once()
+
+    def test_sharing_off_does_not_loop(self):
+        s = self.s
+        self.pbap.state.return_value = "cold"
+        self.host()
+        s.Call.sync()
+        cb = self.pbap.ensure.call_args.args[1]
+        self.pbap.state.return_value = "sharing"
+        with mock.patch.object(s.Call, "sync") as sync:
+            cb("sharing")
+        sync.assert_not_called()
+        s.Call.sync()
+        self.pbap.ensure.assert_called_once()
+        self.assertEqual(s.Call.row["number"], "12345678")
+
+    def test_withheld_hfp_number_ignores_the_flux_number(self):
+        s = self.s
+        self.pbap.name_for.return_value = ("Anna Test", "mobile")
+        self.flux(caller="Unknown caller")
+        self.host(number=None)
+        s.Call.sync()
+        self.assertEqual((s.Call.row["who"], s.Call.row["label"]), (None, None))
+        self.pbap.name_for.assert_not_called()
+
+    def test_a_real_phone_name_is_kept_and_missed_gets_only_it(self):
+        s = self.s
+        missed = s.Call.on_missed = mock.Mock()
+        self.pbap.name_for.return_value = ("Anna Test", "work")
+        for sent in ("Phone Ada", None):
+            s.Call.clear()
+            s.Call.missed.clear()
+            missed.reset_mock()
+            self.host(name=sent)
+            s.Call.sync()
+            self.assertEqual((s.Call.row["who"], s.Call.row["label"]), (sent or "Anna Test", "work"))
+            self.host(state="disconnected", name=sent)
+            s.Call.sync()
+            self.assertEqual(missed.call_args.args[1], sent)
+
+    def test_a_gateway_gone_mid_call_means_no_lookup(self):
+        self.hfp.gateways = {}
+        self.host()
+        self.s.Call.sync()
+        self.assertEqual(self.s.Call.row["number"], "12345678")
+        self.pbap.name_for.assert_not_called()
+        self.pbap.ensure.assert_not_called()
+
+    def test_gateway_loss_and_lock_drop_the_phonebook(self):
+        s = self.s
+        self.phone.call_active = False
+        self.hfp.any_call = lambda: False
+        gen = s.PHONE_GEN
+        with mock.patch.object(s, "phone_call_gateway_lost") as lost:
+            s.hfp_changed()
+            self.pbap.drop.assert_not_called()
+            self.hfp.gateways = {}
+            s.hfp_changed()
+        self.pbap.drop.assert_called_once_with("AA:BB")
+        lost.assert_called_once_with("/ag1")
+        self.pbap.drop.reset_mock()
+        s.phone_call_gateway_lost("/ag1")
+        self.assertEqual(s.PHONE_GEN, gen)                 # (no request on that phone: SMS drafts and the rest keep their gen)
+        ident = s.phone_call_new("/ag1", "AA:BB")
+        s.phone_call_gateway_lost("/ag1")
+        self.assertEqual(s.PHONE_GEN, gen + 1)
+        self.assertIsNone(s.PHONE_CALL)
+        with mock.patch.object(s.Desk, "locked", lambda: True), mock.patch.object(s.Ambient, "locked", False), \
+                mock.patch.dict(s.CFG, {"proactive": True}):
+            s.Ambient.sense()
+        self.pbap.drop.assert_called_once_with()
+        self.assertEqual(s.PHONE_GEN, gen + 2)
 
 
 if __name__ == "__main__":

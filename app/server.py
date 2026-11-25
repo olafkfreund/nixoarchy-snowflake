@@ -50,6 +50,7 @@ import plugins  # noqa: E402
 import peers  # noqa: E402
 import phone  # noqa: E402
 import hfp  # noqa: E402
+import pbap  # noqa: E402
 from floor import FLOOR, pdeathsig_preexec  # noqa: E402
 import day  # noqa: E402
 import lang  # noqa: E402
@@ -60,6 +61,7 @@ import stages  # noqa: E402
 import size  # noqa: E402
 Phone = phone.Phone()
 Hfp = hfp.Hfp()
+Pbap = pbap.Pbap()
 STATIC = APP_DIR / "static"
 try:                                            # written by the release build (and kept in git for git installs)
     VERSION = (APP_DIR / "VERSION").read_text(encoding="utf-8").strip() or "0.0.0"
@@ -1939,7 +1941,7 @@ class Ambient:
     dnd_due = 0.0
     track = 0                                                  # goes up when the followed player's track changes (#208); the title is never kept
     followed = None                                            # (player name, hash of its trackid+title) of the player being followed
-    cpu_hot = ram_low = fullscreen = locked = False
+    cpu_hot = ram_low = fullscreen = locked = phone_locked = False
     coding = night = party = False
     weather = sky = None
     storm = hot = False
@@ -2374,6 +2376,11 @@ class Ambient:
             cls.last_lock_len, cls.unlocked_at, cls.lock_since = t - cls.lock_since, t, 0.0
         lock_changed = locked != cls.locked
         cls.locked = locked
+        if CFG.get("phone_on"):                          # (the phone's own lock edge: tracked even with proactive off)
+            plocked = locked if on else bool(Desk.locked())
+            if plocked and not cls.phone_locked:
+                phone_call_lock()
+            cls.phone_locked = plocked
         if lock_changed or (Call.visible() and Desk.locked() is not False) or \
                 (not Call.visible() and (Phone.call_active or Hfp.any_call()) and Desk.locked() is False):
             Call.sync()                                      # (clears on lock and brings it back on unlock, proactive or not)
@@ -4085,6 +4092,7 @@ class Desk:
 
 def _wire_quick():
     quick.notify, quick.publish, quick.cfg, quick.save_config = notify, BUS.pub, CFG, save_config
+    quick.phone_device_name = lambda name: any(d["name"].casefold() == name.casefold() for d in Phone.devices())
 
 
 # ---------------------------------------------------------------- speech to text
@@ -7785,6 +7793,8 @@ PHONE_GEN = 0
 PHONE_LOCK = threading.Lock()
 PHONE_SEND_LOCK = threading.Lock()
 PHONE_DRAFT = None
+PHONE_CALL = None
+DIAL_PENDING = None
 PHONE_NOTE_DRAFT = None
 PHONE_WHEN_DONE = None
 PHONE_MISSED = {}                 # record key -> missed call waiting for a safe moment
@@ -7801,7 +7811,207 @@ def phone_play_ok(queued):
 
 def phone_on_screen():
     cur = STAGES.current()
-    return bool(cur and cur.get("kind") in ("phone_sms", "phone_draft", "phone_missed", "phone_threads", "phone_thread", "phone_notes", "phone_note_draft")) or Call.visible()
+    return bool(cur and cur.get("kind") in ("phone_sms", "phone_draft", "phone_missed", "phone_threads", "phone_thread", "phone_notes", "phone_note_draft", "phone_call_gateway", "phone_call_pick", "phone_call_confirm")) or Call.visible()
+
+
+PHONE_CALL_KINDS = ("phone_call_gateway", "phone_call_pick", "phone_call_confirm")
+
+
+def phone_call_new(gateway_path, address):
+    global PHONE_CALL
+    with PHONE_LOCK:
+        ident = secrets.token_urlsafe(18)
+        PHONE_CALL = {"id": ident, "gen": PHONE_GEN, "gateway_path": gateway_path,
+                      "address": address, "created": time.monotonic(), "rows": {},
+                      "gateways": {}, "confirm": None}
+        return ident
+
+
+def _phone_call_live_locked(ident, gateways, unlocked):
+    call = PHONE_CALL
+    return bool(call and call["id"] == ident and call["gen"] == PHONE_GEN and
+                time.monotonic() - call["created"] < 60 and CFG.get("phone_on") and unlocked and
+                (gateways.get(call["gateway_path"]) == call["address"] if call["gateway_path"] else
+                 any(path in gateways for path in call["gateways"].values())))
+
+
+def phone_call_live(ident):
+    with Hfp.lock:
+        gateways = {path: row.get("address") for path, row in Hfp.gateways.items()}
+    unlocked = Desk.locked() is False
+    with PHONE_LOCK:
+        return _phone_call_live_locked(ident, gateways, unlocked)
+
+
+def _phone_call_stage(ident, kind, payload):
+    if not phone_call_live(ident):
+        return False
+    with PHONE_LOCK:
+        if (not PHONE_CALL or PHONE_CALL["id"] != ident or PHONE_CALL["gen"] != PHONE_GEN or
+                time.monotonic() - PHONE_CALL["created"] >= 60 or not CFG.get("phone_on")):
+            return False
+        page = STAGES.put({"v": 1, "kind": kind, **payload})
+        BUS.pub(t="stage", **stage_event(page))
+    return True
+
+
+def phone_call_gateway_card(ident, gateways):
+    rows = []
+    with PHONE_LOCK:
+        if not PHONE_CALL or PHONE_CALL["id"] != ident:
+            return False
+        PHONE_CALL["gateways"] = {}
+        for path, address, alias in gateways:
+            token = secrets.token_urlsafe(18)
+            PHONE_CALL["gateways"][token] = path
+            rows.append({"token": token, "name": alias, "label": "", "masked": "…" + (address or "")[-5:]})
+    return _phone_call_stage(ident, "phone_call_gateway", {"title": lang.t("phone.call_gateway_title"), "rows": rows,
+                                                          "button": lang.t("phone.call_button")})
+
+
+def phone_call_pick_card(ident, people):
+    rows = []
+    with PHONE_LOCK:
+        if not PHONE_CALL or PHONE_CALL["id"] != ident:
+            return False
+        PHONE_CALL["rows"] = {}
+        PHONE_CALL["confirm"] = None
+        for person in people:
+            for label, number in person["numbers"]:
+                token = secrets.token_urlsafe(18)
+                PHONE_CALL["rows"][token] = (person["name"], label, number)
+                rows.append({"token": token, "name": person["name"], "label": label,
+                             "masked": "…" + "".join(c for c in number if c.isdigit())[-4:]})
+    return _phone_call_stage(ident, "phone_call_pick", {"title": lang.t("phone.call_pick_title"), "rows": rows,
+                                                       "button": lang.t("phone.call_button")})
+
+
+def phone_call_confirm_card(ident, token):
+    with PHONE_LOCK:
+        if not PHONE_CALL or PHONE_CALL["id"] != ident or token not in PHONE_CALL["rows"]:
+            return False
+        PHONE_CALL["confirm"] = token
+        name, label, number = PHONE_CALL["rows"][token]
+    return _phone_call_stage(ident, "phone_call_confirm", {"title": lang.t("phone.call_confirm_title"),
+                                                          "token": token, "name": name, "label": label,
+                                                          "number": number, "button": lang.t("phone.call_button")})
+
+
+def phone_call_lookup(ident, gateway_path, address, target):
+    if not phone_call_live(ident):
+        return {"ok": False, "say": lang.t("phone.call_stale")}
+    number_like = bool(re.fullmatch(r"(?:tel:)?[\d+*#(),;.pw\s\-\u2010-\u2015]+", target or "") and
+                       (sum(c.isdigit() for c in target) >= 3 or any(c in target for c in "*#")))
+    if number_like:
+        status, number = pbap.allowed_number(target)
+        if status != "ok":
+            return {"ok": False, "say": lang.t("phone.call_short" if status == "short" else "phone.call_not_allowed")}
+        with PHONE_LOCK:
+            if not PHONE_CALL or PHONE_CALL["id"] != ident:
+                return {"ok": False, "say": lang.t("phone.call_stale")}
+            token = secrets.token_urlsafe(18)
+            PHONE_CALL["rows"] = {token: ("", "", number)}
+        return {"ok": bool(phone_call_confirm_card(ident, token))}
+
+    def publish(state, async_reply=False):
+        if not phone_call_live(ident):
+            return {"ok": False, "say": lang.t("phone.call_stale")}
+        if state == "ready":
+            people = Pbap.search(address, target) or (     # (Polish cases: "Anny", "Annie" for Anna)
+                Pbap.search(address, target[:-1]) if len(target) > 3 else [])
+            if not people:
+                key = "phone.call_not_found"
+            elif len(people) == 1 and len(people[0]["numbers"]) == 1:
+                with PHONE_LOCK:
+                    if not PHONE_CALL or PHONE_CALL["id"] != ident:
+                        return {"ok": False, "say": lang.t("phone.call_stale")}
+                    token = secrets.token_urlsafe(18)
+                    label, number = people[0]["numbers"][0]
+                    PHONE_CALL["rows"] = {token: (people[0]["name"], label, number)}
+                return {"ok": bool(phone_call_confirm_card(ident, token))}
+            else:
+                return {"ok": bool(phone_call_pick_card(ident, people))}
+        else:
+            key = "phone.call_sharing_off" if state == "sharing" else "phone.call_lookup_failed"
+        say = lang.t(key)
+        if async_reply and phone_call_live(ident):
+            BUS.pub(t="toast", text=say)                  # (shown, not spoken: the page has no "say" event)
+        return {"ok": False, "say": say}
+
+    state = Pbap.state(address)
+    if state in ("cold", "loading"):
+        Pbap.ensure(address, lambda result: publish(result, True))
+        return {"ok": True, "say": lang.t("phone.call_loading")}
+    return publish(state)
+
+
+def phone_call_gateway_act(token):
+    with PHONE_LOCK:
+        call = PHONE_CALL
+        ident = call["id"] if call and isinstance(token, str) and token in call["gateways"] else None
+        path = call["gateways"][token] if ident else None
+        target = call.get("target") if ident else None
+    if not ident or not phone_call_live(ident):
+        return {"ok": False, "say": lang.t("phone.call_stale")}
+    with Hfp.lock:
+        address = (Hfp.gateways.get(path) or {}).get("address")
+    if not address:
+        return {"ok": False, "say": lang.t("phone.call_stale")}
+    with PHONE_LOCK:
+        if not PHONE_CALL or PHONE_CALL["id"] != ident:
+            return {"ok": False, "say": lang.t("phone.call_stale")}
+        PHONE_CALL["gateway_path"], PHONE_CALL["address"] = path, address
+        PHONE_CALL["gateways"] = {}
+    return phone_call_lookup(ident, path, address, target)
+
+
+def phone_call_pick_act(token):
+    with PHONE_LOCK:
+        ident = PHONE_CALL["id"] if PHONE_CALL and isinstance(token, str) and token in PHONE_CALL["rows"] else None
+    if ident and phone_call_live(ident) and phone_call_confirm_card(ident, token):
+        return {"ok": True}
+    return {"ok": False, "say": lang.t("phone.call_stale")}
+
+
+def phone_dial_pending():
+    global DIAL_PENDING
+    with PHONE_LOCK:
+        if DIAL_PENDING and time.monotonic() - DIAL_PENDING["since"] >= 30:
+            DIAL_PENDING = None
+        return bool(DIAL_PENDING)
+
+
+def phone_call_dial(token):
+    global PHONE_CALL, DIAL_PENDING
+    if Call.visible() or Hfp.any_call():
+        with PHONE_LOCK:                                  # (refused: the card is used up, so a re-shown card can't dial later)
+            if PHONE_CALL and isinstance(token, str) and token == PHONE_CALL.get("confirm"):
+                PHONE_CALL = None
+        return {"ok": False, "say": lang.t("phone.call_busy")}
+    with Hfp.lock:
+        gateways = {path: row.get("address") for path, row in Hfp.gateways.items()}
+    unlocked = Desk.locked() is False
+    with PHONE_LOCK:
+        if DIAL_PENDING and time.monotonic() - DIAL_PENDING["since"] >= 30:
+            DIAL_PENDING = None
+        call = PHONE_CALL
+        if (not call or not isinstance(token, str) or token != call["confirm"] or
+                not _phone_call_live_locked(call["id"], gateways, unlocked) or DIAL_PENDING):
+            return {"ok": False, "say": lang.t("phone.call_stale")}
+        path, number = call["gateway_path"], call["rows"][token][2]
+        ident = secrets.token_urlsafe(18)
+        PHONE_CALL = None
+        DIAL_PENDING = {"id": ident, "gateway_path": path, "number": number, "since": time.monotonic()}
+    try:
+        result = Hfp.dial(path, number)
+    except Exception as exc:
+        print(f"[nixi] phone dial failed: {type(exc).__name__}", file=sys.stderr)
+        result = {"ok": False, "error": "failed"}
+    if not result.get("ok") and result.get("error") in ("busy", "gone", "failed"):
+        with PHONE_LOCK:
+            if DIAL_PENDING and DIAL_PENDING["id"] == ident:
+                DIAL_PENDING = None
+    return {"ok": True} if result.get("ok") else {"ok": False, "say": lang.t("phone.call_failed")}
 
 
 def phone_draft_item(item):
@@ -8029,7 +8239,7 @@ class Call:
             return
         if not CFG.get("phone_on") or Desk.locked() is not False:
             return
-        BUS.pub(t="call", **{k: row[k] for k in ("id", "gen", "phase", "path", "who", "number",
+        BUS.pub(t="call", **{k: row[k] for k in ("id", "gen", "phase", "path", "who", "label", "number",
                                                    "answered_at", "audio_here", "muted", "volume", "keys", "note")})
 
     def publish(self):
@@ -8060,7 +8270,7 @@ class Call:
         with self.lock:
             if not self.row or not CFG.get("phone_on") or Desk.locked() is not False:
                 return None
-            return {"t": "call", **{k: self.row[k] for k in ("id", "gen", "phase", "path", "who", "number",
+            return {"t": "call", **{k: self.row[k] for k in ("id", "gen", "phase", "path", "who", "label", "number",
                                                         "answered_at", "audio_here", "muted", "volume", "keys", "note")}}
 
     def _later_end(self, ident):
@@ -8083,6 +8293,7 @@ class Call:
             self.watchdog = None
 
     def sync(self):
+        global DIAL_PENDING
         with self.lock:
             if not CFG.get("phone_on") or Desk.locked() is not False:
                 self.clear()
@@ -8091,6 +8302,10 @@ class Call:
             with Hfp.lock:
                 calls = [c.copy() for c in Hfp.calls.values()]
             h = next((c for c in calls if c.get("state") not in ("disconnected", "waiting")), None)
+            with PHONE_LOCK:
+                if DIAL_PENDING and any(c.get("state") not in ("disconnected", "waiting") and
+                                        c.get("ag") == DIAL_PENDING["gateway_path"] for c in calls):
+                    DIAL_PENDING = None
             old = self.row
             if not h and old and old.get("hfp_path"):
                 h = next((c for c in calls if c.get("path") == old["hfp_path"]), None)
@@ -8125,14 +8340,15 @@ class Call:
             missed_flux = next((d.get("missedCall") for d in devices if oid and d.get("missedCall") and
                                 d["missedCall"].get("id") == oid), None)
             disconnected = bool(h and h.get("state") == "disconnected")
-            ended = bool(old and old["phase"] == "active" and
-                         ((disconnected and old.get("hfp_active")) or (last and last.get("end") == "hangup")))
+            ended = bool(old and ((old["phase"] == "active" and
+                                   ((disconnected and old.get("hfp_active")) or (last and last.get("end") == "hangup"))) or
+                                  (old["phase"] == "dialing" and disconnected and h.get("path") == old.get("hfp_path"))))
             missed = bool(old and old["phase"] == "ringing" and
                           (missed_flux or (disconnected and old.get("hfp_incoming"))))
             if missed and old["id"] not in self.missed:
                 self.missed.add(old["id"])
                 if self.on_missed:
-                    self.on_missed(old["id"], old["who"], old.get("number"), old.get("device"))
+                    self.on_missed(old["id"], old["phone_who"], old.get("number"), old.get("device"))   # (never a phonebook name)
             if missed:
                 self.clear()
                 return
@@ -8154,13 +8370,25 @@ class Call:
                 return
             hands = f.get("handsFree") or [] if f else []
             watch = next((p for p in peers.current() if p.get("name") in hands), None)
-            path = "host" if h and (h["state"] == "incoming" or Hfp.audio_here(h)) else "watch" if watch else "phone"
+            outgoing = bool(h and h["state"] in ("dialing", "alerting"))
+            path = "host" if h and (h["state"] == "incoming" or outgoing or Hfp.audio_here(h)) else "watch" if watch else "phone"
             audio = bool(h and Hfp.audio_here(h))
-            phase = "ringing" if (h["state"] == "incoming" if h else bool(f and f.get("state") == "ringing")) else "active"
+            phase = ("dialing" if outgoing else
+                     "ringing" if (h["state"] == "incoming" if h else bool(f and f.get("state") == "ringing")) else "active")
             second = bool((h and len(Hfp.calls_on(h["ag"])) > 1) or (f and f.get("waiting")))
             who = (f.get("caller") if f and f.get("caller") != "Unknown caller" else None) or (h.get("name") if h else None)
             number = (h.get("number") if h else None) or (f.get("number") if f else None)
-            keys = (["answer", "reject"] if phase == "ringing" else ["hangup", "mute", "vol_up", "vol_down"] if audio else []) if path == "host" else (["answer", "reject"] if phase == "ringing" else []) if path == "phone" else []
+            phone_who, label, addr = who, None, None          # (phone_who: the phone's own name, the only one ever spoken)
+            if h and h.get("number"):                          # (that leg's own number, never a Flux leg's)
+                with Hfp.lock:
+                    addr = (Hfp.gateways.get(h["ag"]) or {}).get("address")
+            if addr:
+                hit = Pbap.name_for(addr, h["number"])
+                if hit:
+                    label = hit[1]
+                    if not phone_who or re.sub(r"[+\s\-‐-―.()]", "", phone_who).isdigit():
+                        who = hit[0]
+            keys = (["answer", "reject"] if phase == "ringing" else ["hangup"] if phase == "dialing" else ["hangup", "mute", "vol_up", "vol_down"] if audio else []) if path == "host" else (["answer", "reject"] if phase == "ringing" else []) if path == "phone" else []
             if second:
                 keys = []
             if path == "phone" and (not fid or not fdev or "answer" not in fdev.get("can", [])):
@@ -8173,7 +8401,8 @@ class Call:
             if phase == "active" and answered_at is None:
                 answered_at = time.time()
             row = {"id": ident, "gen": old["gen"] if old and old["id"] == ident else 1,
-                   "phase": phase, "path": path, "who": who, "number": number if not who else None,
+                   "phase": phase, "path": path, "who": who, "phone_who": phone_who, "label": label,
+                   "number": number if not who else None,
                    "answered_at": answered_at, "audio_here": audio,
                    "muted": old.get("muted", False) if same else False,
                    "volume": old.get("volume") if same else None, "keys": keys,
@@ -8183,7 +8412,8 @@ class Call:
                    "flux_id": fid or (old.get("flux_id") if old and old["id"] == ident else None),
                    "device": fdev.get("id") if fdev else old.get("device") if same else None,
                    "hfp_incoming": bool((same and old.get("hfp_incoming")) or (h and h["state"] == "incoming")),
-                   "hfp_active": bool((same and old.get("hfp_active")) or (h and h["state"] == "active"))}
+                   "hfp_active": bool((same and old.get("hfp_active")) or (h and h["state"] == "active")),
+                   "hfp_outgoing": bool((same and old.get("hfp_outgoing")) or outgoing)}
             if old and old["id"] == ident:
                 if any(old[k] != row[k] for k in ("path", "keys", "phase")):
                     row["gen"] += 1
@@ -8194,6 +8424,8 @@ class Call:
                 self._emit(row)
             if phase == "active" and (not old or old["phase"] != "active") and self.on_answered:
                 self.on_answered()
+            if addr and not Ambient.locked and Pbap.state(addr) == "cold":   # (never read contacts while locked; last: a callback run at once must see this row)
+                Pbap.ensure(addr, lambda st: st == "ready" and self.sync())
 
     def _failed(self, ident, gen):
         """The action failed outright: say so now (the keys stay, so it can be tried again)."""
@@ -8260,7 +8492,49 @@ class Call:
 Call = Call()
 Call.on_answered = call_answered
 Call.on_missed = call_missed
-Hfp.on_change = lambda: (phone_call_sync(), Call.sync())   # (an HFP-only call quiets him too)
+HFP_SEEN = {}                     # gateway path -> address at the last HFP change
+
+
+def phone_call_lock():
+    """The desktop locked: forget the phonebooks."""
+    global PHONE_GEN, PHONE_CALL, DIAL_PENDING
+    Pbap.drop()
+    with PHONE_LOCK:
+        PHONE_GEN += 1
+        PHONE_CALL = DIAL_PENDING = None
+    if STAGES.forget_where(lambda pg: pg.get("kind") in PHONE_CALL_KINDS):
+        BUS.pub(t="stage_close")
+
+
+def phone_call_gateway_lost(path):
+    """A Bluetooth phone went away."""
+    global PHONE_GEN, PHONE_CALL, DIAL_PENDING
+    with PHONE_LOCK:
+        mine = bool(PHONE_CALL and (PHONE_CALL["gateway_path"] == path or path in PHONE_CALL["gateways"].values()))
+        if mine:                                         # (another phone's card and the SMS flows are left alone)
+            PHONE_GEN += 1
+            PHONE_CALL = None
+        if DIAL_PENDING and DIAL_PENDING["gateway_path"] == path:
+            DIAL_PENDING = None
+    if mine and STAGES.forget_where(lambda pg: pg.get("kind") in PHONE_CALL_KINDS):
+        BUS.pub(t="stage_close")
+
+
+def hfp_changed():
+    global HFP_SEEN
+    with Hfp.lock:
+        now = {path: row.get("address") for path, row in Hfp.gateways.items()}
+    seen, HFP_SEEN = HFP_SEEN, now
+    for path, address in seen.items():
+        if path not in now or now[path] != address:
+            if address:                                  # (drop(None) would drop every phone's)
+                Pbap.drop(address)
+            phone_call_gateway_lost(path)
+    phone_call_sync()                                    # (an HFP-only call quiets him too)
+    Call.sync()
+
+
+Hfp.on_change = hfp_changed
 
 
 def phone_status():
@@ -8930,6 +9204,31 @@ def phone_quick(r):
     """quick.handle matched a phone phrase {do: ring|clip|shot|status, name} -> the reply, or None if it isn't for the phone."""
     do, name = r.get("do"), r.get("name")
     gen = PHONE_GEN
+    if do == "call":
+        if not CFG.get("phone_on"):
+            return {"say": lang.t("phone.off")}
+        if Desk.locked() is not False:
+            return {"say": lang.t("phone.call_locked")}
+        if Call.visible() or Hfp.any_call() or phone_dial_pending():
+            return {"say": lang.t("phone.call_busy")}
+        gateways = Hfp.gateway_list()
+        if not gateways:
+            return {"say": lang.t("phone.call_no_bt")}
+        target = r.get("target") or ""
+        if len(gateways) > 1:
+            ident = phone_call_new(None, None)
+            with PHONE_LOCK:
+                if PHONE_CALL and PHONE_CALL["id"] == ident:  # (a lock or a lost phone may have cleared it already)
+                    PHONE_CALL["target"] = target
+            phone_call_gateway_card(ident, gateways)
+            return {"ok": True}
+        path, address, _ = gateways[0]
+        if re.fullmatch(r"(?:tel:)?[\d+*#(),;.pw\s\-\u2010-\u2015]+", target) and (sum(c.isdigit() for c in target) >= 3 or any(c in target for c in "*#")):
+            status, _ = pbap.allowed_number(target)
+            if status != "ok":
+                return {"say": lang.t("phone.call_short" if status == "short" else "phone.call_not_allowed")}
+        ident = phone_call_new(path, address)
+        return phone_call_lookup(ident, path, address, target)
     if do not in ("ring", "clip", "shot", "status", "read", "reply", "note", "when_done", "notes", "notify_reply"):   # an unknown action must never fall through to phone_share
         return None
     if not CFG.get("phone_on") or not Phone.connected:
@@ -8973,10 +9272,11 @@ def phone_pick_act(dev_id, what):
 
 def phone_reset():
     """Phone switched off: void work in flight, close the client, delete the files waiting to be sent."""
-    global PHONE_GEN, PHONE_DRAFT, PHONE_NOTE_DRAFT, PHONE_WHEN_DONE
+    global PHONE_GEN, PHONE_DRAFT, PHONE_NOTE_DRAFT, PHONE_WHEN_DONE, PHONE_CALL, DIAL_PENDING
     with PHONE_LOCK:
         PHONE_GEN += 1
         PHONE_DRAFT = None
+        PHONE_CALL = DIAL_PENDING = None
         PHONE_NOTE_DRAFT = None
         PHONE_MISSED.clear()
         PHONE_SHOWN.clear()
@@ -8997,6 +9297,7 @@ def phone_reset():
                 pass
     Phone.stop()
     Hfp.stop()
+    Pbap.drop()
     Call.clear()
     for f in list(Phone.outgoing):
         try:
@@ -9013,7 +9314,7 @@ def phone_reset():
     phone_call_sync()                               # (phone_on is already off: the call quiet ends)
     phone_approvals_sync()
     plugins.forget()                                # (a cached board with phone readings is never served again)
-    if STAGES.forget_where(lambda pg: pg.get("kind") == "phone_pick" or pg.get("from_phone")):
+    if STAGES.forget_where(lambda pg: pg.get("kind") in ("phone_pick", *PHONE_CALL_KINDS) or pg.get("from_phone")):
         BUS.pub(t="stage_close")
     phone_pub()
 
@@ -10438,6 +10739,15 @@ class Handler(BaseHTTPRequestHandler):
                 b = json.loads(self._body() or b"{}")
                 r = phone_send(b.get("draft"), b.get("text"), click_ok(self.headers.get("X-Nixi-Click") or "")) if isinstance(b, dict) else {"ok": False}
                 return self._json(r, 200 if r.get("ok") else 403)
+            if p in ("/api/phone/call-gateway", "/api/phone/call-pick", "/api/phone/dial"):
+                b = json.loads(self._body() or b"{}")
+                if not click_ok(self.headers.get("X-Nixi-Click") or ""):
+                    return self._json({"ok": False}, 403)
+                token = b.get("token") if isinstance(b, dict) else None
+                act = {"/api/phone/call-gateway": phone_call_gateway_act,
+                       "/api/phone/call-pick": phone_call_pick_act,
+                       "/api/phone/dial": phone_call_dial}[p]
+                return self._json(act(token))
             if p == "/api/call":
                 b = json.loads(self._body() or b"{}")
                 if not click_ok(self.headers.get("X-Nixi-Click") or ""):
@@ -11060,6 +11370,7 @@ def main():
     Ambient.start()
     Mirror.start()
     Inbox.start()
+    Pbap.start()                                      # (also removes contact files a crash left behind)
     if CFG.get("phone_on"):
         Phone.start()
         Hfp.start()
