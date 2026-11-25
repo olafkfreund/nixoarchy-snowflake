@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 112
 author: olafkfreund
 ---
@@ -88,21 +88,18 @@ hovering (`stageVisSync`, `index.html:3322`).
   `RemainAfterExit`. No GPU Chrome previews; use headless Chromium with
   `--disable-gpu`.
 
-## Open questions
+## Decisions (approved 2026-11-25)
 
 1. When the card cannot fit beside Nixi even at the smallest zoom his size
-   allows, what gives? (a) The card may overlap Nixi. (b) The cap may go
-   below Nixi's size, so the text gets smaller than his size setting would
-   allow. (c) The card keeps its side and scrolls, as #109 allows, but that
-   does not fix horizontal overflow, so it fails the outcome above.
-   Proposed: (a), the card slides over Nixi just far enough to fit.
-2. The zoom is page-wide, so the cap also sizes the bubble, the collapsed
-   tab, other cards and panels. Should the position-aware cap apply always,
-   or only while an answer card is open? "Always" keeps text steady but
-   makes all text smaller in the middle of a small monitor even with no
-   card open. "Only while open" means the text size jumps when a card opens
-   and closes. Proposed: always, because steady text is easier to read.
-3. Scope: is horizontal fit of the answer card enough for this issue, with
-   vertical fit and the other cards and panels (`#mailPop`, `#code`, `.pn`
-   panels) left as they are today? Proposed: yes; they keep #109's
-   behaviour, and anything still broken gets its own issue.
+   allows, the card slides over Nixi just far enough to stay fully on the
+   monitor. Text is never made smaller than his size setting allows, and
+   horizontal scrolling is not used to fix overflow.
+2. The position-aware cap applies always, not only while a card is open, so
+   text size stays steady when cards open and close.
+3. Scope is the answer card's horizontal fit. Vertical fit and the other
+   cards and panels (`#mailPop`, `#code`, `.pn` panels) keep #109's
+   behaviour; anything still broken there gets its own issue.
+
+## Open questions
+
+None.
