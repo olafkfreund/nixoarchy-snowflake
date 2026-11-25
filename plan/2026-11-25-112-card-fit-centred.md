@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 112
 spec: spec/2026-11-25-112-card-fit-centred.md
 coders:
