@@ -238,6 +238,7 @@ nixi-companion restart
 
 - [Getting started](docs/GETTING-STARTED.md): the first day, one choice at a time.
 - [Guide](docs/GUIDE.md): every setting and command.
+- [Make and share a plugin](skills/nixi-plugin/SKILL.md): walkthrough, reference and starter template.
 - [Take calls on Nixi](docs/GUIDE.md#take-calls-on-nixi): answer or reject phone calls from a retro handset next to him, with call audio on the computer over Bluetooth or on the phone through Flux.
 - Tips, and what is off in nixi mode: [Getting started](docs/GETTING-STARTED.md#handy-to-know).
 
