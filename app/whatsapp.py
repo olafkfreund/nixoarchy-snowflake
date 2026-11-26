@@ -11,6 +11,20 @@ import stat
 import struct
 from pathlib import Path
 from urllib.parse import urlencode
+import lang
+
+
+def mentions(text, locale=None):
+    t = " ".join((text or "").lower().replace("’", "'").split())
+    if not t:
+        return False
+    words = []
+    for code in dict.fromkeys((lang.norm(locale or lang.active), "en")):
+        words.extend(lang.load(code).get("phrases", {}).get("wa_words", []))
+    if not words:
+        return False
+    pat = r"\b(?:" + "|".join(re.escape(w.lower()).replace(r"\ ", r"\s+") for w in sorted(set(words), key=len, reverse=True)) + r")\b"
+    return bool(re.search(pat, t))
 
 
 class NotSent(ConnectionError):

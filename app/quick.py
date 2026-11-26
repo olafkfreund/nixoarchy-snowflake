@@ -378,6 +378,42 @@ def _phone_call(t):
     return None
 
 
+def _whatsapp_reply(phone_text):
+    cleaned = phone_text.replace("’", "'").strip()
+    no_punct = cleaned.rstrip(" .!?")
+    for code in dict.fromkeys((lang.active, "en")):
+        for phrase in lang.load(code).get("phrases", {}).get("wa_reply", []):
+            if "{text}" in phrase:
+                pat = re.escape(phrase).replace(r"\{name\}", r"(?P<name>[\w .'-]{1,60}?)").replace(r"\{text\}", r"(?P<text>.+)")
+                m = re.fullmatch(pat, cleaned, re.I | re.S)
+                if m and m["name"].strip() and m["text"].strip():
+                    return {"whatsapp": {"do": "reply", "name": m["name"].strip(), "text": m["text"].strip()}}
+            else:
+                pat = re.escape(phrase).replace(r"\{name\}", r"(?P<name>[\w .'-]{1,60})")
+                m = re.fullmatch(pat, no_punct, re.I)
+                if m and m["name"].strip():
+                    return {"whatsapp": {"do": "reply", "name": m["name"].strip(), "text": ""}}
+    return None
+
+
+def _whatsapp(t):
+    for code in dict.fromkeys((lang.active, "en")):
+        phrases = lang.load(code).get("phrases", {})
+        if t in phrases.get("wa_read", []):
+            return {"whatsapp": {"do": "read"}}
+    for key, do in (("wa_summary", "summary"), ("wa_file", "file"), ("wa_open", "open")):
+        for code in dict.fromkeys((lang.active, "en")):
+            for ph in lang.load(code).get("phrases", {}).get(key, []):
+                m = re.fullmatch(re.escape(ph).replace(r"\{name\}", r"(?P<name>[\w .'-]{1,60})"), t)
+                if m:
+                    name = (m.groupdict().get("name") or "").strip()
+                    if do == "open" and name in ("chats", "messages", "meldinger", "chatter", "samtaler", "wiadomości", "czaty", "rozmowy"):
+                        return {"whatsapp": {"do": "read"}}
+                    if name:
+                        return {"whatsapp": {"do": do, "name": name}}
+    return None
+
+
 def handle(text):
     t = " ".join((text or "").lower().replace("’", "'").split()).strip(" .!?")
     t = re.sub(r"^((?:hey|hi|okay|ok|yo|oi|hei|hallo|hej|cześć) nixi|nixi)[,\s]+", "", t)
@@ -397,6 +433,10 @@ def handle(text):
                     re.sub(r"^\W*(?:(?:hey|hi|ok|okay)\W+)?" + NIXI + r"\W+", "", t)):
         return {"nixi_ask": None}
     phone_text = re.sub(r"^\s*(?:(?:hey|hi|okay|ok|yo|oi|hei|hallo|hej|cześć)\s+)?" + NIXI + r"[,\s]+", "", (text or "").strip(), flags=re.I)
+    phone_text = re.sub(r"^(?:please|can you|could you|would you|will you)\s+", "", phone_text, flags=re.I)
+    r = _whatsapp_reply(phone_text)
+    if r:
+        return r
     for key, do in (("phone_when_done", "when_done"), ("phone_note", "note"), ("phone_notify_reply", "notify_reply")):
         for code in dict.fromkeys((lang.active, "en")):
             for phrase in lang.load(code).get("phrases", {}).get(key, []):
@@ -428,6 +468,10 @@ def handle(text):
 
     if t in ("read my mail", "any new email", "check my email"):   # the mail board, made by the server (#210)
         return {"mail": True}
+
+    r = _whatsapp(t)
+    if r:
+        return r
 
     r = _phone(t)
     if r:

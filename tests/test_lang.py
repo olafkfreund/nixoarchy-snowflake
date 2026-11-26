@@ -28,12 +28,24 @@ class LangModuleTest(unittest.TestCase):
         keys = ("call.dialing", *(f"call.label_{label}" for label in ("mobile", "home", "work", "other")),
                 *(f"phone.call_{name}" for name in ("locked", "busy", "no_bt", "not_allowed", "short", "loading",
                     "sharing_off", "lookup_failed", "not_found", "failed", "stale", "gateway_title", "pick_title",
-                    "confirm_title", "button")))
+                    "confirm_title", "button")),
+                "wa.title", "wa.chats_title", "wa.contacts_title", "wa.pair_title", "wa.thread_title",
+                "wa.draft_title", "wa.file_title", "wa.summary_title", "wa.new_title", "wa.reply",
+                "wa.send_file", "wa.summarise", "wa.suggest_reply", "wa.use_as_reply", "wa.send",
+                "wa.choose_file", "wa.open", "wa.download", "wa.pair", "wa.unlink_forget",
+                "wa.may_have_been_sent", "wa.not_sent", "wa.sent", "wa.summaries_need_claude",
+                "wa.off", "wa.unpaired", "wa.outdated", "wa.relink", "wa.connecting",
+                "wa.unavailable", "wa.locked", "wa.not_found", "wa.which_chat",
+                "wa.chats_ready", "wa.thread_ready", "wa.draft_ready", "wa.file_ready", "wa.pair_ready")
         for code in ("en", "nb", "pl"):
             data = self.lang.load(code)
             self.assertTrue(all(data["lines"].get(key) for key in keys), code)
             self.assertTrue(data["phrases"]["phone_call"], code)
             self.assertTrue(data["phrases"]["phone_call_stop"], code)
+            self.assertIn("WhatsApp", data["phrases"]["wa_words"], code)
+            self.assertNotIn("wa", [w.lower() for w in data["phrases"]["wa_words"]], code)
+            for pkey in ("wa_words", "wa_read", "wa_open", "wa_reply", "wa_file", "wa_summary"):
+                self.assertTrue(data["phrases"].get(pkey), (code, pkey))
 
     def test_first_run_precedence(self):
         d = self.lang.detect

@@ -35,7 +35,20 @@ class FakeWA:
         return {"state": "ready", "boot": self.boot}, self.boot
 
     def chats(self, q="", limit=20):
-        return [{"jid": "1@s.whatsapp.net", "name": "One"}], self.boot
+        rows = getattr(self, "chat_rows", [{"jid": "1@s.whatsapp.net", "name": "One"}])
+        q = (q or "").lower()
+        return [r for r in rows if not q or q in r.get("name", "").lower() or q in r.get("jid", "").lower()][:limit], self.boot
+
+    def contacts(self, q=""):
+        rows = getattr(self, "contact_rows", self.chats(q)[0])
+        q = (q or "").lower()
+        return [r for r in rows if not q or q in r.get("name", "").lower() or q in r.get("jid", "").lower()], self.boot
+
+    def pair(self):
+        return {"png": "data:image/png;base64,xx", "expires_at": 100}, self.boot
+
+    def pair_cancel(self):
+        return {"ok": True}, self.boot
 
     def thread(self, jid, limit=100, before=0):
         return [{"id": "m1", "text": "hello", "kind": "text"}], self.boot
@@ -338,3 +351,78 @@ class WhatsAppServer(unittest.TestCase):
             self.assertTrue(json.loads(res.read())["ok"])
             conn.close()
             self.assertEqual(self.s.WA_FILE["name"], "a.txt")
+
+    def test_mentions_and_quick_phrases_and_dispatch(self):
+        w = self.s.whatsapp
+        for loc in ("en", "nb", "pl"):
+            self.assertTrue(w.mentions("check my WhatsApp please", loc))
+            self.assertTrue(w.mentions("open whats app now", loc))
+            self.assertFalse(w.mentions("wa is short and water is wet", loc))
+            self.assertFalse(w.mentions("what's happening in washington", loc))
+        self.assertTrue(w.mentions("przeczytaj mojego whatsappa", "pl"))
+        self.assertTrue(w.mentions("napisz na whatsappie", "pl"))
+        self.assertTrue(w.mentions("les whatsappen min", "nb"))
+
+        q = self.s.quick
+        self.assertEqual(q.handle("read my WhatsApp"), {"whatsapp": {"do": "read"}})
+        self.assertEqual(q.handle("my WhatsApp messages"), {"whatsapp": {"do": "read"}})
+        self.assertEqual(q.handle("WhatsApp chats"), {"whatsapp": {"do": "read"}})
+        self.assertEqual(q.handle("WhatsApp Anna"), {"whatsapp": {"do": "open", "name": "anna"}})
+        self.assertEqual(q.handle("open WhatsApp with Anna"), {"whatsapp": {"do": "open", "name": "anna"}})
+        self.assertEqual(q.handle("reply to Anna on WhatsApp saying See you at 5"),
+                         {"whatsapp": {"do": "reply", "name": "Anna", "text": "See you at 5"}})
+        self.assertEqual(q.handle("reply to Anna on WhatsApp"),
+                         {"whatsapp": {"do": "reply", "name": "Anna", "text": ""}})
+        self.assertEqual(q.handle("send a file to Anna on WhatsApp"),
+                         {"whatsapp": {"do": "file", "name": "anna"}})
+        self.assertEqual(q.handle("summarise my WhatsApp with Anna"),
+                         {"whatsapp": {"do": "summary", "name": "anna"}})
+        with mock.patch.object(self.s.lang, "active", "nb"):
+            self.assertEqual(q.handle("les whatsapp-meldingene mine"), {"whatsapp": {"do": "read"}})
+            self.assertEqual(q.handle("åpne whatsapp med Anna"), {"whatsapp": {"do": "open", "name": "anna"}})
+            self.assertEqual(q.handle("svar Anna på whatsapp: Kommer snart"),
+                             {"whatsapp": {"do": "reply", "name": "Anna", "text": "Kommer snart"}})
+            self.assertEqual(q.handle("send en fil til Anna på whatsapp"),
+                             {"whatsapp": {"do": "file", "name": "anna"}})
+            self.assertEqual(q.handle("oppsummer whatsapp med Anna"),
+                             {"whatsapp": {"do": "summary", "name": "anna"}})
+        with mock.patch.object(self.s.lang, "active", "pl"):
+            self.assertEqual(q.handle("przeczytaj mojego whatsappa"), {"whatsapp": {"do": "read"}})
+            self.assertEqual(q.handle("otwórz whatsappa z Anną"), {"whatsapp": {"do": "open", "name": "anną"}})
+            self.assertEqual(q.handle("odpowiedz Annie na whatsappie: Zaraz będę"),
+                             {"whatsapp": {"do": "reply", "name": "Annie", "text": "Zaraz będę"}})
+            self.assertEqual(q.handle("wyślij plik do Anny na whatsappie"),
+                             {"whatsapp": {"do": "file", "name": "anny"}})
+            self.assertEqual(q.handle("podsumuj mojego whatsappa z Anną"),
+                             {"whatsapp": {"do": "summary", "name": "anną"}})
+
+        self.fake.chat_rows = [{"jid": "1@s.whatsapp.net", "name": "Anna", "is_group": False}]
+        self.fake.contact_rows = [{"jid": "1@s.whatsapp.net", "name": "Anna"}]
+        # summary only opens the chat; spoken line never includes name or text
+        res = self.s.wa_quick(q.handle("summarise my WhatsApp with Anna")["whatsapp"])
+        self.assertEqual(self.s.STAGES.current()["kind"], "wa_thread")
+        self.assertNotIn("Anna", res["say"])
+        self.assertNotIn("hello", res["say"])
+        # Polish inflected name matches Anna and opens draft with text
+        with mock.patch.object(self.s.lang, "active", "pl"):
+            res = self.s.wa_quick(q.handle("odpowiedz Annie na whatsappie: Cześć")["whatsapp"])
+            self.assertEqual(self.s.STAGES.current()["kind"], "wa_draft")
+            self.assertEqual(self.s.STAGES.current()["text"], "Cześć")
+            self.assertNotIn("Anna", res["say"])
+            self.assertNotIn("Cześć", res["say"])
+        # ambiguous name -> pick card
+        self.fake.chat_rows = [{"jid": "1@s.whatsapp.net", "name": "Anna One"},
+                               {"jid": "2@s.whatsapp.net", "name": "Anna Two"}]
+        self.fake.contact_rows = self.fake.chat_rows
+        res = self.s.wa_quick(q.handle("WhatsApp Anna")["whatsapp"])
+        self.assertEqual(self.s.STAGES.current()["kind"], "wa_chats")
+        self.assertNotIn("Anna", res["say"])
+        # unpaired -> local pair card
+        with mock.patch.object(self.fake, "status", return_value=({"state": "unpaired", "boot": "boot-1"}, "boot-1")):
+            res = self.s.wa_quick(q.handle("read my WhatsApp")["whatsapp"])
+            self.assertEqual(self.s.STAGES.current()["kind"], "wa_pair")
+        # off -> local answer card, never None
+        self.s.CFG["whatsapp_on"] = False
+        res = self.s.wa_quick(q.handle("read my WhatsApp")["whatsapp"])
+        self.assertIsNotNone(res)
+        self.assertEqual(self.s.STAGES.current()["state"], "off")
