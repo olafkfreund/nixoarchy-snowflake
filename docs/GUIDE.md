@@ -460,7 +460,8 @@ failed services) when you say "system status" or "nixi status", or through a sta
 ## Plugins
 
 Companion plugins live in Nix via `services.nixi.companion.plugins` or in `~/.local/share/nixi-companion/plugins/`. He
-never downloads plugins from the network.
+never downloads plugins from the network. For a step-by-step walkthrough and template for making and sharing one, see
+[the `nixi-plugin` skill](../skills/nixi-plugin/SKILL.md).
 
 ```nix
 {
@@ -475,7 +476,7 @@ never downloads plugins from the network.
 ```
 
 A plugin folder has a `plugin.json` (`"api": 1`, `"id"`, `"name"`, `"version"`, and an optional `"description"`) and any of
-five parts. `mkCompanionPlugin` checks the manifest when it builds, so a bad one fails the build.
+six parts. `mkCompanionPlugin` checks the manifest when it builds, so a bad one fails the build.
 
 - **`quips`:** the path of a JSON file with extra lines for the little jokes, keyed `break`, `welcome`, `ram`, `cpu`,
   `rain`, `snow`, `night`, `party`, `coding` and `done`. Each key holds a list of strings.
@@ -495,6 +496,8 @@ five parts. `mkCompanionPlugin` checks the manifest when it builds, so a bad one
     folder in any Nix expression**, and keep it out of every repo; a Nix build of a `private` plugin fails on purpose.
 - **`notifications`:** a list of `{ "app": …, "category": … }` or `{ "host": …, "category": … }`. The category is `mail`,
   `chat` or `feed`.
+- **`reactions`:** a list of `{ "app": …, "reaction": … }` or `{ "host": …, "reaction": … }`. The reaction is `notice`
+  or `music`.
 - **`stage`:** a program that fills the board under him. It has `phrases` (what you say to open it) and `argv` (the
   program and its words, run without a shell), and optionally `hint`, `network`, `cache_seconds`, `reads`
   (`system-status`, `peer-status` and/or `phone-status`) and `config`. `phone-status` gives the program `phone`, a list of `{name, online, battery, charging}` for your devices (no ids, numbers or texts, and only while Phone is on); it can't be combined with `network`, and a gauge host name made from a device name must fit `[A-Za-z0-9._-]{1,32}`. With `config`, the plugin's `defaults.json` becomes a settings

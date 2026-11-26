@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""Starter stage plugin: print one static `facts` stage on stdout."""
+import json
+
+print(json.dumps({
+    "v": 1,
+    "kind": "facts",
+    "title": "My plugin",
+    "points": [
+        "First fact from my-plugin.",
+        "Second fact from my-plugin."
+    ]
+}))

@@ -1,0 +1,13 @@
+{
+  "api": 1,
+  "id": "my-plugin",
+  "name": "My plugin",
+  "version": "0.1.0",
+  "description": "A starter stage plugin that shows two facts on a card.",
+  "stage": {
+    "phrases": ["my plugin card"],
+    "hint": "two sample facts from my-plugin",
+    "argv": ["run"],
+    "network": false
+  }
+}
