@@ -726,6 +726,141 @@ const acts = () => ev("return __acts.slice()");
   await sleep(320);
 }
 
+// WhatsApp cards (#126): the seven cards fit, wa_* never reaches stageText, untrusted clicks and Enter/Space do not post, trusted pointer clicks post with CLICKKEY, and file staging uploads on change or drop.
+{ const WA_QR = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  const WA_FIX = {
+    "wa_pair": { t: "stage", v: 1, kind: "wa_pair", card: "wc_pair", title: "Pair WhatsApp", png: WA_QR, expires_at: 180 },
+    "wa_chats": { t: "stage", v: 1, kind: "wa_chats", card: "wc_chats", title: "WhatsApp chats", rows: [{ name: "Clara Example", is_group: false, last_at: "14:20", unread: 2, last_preview: "See you soon", open: "wchat1" }, { name: "Bram Sample", is_group: false, last_at: "12:05", unread: 0, last_preview: "Thanks!", open: "wchat2" }] },
+    "wa_thread": { t: "stage", v: 1, kind: "wa_thread", card: "wc_thread", title: "WhatsApp", is_group: false, reply: "wrep1", file: "wfile1", summary: "wsum1", suggest: "wsug1",
+      messages: [
+        { from_me: false, sender_name: "Clara Example", at: "14:18", text: "Hello there", kind: "text", caption: "", file_name: "", size: 0, edited: true, deleted: false },
+        { from_me: true, sender_name: "Me", at: "14:19", text: "", kind: "text", caption: "", file_name: "", size: 0, edited: false, deleted: true },
+        { from_me: false, sender_name: "Clara Example", at: "14:20", text: "", kind: "voice message", caption: "", file_name: "", size: 0, edited: false, deleted: false, download: "wdl1" },
+        { from_me: false, sender_name: "Clara Example", at: "14:21", text: "", kind: "document", caption: "Project notes", file_name: "notes.txt", size: 420, edited: false, deleted: false, download: "wdl2" },
+      ] },
+    "wa_draft": { t: "stage", v: 1, kind: "wa_draft", card: "wc_draft", title: "WhatsApp reply", draft: "wdraft1", name: "Clara Example", text: "On my way" },
+    "wa_file": { t: "stage", v: 1, kind: "wa_file", card: "wc_file", title: "Send file on WhatsApp", draft: "wfdraft1", name: "Clara Example", file_name: "report.pdf", size: 2048, text: "Here is the file" },
+    "wa_summary": { t: "stage", v: 1, kind: "wa_summary", card: "wc_sum", title: "WhatsApp summary", text: "They agreed to meet at 15:00.", suggested: true, reply: "wsrep1" },
+    "wa_new": { t: "stage", v: 1, kind: "wa_new", card: "wc_new", title: "New WhatsApp message: open?", name: "Clara Example", open: "wopen1" },
+  };
+  for (const [pn, ox] of Object.entries(POS)) for (const [fn, fx] of Object.entries(WA_FIX)) {
+    const { want, box } = await show(fx, ox), [l, tp, r, b, W, H] = box, strip = [ox(want), ox(want) + 340];
+    const inside = l >= 0 && r <= W && tp >= 0 && b <= H, clear = r <= strip[0] || l >= strip[1];
+    check(want > 0 && inside && clear, `${fn} / ${pn}`, `box ${[l, tp, r, b].map(v => v.toFixed(0))} in ${W}x${H}, Nixi ${strip}`);
+  }
+
+  // wa_* never reaches stageText or the fullscreen caption fallback
+  check(await ev(`return ${JSON.stringify(Object.values(WA_FIX))}.every(fx=>stageText(fx)==='')`), "wa_* cards: never in stageText");
+  await ev(`stageClose(); await new Promise(r=>setTimeout(r,320)); SIT.fullscreen=true; himSet(''); onEvent(${JSON.stringify(WA_FIX.wa_thread)}); await new Promise(r=>setTimeout(r,400)); return 1`);
+  check(await ev("const ok=stgState==='closed'&&himEl.textContent===''; SIT.fullscreen=false; return ok"), "wa_* cards: declined stage never becomes a caption");
+
+  // wa_pair: QR image, 20 s refresh, and state messages for off/unpaired/relink/outdated/locked
+  for (const [st, expected] of [["off", "WhatsApp is off"], ["unpaired", "WhatsApp isn't paired"], ["relink", "WhatsApp needs relinking"], ["outdated", "WhatsApp needs an update"], ["locked", "Unlock your computer to use WhatsApp."]]) {
+    await show({ t: "stage", v: 1, kind: "wa_pair", card: "wc_" + st, title: "WhatsApp", state: st }, w => 0);
+    check(await ev(`return document.getElementById('stg').textContent.includes(${JSON.stringify(expected)}) && !document.querySelector('#stg img.wa-qr')`), `wa_pair state: ${st}`);
+  }
+
+  // wa_thread: direct chat vs group chat content and buttons
+  await show(WA_FIX.wa_thread, w => 0);
+  const thDirect = await ev(`const f=document.getElementById('stg'), t=f.textContent; return [f.classList.contains('desk'), t.includes('edited'), t.includes('deleted'), t.includes('voice message'), t.includes('Project notes'), [...f.querySelectorAll('.bd .sb')].map(b=>b.textContent).join(), [...f.querySelectorAll('.acts .sb')].map(b=>b.textContent).join()]`);
+  check(thDirect[0] && thDirect[1] && thDirect[2] && thDirect[3] && thDirect[4] && thDirect[5] === "Download,Download" && thDirect[6] === "Reply,Send a file,Summarise,Suggest a reply", "wa_thread (direct): captions, edited, deleted, voice message, Download and 4 direct actions", JSON.stringify(thDirect));
+  await show({ ...WA_FIX.wa_thread, is_group: true, reply: undefined, file: undefined, summary: undefined, suggest: undefined }, w => 0);
+  const thGroup = await ev(`const f=document.getElementById('stg'); return [[...f.querySelectorAll('.bd .sb')].map(b=>b.textContent).join(), f.querySelectorAll('.acts .sb').length]`);
+  check(thGroup[0] === "Download,Download" && thGroup[1] === 0, "wa_thread (group): Download per file only", JSON.stringify(thGroup));
+
+  await ev(`window.__waPosts=[]; window.__waAns={ok:true,result:'sent',say:'Message sent.'}; const ofWa=window.fetch;
+    window.fetch=async(u,o)=>{ const url=new URL(String(u),location.href), p=url.pathname;
+      if(p.startsWith('/api/wa/')){
+        const isStage=p==='/api/wa/stage';
+        const body=isStage?await new Response(o.body).text():(o&&o.body?JSON.parse(o.body):null);
+        __waPosts.push({path:p,query:url.search,method:o?.method||'GET',body,click:!!(o?.headers&&o.headers['X-Nixi-Click']),fname:o?.headers&&o.headers['X-Nixi-File-Name']||''});
+        return new Response(JSON.stringify(__waAns));
+      }
+      return ofWa(u,o); }; window.__ofWa=ofWa; return 1`);
+
+  // wa_pair refresh calls /api/wa/pair
+  await show(WA_FIX.wa_pair, w => 0);
+  await ev("__waPosts.length=0; __waAns={ok:true,png:" + JSON.stringify(WA_QR) + "}; waPairLoop(); return 1");
+  await sleep(60);
+  check(await ev("return __waPosts.length===1 && __waPosts[0].path==='/api/wa/pair' && !!document.querySelector('#stg img.wa-qr')"), "wa_pair: QR renders and refresh calls /api/wa/pair");
+
+  // wa_chats click opens thread; wa_summary Use as reply opens reply draft; wa_new Open opens thread
+  await show(WA_FIX.wa_chats, w => 0);
+  await ev("__waPosts.length=0; __waAns={ok:true}; document.querySelector('#stg .it').click(); return 1");
+  await sleep(60);
+  check(await ev("return __waPosts.length===1 && __waPosts[0].path==='/api/wa/thread' && __waPosts[0].query==='?token=wchat1'"), "wa_chats: clicking a row requests /api/wa/thread");
+  await show(WA_FIX.wa_summary, w => 0);
+  await ev("__waPosts.length=0; document.querySelector('#stg .acts .sb').click(); return 1");
+  await sleep(60);
+  check(await ev("return __waPosts.length===1 && __waPosts[0].path==='/api/wa/reply' && __waPosts[0].body?.token==='wsrep1'"), "wa_summary: Use as reply posts token to /api/wa/reply");
+  await show(WA_FIX.wa_new, w => 0);
+  await ev("__waPosts.length=0; document.querySelector('#stg .acts .sb').click(); return 1");
+  await sleep(60);
+  check(await ev("return __waPosts.length===1 && __waPosts[0].path==='/api/wa/thread' && __waPosts[0].query==='?token=wopen1'"), "wa_new: Open requests /api/wa/thread");
+
+  // wa_file: upload on change or drop posts bytes to /api/wa/stage?draft=<id> with X-Nixi-Click and X-Nixi-File-Name
+  await show(WA_FIX.wa_file, w => 0);
+  await ev(`__waPosts.length=0; __waAns={ok:true,name:'note.txt',size:5};
+    const dt=new DataTransfer(); dt.items.add(new File(['hello'],'note.txt',{type:'text/plain'}));
+    document.querySelector('#stg .wa-drop').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:dt})); return 1`);
+  await sleep(80);
+  const stgPost = await ev("return [__waPosts.slice(), document.getElementById('stg').textContent.includes('note.txt')]");
+  check(stgPost[0].length === 1 && stgPost[0][0].path === "/api/wa/stage" && stgPost[0][0].query === "?draft=wfdraft1" && stgPost[0][0].body === "hello" && stgPost[0][0].click === true && stgPost[0][0].fname === "note.txt" && stgPost[1], "wa_file: drop uploads bytes to /api/wa/stage with CLICKKEY and file name", JSON.stringify(stgPost));
+
+  const keyPress = async (k, code, vk, text) => { for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, key: k, code, windowsVirtualKeyCode: vk, ...(type === "keyDown" && text ? { text } : {}) }); };
+  const mouseClick = async (x, y) => {
+    await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+  };
+
+  // Trusted click rules for Send, Send file, and Download
+  for (const [fn, fx, sel, route, expectedBody, ans] of [
+    ["wa_draft (Send)", WA_FIX.wa_draft, "#stg .mact .sb", "/api/wa/send", { draft: "wdraft1", text: "On my way" }, { ok: true, result: "sent", say: "Message sent." }],
+    ["wa_file (Send file)", WA_FIX.wa_file, "#stg .mact .sb:last-child", "/api/wa/send-file", { draft: "wfdraft1", text: "Here is the file" }, { ok: false, result: "unknown", say: "May have been sent: check your phone." }],
+    ["wa_thread (Download)", WA_FIX.wa_thread, "#stg .bd .sb", "/api/wa/download", { token: "wdl1" }, { ok: true, say: "Done." }],
+  ]) {
+    await show(fx, w => 0);
+    await ev(`__waPosts.length=0; __waAns=${JSON.stringify(ans)};
+      const b=document.querySelector(${JSON.stringify(sel)});
+      b.click();
+      b.dispatchEvent(new PointerEvent('click',{bubbles:true,cancelable:true,pointerType:'mouse'}));
+      b.focus(); return 1`);
+    await keyPress("Enter", "Enter", 13, "\r");
+    await keyPress(" ", "Space", 32, " ");
+    await sleep(80);
+    const before = await ev(`return [__waPosts.length, document.querySelector(${JSON.stringify(sel)}).disabled]`);
+    check(before[0] === 0 && before[1] === false, `${fn}: untrusted clicks and Enter/Space do not post`, JSON.stringify(before));
+    const [x, y] = await ev(`const r=document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return [r.left+r.width/2, r.top+r.height/2]`);
+    await mouseClick(x, y);
+    await sleep(80);
+    const after = await ev(`const f=document.getElementById('stg'); return [__waPosts.slice(), f.textContent.includes(${JSON.stringify(ans.say)}), document.querySelector(${JSON.stringify(sel)}).disabled]`);
+    check(after[0].length === 1 && after[0][0].path === route && JSON.stringify(after[0][0].body) === JSON.stringify(expectedBody) && after[0][0].click === true && after[1] && after[2] === true, `${fn}: trusted click posts right body with CLICKKEY and shows say`, JSON.stringify(after));
+  }
+
+  // Settings: WhatsApp row visibility, Pair, and trusted click on Unlink and forget
+  await ev("stageClose(); await new Promise(r=>setTimeout(r,320)); info.whatsapp_available=false; info.whatsapp_bridge=false; settings(true,'phone'); return 1");
+  await sleep(200);
+  check(await ev("return document.getElementById('waRow').hidden===true"), "settings: WhatsApp row hidden when bridge is not installed");
+  await ev("info.whatsapp_available=true; info.whatsapp_on=true; renderSettings(); __waPosts.length=0; __waAns={ok:true}; return 1");
+  check(await ev("return document.getElementById('waRow').hidden===false && document.getElementById('waSw').checked===true"), "settings: WhatsApp row shown when bridge is installed");
+  await ev(`const b=document.getElementById('waForget');
+    b.click();
+    b.dispatchEvent(new PointerEvent('click',{bubbles:true,cancelable:true,pointerType:'mouse'}));
+    b.focus(); return 1`);
+  await keyPress("Enter", "Enter", 13, "\r");
+  await keyPress(" ", "Space", 32, " ");
+  await sleep(80);
+  check(await ev("return __waPosts.length===0 && info.whatsapp_on===true"), "settings (Unlink and forget): untrusted clicks and Enter/Space do not post");
+  const [fx, fy] = await ev("const r=document.getElementById('waForget').getBoundingClientRect(); return [r.left+r.width/2, r.top+r.height/2]");
+  await mouseClick(fx, fy);
+  await sleep(80);
+  const fAfter = await ev("return [__waPosts.slice(), info.whatsapp_on, document.getElementById('waSw').checked]");
+  check(fAfter[0].length === 1 && fAfter[0][0].path === "/api/wa/forget" && fAfter[0][0].click === true && fAfter[1] === false && fAfter[2] === false, "settings (Unlink and forget): trusted click posts /api/wa/forget with CLICKKEY and turns off switch", JSON.stringify(fAfter));
+
+  await ev("settings(false); window.fetch=window.__ofWa; stageClose(); return 1");
+  await sleep(320);
+}
+
 await send("Target.closeTarget", { targetId: t.id }).catch(() => {});
 console.log(fails.length ? `\n${fails.length} failed: ${fails.join(", ")}` : "\nall pass");
 process.exit(fails.length ? 1 : 0);

@@ -382,6 +382,9 @@ body.appr #stg{opacity:.35;pointer-events:none}
 #stg .mln{font-size:12px;overflow-wrap:anywhere}#stg .mwarn{font-size:12px;font-weight:600;color:#b3261e;margin:3px 0;overflow-wrap:anywhere}
 #stg .mbody{margin:5px 0;padding:5px 7px;max-height:120px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.4 var(--mono);background:#fff;border:1px solid var(--sline);border-radius:6px}
 #stg .mmsg{font-size:12px;margin-top:5px;overflow-wrap:anywhere}
+#stg .wa-qr{display:block;width:168px;height:168px;margin:6px auto;padding:6px;border-radius:8px;background:#fff;border:1px solid var(--sline);object-fit:contain}
+#stg .wa-drop{margin:6px 0;padding:8px 10px;border:1.5px dashed var(--sline);border-radius:8px;text-align:center;font-size:12px;color:var(--sdim)}
+#stg .wa-drop.over{border-color:var(--acc);background:var(--accA)}
 #stgTab{position:absolute;top:96px;left:350px;width:max-content;max-width:150px;z-index:7;padding:6px 12px;border-radius:10px;border:2px solid var(--acc);background:#1d2a27;color:#eef3ee;font:600 18px/1.2 Chalk,cursive;
   overflow-wrap:anywhere;cursor:pointer;opacity:0;pointer-events:none;transform:translateX(-10px);transition:transform .18s var(--ease),opacity .18s}
 #stgTab span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}   /* two lines, then …: "Missed call from <name>" keeps the name */
@@ -1105,6 +1108,9 @@ body.term #chip.work{opacity:0}          /* the terminal already says what he's 
       <div class="row" id="phoneRow"><label class="tg"><input type="checkbox" id="phoneSw"><span class="sw"></span><span class="l">Phone (Flux)<small>Find, send to and watch your phone or tablet through Flux. Off until you switch it on.</small></span></label>
         <div class="h" id="phoneStat" hidden></div></div>
       <div id="phoneDevs"></div>
+      <div class="row" id="waRow" hidden><label class="tg"><input type="checkbox" id="waSw"><span class="sw"></span><span class="l" id="waLbl">WhatsApp</span></label>
+        <div class="bar" style="margin-top:8px"><button class="btn sm" type="button" id="waPair">Pair</button><button class="btn sm" type="button" id="waForget">Unlink and forget</button></div>
+        <div class="h" id="waMsg" hidden></div></div>
     </div>
     <!-- ================= MORE ================= -->
     <div class="tab" id="panel-more" role="tabpanel" aria-labelledby="tab-more" data-tab="more">
@@ -3328,10 +3334,10 @@ function stagePlace(){ stgEl.style.setProperty('--stgIn','0px'); if(stgState==='
 function stageBtn(label,fn,dis){ const b=hx('button','sb',label); b.type='button'; b.disabled=!!dis; b.addEventListener('click',e=>{ e.stopPropagation(); stgUse=performance.now(); fn(b); }); return b; }
 function stageBuild(ev){
   const bd=$('#stgBd'), acts=$('#stgActs'), fn=$('#stgFn'); bd.textContent=''; acts.textContent=''; fn.textContent='';
-  const board=ev.kind==='commands', map=ev.kind==='place', film=ev.kind==='video', sky=ev.kind==='weather', cal=ev.kind==='calendar', stat=ev.kind==='status', dy=ev.kind==='day', gau=ev.kind==='gauges', press=ev.kind==='headlines', tr=ev.trust, guide=tr==='guide';
-  mailCardDrop(true);
-  $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':film?'Now showing':sky?'Sky':cal?'Coming up':stat?'Sessions':dy?'Your day':ev.kind==='mail'?'Mail':press?'News':''));
-  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat||dy||ev.kind==='mail'||ev.kind==='phone_pick'||ev.kind.startsWith('phone_')?'desk':gau?'term':press?'press':'notebook')+(stgEl.classList.contains('l')?' l':'');
+  const board=ev.kind==='commands', map=ev.kind==='place', film=ev.kind==='video', sky=ev.kind==='weather', cal=ev.kind==='calendar', stat=ev.kind==='status', dy=ev.kind==='day', gau=ev.kind==='gauges', press=ev.kind==='headlines', tr=ev.trust, guide=tr==='guide', wa=String(ev.kind||'').startsWith('wa_');
+  mailCardDrop(true); waPairStop();
+  $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':film?'Now showing':sky?'Sky':cal?'Coming up':stat?'Sessions':dy?'Your day':ev.kind==='mail'?'Mail':press?'News':ev.kind==='wa_pair'?pageLine('wa.pair_title','Pair WhatsApp'):ev.kind==='wa_chats'?pageLine('wa.chats_title','WhatsApp chats'):ev.kind==='wa_draft'?pageLine('wa.draft_title','WhatsApp reply'):ev.kind==='wa_file'?pageLine('wa.file_title','Send file on WhatsApp'):ev.kind==='wa_summary'?pageLine('wa.summary_title','WhatsApp summary'):ev.kind==='wa_new'?pageLine('wa.new_title','New WhatsApp message: open?'):wa?pageLine('wa.title','WhatsApp'):''));
+  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat||dy||ev.kind==='mail'||ev.kind==='phone_pick'||ev.kind.startsWith('phone_')||wa?'desk':gau?'term':press?'press':'notebook')+(stgEl.classList.contains('l')?' l':'');
   if(sky) stageSky(ev,bd,fn);
   else if(dy) stageDay(ev,bd,acts,fn);
   else if(ev.kind==='mail') stageMail(ev,bd,acts,fn);
@@ -3345,6 +3351,13 @@ function stageBuild(ev){
   else if(ev.kind==='phone_call_gateway') stagePhoneCallGateway(ev,bd,fn);
   else if(ev.kind==='phone_call_pick') stagePhoneCallPick(ev,bd,fn);
   else if(ev.kind==='phone_call_confirm') stagePhoneCallConfirm(ev,bd,fn);
+  else if(ev.kind==='wa_pair') stageWaPair(ev,bd,fn);
+  else if(ev.kind==='wa_chats') stageWaChats(ev,bd,fn);
+  else if(ev.kind==='wa_thread') stageWaThread(ev,bd,acts,fn);
+  else if(ev.kind==='wa_draft') stageWaDraft(ev,bd,fn);
+  else if(ev.kind==='wa_file') stageWaFile(ev,bd,fn);
+  else if(ev.kind==='wa_summary') stageWaSummary(ev,bd,acts,fn);
+  else if(ev.kind==='wa_new') stageWaNew(ev,bd,acts,fn);
   else if(gau) stageGauges(ev,bd,acts,fn);
   else if(press) stagePress(ev,bd,acts,fn);
   else if(cal) stageCal(ev,bd,acts,fn);
@@ -3455,6 +3468,173 @@ function stagePhoneCallConfirm(ev,bd,fn){
   card.appendChild(hx('div',head?'mln':'lb',ev.number||''));
   act.appendChild(phoneCallBtn(ev.button,ev.token,'/api/phone/dial',msg,true));
   card.appendChild(act); card.appendChild(msg); bd.appendChild(card);
+}
+let waPairRef=null, WA_PAIR_MS=20000;
+const waPost=(u,b)=>post(u,b,{headers:hdr(Object.assign({'Content-Type':'application/json'},CLICKKEY.hdr()))});
+const waFmtSize=n=>typeof n==='number'?(n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB'):String(n||'');
+const WA_STATES={
+  off:['wa.off','WhatsApp is off'],
+  unpaired:['wa.unpaired',"WhatsApp isn't paired"],
+  pairing:['wa.pair_ready','Scan the QR code on screen to pair WhatsApp.'],
+  outdated:['wa.outdated','WhatsApp needs an update'],
+  relink:['wa.relink','WhatsApp needs relinking'],
+  connecting:['wa.connecting','Connecting to WhatsApp\u2026'],
+  locked:['wa.locked','Unlock your computer to use WhatsApp.']
+};
+function waPairStop(){ if(waPairRef){ clearInterval(waPairRef); waPairRef=null; } }
+function waPairLoop(){
+  if(!stgOpen()||!stg||stg.kind!=='wa_pair'||(!stg.png&&stg.state!=='pairing')) return waPairStop();
+  if(!stgPosted||document.hidden) return;
+  waPost('/api/wa/pair',{}).then(r=>r.json()).then(j=>{
+    if(!stgOpen()||!stg||stg.kind!=='wa_pair') return;
+    if(j&&j.png){ stg.png=j.png; const im=stgEl.querySelector('img.wa-qr'); if(im) im.src=j.png.startsWith('data:image/')?j.png:'data:image/png;base64,'+j.png; }
+    else if(j&&j.ok===false) waPairStop();
+  }).catch(()=>{});
+}
+function stageWaPair(ev,bd,fn){
+  if(ev.png){
+    const im=hx('img','wa-qr'); im.alt=pageLine('wa.pair_title','Pair WhatsApp');
+    im.src=ev.png.startsWith('data:image/')?ev.png:'data:image/png;base64,'+ev.png;
+    bd.appendChild(im);
+    bd.appendChild(hx('div','vm',ev.text||ev.say||pageLine('wa.pair_ready','Scan the QR code on screen to pair WhatsApp.')));
+    waPairRef=setInterval(waPairLoop,WA_PAIR_MS);
+    return;
+  }
+  const st=WA_STATES[ev.state]||['wa.unavailable',"WhatsApp isn't available right now."];
+  bd.appendChild(hx('div','pt1',ev.text||ev.say||pageLine(st[0],st[1])));
+  if(ev.state==='pairing') waPairRef=setInterval(waPairLoop,WA_PAIR_MS);
+}
+function waOpenThread(tok,msgEl){
+  if(!tok) return;
+  stgUse=performance.now();
+  tokenReady.then(()=>fetch('/api/wa/thread?token='+encodeURIComponent(tok),{headers:hdr()}))
+    .then(r=>r.json()).then(j=>{ if((!j||!j.ok)&&msgEl) msgEl.textContent=(j&&(j.say||j.error))||pageLine('wa.unavailable',"WhatsApp isn't available right now."); })
+    .catch(()=>{ if(msgEl) msgEl.textContent=pageLine('wa.unavailable',"WhatsApp isn't available right now."); });
+}
+function stageWaChats(ev,bd,fn){
+  const rows=(ev.rows||[]).slice(0,20);
+  if(!rows.length) bd.appendChild(hx('div','pt1',ev.empty||pageLine('wa.not_found',"I couldn't find that WhatsApp chat.")));
+  rows.forEach(r=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab'), tok=r.open||r.token;
+    const sub=[r.last_preview||r.last,r.unread?`(${r.unread})`:'',r.last_at||''].filter(Boolean).join(' \u00b7 ');
+    tx.appendChild(hx('div','lb',r.name||'')); if(sub) tx.appendChild(hx('div','vm',sub));
+    if(tok){
+      row.style.cursor='pointer';
+      row.addEventListener('click',e=>{ if(e.target.closest('button')) return; e.stopPropagation(); waOpenThread(tok,fn); });
+      ab.appendChild(stageBtn(ev.open_label||pageLine('wa.open','Open'),()=>waOpenThread(tok,fn)));
+    }
+    row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
+}
+function stageWaThread(ev,bd,acts,fn){
+  const msgs=(ev.messages||[]).slice(0,100);
+  if(!msgs.length) bd.appendChild(hx('div','pt1',ev.empty||''));
+  msgs.forEach(m=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab');
+    const who=(m.from_me?'\u2192 ':'')+(m.sender_name||m.name||(m.from_me?'Me':''));
+    const head=[who,m.at||''].filter(Boolean).join(' \u00b7 ');
+    if(head) tx.appendChild(hx('div','lb',head));
+    if(m.deleted){
+      tx.appendChild(hx('div','vm',pageLine('wa.deleted','deleted')));
+    } else {
+      const isVoice=m.kind==='audio'||m.kind==='voice message'||m.voice;
+      if(isVoice) tx.appendChild(hx('div','vm',pageLine('wa.voice_message','voice message')));
+      const fmeta=[m.file_name,m.size!=null?waFmtSize(m.size):''].filter(Boolean).join(' \u00b7 ');
+      if(fmeta) tx.appendChild(hx('div','vm',fmeta));
+      const body=[m.text,m.caption&&m.caption!==m.text?m.caption:''].filter(Boolean).join('\n');
+      if(body) tx.appendChild(hx('div','vm',body));
+      if(m.edited) tx.appendChild(hx('div','vm',pageLine('wa.edited','edited')));
+      if(m.download){
+        const dl=hx('button','sb',ev.download_label||pageLine('wa.download','Download')); dl.type='button';
+        dl.addEventListener('click',e=>{ e.stopPropagation(); if(!e.isTrusted||!['mouse','pen','touch'].includes(e.pointerType)) return;
+          dl.disabled=true; stgUse=performance.now();
+          waPost('/api/wa/download',{token:m.download})
+            .then(r=>r.json()).then(j=>{ fn.textContent=(j&&(j.say||j.error||j.path))||(j&&j.ok?pageLine('stage.done','Done.'):pageLine('stage.failed',"I couldn't do that.")); if(!j||!j.ok) dl.disabled=false; })
+            .catch(()=>{ fn.textContent=pageLine('stage.failed',"I couldn't do that."); dl.disabled=false; }); });
+        ab.appendChild(dl);
+      }
+    }
+    row.appendChild(tx); if(ab.firstChild) row.appendChild(ab); bd.appendChild(row); });
+  if(!ev.is_group){
+    if(ev.reply) acts.appendChild(stageBtn(pageLine('wa.reply','Reply'),()=>{ waPost('/api/wa/reply',{token:ev.reply}).then(r=>r.json()).then(j=>{ if(!j||!j.ok) fn.textContent=(j&&(j.say||j.error))||pageLine('wa.unavailable',"WhatsApp isn't available right now."); }).catch(()=>{ fn.textContent=pageLine('wa.unavailable',"WhatsApp isn't available right now."); }); }));
+    if(ev.file) acts.appendChild(stageBtn(pageLine('wa.send_file','Send a file'),()=>{ waPost('/api/wa/file',{token:ev.file}).then(r=>r.json()).then(j=>{ if(!j||!j.ok) fn.textContent=(j&&(j.say||j.error))||pageLine('wa.unavailable',"WhatsApp isn't available right now."); }).catch(()=>{ fn.textContent=pageLine('wa.unavailable',"WhatsApp isn't available right now."); }); }));
+    const sumTok=ev.summary||ev.card, sugTok=ev.suggest||ev.card;
+    if(sumTok) acts.appendChild(stageBtn(pageLine('wa.summarise','Summarise'),b=>{ b.disabled=true; waPost('/api/wa/summary',{card:sumTok,mode:'summary'}).then(r=>r.json()).then(j=>{ if(!j||!j.ok) fn.textContent=(j&&(j.say||j.error))||pageLine('wa.unavailable',"WhatsApp isn't available right now."); }).catch(()=>{ fn.textContent=pageLine('wa.unavailable',"WhatsApp isn't available right now."); }).finally(()=>{ b.disabled=false; }); }));
+    if(sugTok) acts.appendChild(stageBtn(pageLine('wa.suggest_reply','Suggest a reply'),b=>{ b.disabled=true; waPost('/api/wa/summary',{card:sugTok,mode:'suggest'}).then(r=>r.json()).then(j=>{ if(!j||!j.ok) fn.textContent=(j&&(j.say||j.error))||pageLine('wa.unavailable',"WhatsApp isn't available right now."); }).catch(()=>{ fn.textContent=pageLine('wa.unavailable',"WhatsApp isn't available right now."); }).finally(()=>{ b.disabled=false; }); }));
+  }
+}
+function waSendOutcome(j,msg,btn){
+  const out=j&&j.result;
+  msg.textContent=(j&&(j.say||j.error))||(j&&j.ok?pageLine('wa.sent','Message sent.'):out==='unknown'?pageLine('wa.may_have_been_sent','May have been sent: check your phone.'):pageLine('wa.not_sent','Message was not sent.'));
+  if(!j||(!j.ok&&out!=='unknown')) btn.disabled=false;
+}
+function stageWaDraft(ev,bd,fn){
+  const card=hx('div','mcard'), ta=hx('textarea'), msg=hx('div','mmsg'), act=hx('div','mact');
+  card.appendChild(hx('div','mln',ev.name||ev.recipient||'')); ta.rows=4; ta.value=ev.text||''; card.appendChild(ta);
+  if(ev.error||ev.say||ev.result==='sent') msg.textContent=ev.error||ev.say||(ev.result==='sent'?pageLine('wa.sent','Message sent.'):'');
+  const send=hx('button','sb',ev.send_label||pageLine('wa.send','Send')); send.type='button';
+  send.disabled=ev.result==='sent'||ev.result==='unknown';
+  send.addEventListener('click',e=>{ e.stopPropagation(); if(!e.isTrusted||!['mouse','pen','touch'].includes(e.pointerType)) return;
+    if(!ta.value.trim()||ta.value.length>1000){ msg.textContent=ev.length_error||pageLine('phone.text_length','Write 1\u20131000 characters.'); return; }
+    send.disabled=true; stgUse=performance.now();
+    waPost('/api/wa/send',{draft:ev.draft,text:ta.value})
+      .then(r=>r.json()).then(j=>waSendOutcome(j,msg,send))
+      .catch(()=>{ msg.textContent=pageLine('wa.may_have_been_sent','May have been sent: check your phone.'); }); });
+  act.appendChild(send); card.appendChild(act); card.appendChild(msg); bd.appendChild(card); ta.focus();
+}
+function stageWaFile(ev,bd,fn){
+  const card=hx('div','mcard'), finfo=hx('div','vm'), drop=hx('div','wa-drop',ev.drop_label||pageLine('wa.file_ready','Choose a file and click Send.')), inp=hx('input'), ta=hx('textarea'), msg=hx('div','mmsg'), act=hx('div','mact');
+  inp.type='file'; inp.hidden=true;
+  card.appendChild(hx('div','mln',ev.name||ev.recipient||''));
+  finfo.textContent=[ev.file_name||ev.file,ev.size!=null?waFmtSize(ev.size):''].filter(Boolean).join(' \u00b7 ');
+  card.appendChild(finfo); card.appendChild(drop); card.appendChild(inp);
+  ta.rows=2; ta.value=ev.text||ev.caption||''; card.appendChild(ta);
+  if(ev.error||ev.say||ev.result==='sent') msg.textContent=ev.error||ev.say||(ev.result==='sent'?pageLine('wa.sent','Message sent.'):'');
+  const upload=file=>{
+    if(!file) return;
+    stgUse=performance.now();
+    const fname=file.name||'file', fsize=file.size;
+    finfo.textContent=[fname,fsize!=null?waFmtSize(fsize):''].filter(Boolean).join(' \u00b7 ');
+    tokenReady.then(()=>fetch('/api/wa/stage?draft='+encodeURIComponent(ev.draft||''),{
+      method:'POST',
+      headers:hdr(Object.assign({'X-Nixi-File-Name':fname},CLICKKEY.hdr())),
+      body:file
+    })).then(r=>r.json()).then(j=>{
+      if(j&&j.ok){
+        finfo.textContent=[j.name||fname,(j.size!=null?j.size:fsize)!=null?waFmtSize(j.size!=null?j.size:fsize):''].filter(Boolean).join(' \u00b7 ');
+        msg.textContent=j.say||'';
+      } else msg.textContent=(j&&(j.say||j.error))||pageLine('wa.not_sent','Message was not sent.');
+    }).catch(()=>{ msg.textContent=pageLine('wa.not_sent','Message was not sent.'); });
+  };
+  inp.addEventListener('change',()=>{ if(inp.files&&inp.files[0]) upload(inp.files[0]); });
+  for(const target of [drop,card]){
+    target.addEventListener('dragover',e=>{ e.preventDefault(); e.stopPropagation(); drop.classList.add('over'); });
+    target.addEventListener('dragleave',e=>{ e.preventDefault(); e.stopPropagation(); drop.classList.remove('over'); });
+    target.addEventListener('drop',e=>{ e.preventDefault(); e.stopPropagation(); drop.classList.remove('over'); const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(f) upload(f); });
+  }
+  const choose=stageBtn(ev.choose_label||pageLine('wa.choose_file','Choose file'),()=>inp.click());
+  const send=hx('button','sb',ev.send_label||pageLine('wa.send','Send')); send.type='button';
+  send.disabled=ev.result==='sent'||ev.result==='unknown';
+  send.addEventListener('click',e=>{ e.stopPropagation(); if(!e.isTrusted||!['mouse','pen','touch'].includes(e.pointerType)) return;
+    if(ta.value.length>1000){ msg.textContent=ev.length_error||pageLine('phone.text_length','Write 1\u20131000 characters.'); return; }
+    send.disabled=true; stgUse=performance.now();
+    waPost('/api/wa/send-file',{draft:ev.draft,text:ta.value})
+      .then(r=>r.json()).then(j=>waSendOutcome(j,msg,send))
+      .catch(()=>{ msg.textContent=pageLine('wa.may_have_been_sent','May have been sent: check your phone.'); }); });
+  act.append(choose,send); card.appendChild(act); card.appendChild(msg); bd.appendChild(card);
+}
+function stageWaSummary(ev,bd,acts,fn){
+  bd.appendChild(hx('div','pt1',ev.text||ev.summary||''));
+  if(ev.reply||ev.suggested){
+    const tok=ev.reply||ev.token;
+    acts.appendChild(stageBtn(ev.use_label||pageLine('wa.use_as_reply','Use as reply'),()=>{
+      waPost('/api/wa/reply',{token:tok}).then(r=>r.json()).then(j=>{ if(!j||!j.ok) fn.textContent=(j&&(j.say||j.error))||pageLine('wa.unavailable',"WhatsApp isn't available right now."); }).catch(()=>{ fn.textContent=pageLine('wa.unavailable',"WhatsApp isn't available right now."); });
+    }));
+  }
+}
+function stageWaNew(ev,bd,acts,fn){
+  bd.appendChild(hx('div','pt1',ev.name||ev.text||ev.title||pageLine('wa.new_title','New WhatsApp message: open?')));
+  acts.appendChild(stageBtn(ev.open_label||pageLine('wa.open','Open'),()=>{
+    if(ev.open||ev.token) waOpenThread(ev.open||ev.token,fn);
+    else waPost('/api/wa/open',{}).then(r=>r.json()).then(j=>{ if(!j||!j.ok) fn.textContent=(j&&(j.say||j.error))||pageLine('wa.unavailable',"WhatsApp isn't available right now."); }).catch(()=>{ fn.textContent=pageLine('wa.unavailable',"WhatsApp isn't available right now."); });
+  }));
 }
 function stageMail(ev,bd,acts,fn){
   const rows=ev.rows||[];
@@ -3676,7 +3856,7 @@ function stagePress(ev,bd,acts,fn){
     bd.appendChild(row); });
   pressAges(); pressWatch(ev.clips,bd,fn,false); fn.textContent=ev.source||''; if(ev.copy) acts.appendChild(stageBtn('Copy',b=>stageAct('copy',ev.copy,b))); }
 const clipLine=c=>{ const m=[c.channel,c.duration].filter(Boolean).join(', '); return c.title+(m?' \u2014 '+m:''); };
-function stageText(ev){ if(ev.from_phone) return ''; if(ev.kind==='mail'||ev.kind.startsWith('phone_')) return ''; if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>{ const st=h.state||'up'; if(st==='down'||st==='stale') return [h.name+': '+gaugeOneText(h)]; return [...(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))), ...(h.badges||[]).map(b=>(many?h.name+' ':'')+b.k+': '+b.v), ...(h.lists||[]).map(l=>(many?h.name+' ':'')+l.title+': '+(l.items||[]).join(', '))]; })).join('\n'); } if(ev.kind==='headlines') return [ev.title||'News',...(ev.items||[]).map(it=>it.title+' \u2014 '+it.source+', '+pressAge(it.at)),...(ev.clips&&ev.clips.length?['Watch:',...ev.clips.map(clipLine)]:[]),...(ev.source?[ev.source]:[])].join('\n'); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
+function stageText(ev){ if(ev.from_phone) return ''; if(ev.kind==='mail'||ev.kind.startsWith('phone_')||String(ev.kind||'').startsWith('wa_')) return ''; if(ev.kind==='weather') return ev.empty?(ev.off?'Weather is off \u2014 turn on Weather look in Settings':'No weather reading yet'):'Sky: '+skyWords(ev); if(ev.kind==='calendar') return ev.off?'Calendar is off':ev.unread?'Calendar couldn\u2019t be read':(ev.events||[]).map(e=>e.when+' '+e.title).join('\n')||'Nothing coming up'; if(ev.kind==='status') return ((ev.sessions||[]).map(x=>x.title+': '+x.status).join('\n')||'No herdr sessions running')+'\n'+(!ev.sys_on?'Services not checked':(ev.failed||[]).length?'Failed services: '+ev.failed.join(', ')+((ev.failed_n||0)>ev.failed.length?' +'+(ev.failed_n-ev.failed.length)+' more':''):'No failed services'); if(ev.kind==='day') return (ev.wd+' '+ev.md)+'\n'+(ev.next?'Next: '+ev.next.when+' '+ev.next.title+(ev.next.in!==ev.next.when?' ('+ev.next.in+')':''):ev.cal==='off'?'Calendar not set up':'Nothing else timed today')+(ev.rows||[]).map(r=>'\n'+r.label+': '+(r.st==='off'?'not set up':r.n+(dayState(r.st)?' ('+dayState(r.st)+')':'')+(r.items&&r.items.length?' \u2014 '+r.items.slice(0,2).map(i=>i.title).join('; '):''))).join(''); if(ev.kind==='video') return (ev.title||'Now showing')+'\n'+(ev.items||[]).map((it,i)=>(i+1)+'. '+it.title).join('\n')+'\nSearched YouTube for: '+ev.query; if(ev.kind==='place') return (ev.title||'Trip preview')+'\n'+(ev.unset?'Set '+ev.unset+' in Nixi\u2019s settings':ev.dest); if(ev.kind==='gauges'){ const many=(ev.hosts||[]).length>1; return [ev.title||''].concat(...(ev.hosts||[]).map(h=>{ const st=h.state||'up'; if(st==='down'||st==='stale') return [h.name+': '+gaugeOneText(h)]; return [...(h.meters||[]).map(m=>(many?h.name+' ':'')+m.label+': '+(m.pct==null?(m.text||'\u2014'):Math.round(m.pct)+'%'+(m.text?' \u00b7 '+m.text:''))), ...(h.badges||[]).map(b=>(many?h.name+' ':'')+b.k+': '+b.v), ...(h.lists||[]).map(l=>(many?h.name+' ':'')+l.title+': '+(l.items||[]).join(', '))]; })).join('\n'); } if(ev.kind==='headlines') return [ev.title||'News',...(ev.items||[]).map(it=>it.title+' \u2014 '+it.source+', '+pressAge(it.at)),...(ev.clips&&ev.clips.length?['Watch:',...ev.clips.map(clipLine)]:[]),...(ev.source?[ev.source]:[])].join('\n'); const L=ev.kind==='commands'?(ev.items||[]).map((it,i)=>(i+1)+'. '+it.label+': '+it.cmd):[ev.title||''].concat((ev.points||[]).map(p=>'• '+p),ev.source?['Source: '+ev.source]:[]);
   return (ev.kind==='commands'&&ev.title?ev.title+'\n':'')+L.join('\n'); }
 function stageShow(ev){
   if(document.body.classList.contains('pnl')){ stgHeld=ev; return; }
@@ -3694,7 +3874,7 @@ function stageShow(ev){
   if(ev.kind==='gauges'&&ev.refresh) gaugeRef={tok:ev.refresh,n:0,failed:0,t:setInterval(gaugeLoop,GAUGE_MS)};
 }
 function stageHide(toTab){
-  stgTm.forEach(clearTimeout); stgTm=[]; clearInterval(stgTimer); stgTimer=null; gaugeStop(); if(!toTab){ gaugeHist={}; gaugeExp=null; }
+  stgTm.forEach(clearTimeout); stgTm=[]; clearInterval(stgTimer); stgTimer=null; gaugeStop(); waPairStop(); if(!toTab){ gaugeHist={}; gaugeExp=null; }
   stgEl.classList.remove('on','go'); chalkEl.classList.remove('on','pt'); hatEl.classList.remove('on'); popEl.classList.remove('on'); wtcEl.classList.remove('on'); stgEl.setAttribute('aria-hidden','true'); stgEl.inert=true; stgTab.inert=!toTab;
   if(!toTab){ stgPosted=false; mailCardDrop(true); }
   if(toTab){ stagePost(false); stgState='tab'; stgTab.replaceChildren(Object.assign(document.createElement('span'),{textContent:$('#stgT').textContent})); stagePlace(); stgSize(340); void stgTab.offsetWidth;   /* the window splits this evenly: half (170) must hold the 160px tab on either side */ stgTab.classList.add('on'); }
@@ -4504,7 +4684,17 @@ function renderPhone(){ const sw=$('#phoneSw'); if(!sw) return; sw.checked=!!inf
   for(const d of (info.phone_on?info.phone_devices||[]:[])){ const r=document.createElement('div'); r.className='h';
     const bits=[d.name, d.status]; if(typeof d.charge==='number') bits.push(d.charge+'%'+(d.charging?' ⚡':''));
     if(d.ip) bits.push(d.ip); if(d.fingerprint) bits.push(d.fingerprint); if(d.hint) bits.push(d.hint);
-    r.textContent=bits.filter(Boolean).join(' · '); box.appendChild(r); } }
+    r.textContent=bits.filter(Boolean).join(' · '); box.appendChild(r); }
+  const wr=$('#waRow');
+  if(wr){
+    const avail=!!(info.whatsapp_available||info.whatsapp_bridge);
+    wr.hidden=!avail;
+    const wsw=$('#waSw'); if(wsw) wsw.checked=!!info.whatsapp_on;
+    const wlbl=$('#waLbl'); if(wlbl) wlbl.textContent=pageLine('wa.title','WhatsApp');
+    const wp=$('#waPair'); if(wp) wp.textContent=pageLine('wa.pair','Pair');
+    const wf=$('#waForget'); if(wf) wf.textContent=pageLine('wa.unlink_forget','Unlink and forget');
+  }
+}
 let mailOpt={accounts:[],models:[]}, mailOptT=0;
 function renderMail(){ const sw=$('#mailSw'); if(!sw) return; sw.checked=!!info.mail_on; $('#mailOpts').hidden=!info.mail_on;
   if(!info.mail_on) return;
@@ -4760,6 +4950,13 @@ function plugConsent(c){
 async function plugLoad(){ try{ await tokenReady; plugRender(await (await fetch('/api/companion-plugins',{headers:hdr()})).json()); }catch(e){} }
 async function plugAct(b){ try{ plugRender(await (await post(b.reload?'/api/companion-plugins/reload':b.consent?'/api/companion-plugins/consent':'/api/companion-plugins',b)).json()); await refresh(); lookShown=''; syncLook(); if(setEl.classList.contains('on')) renderSettings(); }catch(e){ $('#plugErr').textContent='Couldn\u2019t reach Nixi'; } }
 $('#plugReload').addEventListener('click',()=>plugAct({reload:true}));
+$('#waPair').addEventListener('click',e=>{ e.stopPropagation(); const b=e.currentTarget, m=$('#waMsg'); b.disabled=true;
+  waPost('/api/wa/pair',{}).then(r=>r.json()).then(j=>{ if(m){ m.textContent=(j&&(j.say||j.error))||(!j||!j.ok?pageLine('wa.unavailable',"WhatsApp isn't available right now."):''); m.hidden=!m.textContent; } }).catch(()=>{ if(m){ m.textContent=pageLine('wa.unavailable',"WhatsApp isn't available right now."); m.hidden=false; } }).finally(()=>{ b.disabled=false; }); });
+$('#waForget').addEventListener('click',e=>{ e.stopPropagation(); if(!e.isTrusted||!['mouse','pen','touch'].includes(e.pointerType)) return;
+  const b=e.currentTarget, m=$('#waMsg'); b.disabled=true;
+  waPost('/api/wa/forget',{}).then(r=>r.json()).then(j=>{ if(j&&j.ok){ info.whatsapp_on=false; renderPhone(); }
+    if(m){ m.textContent=(j&&(j.say||j.error))||(!j||!j.ok?pageLine('wa.unavailable',"WhatsApp isn't available right now."):''); m.hidden=!m.textContent; }
+  }).catch(()=>{ if(m){ m.textContent=pageLine('wa.unavailable',"WhatsApp isn't available right now."); m.hidden=false; } }).finally(()=>{ b.disabled=false; }); });
 async function locLoad(){ try{ await tokenReady; loc=await (await fetch('/api/location',{headers:hdr()})).json(); locAt=Date.now(); locRender(); }catch(e){} }
 function locAct(b){ $('#locErr').textContent=''; return post('/api/location',b).then(r=>r.json()).then(j=>{ if(j.ok){ loc=j; locAt=Date.now(); } else $('#locErr').textContent=j.error||'That didn\u2019t work'; locRender(); }).catch(()=>{ $('#locErr').textContent='Couldn\u2019t reach Nixi'; }); }
 function locRender(){
@@ -4923,6 +5120,7 @@ setEl.addEventListener('change',e=>{
   if(id==='clickSw') setSetting({click_through:on}).then(()=>sendRegion(true));
   if(id==='notifySw') setSetting({notify_done:on});
   if(id==='phoneSw') setSetting({phone_on:on}).then(renderPhone);
+  if(id==='waSw') setSetting({whatsapp_on:on}).then(renderPhone);
   if(id==='mailSw') setSetting({mail_on:on}).then(()=>{ mailOptT=0; renderMail(); });
   if(id==='mailModel') setSetting({mail_model:e.target.value});
   if(e.target.dataset&&e.target.dataset.mailAcct) setSetting({mail_accounts:$$('#mailAccts input:checked').map(c=>c.dataset.mailAcct)});
