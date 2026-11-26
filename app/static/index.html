@@ -229,6 +229,38 @@ body.bar #mailPop,body.hover #mailPop,body.calm #mailPop{display:none}
 #stg .tmp{font:700 46px/1 "Inter",system-ui,sans-serif}
 #stg .skl{font-size:15px;margin-top:4px}#stg .skl::first-letter{text-transform:uppercase}
 #stg.desk{--sbg:#efe9dc;--sfg:#2a2824;--sdim:#6f695b;--sline:#2a282426;background:repeating-linear-gradient(90deg,#00000005 0 3px,transparent 3px 9px),#efe9dc;border:6px solid #7a5230}
+#stg.wa{--sbg:#0b141a;--sfg:#e9edef;--sdim:#8696a0;--sline:#ffffff14;--wag:#00a884;--wain:#202c33;--waout:#005c4b;background:#0b141a;border:0;box-shadow:0 10px 28px #000a,0 0 0 1px #2a3942;font-family:"Segoe UI","Helvetica Neue",Inter,system-ui,sans-serif}
+#stg.wa h2{background:#202c33;margin:0;padding:12px 14px;font:600 17px/1.2 inherit;color:#e9edef;text-shadow:none;border-bottom:1px solid #2a3942}
+#stg.wa .bd{background:radial-gradient(circle at 20% 30%,#ffffff05 0 1px,transparent 2px) 0 0/22px 22px,#0b141a;padding:6px 8px}
+#stg.wa .sb{background:#202c33;border:1px solid #2a3942;color:#e9edef;border-radius:18px;padding:4px 12px;font-weight:500}
+#stg.wa .sb:hover:not(:disabled){background:#2a3942}#stg.wa .sb:disabled{opacity:.45}
+#stg.wa .wa-row{display:flex;align-items:center;gap:11px;padding:8px 6px;border-radius:8px;cursor:pointer}
+#stg.wa .wa-row:hover{background:#202c33}
+#stg.wa .wa-av{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font:600 15px/1 inherit;color:#fff}
+#stg.wa .wa-mid{flex:1;min-width:0;border-bottom:1px solid #222d34;padding-bottom:7px}
+#stg.wa .wa-top,#stg.wa .wa-sub{display:flex;align-items:baseline;gap:8px}
+#stg.wa .wa-name{flex:1;min-width:0;font-size:15px;color:#e9edef;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#stg.wa .wa-time{flex:none;font-size:11px;color:#8696a0}#stg.wa .wa-row.unread .wa-time{color:var(--wag)}
+#stg.wa .wa-prev{flex:1;min-width:0;font-size:13px;color:#8696a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#stg.wa .wa-badge{flex:none;min-width:19px;height:19px;padding:0 5px;border-radius:10px;background:var(--wag);color:#0b141a;font:700 11px/19px inherit;text-align:center}
+#stg.wa .wa-b{max-width:82%;margin:3px 0;padding:5px 8px 4px;border-radius:8px;background:var(--wain);color:#e9edef;font-size:13.5px;line-height:1.35;box-shadow:0 1px 1px #0006;word-wrap:break-word;white-space:pre-wrap}
+#stg.wa .wa-b.in{margin-right:auto;border-top-left-radius:2px}
+#stg.wa .wa-b.out{margin-left:auto;background:var(--waout);border-top-right-radius:2px}
+#stg.wa .wa-who{font-size:12.5px;font-weight:600;margin-bottom:1px}
+#stg.wa .wa-meta{float:right;margin:6px 0 -3px 10px;font-size:10.5px;color:#ffffff99}
+#stg.wa .wa-del{font-style:italic;color:#8696a0}
+#stg.wa .wa-doc{display:flex;align-items:center;gap:8px;margin:2px 0 4px;padding:7px 8px;border-radius:6px;background:#0000002e}
+#stg.wa .wa-doc .wa-ic{flex:none;width:30px;height:36px;border-radius:4px;background:#e2564c;color:#fff;display:grid;place-items:center;font:700 9px/1 inherit}
+#stg.wa .wa-doc .wa-dn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#stg.wa .wa-doc .sb{padding:2px 9px;font-size:12px}
+#stg.wa .acts{background:#202c33;border-top:1px solid #2a3942}
+#stg.wa .mcard{background:#202c33;border:0;border-radius:10px;color:#e9edef}
+#stg.wa .mcard .mln{color:var(--wag);font-weight:600}
+#stg.wa .mcard textarea{background:#2a3942;border:0;border-radius:18px;color:#e9edef;padding:8px 14px}
+#stg.wa .mcard .mact .sb:last-child{background:var(--wag);border-color:var(--wag);color:#0b141a;font-weight:700}
+#stg.wa .wa-drop{border:1px dashed #8696a066;border-radius:10px;color:#8696a0;padding:10px;text-align:center;margin:6px 0}
+#stg.wa .wa-drop.over{border-color:var(--wag);color:var(--wag)}
+#stg.wa .pt1,#stg.wa .vm{color:#d1d7db}
 #stg .pg{margin:4px 0 8px;padding:8px 12px 10px;border-radius:8px;background:#fffdf6;border:1px solid var(--sline);border-top:8px solid #b3261e;box-shadow:0 2px 0 var(--sline);transform-origin:50% 0}
 #stg .pgd{font:600 13px/1.2 "Inter",system-ui,sans-serif;color:#b3261e;text-transform:uppercase;letter-spacing:.06em}
 #stg .pg .lb{font-size:22px;overflow-wrap:anywhere;margin:2px 0 6px}
@@ -3337,7 +3369,7 @@ function stageBuild(ev){
   const board=ev.kind==='commands', map=ev.kind==='place', film=ev.kind==='video', sky=ev.kind==='weather', cal=ev.kind==='calendar', stat=ev.kind==='status', dy=ev.kind==='day', gau=ev.kind==='gauges', press=ev.kind==='headlines', tr=ev.trust, guide=tr==='guide', wa=String(ev.kind||'').startsWith('wa_');
   mailCardDrop(true); waPairStop();
   $('#stgT').textContent=String(ev.title||(board?'On the board':map?'Trip preview':film?'Now showing':sky?'Sky':cal?'Coming up':stat?'Sessions':dy?'Your day':ev.kind==='mail'?'Mail':press?'News':ev.kind==='wa_pair'?pageLine('wa.pair_title','Pair WhatsApp'):ev.kind==='wa_chats'?pageLine('wa.chats_title','WhatsApp chats'):ev.kind==='wa_draft'?pageLine('wa.draft_title','WhatsApp reply'):ev.kind==='wa_file'?pageLine('wa.file_title','Send file on WhatsApp'):ev.kind==='wa_summary'?pageLine('wa.summary_title','WhatsApp summary'):ev.kind==='wa_new'?pageLine('wa.new_title','New WhatsApp message: open?'):wa?pageLine('wa.title','WhatsApp'):''));
-  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat||dy||ev.kind==='mail'||ev.kind==='phone_pick'||ev.kind.startsWith('phone_')||wa?'desk':gau?'term':press?'press':'notebook')+(stgEl.classList.contains('l')?' l':'');
+  stgEl.className=(board?'board':map?'map':film?'cinema':sky?'sky bare '+(SIT.day?'day':'night'):cal||stat||dy||ev.kind==='mail'||ev.kind==='phone_pick'||ev.kind.startsWith('phone_')?'desk':wa?'wa':gau?'term':press?'press':'notebook')+(stgEl.classList.contains('l')?' l':'');
   if(sky) stageSky(ev,bd,fn);
   else if(dy) stageDay(ev,bd,acts,fn);
   else if(ev.kind==='mail') stageMail(ev,bd,acts,fn);
@@ -3503,33 +3535,43 @@ function waOpenThread(tok,msgEl){
 function stageWaChats(ev,bd,fn){
   const rows=(ev.rows||[]).slice(0,20);
   if(!rows.length) bd.appendChild(hx('div','pt1',ev.empty||pageLine('wa.not_found',"I couldn't find that WhatsApp chat.")));
-  rows.forEach(r=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab'), tok=r.open||r.token;
-    const sub=[r.last_preview||r.last,r.unread?`(${r.unread})`:'',r.last_at||''].filter(Boolean).join(' \u00b7 ');
-    tx.appendChild(hx('div','lb',r.name||'')); if(sub) tx.appendChild(hx('div','vm',sub));
+  rows.forEach(r=>{ const row=hx('div','wa-row'+(r.unread?' unread':'')), mid=hx('div','wa-mid'), top=hx('div','wa-top'), sub=hx('div','wa-sub'), tok=r.open||r.token;
+    row.appendChild(waAvatar(r.name||'',r.is_group));
+    top.appendChild(hx('div','wa-name',r.name||'')); top.appendChild(hx('div','wa-time',waTime(r.last_at)));
+    sub.appendChild(hx('div','wa-prev',r.last_preview||r.last||'')); if(r.unread) sub.appendChild(hx('div','wa-badge',String(r.unread)));
+    mid.append(top,sub); row.appendChild(mid);
     if(tok){
-      row.style.cursor='pointer';
       row.addEventListener('click',e=>{ if(e.target.closest('button')) return; e.stopPropagation(); waOpenThread(tok,fn); });
-      ab.appendChild(stageBtn(ev.open_label||pageLine('wa.open','Open'),()=>waOpenThread(tok,fn)));
+      const ob=stageBtn(ev.open_label||pageLine('wa.open','Open'),()=>waOpenThread(tok,fn)); ob.hidden=true; row.appendChild(ob);   // keyboard and tests still reach it
     }
-    row.appendChild(tx); row.appendChild(ab); bd.appendChild(row); });
+    bd.appendChild(row); });
+}
+const WA_COLORS=['#00a884','#53bdeb','#ffbc38','#ff6b6b','#a78bfa','#25d366','#fc9775','#06cf9c'];
+function waColor(s){ let h=0; for(const c of String(s)) h=(h*31+c.codePointAt(0))>>>0; return WA_COLORS[h%WA_COLORS.length]; }
+function waAvatar(name,group){ const a=hx('div','wa-av',group?'\u{1F465}':(String(name).trim().split(/\s+/).slice(0,2).map(w=>[...w][0]||'').join('').toUpperCase()||'?')); a.style.background=waColor(name); return a; }
+function waTime(t){
+  if(t==null||t==='') return '';
+  if(typeof t==='string'&&!/^\d+$/.test(t)) return t;
+  const d=new Date(Number(t)*1000); if(isNaN(d)) return '';
+  const now=new Date(), day=86400000;
+  if(d.toDateString()===now.toDateString()) return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  if(now-d<7*day) return d.toLocaleDateString([],{weekday:'short'});
+  return d.toLocaleDateString();
 }
 function stageWaThread(ev,bd,acts,fn){
   const msgs=(ev.messages||[]).slice(0,100);
   if(!msgs.length) bd.appendChild(hx('div','pt1',ev.empty||''));
-  msgs.forEach(m=>{ const row=hx('div','it'), tx=hx('div','tx'), ab=hx('div','ab');
-    const who=(m.from_me?'\u2192 ':'')+(m.sender_name||m.name||(m.from_me?'Me':''));
-    const head=[who,m.at||''].filter(Boolean).join(' \u00b7 ');
-    if(head) tx.appendChild(hx('div','lb',head));
+  [...msgs].reverse().forEach(m=>{ const row=hx('div','wa-b '+(m.from_me?'out':'in')), tx=row, ab=hx('div','wa-dl');   // oldest at the top, like a chat
+    if(ev.is_group&&!m.from_me&&(m.sender_name||m.name)){ const w=hx('div','wa-who',m.sender_name||m.name); w.style.color=waColor(m.sender_name||m.name); tx.appendChild(w); }
     if(m.deleted){
-      tx.appendChild(hx('div','vm',pageLine('wa.deleted','deleted')));
+      tx.appendChild(hx('div','vm wa-del','\u{1F6AB} '+pageLine('wa.deleted','deleted')));
     } else {
       const isVoice=m.kind==='audio'||m.kind==='voice message'||m.voice;
-      if(isVoice) tx.appendChild(hx('div','vm',pageLine('wa.voice_message','voice message')));
-      const fmeta=[m.file_name,m.size!=null?waFmtSize(m.size):''].filter(Boolean).join(' \u00b7 ');
-      if(fmeta) tx.appendChild(hx('div','vm',fmeta));
+      if(isVoice) tx.appendChild(hx('div','vm','\u{1F3A4} '+pageLine('wa.voice_message','voice message')));
+      if(m.file_name){ const doc=hx('div','wa-doc'); doc.appendChild(hx('div','wa-ic',(String(m.file_name).split('.').pop()||'').slice(0,4).toUpperCase()||'FILE'));
+        const dn=hx('div','wa-dn'); dn.appendChild(hx('div','',m.file_name)); if(m.size) dn.appendChild(hx('div','wa-time',waFmtSize(m.size))); doc.appendChild(dn); doc.appendChild(ab); tx.appendChild(doc); }
       const body=[m.text,m.caption&&m.caption!==m.text?m.caption:''].filter(Boolean).join('\n');
       if(body) tx.appendChild(hx('div','vm',body));
-      if(m.edited) tx.appendChild(hx('div','vm',pageLine('wa.edited','edited')));
       if(m.download){
         const dl=hx('button','sb',ev.download_label||pageLine('wa.download','Download')); dl.type='button';
         dl.addEventListener('click',e=>{ e.stopPropagation(); if(!e.isTrusted||!['mouse','pen','touch'].includes(e.pointerType)) return;
@@ -3538,9 +3580,12 @@ function stageWaThread(ev,bd,acts,fn){
             .then(r=>r.json()).then(j=>{ fn.textContent=(j&&(j.say||j.error||j.path))||(j&&j.ok?pageLine('stage.done','Done.'):pageLine('stage.failed',"I couldn't do that.")); if(!j||!j.ok) dl.disabled=false; })
             .catch(()=>{ fn.textContent=pageLine('stage.failed',"I couldn't do that."); dl.disabled=false; }); });
         ab.appendChild(dl);
+        if(!m.file_name) tx.appendChild(ab);
       }
     }
-    row.appendChild(tx); if(ab.firstChild) row.appendChild(ab); bd.appendChild(row); });
+    tx.insertBefore(hx('div','wa-meta',[m.edited&&!m.deleted?pageLine('wa.edited','edited'):'',waTime(m.at),m.from_me?'\u2713\u2713':''].filter(Boolean).join(' ')),tx.firstChild);
+    bd.appendChild(row); });
+  bd.scrollTop=bd.scrollHeight;
   if(!ev.is_group){
     if(ev.reply) acts.appendChild(stageBtn(pageLine('wa.reply','Reply'),()=>{ waPost('/api/wa/reply',{token:ev.reply}).then(r=>r.json()).then(j=>{ if(!j||!j.ok) fn.textContent=(j&&(j.say||j.error))||pageLine('wa.unavailable',"WhatsApp isn't available right now."); }).catch(()=>{ fn.textContent=pageLine('wa.unavailable',"WhatsApp isn't available right now."); }); }));
     if(ev.file) acts.appendChild(stageBtn(pageLine('wa.send_file','Send a file'),()=>{ waPost('/api/wa/file',{token:ev.file}).then(r=>r.json()).then(j=>{ if(!j||!j.ok) fn.textContent=(j&&(j.say||j.error))||pageLine('wa.unavailable',"WhatsApp isn't available right now."); }).catch(()=>{ fn.textContent=pageLine('wa.unavailable',"WhatsApp isn't available right now."); }); }));

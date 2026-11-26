@@ -762,7 +762,7 @@ const acts = () => ev("return __acts.slice()");
 
   // wa_thread: direct chat vs group chat content and buttons
   await show(WA_FIX.wa_thread, w => 0);
-  const thDirect = await ev(`const f=document.getElementById('stg'), t=f.textContent; return [f.classList.contains('desk'), t.includes('edited'), t.includes('deleted'), t.includes('voice message'), t.includes('Project notes'), [...f.querySelectorAll('.bd .sb')].map(b=>b.textContent).join(), [...f.querySelectorAll('.acts .sb')].map(b=>b.textContent).join()]`);
+  const thDirect = await ev(`const f=document.getElementById('stg'), t=f.textContent; return [f.classList.contains('wa'), t.includes('edited'), t.includes('deleted'), t.includes('voice message'), t.includes('Project notes'), [...f.querySelectorAll('.bd .sb')].map(b=>b.textContent).join(), [...f.querySelectorAll('.acts .sb')].map(b=>b.textContent).join()]`);
   check(thDirect[0] && thDirect[1] && thDirect[2] && thDirect[3] && thDirect[4] && thDirect[5] === "Download,Download" && thDirect[6] === "Reply,Send a file,Summarise,Suggest a reply", "wa_thread (direct): captions, edited, deleted, voice message, Download and 4 direct actions", JSON.stringify(thDirect));
   await show({ ...WA_FIX.wa_thread, is_group: true, reply: undefined, file: undefined, summary: undefined, suggest: undefined }, w => 0);
   const thGroup = await ev(`const f=document.getElementById('stg'); return [[...f.querySelectorAll('.bd .sb')].map(b=>b.textContent).join(), f.querySelectorAll('.acts .sb').length]`);
@@ -793,7 +793,7 @@ const acts = () => ev("return __acts.slice()");
 
   // wa_chats click opens thread; wa_summary Use as reply opens reply draft; wa_new Open opens thread
   await show(WA_FIX.wa_chats, w => 0);
-  await ev("__waPosts.length=0; __waAns={ok:true}; document.querySelector('#stg .it').click(); return 1");
+  await ev("__waPosts.length=0; __waAns={ok:true}; document.querySelector('#stg .wa-row').click(); return 1");
   await sleep(60);
   check(await ev("return __waPosts.length===1 && __waPosts[0].path==='/api/wa/thread' && __waPosts[0].query==='?token=wchat1'"), "wa_chats: clicking a row requests /api/wa/thread");
   await show(WA_FIX.wa_summary, w => 0);
@@ -836,7 +836,7 @@ const acts = () => ev("return __acts.slice()");
   for (const [fn, fx, sel, route, expectedBody, ans] of [
     ["wa_draft (Send)", WA_FIX.wa_draft, "#stg .mact .sb", "/api/wa/send", { draft: "wdraft1", text: "On my way" }, { ok: true, result: "sent", say: "Message sent." }],
     ["wa_file (Send file)", WA_FIX.wa_file, "#stg .mact .sb:last-child", "/api/wa/send-file", { draft: "wfdraft1", text: "Here is the file" }, { ok: false, result: "unknown", say: "May have been sent: check your phone." }],
-    ["wa_thread (Download)", WA_FIX.wa_thread, "#stg .bd .sb", "/api/wa/download", { token: "wdl1" }, { ok: true, say: "Done." }],
+    ["wa_thread (Download)", WA_FIX.wa_thread, "#stg .bd .sb", "/api/wa/download", { token: "wdl2" }, { ok: true, say: "Done." }],   // the bridge sends newest first and the card shows oldest at the top, so the first Download is the last fixture row
   ]) {
     await ev("stg=null; waUploadState.clear(); return 1");
     await show(fx, w => 0);
