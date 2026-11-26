@@ -113,3 +113,27 @@ func TestCursorAndReadQueries(t *testing.T) {
 		t.Fatalf("cursor after: %+v", newer)
 	}
 }
+
+func TestThreadOrdersByTimeAndKeepsEditedCaption(t *testing.T) {
+	s := testStore(t)
+	jid := "123@s.whatsapp.net"
+	put(t, s, "new", jid, 200, false)
+	put(t, s, "old", jid, 100, true) // older history arrives after a newer live message
+	rows, err := s.Thread(jid, 50, 0)
+	if err != nil || len(rows) != 2 || rows[0].ID != "new" || rows[1].ID != "old" {
+		t.Fatalf("thread order: %+v %v", rows, err)
+	}
+	if err := s.StoreMessage(Message{ID: "pic", ChatJID: jid, At: 300, Kind: "image", Caption: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Edit("pic", jid, "edited"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.StoreMessage(Message{ID: "pic", ChatJID: jid, At: 300, Kind: "image", Caption: "first", History: true}); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ = s.Thread(jid, 1, 0)
+	if rows[0].Caption != "edited" {
+		t.Fatalf("edited caption lost on replay: %+v", rows[0])
+	}
+}

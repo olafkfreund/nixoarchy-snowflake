@@ -172,7 +172,7 @@ func (s *MessageStore) StoreMessage(m Message) error {
  sender_jid=excluded.sender_jid,sender_name=excluded.sender_name,
  timestamp=excluded.timestamp,from_me=excluded.from_me,
  text=CASE WHEN messages.edited=1 AND excluded.edited=0 THEN messages.text ELSE excluded.text END,
- kind=excluded.kind,caption=excluded.caption,file_name=excluded.file_name,mime_type=excluded.mime_type,size=excluded.size,
+ kind=excluded.kind,caption=CASE WHEN messages.edited=1 AND excluded.edited=0 THEN messages.caption ELSE excluded.caption END,file_name=excluded.file_name,mime_type=excluded.mime_type,size=excluded.size,
  direct_path=excluded.direct_path,media_key=excluded.media_key,file_sha256=excluded.file_sha256,file_enc_sha256=excluded.file_enc_sha256,
  history=messages.history AND excluded.history,edited=messages.edited OR excluded.edited,
  mentions_me=messages.mentions_me OR excluded.mentions_me

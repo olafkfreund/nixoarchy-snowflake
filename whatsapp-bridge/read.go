@@ -81,8 +81,8 @@ func scanMessage(rows *sql.Rows) (Message, error) {
 const messageColumns = `seq,id,chat_jid,sender_jid,sender_name,timestamp,from_me,text,kind,caption,file_name,size,edited,deleted,history,mentions_me`
 
 func (s *MessageStore) Thread(jid string, limit int, before int64) ([]Message, error) {
-	rows, err := s.db.Query(`SELECT `+messageColumns+` FROM messages WHERE chat_jid=? AND (?=0 OR seq<?)
- ORDER BY seq DESC LIMIT ?`, jid, before, before, boundedLimit(limit, 50))
+	rows, err := s.db.Query(`SELECT `+messageColumns+` FROM messages WHERE chat_jid=? AND (?=0 OR (timestamp,seq) < (SELECT timestamp,seq FROM messages WHERE seq=?))
+ ORDER BY timestamp DESC, seq DESC LIMIT ?`, jid, before, before, boundedLimit(limit, 50))
 	if err != nil {
 		return nil, err
 	}
