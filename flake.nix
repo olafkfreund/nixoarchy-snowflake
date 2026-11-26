@@ -139,6 +139,11 @@
             touch $out
           '';
 
+          nixi-plugin-template = mk {
+            pname = "nixi-plugin-template";
+            src = ./skills/nixi-plugin/template;
+          };
+
           status-module =
             assert failed good == [ ];
             assert fw.interfaces.tailscale0.allowedTCPPorts == [ 9188 ];
