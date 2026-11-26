@@ -5,6 +5,7 @@ import http.client
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -14,6 +15,8 @@ from pathlib import Path
 from unittest import mock
 
 import nixi_env
+
+REAL_RUN = subprocess.run
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
@@ -426,3 +429,121 @@ class WhatsAppServer(unittest.TestCase):
         res = self.s.wa_quick(q.handle("read my WhatsApp")["whatsapp"])
         self.assertIsNotNone(res)
         self.assertEqual(self.s.STAGES.current()["state"], "off")
+
+    def post(self, path, body):
+        srv = self.s.ThreadingHTTPServer(("127.0.0.1", 0), self.s.Handler)
+        thread = threading.Thread(target=srv.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        conn = http.client.HTTPConnection("127.0.0.1", srv.server_port, timeout=3)
+        conn.request("POST", path, json.dumps(body), {"X-Nixi-Token": self.s.TOKEN})
+        response = conn.getresponse()
+        data = response.read()
+        conn.close()
+        return response.status, json.loads(data) if path != "/api/ask" else data.decode()
+
+    def test_model_boundary_never_builds_a_whatsapp_prompt(self):
+        self.fake.chat_rows = [{"jid": "1@s.whatsapp.net", "name": "Anna"}]
+        with mock.patch.object(self.s, "attach_prompt", side_effect=AssertionError("prompt built")), \
+             mock.patch.object(self.s.Plug, "match", side_effect=AssertionError("plugin dispatched")), \
+             mock.patch.object(self.s.ST, "save", side_effect=AssertionError("history saved")), \
+             mock.patch.object(self.s.recall, "answer", side_effect=AssertionError("memory read")):
+            for path, body in (("/api/quick", {"text": "WhatsApp Anna"}),
+                               ("/api/ask", {"prompt": "WhatsApp Anna", "attach": [{"kind": "clip", "text": "private"}]}),
+                               ("/api/ask", {"prompt": "WhatsApp Anna", "opts": {"claude": True}})):
+                status, result = self.post(path, body)
+                self.assertEqual(status, 200)
+                self.assertEqual(self.s.STAGES.current()["kind"], "wa_thread")
+                self.assertNotIn("private", str(result))
+            with mock.patch.object(self.s.quick, "handle", return_value=None):
+                self.assertEqual(self.post("/api/quick", {"text": "WhatsApp maybe"})[1]["handled"], True)
+            for state in ("unpaired", "off", "ambiguous"):
+                self.s.STAGES.clear()
+                self.s.CFG["whatsapp_on"] = state != "off"
+                self.fake.chat_rows = ([{"jid": "1@s.whatsapp.net", "name": "Anna One"},
+                                        {"jid": "2@s.whatsapp.net", "name": "Anna Two"}] if state == "ambiguous" else
+                                       [{"jid": "1@s.whatsapp.net", "name": "Anna"}])
+                with mock.patch.object(self.fake, "status", return_value=({"state": "unpaired", "boot": "boot-1"}, "boot-1")) if state == "unpaired" else mock.patch.object(self.fake, "status", wraps=self.fake.status):
+                    status, _ = self.post("/api/ask", {"prompt": "WhatsApp Anna", "attach": [{"kind": "clip", "text": "private"}]})
+                self.assertEqual(status, 200)
+                self.assertTrue(self.s.STAGES.current()["kind"].startswith("wa_"))
+
+    def test_summary_uses_isolated_cli_and_drops_stale_result(self):
+        self.assertTrue(self.s.wa_open()["ok"])
+        self.assertTrue(self.s.wa_thread(self.s.STAGES.current()["rows"][0]["open"])["ok"])
+        cur = self.s.STAGES.current()
+        cur["messages"] = [{"from_me": i % 2 == 0, "text": "x" * 200, "sender_name": "SECRET"} for i in range(60)]
+        log = self.tmp / "cli.json"
+        script = self.tmp / "claude"
+        script.write_text("#!" + sys.executable + "\nimport json, os, sys\n"
+                          "if '--help' in sys.argv:\n print('--safe-mode'); sys.exit()\n"
+                          "open(os.environ['WA_CLI_LOG'], 'w').write(json.dumps({'argv': sys.argv[1:], 'input': sys.stdin.read(), 'cwd': os.getcwd()}))\n"
+                          "print('Suggested reply')\n")
+        script.chmod(0o700)
+        self.s._ONESHOT_BIN = ...
+        with mock.patch.dict(os.environ, {"NIXI_CLAUDE": str(script), "WA_CLI_LOG": str(log)}), \
+             mock.patch.object(self.s, "BRIDGED", True), \
+             mock.patch.object(self.s.subprocess, "run", side_effect=REAL_RUN):
+            self.assertTrue(self.s.wa_summary(cur["suggest"], "suggest")["ok"])
+            call = json.loads(log.read_text())
+            self.assertEqual(call["argv"], ["-p", "--safe-mode", "--model", "haiku", "--tools", "", "--no-session-persistence",
+                                            "--strict-mcp-config", "--disable-slash-commands", "--exclude-dynamic-system-prompt-sections",
+                                            "--system-prompt", self.s._WA_SUMMARY_PROMPT + " Draft the reply."])
+            self.assertNotEqual(call["cwd"], os.getcwd())
+            self.assertFalse(Path(call["cwd"]).exists())
+            rows = json.loads(call["input"])
+            self.assertEqual(len(rows), 40)
+            self.assertEqual(sum(len(r["text"]) for r in rows), 8000)
+            self.assertEqual(rows[0], {"from": "me", "text": "x" * 200})
+            self.assertTrue(all(set(r) == {"from", "text"} for r in rows))
+            page = self.s.STAGES.current()
+            self.assertEqual(page["kind"], "wa_summary")
+            self.assertEqual(page["text"], "Suggested reply")
+            self.assertTrue(self.s.wa_draft(page["reply"])["ok"])
+            self.assertEqual(self.s.STAGES.current()["text"], "Suggested reply")
+            thread = self.s.STAGES.put({"v": 1, "kind": "wa_thread", "card": "second", "jid": "1@s.whatsapp.net",
+                                        "messages": [{"from_me": False, "text": f"{i:02d}" + "y" * 98} for i in range(60)]})
+            self.assertEqual(self.post("/api/wa/summary", {"card": thread["summary"], "mode": "summary"})[1], {"ok": True})
+            rows = json.loads(json.loads(log.read_text())["input"])
+            self.assertEqual(len(rows), 50)
+            self.assertEqual([r["text"][:2] for r in rows], [f"{i:02d}" for i in range(50)])
+            self.assertEqual(self.s.STAGES.current()["kind"], "wa_summary")
+
+        self.s._ONESHOT_BIN = ...
+        script.write_text("#!" + sys.executable + "\nimport sys\nprint('no safe option')\n")
+        with mock.patch.dict(os.environ, {"NIXI_CLAUDE": str(script)}), \
+             mock.patch.object(self.s.subprocess, "run", side_effect=REAL_RUN):
+            self.s.STAGES.put({"v": 1, "kind": "wa_thread", "card": "again", "jid": "1@s.whatsapp.net", "messages": []})
+            self.assertTrue(self.s.wa_summary(self.s.STAGES.current()["summary"], "summary")["ok"])
+            self.assertEqual(self.s.STAGES.current()["text"], self.s.lang.t("wa.summaries_need_claude"))
+        self.s._ONESHOT_BIN = ...
+
+    def test_summary_lock_drops_output(self):
+        self.assertTrue(self.s.wa_open()["ok"])
+        self.assertTrue(self.s.wa_thread(self.s.STAGES.current()["rows"][0]["open"])["ok"])
+        token = self.s.STAGES.current()["summary"]
+        self.s._ONESHOT_BIN = "/fake/claude"
+        def lock_during_call(*args, **kwargs):
+            self.s.Ambient.locked = True
+            return subprocess.CompletedProcess(args, 0, "secret summary", "")
+        with mock.patch.object(self.s.subprocess, "run", side_effect=lock_during_call):
+            self.assertFalse(self.s.wa_summary(token, "summary")["ok"])
+        self.assertEqual(self.s.STAGES.current()["kind"], "wa_thread")
+        self.s._ONESHOT_BIN = ...
+
+    def test_capture_blocks_whatsapp_and_discards_racing_image(self):
+        self.s.STAGES.put({"v": 1, "kind": "wa_thread", "card": "blocked", "jid": "1@s.whatsapp.net", "messages": []})
+        with mock.patch.object(self.s, "BRIDGED", False), mock.patch.object(self.s, "capture", side_effect=AssertionError("captured")):
+            self.assertEqual(self.post("/api/capture", {"kind": "screen"})[0], 403)
+        self.s.STAGES.clear()
+        def shot(cmd, **kwargs):
+            Path(cmd[-1]).write_bytes(b"image")
+            self.s.STAGES.put({"v": 1, "kind": "wa_thread", "card": "raced", "jid": "1@s.whatsapp.net", "messages": []})
+            return subprocess.CompletedProcess(cmd, 0, b"", b"")
+        with mock.patch.object(self.s, "SHOTS", self.tmp), mock.patch.dict(os.environ, {"WAYLAND_DISPLAY": "wayland-1"}), \
+             mock.patch.object(self.s.shutil, "which", side_effect=lambda x: "/bin/" + x if x == "grim" else None), \
+             mock.patch.object(self.s, "_run", side_effect=shot):
+            with self.assertRaisesRegex(RuntimeError, "phone messages"):
+                self.s.capture("screen")
+        self.assertFalse(list(self.tmp.glob("nixi-*.png")))

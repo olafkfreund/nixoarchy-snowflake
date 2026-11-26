@@ -53,6 +53,7 @@ class ApprovalsTest(unittest.TestCase):
         self.data = Path(tempfile.mkdtemp(dir=self.tmp))
         for patch in (mock.patch.object(s, "DATA_DIR", self.data), mock.patch.object(s, "SEND_HOOKS_PATH", self.data / "h.json"),
                       mock.patch.object(s, "HOOKS_PATH", self.data / "a.json"),
+                      mock.patch.object(s, "READONLY_SETTINGS_PATH", self.data / "readonly-settings.json"),
                       mock.patch.object(s, "_SENDS_LOG_FIXED", False)):
             patch.start()
             self.addCleanup(patch.stop)
@@ -269,6 +270,25 @@ class ApprovalsTest(unittest.TestCase):
             c = self.s.build_cmd("claude", False)
             self.assertEqual(str(self.data / "h.json") in c, has, m)
             self.assertEqual("bypassPermissions" in c, m != "ask")
+
+    def test_whatsapp_click_guard_checks_all_command_forms(self):
+        for cmd in ("cat ~/Downloads/WhatsApp/a.txt", 'cat whats""app/a.txt', "cat ${X:-messages.db}"):
+            self.assertTrue(self.s.click_only(cmd), cmd)
+            self.assertEqual(self.s.send_detail(cmd), {"kind": "whatsapp"})
+        self.assertEqual(self.s.send_detail("herdr agent prompt 1 whatsapp"), {"kind": "whatsapp"})
+
+    def test_whatsapp_denials_in_all_settings_modes(self):
+        runtime = "//" + nixi_env.run_dir().lstrip("/") + "/nixi-whatsapp/**"
+        expected = {f"{tool}({path})" for tool in ("Read", "Grep", "Glob", "Edit", "MultiEdit", "Write", "NotebookEdit")
+                    for path in ("~/.local/state/nixi-whatsapp/**", "~/Downloads/WhatsApp/**", runtime)}
+        expected |= {f"{tool}(~/.local/share/nixi-companion/runtime.json)" for tool in ("Read", "Grep", "Glob")}
+        with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": nixi_env.run_dir()}):
+            for make in (self.s.hooks_file, self.s.send_hooks_file, self.s.readonly_settings_file):
+                data = json.loads(Path(make()).read_text())
+                self.assertEqual(set(data["permissions"]["deny"]), expected)
+            self.mode("readonly")
+            cmd = self.s.build_cmd("claude", False)
+            self.assertEqual(cmd[cmd.index("--settings") + 1], str(self.s.READONLY_SETTINGS_PATH))
 
 
 if __name__ == "__main__":

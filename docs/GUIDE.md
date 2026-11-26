@@ -11,6 +11,7 @@ New here? Start with the <a href="../README.md">README</a>.</p>
 > off: trust/root modes, model picker, updates, history, memory, projects, screenshots and live view. They are left out
 > of this guide. Plugins still work, but you add them in Nix with `services.nixi.companion.plugins` (see
 > [Plugins](#plugins)).
+> WhatsApp summaries use a tool-less, session-free Claude CLI call in Nixi mode too.
 
 ## Talking to it
 
