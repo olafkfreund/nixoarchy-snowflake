@@ -63,7 +63,7 @@
         in
         {
           default = pkgs.mkShell {
-            packages = base;
+            packages = base ++ [ pkgs.go ];
             NIXI_SANDBOX_TESTS = "require";
           };
           # CI (#63): the default tools plus a browser, node and ffmpeg for the fit and docs tests
