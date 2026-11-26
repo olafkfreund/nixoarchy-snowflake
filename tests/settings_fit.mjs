@@ -197,7 +197,7 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   await ev("menu(false); return 1");
 }
 
-// 6g. Stage card open: map card's Settings button collapses stage to tab (stageHide(true)) and opens Settings (a panel asks for no board room: size:244,266); closing Settings returns to the tab's want (size:300,0)
+// 6g. Stage card open: map card's Settings button collapses stage to tab (stageHide(true)) and opens Settings (a panel asks for no board room: size:244,266); closing Settings returns to the tab's want (size:340,0)
 { const mapUnset = { t: "stage", v: 1, kind: "place", trust: "mechanic", dest: "@home", unset: "home" };
   await ev(`stageClose(); await new Promise(r=>setTimeout(r,260)); onEvent(${JSON.stringify(mapUnset)}); await new Promise(r=>setTimeout(r,150)); return 1`);
   await clearMsgs();
@@ -208,11 +208,11 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   await ev("settings(false); return 1");
   const mClose = nonRegion(await msgs());
   const stClose = await ev("return [stgState, stageWant[0], setEl.classList.contains('on'), setWant[0], setWant[1]]");
-  check(stOpen[0] === "tab" && stOpen[1] === 300 && stOpen[3] && stOpen[4] === 244 && stOpen[5] === 266
+  check(stOpen[0] === "tab" && stOpen[1] === 340 && stOpen[3] && stOpen[4] === 244 && stOpen[5] === 266
     && lastSize(mOpen) === "size:244,266" && lastWide(mOpen) === "wide:off"
-    && stClose[0] === "tab" && stClose[1] === 300 && !stClose[2] && stClose[3] === 0 && stClose[4] === 0
-    && lastSize(mClose) === "size:300,0" && lastWide(mClose) === "wide:off",
-    "transition: map stage Settings button collapses stage to tab (stageHide(true)) and closing Settings returns to size:300,0 (a panel asks for no board room: 244,266 open)",
+    && stClose[0] === "tab" && stClose[1] === 340 && !stClose[2] && stClose[3] === 0 && stClose[4] === 0
+    && lastSize(mClose) === "size:340,0" && lastWide(mClose) === "wide:off",
+    "transition: map stage Settings button collapses stage to tab (stageHide(true)) and closing Settings returns to size:340,0 (a panel asks for no board room: 244,266 open)",
     JSON.stringify({ mOpen, stOpen, mClose, stClose }));
   await ev("stageClose(); await new Promise(r=>setTimeout(r,260)); return 1");
 }
@@ -251,7 +251,7 @@ const lastWide = list => [...list].reverse().find(m => m.startsWith("wide:"));
   check(lastSize(m) === "size:244,266" && (await disp("#stgTab")) === "none", "#196 tab, then Settings: size:244,266 and the tab is hidden", JSON.stringify({ m, d: await disp("#stgTab") }));
   await clearMsgs(); await ev("settings(false); return 1"); await sleep(300);
   m = nonRegion(await msgs());
-  check(lastSize(m) === "size:300,0" && (await st())[0] === "tab" && (await disp("#stgTab")) !== "none", "#196 closing Settings: size:300,0 and the tab is back", JSON.stringify({ m, s: await st() }));
+  check(lastSize(m) === "size:340,0" && (await st())[0] === "tab" && (await disp("#stgTab")) !== "none", "#196 closing Settings: size:340,0 and the tab is back", JSON.stringify({ m, s: await st() }));
   await reset();
 
   // stgSize(0) during Settings
