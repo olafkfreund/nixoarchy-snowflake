@@ -6,3 +6,5 @@ __pycache__/
 build/
 dist/
 installer/art/
+# local go build output (#126)
+/whatsapp-bridge/whatsapp-client

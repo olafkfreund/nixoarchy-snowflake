@@ -19,9 +19,10 @@
           pkgs = nixpkgs.legacyPackages.${system};
           nixi-companion = pkgs.callPackage ./nix/package.nix { };
           nixi-status = pkgs.callPackage ./nix/status.nix { };
+          nixi-whatsapp-bridge = pkgs.callPackage ./nix/whatsapp-bridge.nix { };
         in
         {
-          inherit nixi-companion nixi-status;
+          inherit nixi-companion nixi-status nixi-whatsapp-bridge;
           default = nixi-companion;
         }
       );
