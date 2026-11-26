@@ -387,7 +387,12 @@ def _whatsapp_reply(phone_text):
                 pat = re.escape(phrase).replace(r"\{name\}", r"(?P<name>[\w .'-]{1,60}?)").replace(r"\{text\}", r"(?P<text>.+)")
                 m = re.fullmatch(pat, cleaned, re.I | re.S)
                 if m and m["name"].strip() and m["text"].strip():
-                    return {"whatsapp": {"do": "reply", "name": m["name"].strip(), "text": m["text"].strip()}}
+                    name = m["name"].strip()
+                    if code == "pl" and name.lower().endswith("nnie"):
+                        name = name[:-2] + "a"
+                    elif code == "pl" and name.lower().endswith("nny"):
+                        name = name[:-1] + "a"
+                    return {"whatsapp": {"do": "reply", "name": name, "text": m["text"].strip()}}
             else:
                 pat = re.escape(phrase).replace(r"\{name\}", r"(?P<name>[\w .'-]{1,60})")
                 m = re.fullmatch(pat, no_punct, re.I)

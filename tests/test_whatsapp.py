@@ -59,6 +59,9 @@ class FakeWA:
     def new(self, after=0):
         return [row for row in self.news if row["seq"] > after], self.boot
 
+    def latest(self):
+        return {"seq": max((row["seq"] for row in self.news), default=0)}, self.boot
+
     def send(self, jid, text, boot):
         self.calls.append(("send", jid, text, boot))
         if self.before_send:
@@ -272,12 +275,100 @@ class WhatsAppServer(unittest.TestCase):
         self.assertTrue(self.s.wa_show_pending())
         self.assertEqual(self.s.STAGES.current()["kind"], "wa_new")
         self.assertEqual(self.s.wa_poll_once(6), 6)
-        self.assertEqual(len(self.s.WA_PENDING), 0)
+        self.assertEqual(len(self.s.WA_PENDING), 1)  # a visible wa_new is never replaced
         self.s.wa_switch(False)
         self.assertIsNone(self.s.STAGES.current())
 
+    def test_boot_bootstrap_and_pre_send_error(self):
+        self.s.wa_clear()
+        generation = self.s.WA_GEN[0]
+        self.assertTrue(self.s.wa_pair()["ok"])
+        self.assertEqual(self.s.WA_GEN, (generation, "boot-1"))
+        self.s.wa_clear()
+        generation = self.s.WA_GEN[0]
+        self.assertTrue(self.s.wa_search("Anna")["ok"])
+        self.assertEqual(self.s.WA_GEN, (generation, "boot-1"))
+        self.s.wa_clear()
+        generation = self.s.WA_GEN[0]
+        page = self.s.STAGES.put({"v": 1, "kind": "wa_chats", "rows": [{"jid": "1@s.whatsapp.net", "name": "Anna"}]})
+        self.assertTrue(self.s.wa_thread(page["rows"][0]["open"])["ok"])
+        self.assertEqual(self.s.WA_GEN, (generation, "boot-1"))
+        self.s.wa_clear()
+        generation = self.s.WA_GEN[0]
+        self.assertTrue(self.s.wa_open()["ok"])
+        self.assertEqual(self.s.WA_GEN, (generation, "boot-1"))
+        d = self.draft()
+        with mock.patch.object(self.fake, "send", side_effect=self.s.whatsapp.BridgeError("bad request", "boot-1")):
+            self.assertEqual(self.s.wa_send(d, "hi", True)["result"], "not_sent")
+        self.assertEqual(self.s.WA_DRAFT["id"], d)
+        self.s.wa_boot("boot-2")
+        self.assertEqual(self.s.WA_GEN[0], generation + 1)
+
+    def test_poll_skips_more_than_one_page_and_filters_broadcast(self):
+        self.fake.news = [{"seq": n, "jid": "1@s.whatsapp.net", "is_group": False} for n in range(1, 151)]
+        with mock.patch.object(self.fake, "new", side_effect=AssertionError("backlog page read")):
+            self.assertEqual(self.s.wa_poll_once(0), 150)
+        self.assertFalse(self.s.WA_PENDING)
+        self.fake.news.extend([
+            {"seq": 151, "jid": "status@broadcast", "is_group": True, "mentions_me": True},
+            {"seq": 152, "jid": "abc@newsletter", "is_group": True, "mentions_me": True},
+            {"seq": 153, "jid": "1@s.whatsapp.net", "is_group": False, "sender_name": "Anna"},
+        ])
+        self.s.Ambient.dnd = True
+        self.assertEqual(self.s.wa_poll_once(150), 153)
+        self.assertEqual(list(self.s.WA_PENDING), [(self.s.WA_GEN, "1@s.whatsapp.net", "Anna")])
+
+    def test_forget_failure_keeps_setting_and_unit(self):
+        with mock.patch.object(self.fake, "forget", side_effect=self.s.whatsapp.BridgeError("refused", "boot-1")):
+            self.assertEqual(self.s.wa_forget(), {"ok": False})
+        self.assertTrue(self.s.CFG["whatsapp_on"])
+        self.s.subprocess.run.assert_not_called()
+
+    def test_nonexact_direct_reply_shows_pick_card(self):
+        self.fake.chat_rows = [{"jid": "1@s.whatsapp.net", "name": "Annie"}]
+        self.fake.contact_rows = self.fake.chat_rows
+        self.s.wa_quick({"do": "reply", "name": "Anna", "text": "Hi"})
+        self.assertEqual(self.s.STAGES.current()["kind"], "wa_chats")
+        self.assertIsNone(self.s.WA_DRAFT)
+
+    def test_broadcast_thread_cannot_open_draft(self):
+        page = self.s.STAGES.put({"v": 1, "kind": "wa_chats", "rows": [{"jid": "status@broadcast", "name": "Status"}]})
+        self.assertTrue(self.s.wa_thread(page["rows"][0]["open"])["ok"])
+        self.assertTrue(self.s.STAGES.current()["is_group"])
+        self.assertNotIn("reply", self.s.STAGES.current())
+
+    def test_memory_refuses_whatsapp_text(self):
+        self.assertIsNone(self.s.mem_add("Remember my WhatsApp chat with Anna"))
+
+    def test_stale_download_removes_bridge_file(self):
+        page = self.s.STAGES.put({"v": 1, "kind": "wa_thread", "jid": "1@s.whatsapp.net",
+                                  "messages": [{"id": "m1", "kind": "document"}]})
+        token = page["messages"][0]["download"]
+        original = self.fake.download
+        def stale(*args):
+            item = original(*args)
+            self.s.wa_clear("boot-2")
+            return item
+        with mock.patch.object(self.fake, "download", side_effect=stale):
+            self.assertFalse(self.s.wa_download(token)["ok"])
+        self.assertEqual(list((Path(self.fake.run) / "dl").iterdir()), [])
+
+    def test_pair_refresh_keeps_card_and_close_cancels(self):
+        with mock.patch.object(self.fake, "pair_cancel", wraps=self.fake.pair_cancel) as cancel:
+            result = self.s.wa_pair()
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["png"], "data:image/png;base64,xx")
+            card = self.s.STAGES.current()
+            started = card["started"]
+            card["refreshed"] -= 21
+            self.s.wa_pair_tick()
+            self.assertEqual(self.s.STAGES.current()["card"], card["card"])
+            self.assertEqual(self.s.STAGES.current()["started"], started)
+            self.s.stage_act(None, "close")
+            cancel.assert_called()
+
     def test_each_quiet_rule_keeps_notification_queued(self):
-        self.s.WA_PENDING.append((self.s.WA_GEN, "1@s.whatsapp.net"))
+        self.s.WA_PENDING.append((self.s.WA_GEN, "1@s.whatsapp.net", "One"))
         for field in ("meeting", "dnd", "phone_call"):
             setattr(self.s.Ambient, field, True)
             self.assertFalse(self.s.wa_show_pending(), field)
@@ -334,7 +425,7 @@ class WhatsAppServer(unittest.TestCase):
         thread.start()
         self.addCleanup(srv.server_close)
         self.addCleanup(srv.shutdown)
-        for path in ("/api/wa/send", "/api/wa/send-file", "/api/wa/download", "/api/wa/forget", "/api/wa/stage?draft=" + d):
+        for path in ("/api/wa/send", "/api/wa/send-file", "/api/wa/download", "/api/wa/forget", "/api/wa/summary", "/api/wa/stage?draft=" + d):
             conn = http.client.HTTPConnection("127.0.0.1", srv.server_port, timeout=3)
             body = b"abc" if "stage" in path else b"{}"
             conn.request("POST", path, body, {"X-Nixi-Token": self.s.TOKEN,
@@ -354,6 +445,13 @@ class WhatsAppServer(unittest.TestCase):
             self.assertTrue(json.loads(res.read())["ok"])
             conn.close()
             self.assertEqual(self.s.WA_FILE["name"], "a.txt")
+            conn = http.client.HTTPConnection("127.0.0.1", srv.server_port, timeout=3)
+            conn.request("POST", "/api/wa/stage?draft=" + d, b"abc",
+                         {"X-Nixi-Token": self.s.TOKEN, "X-Nixi-Click": self.s.CLICK_KEY,
+                          "X-Nixi-File-Name": "za%C5%BC%C3%B3%C5%82%C4%87.txt", "Content-Length": "3"})
+            self.assertTrue(json.loads(conn.getresponse().read())["ok"])
+            conn.close()
+            self.assertEqual(self.s.WA_FILE["name"], "zażółć.txt")
 
     def test_mentions_and_quick_phrases_and_dispatch(self):
         w = self.s.whatsapp
@@ -385,6 +483,8 @@ class WhatsAppServer(unittest.TestCase):
             self.assertEqual(q.handle("åpne whatsapp med Anna"), {"whatsapp": {"do": "open", "name": "anna"}})
             self.assertEqual(q.handle("svar Anna på whatsapp: Kommer snart"),
                              {"whatsapp": {"do": "reply", "name": "Anna", "text": "Kommer snart"}})
+            self.assertEqual(q.handle("send melding til Anna på WhatsApp og si Hei"),
+                             {"whatsapp": {"do": "reply", "name": "Anna", "text": "Hei"}})
             self.assertEqual(q.handle("send en fil til Anna på whatsapp"),
                              {"whatsapp": {"do": "file", "name": "anna"}})
             self.assertEqual(q.handle("oppsummer whatsapp med Anna"),
@@ -393,7 +493,7 @@ class WhatsAppServer(unittest.TestCase):
             self.assertEqual(q.handle("przeczytaj mojego whatsappa"), {"whatsapp": {"do": "read"}})
             self.assertEqual(q.handle("otwórz whatsappa z Anną"), {"whatsapp": {"do": "open", "name": "anną"}})
             self.assertEqual(q.handle("odpowiedz Annie na whatsappie: Zaraz będę"),
-                             {"whatsapp": {"do": "reply", "name": "Annie", "text": "Zaraz będę"}})
+                             {"whatsapp": {"do": "reply", "name": "Anna", "text": "Zaraz będę"}})
             self.assertEqual(q.handle("wyślij plik do Anny na whatsappie"),
                              {"whatsapp": {"do": "file", "name": "anny"}})
             self.assertEqual(q.handle("podsumuj mojego whatsappa z Anną"),
@@ -401,6 +501,7 @@ class WhatsAppServer(unittest.TestCase):
 
         self.fake.chat_rows = [{"jid": "1@s.whatsapp.net", "name": "Anna", "is_group": False}]
         self.fake.contact_rows = [{"jid": "1@s.whatsapp.net", "name": "Anna"}]
+        self.assertEqual(q.handle("Whats App Anna"), {"whatsapp": {"do": "open", "name": "anna"}})
         # summary only opens the chat; spoken line never includes name or text
         res = self.s.wa_quick(q.handle("summarise my WhatsApp with Anna")["whatsapp"])
         self.assertEqual(self.s.STAGES.current()["kind"], "wa_thread")
@@ -408,6 +509,8 @@ class WhatsAppServer(unittest.TestCase):
         self.assertNotIn("hello", res["say"])
         # Polish inflected name matches Anna and opens draft with text
         with mock.patch.object(self.s.lang, "active", "pl"):
+            self.assertEqual(q.handle("napisz do Anny na WhatsAppie mówiąc Cześć"),
+                             {"whatsapp": {"do": "reply", "name": "Anna", "text": "Cześć"}})
             res = self.s.wa_quick(q.handle("odpowiedz Annie na whatsappie: Cześć")["whatsapp"])
             self.assertEqual(self.s.STAGES.current()["kind"], "wa_draft")
             self.assertEqual(self.s.STAGES.current()["text"], "Cześć")
@@ -437,7 +540,8 @@ class WhatsAppServer(unittest.TestCase):
         self.addCleanup(srv.server_close)
         self.addCleanup(srv.shutdown)
         conn = http.client.HTTPConnection("127.0.0.1", srv.server_port, timeout=3)
-        conn.request("POST", path, json.dumps(body), {"X-Nixi-Token": self.s.TOKEN})
+        conn.request("POST", path, json.dumps(body), {"X-Nixi-Token": self.s.TOKEN,
+                                                  **({"X-Nixi-Click": self.s.CLICK_KEY} if path == "/api/wa/summary" else {})})
         response = conn.getresponse()
         data = response.read()
         conn.close()
@@ -472,6 +576,7 @@ class WhatsAppServer(unittest.TestCase):
     def test_summary_uses_isolated_cli_and_drops_stale_result(self):
         self.assertTrue(self.s.wa_open()["ok"])
         self.assertTrue(self.s.wa_thread(self.s.STAGES.current()["rows"][0]["open"])["ok"])
+        self.s.STAGES.set_visible(True)
         cur = self.s.STAGES.current()
         cur["messages"] = [{"from_me": i % 2 == 0, "text": "x" * 200, "sender_name": "SECRET"} for i in range(60)]
         log = self.tmp / "cli.json"
@@ -504,7 +609,9 @@ class WhatsAppServer(unittest.TestCase):
             self.assertEqual(self.s.STAGES.current()["text"], "Suggested reply")
             thread = self.s.STAGES.put({"v": 1, "kind": "wa_thread", "card": "second", "jid": "1@s.whatsapp.net",
                                         "messages": [{"from_me": False, "text": f"{i:02d}" + "y" * 98} for i in range(60)]})
-            self.assertEqual(self.post("/api/wa/summary", {"card": thread["summary"], "mode": "summary"})[1], {"ok": True})
+            self.s.STAGES.set_visible(True)
+            with mock.patch.dict(self.s.CLICK, {"claimed": True, "spoiled": False}):
+                self.assertEqual(self.post("/api/wa/summary", {"card": thread["summary"], "mode": "summary"})[1], {"ok": True})
             rows = json.loads(json.loads(log.read_text())["input"])
             self.assertEqual(len(rows), 50)
             self.assertEqual([r["text"][:2] for r in rows], [f"{i:02d}" for i in range(50)])
@@ -515,6 +622,7 @@ class WhatsAppServer(unittest.TestCase):
         with mock.patch.dict(os.environ, {"NIXI_CLAUDE": str(script)}), \
              mock.patch.object(self.s.subprocess, "run", side_effect=REAL_RUN):
             self.s.STAGES.put({"v": 1, "kind": "wa_thread", "card": "again", "jid": "1@s.whatsapp.net", "messages": []})
+            self.s.STAGES.set_visible(True)
             self.assertTrue(self.s.wa_summary(self.s.STAGES.current()["summary"], "summary")["ok"])
             self.assertEqual(self.s.STAGES.current()["text"], self.s.lang.t("wa.summaries_need_claude"))
         self.s._ONESHOT_BIN = ...
@@ -523,6 +631,8 @@ class WhatsAppServer(unittest.TestCase):
         self.assertTrue(self.s.wa_open()["ok"])
         self.assertTrue(self.s.wa_thread(self.s.STAGES.current()["rows"][0]["open"])["ok"])
         token = self.s.STAGES.current()["summary"]
+        self.assertFalse(self.s.wa_summary(token, "summary")["ok"])  # collapsed card
+        self.s.STAGES.set_visible(True)
         self.s._ONESHOT_BIN = "/fake/claude"
         def lock_during_call(*args, **kwargs):
             self.s.Ambient.locked = True

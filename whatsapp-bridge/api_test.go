@@ -35,7 +35,10 @@ func (f *fakeWA) SendMessage(context.Context, types.JID, *waProto.Message, ...wh
 	f.sends++
 	return whatsmeow.SendResponse{ID: "sent-id"}, f.sendErr
 }
-func (f *fakeWA) Upload(context.Context, []byte, whatsmeow.MediaType) (whatsmeow.UploadResponse, error) {
+func (f *fakeWA) Upload(ctx context.Context, _ []byte, _ whatsmeow.MediaType) (whatsmeow.UploadResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return whatsmeow.UploadResponse{}, err
+	}
 	return whatsmeow.UploadResponse{}, nil
 }
 func (f *fakeWA) DownloadMediaWithPath(context.Context, string, []byte, []byte, []byte, whatsmeow.MediaType, string, bool) ([]byte, error) {
@@ -73,6 +76,9 @@ func call(b *Bridge, method, path, body, boot string) *httptest.ResponseRecorder
 }
 func TestTokenAndSocket(t *testing.T) {
 	run := t.TempDir()
+	if err := os.WriteFile(filepath.Join(run, "token.tmp"), []byte("stale"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(run, "token"), []byte("old"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +87,7 @@ func TestTokenAndSocket(t *testing.T) {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(filepath.Join(run, "token"))
-	if err != nil || string(b) != token || len(token) != 32 {
+	if err != nil || string(b) != token || len(token) != 43 {
 		t.Fatalf("token: %q %v", b, err)
 	}
 	if _, err := os.Stat(filepath.Join(run, "token.tmp")); !os.IsNotExist(err) {
@@ -102,6 +108,62 @@ func TestTokenAndSocket(t *testing.T) {
 	info, _ = os.Stat(filepath.Join(run, "sock"))
 	if info.Mode().Perm() != 0600 {
 		t.Fatal(info.Mode())
+	}
+}
+
+func TestReconnectStateAndLatest(t *testing.T) {
+	b, f := testBridge(t)
+	b.state = "error"
+	if state, _ := b.status(); state != "ready" {
+		t.Fatal(state)
+	}
+	f.connected = false
+	if err := b.HandleEvent(&events.ClientOutdated{}); err != nil {
+		t.Fatal(err)
+	}
+	if state, _ := b.status(); state != "outdated" {
+		t.Fatal(state)
+	}
+	f.connected = true
+	if err := b.HandleEvent(&events.Connected{}); err != nil {
+		t.Fatal(err)
+	}
+	if state, _ := b.status(); state != "ready" {
+		t.Fatal(state)
+	}
+	for _, jid := range []string{"1@s.whatsapp.net", "g@g.us", "other@unknown", "status@broadcast", "abc@newsletter"} {
+		if err := b.store.StoreMessage(Message{ID: jid, ChatJID: jid, SenderJID: jid, Text: "test"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := b.store.StoreContact("1@s.whatsapp.net", "Anna"); err != nil {
+		t.Fatal(err)
+	}
+	w := call(b, "GET", "/new?latest=1", "", "")
+	if !strings.Contains(w.Body.String(), `"seq":5`) {
+		t.Fatal(w.Body.String())
+	}
+	w = call(b, "GET", "/new?after=0", "", "")
+	if strings.Contains(w.Body.String(), "broadcast") || strings.Contains(w.Body.String(), "newsletter") || !strings.Contains(w.Body.String(), `"jid":"other@unknown"`) || !strings.Contains(w.Body.String(), `"is_group":true`) || !strings.Contains(w.Body.String(), `"sender_name":"Anna"`) {
+		t.Fatal(w.Body.String())
+	}
+}
+
+func TestSendFileSurvivesRequestCancellation(t *testing.T) {
+	b, f := testBridge(t)
+	staged := strings.Repeat("a", 24)
+	if err := os.WriteFile(filepath.Join(b.runDir, "stage", staged), []byte("abc"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	r := httptest.NewRequest("POST", "/send-file", strings.NewReader(`{"jid":"1@s.whatsapp.net","staged":"`+staged+`","file_name":"note.txt"}`)).WithContext(ctx)
+	r.Header.Set("Authorization", "Bearer secret")
+	r.Header.Set("If-Boot", "boot")
+	cancel()
+	w := httptest.NewRecorder()
+	b.ServeHTTP(w, r)
+	if f.sends != 1 || !strings.Contains(w.Body.String(), `"result":"sent"`) {
+		t.Fatal(f.sends, w.Body.String())
 	}
 }
 func TestAuthAndBoot(t *testing.T) {

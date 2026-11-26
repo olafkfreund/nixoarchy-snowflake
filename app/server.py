@@ -42,7 +42,7 @@ import zlib
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlencode, urlparse, urlsplit
+from urllib.parse import parse_qs, unquote, urlencode, urlparse, urlsplit
 
 APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
@@ -608,7 +608,7 @@ def plugin_set(pid, enabled):
 
 def mem_add(text):
     text = " ".join(str(text).split())[:400]
-    if not text:
+    if not text or whatsapp.mentions(text, lang.active):
         return None
     with _mem_lock:
         items = mem_load()
@@ -1014,20 +1014,26 @@ def _is_flux(text, raw):
     return bool(_FLUX_RE.search(text) or (re.search(r"\bflux(?:-cli|d)?\b", text, re.I) and re.search(r"[$`\{\}*?\[]", raw)))
 
 
-_WA_RE = re.compile(r"whatsapp|messages\.db", re.I)
+_WA_RE = re.compile(r"whatsapp|messages\.db|runtime\.json|nixi-w|\.local/state/nixi|downloads/whatsapp", re.I)
+_WA_EXPAND_RE = re.compile(r"[$`*?\[]")
+_WA_HINT_RE = re.compile(r"nixi|messages\.d|/run/user|xdg_runtime_dir|\.local/state|downloads", re.I)
+
+
+def _wa_command(text, raw):
+    return bool(_WA_RE.search(text) or (_WA_EXPAND_RE.search(raw) and _WA_HINT_RE.search(text)))
 
 
 def click_only(cmd):
     raw, clean = _send_texts(cmd)
     # any shell expansion or pattern ($…, `…`, {a,b}, s{e..e}nd, *, ?, [..]) in a gog command can assemble a send word
-    return any("herdr" in t.lower() or _WA_RE.search(t) or _is_gog_send(t) or _is_flux(t, raw) or (_GOG_RE.search(t) and re.search(r"[$`{}*?\[]", raw))
+    return any("herdr" in t.lower() or _wa_command(t, raw) or _is_gog_send(t) or _is_flux(t, raw) or (_GOG_RE.search(t) and re.search(r"[$`{}*?\[]", raw))
                for t in (raw, clean, _send_defaults(raw)))
 
 
 def send_detail(cmd):
     """What sends.log may say about a click-only command: read from fixed places only, never the body or subject."""
     raw, clean = _send_texts(cmd)
-    if any(_WA_RE.search(t) for t in (raw, clean, _send_defaults(raw))):
+    if any(_wa_command(t, raw) for t in (raw, clean, _send_defaults(raw))):
         return {"kind": "whatsapp"}
     if not any(_is_gog_send(t) for t in (raw, clean)):
         m = _HERDR_WRITE_RE.search(clean)
@@ -6757,7 +6763,7 @@ HOOKS_PATH = DATA_DIR / "hooks.json"
 
 
 def wa_deny():
-    runtime = os.environ.get("XDG_RUNTIME_DIR", "/run/user/" + str(os.getuid())).rstrip("/")
+    runtime = (os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}").rstrip("/")
     paths = ("~/.local/state/nixi-whatsapp/**", "~/Downloads/WhatsApp/**", "//" + runtime.lstrip("/") + "/nixi-whatsapp/**")
     deny = [f"{tool}({path})" for tool in ("Read", "Grep", "Glob", "Edit", "MultiEdit", "Write", "NotebookEdit") for path in paths]
     deny += [f"{tool}(~/.local/share/nixi-companion/runtime.json)" for tool in ("Read", "Grep", "Glob")]
@@ -7880,14 +7886,24 @@ def wa_clear(boot=None):
         WA_READY = False
     if file:
         wa_stage_file(file["staged"])
+    pair_open = (STAGES.current() or {}).get("kind") == "wa_pair"
     if STAGES.forget_where(lambda pg: str(pg.get("kind", "")).startswith("wa_")):
         BUS.pub(t="stage_close")
+    if pair_open:
+        try:
+            WA.pair_cancel()
+        except (whatsapp.BridgeError, whatsapp.NotSent):
+            pass
 
 
 def wa_boot(boot):
     if not boot:
         return
+    global WA_GEN
     with WA_LOCK:
+        if WA_GEN[1] is None:
+            WA_GEN = (WA_GEN[0], boot)
+            return
         changed = boot != WA_GEN[1]
     if changed:
         wa_clear(boot)
@@ -7904,7 +7920,8 @@ def wa_call(method, *args):
 
 
 def wa_live(gen, card=None):
-    return (CFG.get("whatsapp_on") is True and gen == WA_GEN and not Ambient.locked and
+    same_boot = gen == WA_GEN or (gen[0] == WA_GEN[0] and gen[1] is None and WA_GEN[1] is not None)
+    return (CFG.get("whatsapp_on") is True and same_boot and not Ambient.locked and
             (card is None or (cur := STAGES.current()) is not None and cur.get("card") == card))
 
 
@@ -7979,7 +7996,7 @@ def wa_pair():
         page = STAGES.put({"v": 1, "kind": "wa_pair", "card": secrets.token_urlsafe(18), "title": lang.t("wa.pair_title"),
                            "started": time.monotonic(), "refreshed": time.monotonic(), **result})
         BUS.pub(t="stage", **wa_event(page, trust))
-    return {"ok": bool(page)}
+    return {"ok": bool(page), "png": result.get("png")}
 
 
 def wa_thread(token):
@@ -7999,20 +8016,21 @@ def wa_thread(token):
     with WA_LOCK:
         if not wa_live(gen, card):
             return {"ok": False}
-        WA_THREAD = {"jid": jid, "gen": gen}
+        WA_THREAD = {"jid": jid, "gen": WA_GEN}
         page = STAGES.put({"v": 1, "kind": "wa_thread", "card": secrets.token_urlsafe(18), "title": lang.t("wa.thread_title"), "jid": jid,
-                           "is_group": jid.endswith("@g.us"), "messages": result if isinstance(result, list) else result.get("messages", [])})
+                           "name": got[1].get("name", ""),
+                           "is_group": not jid.endswith(("@s.whatsapp.net", "@lid")), "messages": result if isinstance(result, list) else result.get("messages", [])})
         BUS.pub(t="stage", **wa_event(page, trust))
     return {"ok": True}
 
 
-def wa_draft(token, kind="wa_draft"):
+def wa_draft(token, kind="wa_draft", text=None):
     global WA_DRAFT, WA_FILE
     got = STAGES.get(token) if isinstance(token, str) else None
     if not got or got[0] not in ("wa_reply", "wa_file") or kind not in ("wa_draft", "wa_file"):
         return {"ok": False}
     jid = got[1]["jid"]
-    if jid.endswith("@g.us") or Desk.locked() is not False:
+    if not jid.endswith(("@s.whatsapp.net", "@lid")) or Desk.locked() is not False:
         return {"ok": False}
     trust = stage_trust()
     with WA_LOCK:
@@ -8024,7 +8042,7 @@ def wa_draft(token, kind="wa_draft"):
                  "made": time.monotonic(), "kind": kind, "card": secrets.token_urlsafe(18)}
         WA_DRAFT = draft
         page = STAGES.put({"v": 1, "kind": kind, "card": draft["card"], "title": lang.t("wa.title"), "draft": draft["id"],
-                           "name": got[1].get("name", jid), "text": got[1].get("text", "")})
+                           "name": got[1].get("name", ""), "text": got[1].get("text", "") if text is None else text})
         BUS.pub(t="stage", **wa_event(page, trust))
     if old:
         wa_stage_file(old["staged"])
@@ -8097,7 +8115,7 @@ def wa_send(draft_id, text, keyed, file=False):
     except whatsapp.Unknown as exc:
         outcome, boot = "unknown", exc.boot
     except whatsapp.BridgeError as exc:
-        outcome, boot = "unknown", exc.boot
+        outcome, boot = "not_sent", exc.boot
     wa_boot(boot)
     exists = not file or (Path(WA.run) / "stage" / staged["staged"]).is_file()
     with WA_LOCK:
@@ -8132,6 +8150,8 @@ def wa_download(token):
     with WA_LOCK:
         live = wa_live(gen, card)
     if not live:
+        if re.fullmatch(r"[0-9]+-[0-9a-f]{16}\.[a-z0-9]{1,8}", item.get("file", "")):
+            (Path(WA.run) / "dl" / item["file"]).unlink(missing_ok=True)
         return {"ok": False}
     try:
         path = WA.fetch(item["file"], name=item.get("name"))
@@ -8156,13 +8176,15 @@ def wa_switch(on):
 
 
 def wa_forget():
-    with WA_LOCK:
-        boot = WA_GEN[1]
-    wa_clear()
     try:
+        wa_status()   # fills the boot; the bridge erases its stores even when WhatsApp itself is unreachable
+        with WA_LOCK:
+            boot = WA_GEN[1]
+        if not boot:
+            return {"ok": False}
         wa_call("forget", boot)
-    except (whatsapp.BridgeError, whatsapp.NotSent):
-        pass
+    except (whatsapp.BridgeError, whatsapp.NotSent, whatsapp.Unknown):
+        return {"ok": False}
     save_config(whatsapp_on=False)
     wa_switch(False)
     return {"ok": True}
@@ -8193,6 +8215,10 @@ def wa_poll_once(seq):
     if not WA_READY:
         return seq
     try:
+        if seq == 0:
+            latest = wa_call("latest")
+            wa_show_pending()
+            return int(latest["seq"]) or -1
         rows = wa_call("new", seq)
     except (whatsapp.BridgeError, whatsapp.NotSent):
         return seq
@@ -8200,31 +8226,30 @@ def wa_poll_once(seq):
     with WA_LOCK:
         if gen != WA_GEN:
             return 0
-        catch_up = seq == 0   # a fresh cursor only catches up: the backlog never becomes cards
         for row in rows:
             seq = max(seq, int(row["seq"]))
-            if not catch_up and (not row.get("is_group") or row.get("mentions_me")):
-                WA_PENDING.append((gen, row["jid"]))
-        if catch_up and not seq:
-            seq = -1   # an empty store: the next message (seq >= 1) is new, so it does become a card
+            jid = row.get("jid", "")
+            if jid.endswith(("@broadcast", "@newsletter")) or (row.get("is_group") and not row.get("mentions_me")):
+                continue
+            WA_PENDING.append((gen, jid, row.get("sender_name", "")))
     wa_show_pending()
     return seq
 
 
 def wa_show_pending():
     cur = STAGES.current()
-    drafting = cur and cur.get("kind") in ("phone_draft", "phone_missed", "phone_note_draft", "wa_draft", "wa_file")
+    drafting = cur and cur.get("kind") in ("phone_draft", "phone_missed", "phone_note_draft", "wa_thread", "wa_draft", "wa_file", "wa_summary", "wa_new")
     if drafting or Desk.locked() is not False or Ambient.meeting or phone_meeting_now() or Ambient.dnd or Ambient.phone_call or Phone.call_active or Hfp.any_call() or Call.visible():
         return False
     trust = stage_trust()
     with WA_LOCK:
         if not WA_PENDING or not CFG.get("whatsapp_on"):
             return False
-        gen, jid = WA_PENDING.popleft()
+        gen, jid, sender = WA_PENDING.popleft()
         if gen != WA_GEN:
             return False
         page = STAGES.put({"v": 1, "kind": "wa_new", "card": secrets.token_urlsafe(18), "title": lang.t("wa.new_title"),
-                           "jid": jid, "name": jid.split("@", 1)[0] if CFG.get("notify_details") else ""})
+                           "jid": jid, "name": sender if CFG.get("notify_details") else ""})
         BUS.pub(t="stage", **wa_event(page, trust))
     return True
 
@@ -8246,11 +8271,7 @@ def _wa_state_card(state):
 
 
 def _wa_find(name, direct_only=False):
-    candidates = [name]
-    if len(name) > 3:
-        candidates.append(name[:-1])
-    if len(name) > 4:
-        candidates.append(name[:-2])
+    candidates = [name] if direct_only else [name, name[:-1], name[:-2]]
     seen = set()
     rows = []
     for q in candidates:
@@ -8262,7 +8283,7 @@ def _wa_find(name, direct_only=False):
             items = res if isinstance(res, list) else res.get("contacts" if method == "contacts" else "chats", [])
             for r in items:
                 jid = r.get("jid")
-                is_group = bool(r.get("is_group") or str(jid or "").endswith("@g.us"))
+                is_group = bool(r.get("is_group") or not str(jid or "").endswith(("@s.whatsapp.net", "@lid")))
                 if not jid or jid in seen or (direct_only and is_group):
                     continue
                 seen.add(jid)
@@ -8301,7 +8322,7 @@ def wa_quick(r):
         if wa_open().get("ok"):
             return {"say": lang.t("wa.not_found"), "mood": "curious"}
         return _wa_state_card("error")
-    if len(rows) > 1:
+    if len(rows) > 1 or (direct_only and str(rows[0].get("name") or "").casefold() != name.casefold()):
         if wa_put("wa_chats", gen, title=lang.t("wa.which_chat"), rows=rows[:20]):
             return {"say": lang.t("wa.which_chat"), "mood": "curious"}
         return _wa_state_card("error")
@@ -8316,15 +8337,8 @@ def wa_quick(r):
         return {"say": lang.t("wa.thread_ready"), "mood": "curious"}
     cur = STAGES.current() or {}
     act_tok = cur.get("file" if do == "file" else "reply")
-    if not act_tok or not wa_draft(act_tok, "wa_file" if do == "file" else "wa_draft").get("ok"):
+    if not act_tok or not wa_draft(act_tok, "wa_file" if do == "file" else "wa_draft", text if do == "reply" else None).get("ok"):
         return _wa_state_card("error")
-    if do == "reply" and text:
-        trust = stage_trust()
-        with WA_LOCK:
-            cur = STAGES.current()
-            if cur and cur.get("kind") == "wa_draft":
-                cur["text"] = text
-                BUS.pub(t="stage", **wa_event(cur, trust))
     return {"say": lang.t("wa.file_ready" if do == "file" else "wa.draft_ready"), "mood": "curious"}
 
 
@@ -8346,7 +8360,7 @@ def oneshot_bin():
 
 def wa_summary(token, mode):
     got = STAGES.get(token) if isinstance(token, str) else None
-    if mode not in ("summary", "suggest") or not got or got[0] != "wa_" + mode or Desk.locked() is not False:
+    if mode not in ("summary", "suggest") or not got or got[0] != "wa_" + mode or Desk.locked() is not False or not STAGES.visible():
         return {"ok": False}
     jid = got[1]["jid"]
     with WA_LOCK:
@@ -8379,11 +8393,12 @@ def wa_summary(token, mode):
             pass
     text = result.stdout.strip()[:1500] if result and result.returncode == 0 else ""
     trust = stage_trust()
+    locked = Desk.locked()
     with WA_LOCK:
-        if not wa_live(gen, card) or WA_THREAD != {"jid": jid, "gen": gen} or Desk.locked() is not False:
+        if not wa_live(gen, card) or WA_THREAD != {"jid": jid, "gen": gen} or locked is not False or not STAGES.visible():
             return {"ok": False}
         page = STAGES.put({"v": 1, "kind": "wa_summary", "card": secrets.token_urlsafe(18), "title": lang.t("wa.summary_title"),
-                           "jid": jid, "text": text or lang.t("wa.summaries_need_claude" if not binary else "wa.unavailable"),
+                           "jid": jid, "name": cur.get("name", ""), "text": text or lang.t("wa.summaries_need_claude" if not binary else "wa.unavailable"),
                            "suggested": bool(text and mode == "suggest")})
         BUS.pub(t="stage", **wa_event(page, trust))
     return {"ok": True}
@@ -8395,7 +8410,6 @@ def wa_worker():
     while CFG.get("whatsapp_on"):
         try:
             seq = wa_poll_once(seq)
-            wa_show_pending()
             wa_pair_tick()
             if time.monotonic() - swept >= 60:
                 wa_sweep()
@@ -8438,10 +8452,6 @@ def wa_pair_tick():
         return
     if Desk.locked() is not False or time.monotonic() - cur["started"] >= 180:
         wa_clear()
-        try:
-            wa_call("pair_cancel")
-        except (whatsapp.BridgeError, whatsapp.NotSent):
-            pass
         return
     if time.monotonic() - cur["refreshed"] < 20:
         return
@@ -10280,6 +10290,11 @@ def stage_act(token, act):
         STAGES.set_visible(act == "shown")
         return {"ok": True}
     if act == "close":
+        if (STAGES.current() or {}).get("kind") == "wa_pair":
+            try:
+                wa_call("pair_cancel")
+            except (whatsapp.BridgeError, whatsapp.NotSent):
+                pass
         STAGES.close()
         BUS.pub(t="stage_close")
         return {"ok": True}
@@ -10963,7 +10978,7 @@ class Handler(BaseHTTPRequestHandler):
                     size = -1
                 if not click_ok(self.headers.get("X-Nixi-Click") or "") or not wa_file_live(draft) or size < 0 or size > WA.max_file:
                     return self._json({"ok": False}, 403)
-                name = self.headers.get("X-Nixi-File-Name") or ""
+                name = unquote(self.headers.get("X-Nixi-File-Name") or "")
                 return self._json(wa_stage(draft, self.rfile, size, name))
             if p in ("/api/wa/send", "/api/wa/send-file", "/api/wa/download", "/api/wa/forget"):
                 if not click_ok(self.headers.get("X-Nixi-Click") or ""):
@@ -10994,6 +11009,8 @@ class Handler(BaseHTTPRequestHandler):
                 b = json.loads(self._body() or b"{}")
                 return self._json(wa_draft(b.get("token"), "wa_file" if p.endswith("file") else "wa_draft") if isinstance(b, dict) else {"ok": False})
             if p == "/api/wa/summary":
+                if not click_ok(self.headers.get("X-Nixi-Click") or ""):
+                    return self._json({"ok": False}, 403)
                 b = json.loads(self._body() or b"{}")
                 return self._json(wa_summary(b.get("card"), b.get("mode")) if isinstance(b, dict) else {"ok": False})
             if p == "/api/wa/cancel":

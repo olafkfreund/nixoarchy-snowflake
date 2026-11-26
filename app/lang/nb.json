@@ -240,6 +240,7 @@
       "vis whatsapp"
     ],
     "wa_open": [
+      "whats app {name}",
       "whatsapp {name}",
       "åpne whatsapp med {name}",
       "åpne whatsapp-samtale med {name}",
@@ -252,6 +253,7 @@
       "svar {name} på whatsapp: {text}",
       "svar {name} på whatsapp, {text}",
       "send melding til {name} på whatsapp: {text}",
+      "send melding til {name} på whatsapp og si {text}",
       "send melding til {name} på whatsapp, {text}",
       "send en whatsapp til {name}: {text}",
       "send en whatsapp til {name}, {text}",

@@ -301,6 +301,7 @@
       "pokaż whatsappa"
     ],
     "wa_open": [
+      "whats app {name}",
       "whatsapp {name}",
       "otwórz whatsappa z {name}",
       "otwórz whatsapp z {name}",
@@ -316,6 +317,7 @@
       "odpisz {name} na whatsappie: {text}",
       "odpisz {name} na whatsappie, {text}",
       "napisz do {name} na whatsappie: {text}",
+      "napisz do {name} na whatsappie mówiąc {text}",
       "napisz do {name} na whatsappie, {text}",
       "wyślij wiadomość do {name} na whatsappie: {text}",
       "wyślij wiadomość do {name} na whatsappie, {text}",

@@ -778,11 +778,18 @@ const acts = () => ev("return __acts.slice()");
       }
       return ofWa(u,o); }; window.__ofWa=ofWa; return 1`);
 
-  // wa_pair refresh calls /api/wa/pair
+  await show(WA_FIX.wa_thread, w => 0);
+  await ev("__waPosts.length=0; const b=[...document.querySelectorAll('#stg .acts .sb')].find(b=>b.textContent==='Summarise'); b.click(); b.focus(); return 1");
+  check(await ev("return __waPosts.length===0"), "wa_summary: synthetic click does not post");
+  await send("Input.dispatchKeyEvent", {type:"keyDown",key:"Enter",code:"Enter",windowsVirtualKeyCode:13,text:"\r"});
+  await send("Input.dispatchKeyEvent", {type:"keyUp",key:"Enter",code:"Enter",windowsVirtualKeyCode:13});
+  await sleep(80);
+  check(await ev("return __waPosts.length===1 && __waPosts[0].path==='/api/wa/summary' && __waPosts[0].click"), "wa_summary: trusted keyboard activation sends click key");
+
+  // wa_pair is refreshed only by server stage events
   await show(WA_FIX.wa_pair, w => 0);
-  await ev("__waPosts.length=0; __waAns={ok:true,png:" + JSON.stringify(WA_QR) + "}; waPairLoop(); return 1");
-  await sleep(60);
-  check(await ev("return __waPosts.length===1 && __waPosts[0].path==='/api/wa/pair' && !!document.querySelector('#stg img.wa-qr')"), "wa_pair: QR renders and refresh calls /api/wa/pair");
+  await ev("__waPosts.length=0; return 1");
+  check(await ev("return __waPosts.length===0 && !!document.querySelector('#stg img.wa-qr')"), "wa_pair: QR renders without page polling");
 
   // wa_chats click opens thread; wa_summary Use as reply opens reply draft; wa_new Open opens thread
   await show(WA_FIX.wa_chats, w => 0);
@@ -807,6 +814,18 @@ const acts = () => ev("return __acts.slice()");
   const stgPost = await ev("return [__waPosts.slice(), document.getElementById('stg').textContent.includes('note.txt')]");
   check(stgPost[0].length === 1 && stgPost[0][0].path === "/api/wa/stage" && stgPost[0][0].query === "?draft=wfdraft1" && stgPost[0][0].body === "hello" && stgPost[0][0].click === true && stgPost[0][0].fname === "note.txt" && stgPost[1], "wa_file: drop uploads bytes to /api/wa/stage with CLICKKEY and file name", JSON.stringify(stgPost));
 
+  await show({ ...WA_FIX.wa_file, file_name: undefined }, w => 0);
+  check(await ev("return document.querySelector('#stg .mact .sb:last-child').disabled"), "wa_file: Send starts disabled without confirmed stage");
+  await ev(`__waPosts.length=0; __waAns={ok:false}; const dt=new DataTransfer(); dt.items.add(new File(['hello'],'zażółć.txt'));
+    const inp=document.querySelector('#stg input[type=file]'); inp.files=dt.files; inp.dispatchEvent(new Event('change',{bubbles:true})); return 1`);
+  await sleep(80);
+  check(await ev("return __waPosts.length===1 && __waPosts[0].fname===encodeURIComponent('zażółć.txt') && document.querySelector('#stg .mact .sb:last-child').disabled"), "wa_file: Polish change-event filename is encoded and failed upload keeps Send disabled");
+  await ev(`document.querySelector('#stg .mcard textarea').value='Edited caption'; onEvent(${JSON.stringify(WA_FIX.wa_file)}); return 1`);
+  check(await ev("return document.querySelector('#stg .mcard textarea').value==='Edited caption' && document.querySelector('#stg .mact .sb:last-child').disabled"), "wa_file: rerender keeps caption and failed upload remains disabled");
+  await show(WA_FIX.wa_draft, w => 0);
+  await ev(`document.querySelector('#stg .mcard textarea').value='Edited reply'; onEvent(${JSON.stringify({ ...WA_FIX.wa_draft, result: 'not_sent' })}); return 1`);
+  check(await ev("return document.querySelector('#stg .mcard textarea').value==='Edited reply'"), "wa_draft: not_sent rerender keeps edited reply");
+
   const keyPress = async (k, code, vk, text) => { for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, key: k, code, windowsVirtualKeyCode: vk, ...(type === "keyDown" && text ? { text } : {}) }); };
   const mouseClick = async (x, y) => {
     await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
@@ -819,6 +838,7 @@ const acts = () => ev("return __acts.slice()");
     ["wa_file (Send file)", WA_FIX.wa_file, "#stg .mact .sb:last-child", "/api/wa/send-file", { draft: "wfdraft1", text: "Here is the file" }, { ok: false, result: "unknown", say: "May have been sent: check your phone." }],
     ["wa_thread (Download)", WA_FIX.wa_thread, "#stg .bd .sb", "/api/wa/download", { token: "wdl1" }, { ok: true, say: "Done." }],
   ]) {
+    await ev("stg=null; waUploadState.clear(); return 1");
     await show(fx, w => 0);
     await ev(`__waPosts.length=0; __waAns=${JSON.stringify(ans)};
       const b=document.querySelector(${JSON.stringify(sel)});

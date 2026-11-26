@@ -81,6 +81,7 @@ class WhatsAppClientTest(unittest.TestCase):
         self.client.contacts("Alice")
         self.client.thread("1@s.whatsapp.net", 9, 12)
         self.client.new(15)
+        self.client.latest()
         self.client.download("1@s.whatsapp.net", "message")
         self.client.send("1@s.whatsapp.net", "hello", "boot-1")
         self.client.send_file("1@s.whatsapp.net", "staged", "caption", "photo.jpg", "boot-1")
@@ -89,7 +90,7 @@ class WhatsAppClientTest(unittest.TestCase):
         self.assertEqual([r[1] for r in self.server.requests], [
             "/status", "/pair", "/pair/cancel", "/chats?q=Alice+%26+Bob&limit=7",
             "/contacts?q=Alice", "/thread?jid=1%40s.whatsapp.net&limit=9&before=12",
-            "/new?after=15", "/download", "/send", "/send-file", "/forget"])
+            "/new?after=15", "/new?latest=1", "/download", "/send", "/send-file", "/forget"])
         self.assertEqual([r[2]["If-Boot"] for r in self.server.requests[-3:]], ["boot-1"] * 3)
         self.assertEqual(self.server.requests[-2][3]["file_name"], "photo.jpg")
 
@@ -181,6 +182,28 @@ class WhatsAppClientTest(unittest.TestCase):
         with self.assertRaises(OSError):
             self.client.fetch(file, dest_dir=self.home)
         self.assertFalse(source.is_symlink())
+
+    def test_fetch_uses_bridge_extension_and_sanitizes_sender(self):
+        file = "123-0123456789abcdef.png"
+        source = self.run / "dl" / file
+        source.write_bytes(b"image")
+        path = self.client.fetch(file, dest_dir=self.home, name="../.\u202ephoto.exe")
+        self.assertEqual(path.name, "photo.png")
+        source.write_bytes(b"image")
+        path = self.client.fetch(file, dest_dir=self.home, name="\u2066...")
+        self.assertEqual(path.name, file)
+
+    def test_send_file_timeout_and_no_none_boot_header(self):
+        seen = []
+        connect = whatsapp._UnixHTTP.connect
+        def watch(conn):
+            seen.append(conn.timeout)
+            return connect(conn)
+        with mock.patch.object(whatsapp._UnixHTTP, "connect", watch):
+            self.client.status()
+            self.client.send_file("1@s.whatsapp.net", "staged", "", "file.txt", None)
+        self.assertEqual(seen, [30, 900])
+        self.assertNotIn("If-Boot", self.server.requests[-1][2])
 
     def test_fetch_removes_partial_copy_and_source_on_error(self):
         file = "123-0123456789abcdef.txt"

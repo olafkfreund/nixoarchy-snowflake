@@ -272,12 +272,15 @@ class ApprovalsTest(unittest.TestCase):
             self.assertEqual("bypassPermissions" in c, m != "ask")
 
     def test_whatsapp_click_guard_checks_all_command_forms(self):
-        for cmd in ("cat ~/Downloads/WhatsApp/a.txt", 'cat whats""app/a.txt', "cat ${X:-messages.db}"):
+        for cmd in ("cat ~/Downloads/WhatsApp/a.txt", 'cat whats""app/a.txt', "cat ${X:-messages.db}",
+                    "cat runtime.json", "ls nixi-w*", "cat ~/.local/state/nixi/x", "cat $XDG_RUNTIME_DIR/*"):
             self.assertTrue(self.s.click_only(cmd), cmd)
             self.assertEqual(self.s.send_detail(cmd), {"kind": "whatsapp"})
         self.assertEqual(self.s.send_detail("herdr agent prompt 1 whatsapp"), {"kind": "whatsapp"})
 
     def test_whatsapp_denials_in_all_settings_modes(self):
+        with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": ""}):
+            self.assertIn(f"Read(//run/user/{os.getuid()}/nixi-whatsapp/**)", self.s.wa_deny()["permissions"]["deny"])
         runtime = "//" + nixi_env.run_dir().lstrip("/") + "/nixi-whatsapp/**"
         expected = {f"{tool}({path})" for tool in ("Read", "Grep", "Glob", "Edit", "MultiEdit", "Write", "NotebookEdit")
                     for path in ("~/.local/state/nixi-whatsapp/**", "~/Downloads/WhatsApp/**", runtime)}

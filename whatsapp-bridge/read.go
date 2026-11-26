@@ -100,7 +100,7 @@ func (s *MessageStore) Thread(jid string, limit int, before int64) ([]Message, e
 
 func (s *MessageStore) NewAfter(seq int64) ([]Message, error) {
 	rows, err := s.db.Query(`SELECT `+messageColumns+` FROM messages
- WHERE seq>? AND history=0 AND from_me=0 AND deleted=0 ORDER BY seq LIMIT 100`, seq)
+ WHERE seq>? AND history=0 AND from_me=0 AND deleted=0 AND chat_jid NOT LIKE '%@broadcast' AND chat_jid NOT LIKE '%@newsletter' ORDER BY seq LIMIT 100`, seq)
 	if err != nil {
 		return nil, err
 	}
@@ -118,4 +118,16 @@ func (s *MessageStore) NewAfter(seq int64) ([]Message, error) {
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+func (s *MessageStore) LatestSeq() (int64, error) {
+	var seq int64
+	err := s.db.QueryRow(`SELECT COALESCE(MAX(seq), 0) FROM messages WHERE history=0 AND from_me=0 AND deleted=0`).Scan(&seq)
+	return seq, err
+}
+
+func (s *MessageStore) SenderName(jid string) string {
+	var name string
+	_ = s.db.QueryRow(`SELECT COALESCE(NULLIF(contacts.name,''), chats.name, '') FROM (SELECT ? AS jid) AS sender LEFT JOIN contacts ON contacts.jid=sender.jid LEFT JOIN chats ON chats.jid=sender.jid`, jid).Scan(&name)
+	return name
 }

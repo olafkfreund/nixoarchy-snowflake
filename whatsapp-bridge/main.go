@@ -37,12 +37,15 @@ func randomHex(n int) (string, error) {
 }
 
 func writeToken(run string) (string, error) {
-	raw := make([]byte, 24)
+	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return "", err
 	}
 	token := base64.RawURLEncoding.EncodeToString(raw)
 	tmp := filepath.Join(run, "token.tmp")
+	if err := os.Remove(tmp); err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
 	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return "", err
@@ -146,6 +149,8 @@ func main() {
 		log.Fatal("boot id unavailable")
 	}
 	client := whatsmeow.NewClient(device, quietLogger{})
+	client.InitialAutoReconnect = true
+	client.EnableAutoReconnect = true
 	b := &Bridge{client: client, transport: client, store: store, state: "unpaired", token: token, boot: boot, stateDir: *state, runDir: *run, maxFile: int64(*maxFileMB) << 20}
 	b.closeAccount = accounts.Close
 	client.AddEventHandler(func(e any) {

@@ -237,6 +237,7 @@
       "any new whatsapp messages"
     ],
     "wa_open": [
+      "whats app {name}",
       "whatsapp {name}",
       "open whatsapp with {name}",
       "open whatsapp chat with {name}",

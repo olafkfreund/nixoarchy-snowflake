@@ -31,7 +31,7 @@ func (b *Bridge) status() (string, string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	state := b.state
-	if state == "relink" || state == "outdated" || state == "error" {
+	if state == "relink" || state == "outdated" {
 		return state, ""
 	}
 	if b.transport != nil && b.transport.IsLoggedIn() && b.transport.IsConnected() {
@@ -98,6 +98,11 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		v, err := b.store.Thread(b.normalJID(jid).String(), int(number(r.URL.Query().Get("limit"))), number(r.URL.Query().Get("before")))
 		b.readReply(w, v, err)
 	case r.Method == "GET" && r.URL.Path == "/new":
+		if r.URL.Query().Get("latest") == "1" {
+			seq, err := b.store.LatestSeq()
+			b.readReply(w, map[string]int64{"seq": seq}, err)
+			return
+		}
 		v, err := b.store.NewAfter(number(r.URL.Query().Get("after")))
 		if err != nil {
 			b.readReply(w, nil, err)
@@ -105,7 +110,10 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		out := make([]any, 0, len(v))
 		for _, m := range v {
-			out = append(out, map[string]any{"seq": m.Seq, "jid": m.ChatJID, "id": m.ID, "at": m.At, "is_group": strings.HasSuffix(m.ChatJID, "@g.us"), "mentions_me": m.MentionsMe, "sender_jid": m.SenderJID})
+			if strings.HasSuffix(m.ChatJID, "@broadcast") || strings.HasSuffix(m.ChatJID, "@newsletter") {
+				continue
+			}
+			out = append(out, map[string]any{"seq": m.Seq, "jid": m.ChatJID, "id": m.ID, "at": m.At, "is_group": !strings.HasSuffix(m.ChatJID, "@s.whatsapp.net") && !strings.HasSuffix(m.ChatJID, "@lid"), "mentions_me": m.MentionsMe, "sender_jid": m.SenderJID, "sender_name": b.store.SenderName(m.SenderJID)})
 		}
 		reply(w, 200, out)
 	case r.Method == "POST" && (r.URL.Path == "/send" || r.URL.Path == "/send-file"):
@@ -123,7 +131,9 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/send" {
 			reply(w, 200, b.send(r.Context(), req.JID, req.Text, "", "", ""))
 		} else {
-			reply(w, 200, b.send(r.Context(), req.JID, "", req.Staged, req.Caption, req.FileName))
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+			reply(w, 200, b.send(ctx, req.JID, "", req.Staged, req.Caption, req.FileName))
 		}
 	case r.Method == "POST" && r.URL.Path == "/download":
 		var req struct {

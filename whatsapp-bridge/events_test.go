@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
@@ -38,6 +39,24 @@ func TestRevokeAndDeleteForMe(t *testing.T) {
 	}
 	if b.state != "relink" {
 		t.Fatalf("state: %q", b.state)
+	}
+}
+
+func TestOutgoingPushNameDoesNotRenameChat(t *testing.T) {
+	s := testStore(t)
+	b := Bridge{store: s}
+	jid := types.JID{User: "123", Server: "s.whatsapp.net"}
+	if err := s.StoreChat(jid.String(), "Anna", false, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	text := "hello"
+	e := &events.Message{Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: jid, Sender: jid, IsFromMe: true}, ID: "outgoing", PushName: "Owner", Timestamp: time.Now()}, Message: &waProto.Message{Conversation: &text}}
+	if err := b.HandleEvent(e); err != nil {
+		t.Fatal(err)
+	}
+	chats, err := s.Chats("", 20)
+	if err != nil || len(chats) != 1 || chats[0].Name != "Anna" {
+		t.Fatal(chats, err)
 	}
 }
 

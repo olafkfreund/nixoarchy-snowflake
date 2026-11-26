@@ -82,6 +82,14 @@ func (b *Bridge) HandleEvent(event any) error {
 		b.mu.Lock()
 		b.state = "relink"
 		b.mu.Unlock()
+	case *events.ClientOutdated:
+		b.mu.Lock()
+		b.state = "outdated"
+		b.mu.Unlock()
+	case *events.Connected:
+		b.mu.Lock()
+		b.state = "ready"
+		b.mu.Unlock()
 	}
 	return nil
 }
@@ -117,7 +125,9 @@ func (b *Bridge) handleMessage(e *events.Message, history bool, name string) err
 		return nil
 	}
 	if name == "" && !e.Info.IsGroup {
-		name = e.Info.PushName
+		if !e.Info.IsFromMe {
+			name = e.Info.PushName
+		}
 		if b.client != nil && b.client.Store != nil {
 			contact, err := b.client.Store.Contacts.GetContact(context.Background(), e.Info.Chat)
 			if err == nil && contact.FullName != "" {

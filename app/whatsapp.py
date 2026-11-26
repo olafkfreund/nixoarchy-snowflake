@@ -94,6 +94,8 @@ class WhatsApp:
 
     def _request(self, method, path, data=None, boot=None):
         conn = _UnixHTTP(self.run)
+        if path == "/send-file":
+            conn.timeout = 900
         write = path in ("/send", "/send-file", "/forget")
         try:
             parent = os.lstat(self.run)
@@ -105,7 +107,7 @@ class WhatsApp:
             finally:
                 os.close(fd)
             headers = {"Authorization": "Bearer " + token}
-            if write:
+            if write and boot is not None:
                 headers["If-Boot"] = boot
             if data is not None:
                 headers["Content-Type"] = "application/json"
@@ -156,6 +158,9 @@ class WhatsApp:
     def new(self, after=0):
         return self._request("GET", "/new?" + urlencode({"after": after}))
 
+    def latest(self):
+        return self._request("GET", "/new?latest=1")
+
     def send(self, jid, text, boot):
         return self._request("POST", "/send", {"jid": jid, "text": text}, boot)
 
@@ -203,11 +208,15 @@ class WhatsApp:
                         raise ValueError("Invalid WhatsApp download")
                     dest = Path(dest_dir) if dest_dir is not None else Path.home() / "Downloads" / "WhatsApp"
                     dest.mkdir(mode=0o700, parents=True, exist_ok=True)
-                    display = os.path.basename((name or file).replace("\\", "/"))
-                    display = "".join(c for c in display if ord(c) >= 32 and ord(c) != 127)
-                    if display in ("", ".", ".."):
-                        display = file
-                    stem, ext = os.path.splitext(display)
+                    display = os.path.basename((name or "").replace("\\", "/"))
+                    display = "".join(c for c in display if ord(c) >= 32 and ord(c) != 127 and
+                                      not 0x202A <= ord(c) <= 0x202E and not 0x2066 <= ord(c) <= 0x2069)
+                    stem = os.path.splitext(display.lstrip("."))[0].strip()
+                    stem = stem.encode("utf-8")[:120].decode("utf-8", "ignore")
+                    if not stem:
+                        stem = os.path.splitext(file)[0]
+                    ext = os.path.splitext(file)[1]
+                    display = stem + ext
                     for index in range(10000):
                         candidate = display if index == 0 else f"{stem}-{index}{ext}"
                         path = dest / candidate

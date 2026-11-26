@@ -491,7 +491,7 @@ class Store:
             page["rows"] = []
             for row in stage.get("rows", []):
                 token = secrets.token_urlsafe(12)
-                toks[token] = ("wa_chat", {"jid": row["jid"]})
+                toks[token] = ("wa_chat", {"jid": row["jid"], "name": row.get("name", "")})
                 page["rows"].append({k: row.get(k) for k in ("name", "is_group", "last_at", "unread", "last_preview")} | {"open": token})
         elif stage["kind"] in ("wa_thread", "wa_new"):
             jid = page.pop("jid", None)
@@ -500,7 +500,7 @@ class Store:
                     if stage["kind"] == "wa_thread" and stage.get("is_group"):
                         continue
                     token = secrets.token_urlsafe(12)
-                    toks[token] = ("wa_" + action, {"jid": jid})
+                    toks[token] = ("wa_" + action, {"jid": jid, "name": stage.get("name", "")})
                     page[action] = token
                 if stage["kind"] == "wa_thread":
                     page["messages"] = []
@@ -517,7 +517,7 @@ class Store:
             jid = page.pop("jid", None)
             if jid and stage.get("suggested"):
                 token = secrets.token_urlsafe(12)
-                toks[token] = ("wa_reply", {"jid": jid, "text": stage.get("text", "")})
+                toks[token] = ("wa_reply", {"jid": jid, "name": stage.get("name", ""), "text": stage.get("text", "")})
                 page["reply"] = token
         elif stage["kind"] in ("wa_pair", "wa_draft", "wa_file"):
             page.pop("jid", None)
