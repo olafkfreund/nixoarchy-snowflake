@@ -49,7 +49,9 @@ class WhatsAppClientTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(prefix="nixi-wa-test-", dir=nixi_env.run_dir())
         self.home = Path(self.tmp.name) / "home"
         self.home.mkdir(mode=0o700)
-        self.env = mock.patch.dict(os.environ, nixi_env.server_env(os.environ, self.home) | {"HOME": str(self.home)})
+        # a short runtime dir: CI's work paths push a Unix socket path past its 108-byte limit
+        self.short = tempfile.TemporaryDirectory(prefix="wa", dir="/tmp")
+        self.env = mock.patch.dict(os.environ, nixi_env.server_env(os.environ, self.home) | {"HOME": str(self.home), "XDG_RUNTIME_DIR": self.short.name})
         self.env.start()
         self.run = Path(os.environ["XDG_RUNTIME_DIR"]) / "nixi-whatsapp"
         self.run.mkdir(mode=0o700)
@@ -71,6 +73,7 @@ class WhatsAppClientTest(unittest.TestCase):
         self.thread.join()
         self.env.stop()
         self.tmp.cleanup()
+        self.short.cleanup()
 
     def test_api_token_boot_and_json(self):
         data, boot = self.client.status()
