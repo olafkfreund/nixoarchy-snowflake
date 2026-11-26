@@ -19,9 +19,10 @@
           pkgs = nixpkgs.legacyPackages.${system};
           nixi-companion = pkgs.callPackage ./nix/package.nix { };
           nixi-status = pkgs.callPackage ./nix/status.nix { };
+          nixi-whatsapp-bridge = pkgs.callPackage ./nix/whatsapp-bridge.nix { };
         in
         {
-          inherit nixi-companion nixi-status;
+          inherit nixi-companion nixi-status nixi-whatsapp-bridge;
           default = nixi-companion;
         }
       );
@@ -63,7 +64,7 @@
         in
         {
           default = pkgs.mkShell {
-            packages = base;
+            packages = base ++ [ pkgs.go ];
             NIXI_SANDBOX_TESTS = "require";
           };
           # CI (#63): the default tools plus a browser, node and ffmpeg for the fit and docs tests

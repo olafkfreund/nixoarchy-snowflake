@@ -427,7 +427,7 @@ class Store:
     @staticmethod
     def _keep(e):
         """Private mail and phone stages, and stale choosers, never come back."""
-        return None if e and e[0].get("kind") in ("mail", "phone_pick", "phone_sms", "phone_threads", "phone_draft", "phone_missed", "phone_thread", "phone_notes", "phone_note_draft", "phone_call_gateway", "phone_call_pick", "phone_call_confirm") else e
+        return None if e and e[0].get("kind") in ("mail", "phone_pick", "phone_sms", "phone_threads", "phone_draft", "phone_missed", "phone_thread", "phone_notes", "phone_note_draft", "phone_call_gateway", "phone_call_pick", "phone_call_confirm", "wa_pair", "wa_chats", "wa_thread", "wa_draft", "wa_file", "wa_summary", "wa_new") else e
 
     def put(self, stage, refresh=None):
         """-> the stage for the page: items (or the stage) carry a token, nothing else added."""
@@ -487,6 +487,40 @@ class Store:
             if stage.get("number"):
                 page["reply"] = secrets.token_urlsafe(12)
                 toks[page["reply"]] = ("phone_reply", {"device": stage["device"], "number": stage["number"], "name": stage["name"], "text": ""})
+        elif stage["kind"] == "wa_chats":
+            page["rows"] = []
+            for row in stage.get("rows", []):
+                token = secrets.token_urlsafe(12)
+                toks[token] = ("wa_chat", {"jid": row["jid"], "name": row.get("name", "")})
+                page["rows"].append({k: row.get(k) for k in ("name", "is_group", "last_at", "unread", "last_preview")} | {"open": token})
+        elif stage["kind"] in ("wa_thread", "wa_new"):
+            jid = page.pop("jid", None)
+            if jid:
+                for action in (("open",) if stage["kind"] == "wa_new" else ("reply", "file", "summary", "suggest")):
+                    if stage["kind"] == "wa_thread" and stage.get("is_group"):
+                        continue
+                    token = secrets.token_urlsafe(12)
+                    toks[token] = ("wa_" + action, {"jid": jid, "name": stage.get("name", "")})
+                    page[action] = token
+                if stage["kind"] == "wa_thread":
+                    page["messages"] = []
+                    for msg in stage.get("messages", []):
+                        shown = {k: msg.get(k) for k in ("from_me", "sender_name", "at", "text", "kind", "caption", "file_name", "size", "edited", "deleted")}
+                        if shown["kind"] == "audio":
+                            shown["kind"] = "voice message"
+                        if msg.get("id") and msg.get("kind") in ("audio", "image", "video", "document", "sticker"):
+                            token = secrets.token_urlsafe(12)
+                            toks[token] = ("wa_download", {"jid": jid, "id": msg["id"]})
+                            shown["download"] = token
+                        page["messages"].append(shown)
+        elif stage["kind"] == "wa_summary":
+            jid = page.pop("jid", None)
+            if jid and stage.get("suggested"):
+                token = secrets.token_urlsafe(12)
+                toks[token] = ("wa_reply", {"jid": jid, "name": stage.get("name", ""), "text": stage.get("text", "")})
+                page["reply"] = token
+        elif stage["kind"] in ("wa_pair", "wa_draft", "wa_file"):
+            page.pop("jid", None)
         elif stage["kind"] == "phone_notes":
             page.pop("text", None)
             page["rows"] = []
