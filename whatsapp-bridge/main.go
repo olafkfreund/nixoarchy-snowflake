@@ -72,6 +72,22 @@ func writeToken(run string) (string, error) {
 	return token, err
 }
 
+// openAccounts opens whatsmeow's device store. Its Upgrade refuses SQLite without foreign keys, so they are on in the DSN
+// (a PRAGMA would only reach one pooled connection).
+func openAccounts(path string) (*sqlstore.Container, error) {
+	db, err := sql.Open("sqlite3", "file:"+path+"?_foreign_keys=on&_journal_mode=WAL&_busy_timeout=5000")
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1)
+	accounts := sqlstore.NewWithDB(db, "sqlite3", quietLogger{})
+	if err = accounts.Upgrade(context.Background()); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return accounts, nil
+}
+
 func clearDir(path string) error {
 	if err := os.RemoveAll(path); err != nil {
 		return err
@@ -115,16 +131,8 @@ func main() {
 			log.Fatal("runtime directory unavailable")
 		}
 	}
-	accountDB, err := sql.Open("sqlite3", filepath.Join(*state, "whatsapp.db"))
+	accounts, err := openAccounts(filepath.Join(*state, "whatsapp.db"))
 	if err != nil {
-		log.Fatal("account store unavailable")
-	}
-	accountDB.SetMaxOpenConns(1)
-	if _, err = accountDB.Exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000"); err != nil {
-		log.Fatal("account store unavailable")
-	}
-	accounts := sqlstore.NewWithDB(accountDB, "sqlite3", quietLogger{})
-	if err = accounts.Upgrade(context.Background()); err != nil {
 		log.Fatal("account store unavailable")
 	}
 	defer accounts.Close()
@@ -165,7 +173,7 @@ func main() {
 	defer l.Close()
 	server := &http.Server{Handler: b}
 	b.stop = func() { server.Close() }
-	if !device.ID.IsEmpty() {
+	if device.ID != nil && !device.ID.IsEmpty() { // a new device has no ID yet
 		b.state = "connecting"
 		go b.connect()
 	}
