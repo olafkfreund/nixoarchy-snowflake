@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
@@ -135,5 +136,17 @@ func TestThreadOrdersByTimeAndKeepsEditedCaption(t *testing.T) {
 	rows, _ = s.Thread(jid, 1, 0)
 	if rows[0].Caption != "edited" {
 		t.Fatalf("edited caption lost on replay: %+v", rows[0])
+	}
+}
+
+func TestAccountStoreOpensWithForeignKeys(t *testing.T) {
+	// whatsmeow's Upgrade refuses SQLite without foreign keys; this is what failed on the first real start
+	accounts, err := openAccounts(filepath.Join(t.TempDir(), "whatsapp.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer accounts.Close()
+	if _, err := accounts.GetFirstDevice(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }

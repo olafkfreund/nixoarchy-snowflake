@@ -47,7 +47,7 @@ func (b *Bridge) cancelPair() {
 func (b *Bridge) pairReply(w http.ResponseWriter) {
 	b.mu.Lock()
 	if b.pair == nil {
-		if b.transport == nil || b.transport.IsLoggedIn() || (b.client != nil && b.client.Store != nil && !b.client.Store.ID.IsEmpty()) {
+		if b.transport == nil || b.transport.IsLoggedIn() || (b.client != nil && b.client.Store != nil && b.client.Store.ID != nil && !b.client.Store.ID.IsEmpty()) {
 			b.mu.Unlock()
 			reply(w, 409, map[string]string{"error": "already paired"})
 			return
