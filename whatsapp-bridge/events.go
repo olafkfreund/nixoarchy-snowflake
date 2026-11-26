@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"go.mau.fi/whatsmeow"
@@ -13,12 +14,26 @@ import (
 )
 
 type Bridge struct {
-	client *whatsmeow.Client
-	store  *MessageStore
-	state  string
+	client                        *whatsmeow.Client
+	transport                     WAClient
+	store                         *MessageStore
+	state                         string
+	mu                            sync.Mutex
+	pair                          *pairSession
+	boot, token, stateDir, runDir string
+	maxFile                       int64
+	stop                          func()
+	closeAccount                  func() error
+	forgetting                    bool
 }
 
 func (b *Bridge) HandleEvent(event any) error {
+	b.mu.Lock()
+	forgetting := b.forgetting
+	b.mu.Unlock()
+	if forgetting {
+		return nil
+	}
 	switch e := event.(type) {
 	case *events.Message:
 		return b.handleMessage(e, false, "")
@@ -28,12 +43,12 @@ func (b *Bridge) HandleEvent(event any) error {
 			if name == "" {
 				name = e.Action.GetFirstName()
 			}
-			return b.store.StoreContact(e.JID.String(), name)
+			return b.store.StoreContact(b.normalJID(e.JID).String(), name)
 		}
 	case *events.PushName:
-		return b.store.StoreContact(e.JID.String(), e.NewPushName)
+		return b.store.StoreContact(b.normalJID(e.JID).String(), e.NewPushName)
 	case *events.DeleteForMe:
-		return b.store.Tombstone(e.MessageID, e.ChatJID.String())
+		return b.store.Tombstone(e.MessageID, b.normalJID(e.ChatJID).String())
 	case *events.HistorySync:
 		if e.Data == nil || b.client == nil {
 			return nil
@@ -59,18 +74,20 @@ func (b *Bridge) HandleEvent(event any) error {
 					return err
 				}
 			}
-			if err = b.store.SetUnread(jid.String(), c.GetUnreadCount()); err != nil {
+			if err = b.store.SetUnread(b.normalJID(jid).String(), c.GetUnreadCount()); err != nil {
 				return err
 			}
 		}
 	case *events.LoggedOut:
+		b.mu.Lock()
 		b.state = "relink"
+		b.mu.Unlock()
 	}
 	return nil
 }
 
 func (b *Bridge) handleMessage(e *events.Message, history bool, name string) error {
-	jid := e.Info.Chat.String()
+	jid := b.normalJID(e.Info.Chat).String()
 	p := e.Message
 	if protocol := p.GetProtocolMessage(); protocol != nil {
 		switch protocol.GetType() {
@@ -89,7 +106,7 @@ func (b *Bridge) handleMessage(e *events.Message, history bool, name string) err
 		}
 		return nil
 	}
-	m := Message{ID: string(e.Info.ID), ChatJID: jid, SenderJID: e.Info.Sender.String(), SenderName: e.Info.PushName,
+	m := Message{ID: string(e.Info.ID), ChatJID: jid, SenderJID: b.normalJID(e.Info.Sender).String(), SenderName: e.Info.PushName,
 		At: e.Info.Timestamp.Unix(), FromMe: e.Info.IsFromMe, History: history, Edited: e.IsEdit,
 		Text: extractText(p), MentionsMe: b.mentionsMe(p)}
 	if m.At < 0 {
@@ -130,6 +147,7 @@ func mediaInfo(p *waProto.Message, m *Message) {
 	}
 	if v := p.GetImageMessage(); v != nil {
 		m.Kind = "image"
+		m.MimeType = v.GetMimetype()
 		m.Caption = v.GetCaption()
 		m.DirectPath = v.GetDirectPath()
 		m.MediaKey = v.GetMediaKey()
@@ -140,6 +158,7 @@ func mediaInfo(p *waProto.Message, m *Message) {
 	}
 	if v := p.GetVideoMessage(); v != nil {
 		m.Kind = "video"
+		m.MimeType = v.GetMimetype()
 		m.Caption = v.GetCaption()
 		m.DirectPath = v.GetDirectPath()
 		m.MediaKey = v.GetMediaKey()
@@ -150,6 +169,7 @@ func mediaInfo(p *waProto.Message, m *Message) {
 	}
 	if v := p.GetAudioMessage(); v != nil {
 		m.Kind = "audio"
+		m.MimeType = v.GetMimetype()
 		m.DirectPath = v.GetDirectPath()
 		m.MediaKey = v.GetMediaKey()
 		m.FileSHA256 = v.GetFileSHA256()
@@ -159,6 +179,7 @@ func mediaInfo(p *waProto.Message, m *Message) {
 	}
 	if v := p.GetDocumentMessage(); v != nil {
 		m.Kind = "document"
+		m.MimeType = v.GetMimetype()
 		m.Caption = v.GetCaption()
 		m.FileName = v.GetFileName()
 		m.DirectPath = v.GetDirectPath()
