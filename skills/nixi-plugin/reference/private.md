@@ -1,10 +1,10 @@
 # Private characters (`character.private: true`)
 
 A character plugin with `"private": true` is for character art that must remain
-yours alone on the local machine (`docs/GUIDE.md:492–495`,
+yours alone on the local machine (`docs/GUIDE.md:493–496`,
 `app/plugins.py:34–36`, `:299–313`, `:336–350`, `:1036–1037`).
 
-## Rules enforced by Nixi
+## Private character rules
 
 1. **Local folder only.** A private character loads only from
    `$XDG_DATA_HOME/nixi-companion/plugins/<id>` (default
@@ -15,29 +15,35 @@ yours alone on the local machine (`docs/GUIDE.md:492–495`,
 2. **Never run `--check` or build with Nix.** `plugins.py --check` (and
    therefore `mkCompanionPlugin`) deliberately rejects every manifest where
    `character.private` is `true` (`app/plugins.py:1036–1037`). Never name a
-   private folder in any Nix expression (`docs/GUIDE.md:494–495`), and keep it
+   private folder in any Nix expression (`docs/GUIDE.md:495–496`), and keep it
    out of every git repository.
-3. **Owner-only permissions (`0700` / `0600`).** Every directory and file inside
-   the plugin folder must be owned by your user ID and have zero group/other
-   permission bits (`st_mode & 0o077 == 0`; `app/plugins.py:299–313`). Otherwise
+3. **Owner-only permissions.** The folder and every item inside it must be
+   owned by your user ID and have no group or other permission bits (`0700`
+   directories and `0600` files are examples; `app/plugins.py:299–313`). Otherwise
    Nixi refuses it with:
    `the folder is readable by other users: run chmod -R go= <folder>`
-4. **Redacted error messages.** If anything in the manifest or SVG art fails
-   validation, Nixi replaces the detailed parser or sanitiser message with the
-   fixed string `the character art was refused` so neither file names nor SVG
-   contents are ever logged (`app/plugins.py:34`, `:349–350`,
-   `app/server.py:2569`).
+4. **Redacted error messages.** A malformed or unreadable manifest reports
+   `plugin.json unreadable`. After the scanner reads `character.private: true`,
+   it reports `the character art was refused` for most validation failures;
+   store and permission failures have their own fixed messages
+   (`app/plugins.py:327–350`). SVG load failures also use the art message
+   (`app/server.py:2569`).
 
 ## Step-by-step setup
 
-1. Create the folder directly in your local plugins directory:
+1. Create the owner-only folder directly in your local plugins directory
+   **before writing or copying any art**. Keep `umask 077` in effect while
+   writing the files:
 
    ```bash
+   umask 077
    DIR="${XDG_DATA_HOME:-$HOME/.local/share}/nixi-companion/plugins/my-character"
-   mkdir -p "$DIR"
+   install -d -m 700 "$DIR"
+   chmod -R go= "$DIR"
    ```
 
-2. Write `plugin.json`, `back.svg` and `front.svg` inside `$DIR` following the
+2. Write `plugin.json`, `back.svg` and `front.svg` inside that folder with
+   `umask 077` still in effect, following the
    character and SVG rules in [manifest.md](manifest.md) (draw within
    `viewBox="-96 -120 192 220"`):
 
@@ -59,11 +65,5 @@ yours alone on the local machine (`docs/GUIDE.md:492–495`,
    }
    ```
 
-3. Lock down the permissions:
-
-   ```bash
-   chmod -R go= "$DIR"
-   ```
-
-4. Open Settings → **Plugins**, turn `my-character` on, then select
+3. Open Settings → **Plugins**, turn `my-character` on, then select
    `plug:my-character` in Settings → **Look** → **Character**.

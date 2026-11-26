@@ -1,6 +1,9 @@
 ---
 name: nixi-plugin
-description: Make, check, install and share a Nixi companion plugin (quips, prop, character, notifications, reactions or stage). Triggers: "make a Nixi plugin", "Nixi companion plugin", "share a plugin".
+description: >-
+  Make, check, install and share a Nixi companion plugin (quips, prop,
+  character, notifications, reactions or stage). Triggers: "make a Nixi plugin",
+  "Nixi companion plugin", "share a plugin".
 ---
 
 # Making and sharing a Nixi companion plugin
@@ -29,17 +32,27 @@ one. Pick what you are building and inspect the matching example under
 | character | A whole body he wears (`plug:<id>` under Character) | *(none — see [reference/manifest.md](reference/manifest.md) and [reference/private.md](reference/private.md))* |
 | notifications | Routing an app's or host's notifications into a category | `plugins/examples/element-chat/` |
 | reactions | Triggering an ambient reaction for an app or host | *(none — see [reference/manifest.md](reference/manifest.md))* |
-| stage | Running a sandboxed program that returns a card | `plugins/examples/nix-status/`, `plugins/examples/rss-headlines/`, `plugins/examples/news/` |
+| stage | Running a sandboxed program that returns a card | `plugins/examples/nix-status/`, `plugins/examples/rss-headlines/` |
 
-### 2. Copy the template
+The built-in `news` plugin is useful to read, but its `videos: true` setting is
+reserved for the `news` ID, so do not copy it for another plugin.
+
+### 2. Private characters branch off before copying or editing any art
+
+If your plugin defines a character with `"private": true`, follow
+[reference/private.md](reference/private.md) now. Create the owner-only local
+destination before writing or copying any character art. Keep it out of Nix
+and repositories (`app/plugins.py:1036–1037`, `docs/GUIDE.md:493–496`).
+
+### 2b. Copy the template for other plugins
 
 Copy the `template/` folder next to this `SKILL.md` into a fresh directory with
-`-rL --no-preserve=mode`, then restore the executable bit on `run`:
+`-rL --no-preserve=mode`:
 
 ```bash
 SKILL_DIR="$(dirname /path/to/skills/nixi-plugin/SKILL.md)"
-cp -rL --no-preserve=mode "$SKILL_DIR/template/." ./my-plugin
-chmod +x ./my-plugin/run
+mkdir -p ./my-plugin
+cp -rL --no-preserve=mode "$SKILL_DIR/template/." ./my-plugin/
 ```
 
 Why `-L --no-preserve=mode` matters: when this skill is installed through Home
@@ -47,25 +60,23 @@ Manager, files inside `template/` may be symlinks into `/nix/store` with
 read-only modes. The plugin checker and runtime scanner reject any folder that
 contains a symlink (`app/plugins.py:327`, `:1039`).
 
-Open `plugin.json`, change `id` (and `pname` in `flake.nix`) to your plugin's
-lowercase ID, replace the sample stage phrase with your own, and edit the files
-for the kind you chose.
-
-#### 2b. Private characters branch off here, before any check or build
-
-If your plugin defines a character with `"private": true`, stop here and follow
-[reference/private.md](reference/private.md). Private characters stay a local
-folder in `~/.local/share/nixi-companion/plugins/<id>` with owner-only
-permissions (`chmod -R go=`), and never use `--check`, Nix or a repository
-(`app/plugins.py:1036`, `docs/GUIDE.md:492–495`).
+Open `./my-plugin/plugin.json`, change `id` (and `pname` in
+`./my-plugin/flake.nix`) to your plugin's lowercase ID, and replace the sample
+phrase. The template is a stage plugin: keep `stage` and run `chmod +x
+./my-plugin/run` only for stage plugins. For any other kind, delete the `stage`
+block and `run`; it then needs neither stage consent nor bubblewrap. Edit the
+remaining files for the kind you chose.
 
 ### 3. Check
 
-1. **Build-time check.** Inside your plugin folder, run:
+1. **Build-time check.** From the directory containing `my-plugin`, run:
 
    ```bash
-   nix build --no-link
+   (cd ./my-plugin && nix build --no-link)
    ```
+
+   If `my-plugin` is in a git repository, run `git add` on its files before
+   this build: Nix only sees tracked files from a git source.
 
    The template's `flake.nix` calls `mkCompanionPlugin`, which runs
    `plugins.py --check` during `checkPhase` (`nix/plugin.nix:19`). Always pass
@@ -79,14 +90,16 @@ permissions (`chmod -R go=`), and never use `--check`, Nix or a repository
 
    ```bash
    mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/nixi-companion/plugins"
-   cp -rL --no-preserve=mode ./my-plugin "${XDG_DATA_HOME:-$HOME/.local/share}/nixi-companion/plugins/my-plugin"
-   chmod +x "${XDG_DATA_HOME:-$HOME/.local/share}/nixi-companion/plugins/my-plugin/run"
+   dest="${XDG_DATA_HOME:-$HOME/.local/share}/nixi-companion/plugins/my-plugin"
+   mkdir -p "$dest"
+   cp -rL --no-preserve=mode ./my-plugin/. "$dest/"
    ```
 
+   For a stage plugin, also run `chmod +x "$dest/run"`.
+
    Open Settings → **Plugins** and turn it on. Only a **folder** stage plugin
-   shows the consent card (`app/server.py:2717`); a Nix-installed stage plugin
-   counts as allowed once you switch it on (`docs/GUIDE.md:490–491`,
-   `:504–505`).
+   shows the consent card (`app/server.py:2724–2739`); a Nix-installed stage
+   plugin counts as allowed once you switch it on (`docs/GUIDE.md:507–510`).
 
 3. **Verify the behaviour:**
    - **Stage plugins:** say the phrase (or type it) and confirm the card
@@ -110,7 +123,7 @@ permissions (`chmod -R go=`), and never use `--check`, Nix or a repository
      (`app/plugins.py:639`):
      `can't tell which addresses this computer has, so a plugin that uses the internet can't run safely`
 
-*(Private characters take the branch at step 2b, before any build.)*
+*(Private characters take the branch at step 2, before any build.)*
 
 ### 4. Install
 
@@ -130,26 +143,24 @@ add the GitHub topic `nixi-plugin`. Users add your repository to their flake
 
 ## Never do this
 
-Every rule below is enforced by the checker, the sandbox or the private-art
-guard:
-
 - **Never combine `network: true` with `reads`** (`app/plugins.py:219–224`). A
-  plugin that reads `system-status`, `peer-status` or `phone-status` cannot use
-  the network.
+  network stage cannot use any status feed; see [reference/stage.md](reference/stage.md).
 - **Never point `argv[0]` outside the plugin folder**
   (`app/plugins.py:225–226`). `argv[0]` must be a regular file inside the
   folder.
 - **Never use absolute paths or `..` in `argv` arguments**
   (`app/plugins.py:227–228`). Any word starting with `/`, containing `=/`, or
   containing `..` as a `/` or `=` segment is rejected.
-- **Never put symlinks or hard links inside a plugin folder**
-  (`app/plugins.py:327`, `:374–375`, `:390–391`, `:1039`).
-- **Never set `videos: true`** (`app/plugins.py:200–204`). Only the built-in
-  `news` plugin may search YouTube (`videos: false` is accepted).
+- **Never put symlinks or hard links inside a folder plugin.** The checker and
+  scanner reject symlinks (`app/plugins.py:327`, `:1039`); the stage snapshot
+  rejects hard links outside the Nix store (`app/plugins.py:370–391`).
+- **Never set `videos: true` for an ID other than `news`**
+  (`app/plugins.py:200–204`). `videos: false` is accepted.
 - **Never skip the SVG sanitiser limits** (`app/plugins.py:462–578`). Any
   disallowed element, attribute, text node, transform scale or file size over
   16 KiB drops the prop or character and fails `--check`.
-- **Never commit, build with Nix or run `--check` on a private character**
-  (`docs/GUIDE.md:492–495`, `app/plugins.py:1036–1037`).
+- **Never commit or name a private character in a Nix expression.** Follow
+  this rule before Nix takes the source. The build check rejects a private
+  manifest only afterward (`docs/GUIDE.md:493–496`, `app/plugins.py:1036–1037`).
 
 Update skills/nixi-plugin/reference when the plugin API changes.

@@ -1,6 +1,7 @@
 """update skills/nixi-plugin/reference when the plugin API changes"""
 import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -45,11 +46,12 @@ class PluginSkillTest(unittest.TestCase):
             "categories": ("manifest.md", plugins.CATEGORIES),
             "reactions": ("manifest.md", plugins.REACTIONS),
             "stage keys": ("stage.md", plugins.STAGE_KEYS),
-            "reads": ("stage.md", {"system-status", "peer-status", "phone-status"}),
+            "reads": ("stage.md", None),
         }
         found = {}
-        for filename in ("manifest.md", "stage.md"):
-            lines = (SKILL / "reference" / filename).read_text().splitlines()
+        for path in sorted((SKILL / "reference").glob("*.md")):
+            filename = path.name
+            lines = path.read_text().splitlines()
             for i, line in enumerate(lines):
                 if not line.startswith("### Table: "):
                     continue
@@ -58,6 +60,8 @@ class PluginSkillTest(unittest.TestCase):
                 # Tables end at the first non-table line after their header.
                 start = next(j for j, row in enumerate(lines[i + 1:]) if row.startswith("|")) + i + 1
                 self.assertTrue(all(not row.strip() for row in lines[i + 1:start]))
+                separator = [cell.strip() for cell in lines[start + 1].strip("|").split("|")]
+                self.assertTrue(separator and all(re.fullmatch(r":?-{3,}:?", cell) for cell in separator))
                 rows = []
                 for row in lines[start + 2:]:
                     if not row.startswith("|"):
@@ -70,12 +74,14 @@ class PluginSkillTest(unittest.TestCase):
                 actual_file, entries = found[heading]
                 self.assertEqual(actual_file, filename)
                 self.assertTrue(entries)
-                for entry in entries:
-                    self.assertIn(entry, allowed)
+                self.assertEqual(len(entries), len(set(entries)))
+                if allowed is not None:
+                    for entry in entries:
+                        self.assertIn(entry, allowed)
         manifest = json.loads((TEMPLATE / "plugin.json").read_text())
         for read in found["reads"][1]:
             with self.subTest(read=read):
-                sample = {**manifest, "stage": {**manifest["stage"], "reads": [read]}}
+                sample = {**manifest, "stage": {**manifest["stage"], "network": False, "reads": [read]}}
                 self.assertIsNone(plugins._check(sample, TEMPLATE))
 
     def test_skill_has_no_symlinks_or_private_template(self):
@@ -85,6 +91,7 @@ class PluginSkillTest(unittest.TestCase):
                 self.assertFalse(path.is_symlink(), str(path))
         manifest = json.loads((TEMPLATE / "plugin.json").read_text())
         self.assertNotIn("private", manifest)
+        self.assertNotIn("private", manifest.get("character") or {})
 
 
 if __name__ == "__main__":

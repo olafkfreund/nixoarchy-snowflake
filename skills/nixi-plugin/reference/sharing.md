@@ -3,7 +3,7 @@
 ## 1. Local installation
 
 You can install a plugin either declaratively with Nix or as a mutable folder
-plugin (`docs/GUIDE.md:462–475`, `:504–507`):
+plugin (`docs/GUIDE.md:462–475`, `:507–510`):
 
 ### Declarative (Home Manager)
 
@@ -38,11 +38,13 @@ Every plugin starts off until you turn it on in Settings → **Plugins**:
 - **Nix plugins:** linked into the companion package at build time. Once you
   switch a Nix stage plugin on in Settings → **Plugins**, it counts as allowed
   without a separate consent card (`app/server.py:2730–2731`,
-  `docs/GUIDE.md:504–505`). When a rebuild changes its hash, Nixi keeps it on
-  and marks it `"Updated"` (`app/plugins.py:1012–1017`).
+  `docs/GUIDE.md:507–510`). If a previously recorded Nix stage hash changes
+  after a rebuild, Nixi keeps it on and marks it `"Updated"`
+  (`app/plugins.py:1012–1017`).
 - **Folder plugins:** turning on a folder stage plugin opens a consent card
-  showing its hash, command, `reads` feeds and network access
-  (`app/server.py:2737–2739`). Nixi hashes every file before each run; if any
+  showing its command, `reads` feeds and network access. On Allow, the card
+  sends its hash back for comparison (`app/server.py:2696–2698`, `:2732–2739`).
+  Nixi hashes every file before each run; if any
   file changes, the plugin is switched off immediately and shows
   `"Changed — check it again"` until you allow it again
   (`app/plugins.py:842–857`, `:994–1026`).
@@ -92,6 +94,9 @@ To publish a plugin so other Nixi users can install it:
    ```bash
    nix build --no-link
    ```
+
+   In a git repository, run `git add` on all plugin files first: Nix only sees
+   tracked files from a git source.
 
 4. **Tag the repository on GitHub** with the topic `nixi-plugin` so others can
    discover it.

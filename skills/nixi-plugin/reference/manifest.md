@@ -21,6 +21,11 @@ format marks (`app/plugins.py:94–100`).
 | `reactions` | no | List of `{"app": "<id>", "reaction": "<reaction>"}` or `{"host": "<host>", "reaction": "<reaction>"}` objects (`app/plugins.py:176–187`). |
 | `stage` | no | Object configuring a sandboxed stage program (`app/plugins.py:188–231`); see [stage.md](stage.md). |
 
+Quip lines are at most 120 characters, non-blank, and free of control characters
+and braces other than `{slot}` placeholders. Nixi drops invalid lines, keeps at
+most 200 valid lines per pack, and ignores unknown events (`app/server.py:2528–2539`,
+`:2773`).
+
 ## Props
 
 A `prop` draws one sanitised SVG on Nixi (`app/plugins.py:134–141`).
@@ -36,7 +41,7 @@ A `prop` draws one sanitised SVG on Nixi (`app/plugins.py:134–141`).
 ## Characters
 
 A `character` replaces the body art while keeping the face and eyes
-(`app/plugins.py:142–163`, `docs/GUIDE.md:484–495`). Every key in the table
+(`app/plugins.py:142–163`, `docs/GUIDE.md:485–496`). Every key in the table
 below is required except `private`. Each SVG file's `viewBox` is fitted to the
 body box; draw with `viewBox="-96 -120 192 220"` (the face sits near `0,0`).
 
@@ -79,6 +84,11 @@ Each entry in `notifications` has either `"app"` or `"host"` (never both) plus
 `"category"`. Each entry in `reactions` has either `"app"` or `"host"` (never
 both) plus `"reaction"` (`app/plugins.py:164–187`):
 
+Notification category rules apply only when Nixi's own classification leaves
+the notification as `other` (`app/server.py:3650–3652`). A reaction fires only
+for a matching notification, at most once every five minutes per plugin
+(`app/server.py:3727–3735`).
+
 - `"app"` must match `^[a-z0-9._-]+$`.
 - `"host"` must match `^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`.
 
@@ -95,7 +105,7 @@ both) plus `"reaction"` (`app/plugins.py:164–187`):
 | Reaction | What it does |
 | --- | --- |
 | `notice` | Triggers a notice reaction when a matching notification arrives |
-| `music` | Triggers a music reaction for a matching app or host |
+| `music` | Plays the music animation for a matching notification |
 
 ## SVG sanitiser rules (`sanitize_svg`)
 
@@ -106,7 +116,7 @@ Both `prop.file` and `character.back` / `character.front` are parsed by
   elements, nested at most 8 levels deep.
 - **Forbidden constructs:** `<!DOCTYPE`, `<!ENTITY`, `<?` processing
   instructions, XML namespaces other than `http://www.w3.org/2000/svg`, and any
-  non-whitespace element text or tail text.
+  non-whitespace element text or tail text. Whitespace-only text is allowed.
 - **Allowed elements and geometry attributes:**
   - `svg` (root only): `viewBox` (four numbers, width ≥ 1 and height ≥ 1;
     defaults to `0 0 100 100`)
@@ -127,7 +137,9 @@ Both `prop.file` and `character.back` / `character.front` are parsed by
   - `fill-opacity`, `stroke-opacity`, `opacity`: `0` to `1`
   - `fill-rule`: `nonzero` or `evenodd`
   - `transform`: `translate(x[, y])`, `scale(sx[, sy])`, `rotate(a[, cx, cy])`.
-    Every `scale()` factor must lie between `0.01` and `10`, and cumulative
-    scales along any ancestor chain must not multiply to more than `10`.
+    Every `scale()` factor must lie between `0.01` and `10`. For each element,
+    `_scale` takes its largest factor (at least `1`), then multiplies that
+    value down the ancestor chain; the product must not exceed `10`
+    (`app/plugins.py:483–492`, `:564–567`).
 - **Number range:** every numeric value anywhere in the SVG must lie within
   `±1000`.
