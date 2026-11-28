@@ -192,6 +192,59 @@ When a call comes in on your phone, a retro handset pops up beside him (or as a 
 1. Pair, trust and connect the phone with `bluetoothctl`: `bluetoothctl pair <addr>`, `bluetoothctl trust <addr>`, `bluetoothctl connect <addr>`.
 2. On the phone, open that computer's Bluetooth settings and turn **Phone calls** on and **Media audio** off.
 
+### Place calls
+
+With the phone linked to this computer over Bluetooth (the **Host** path above), he can start a call too.
+
+| say or type | |
+|---|---|
+| "call Anna" · "ring up Anna" · "dial +47 912 34 567" | finds the contact or the number on your phone |
+
+- When several people or numbers match, a card lets you pick one. Then a confirmation card always shows the name, the
+  label (mobile, work) and the number. Only your click on **Call** places it.
+- The handset shows **Calling…** with hang-up while it rings, then the usual controls and timer once answered. The
+  call's sound is on the computer, and he goes quiet and frees the mic until it ends.
+- Contact names and labels come from the phone, for incoming calls too. An unknown number shows as the number. For
+  names, turn on **Contact sharing** for this computer in the phone's Bluetooth settings.
+- Emergency and short numbers are not dialled from here: use your phone.
+- If it can't call, he says why: for example, the phone is not connected over Bluetooth, or a call is already on.
+
+### WhatsApp
+
+Nixi can read your WhatsApp chats, open one, answer it, and send files, as a linked device of your phone. It is off
+until you turn it on, and the agent never sees the messages.
+
+**Turn it on.**
+
+1. In nixi-nixarchy's Home Manager module, set `services.nixi.companion.whatsapp.enable = true;` and switch. This
+   installs the `nixi-whatsapp` bridge. Nixi starts and stops it; it does not run at login on its own.
+2. In Settings → **Phone**, switch on **WhatsApp** and click **Pair**. The switch shows only once step 1 is done.
+   WhatsApp does not need **Phone** on.
+3. On the phone, open WhatsApp → **Linked devices** → **Link a device**, and scan the QR code on Nixi's card. The code
+   refreshes on its own; the card closes after 3 minutes, on lock or on cancel.
+
+| say or type | |
+|---|---|
+| "read my whatsapp" · "check whatsapp" · "my whatsapp chats" | your chats, newest first, with unread counts |
+| "whatsapp Clara" · "open whatsapp with Clara" | that chat's latest messages |
+| "reply to Clara on whatsapp: on my way" | a draft of that reply for you to check and send |
+| "send a file to Clara on whatsapp" | a card to choose the file and add a caption |
+| "summarise my whatsapp with Clara" | opens the chat; your click on **Summarise** sends it |
+
+In an open direct chat the card has **Reply**, **Send a file**, **Summarise** and **Suggest a reply**. A new direct
+message raises a "New WhatsApp message: open?" card; a group message does so only when it mentions you.
+
+**Limits.**
+- Every send is your click on a draft or file card. The agent can't send, and nothing you say sends without that click.
+- You can send to direct chats only. Group chats are read and download only.
+- Voice notes show as "voice message". You can download them; he does not play them.
+- **Summarise** and **Suggest a reply** send at most the last 50 messages (8,000 characters) of the one open direct chat
+  to Claude, with no tools and no session, never saved to session history. They need the Claude CLI.
+- WhatsApp cards are hidden from the agent's screen captures, and WhatsApp text never reaches the agent.
+- The messages are stored only in the bridge's own store. **Unlink and forget** in Settings → **Phone** logs the
+  device out and deletes that store.
+- WhatsApp may limit or ban accounts that use unofficial linked devices. Use it knowing that.
+
 ## Agent alerts
 
 Coding agents in your terminal (Claude Code, Codex, agy) can tell the snowflake when they need you or when they are
@@ -568,6 +621,7 @@ trust level come from nixi's own config (`agent`, `model`, `reasoningEffort`). U
 | `presence` | `"orb"` | Window mode: `"orb"` (floating character) or `"bar"` (screen-edge notch) |
 | `bar_edge` | `"top"` | Screen edge for the notch (`"top"`, `"bottom"`, `"left"`, `"right"`) |
 | `hover` | `false` | Hover mode: become the mouse cursor until called |
+| `card_text` | `1.0` | Size of the text on his cards, from `0.6` to `2.0`. `nixi-companion text up\|down\|reset` changes it |
 | `click_through` | `false` | Let clicks on the transparent space around him pass through to the window behind |
 | `follow_focus` | `false` | Move to whichever monitor has the focused window |
 | `step_aside` | `true` | Slide out of the way while nixi's card is open |
