@@ -33,46 +33,75 @@ Decisions carried from the approved spec:
 ## Steps
 
 1. **Captures.** New `docs/media/capture.py` and `docs/media/capture.mjs`.
-   - `.py`: like `tests/test_character_fit.py` `setUpClass`/`_serve`:
-     `sys.path` gets `tests/`, start `start_browser(chromium, cdp, dir)`
-     and `app/server.py` with `nixi_env.server_env(env, home)` in a
-     `tempfile.mkdtemp` home holding only `{"port": N}`; read the token
-     from `runtime.json`; run `node capture.mjs <cdp> <url> <outdir>`;
-     terminate both and remove the home in `finally`.
+   - `.py`: one throwaway environment, built once and passed to **both**
+     children: a copy of `os.environ` without `WAYLAND_DISPLAY`,
+     `DISPLAY`, `DBUS_SESSION_BUS_ADDRESS` and
+     `HYPRLAND_INSTANCE_SIGNATURE`, with `HOME`, `XDG_CONFIG_HOME`,
+     `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME` in a
+     `tempfile.mkdtemp` home, through `nixi_env.server_env(env, home)`
+     (adds `XDG_RUNTIME_DIR`). `start_browser(chromium, cdp, dir, env=env)`
+     and `app/server.py` with that env. The config holds
+     `{"port": N, "update_check": false}`. Wait for both like
+     `tests/test_character_fit.py:_serve`, read the token from the
+     throwaway `data/nixi-companion/runtime.json`, run
+     `node capture.mjs <cdp> <url> <outdir>`, then terminate both and
+     remove the home in `finally`.
    - `.mjs`: open a tab at `url` with `/?native=1#`, wait 4.5 s, set
      `nextFidAt=1e15` and `idle_mode:'off'` like `tests/handset_fit.mjs:23`;
      then for each id in `snowflake terminal robot devil einstein skull`
-     `setCharacter(id)` at 340×460 and screenshot `char-<id>.png`; then
-     the `wa_thread` fixture from `tests/stages_fit.mjs:734` with
-     `onEvent`, viewport `340+stageWant[0]`, `nixiLayout(0,0)`, save
-     `whatsapp.png`; then `stageClose()` and the handset `base` event
-     from `tests/handset_fit.mjs:29` (who "Ada Lovelace"), viewport
-     `340+callWant[0]`, save `handset.png`.
+     `setCharacter(id)` at 340×460 and screenshot `char-<id>.png`.
+   - WhatsApp: a `wa_thread` fixture like `tests/stages_fit.mjs:734` with
+     made-up names, shown the way `stages_fit.mjs:55` `show` does
+     (`stageClose`, `onEvent`, resize to `340+stageWant[0]`, then
+     `nixiLayout(0,0)`, wait 700 ms); **assert** `stgState==='open'`, the
+     `#stg` box is inside the viewport and holds the fixture text, then
+     save `whatsapp.png`.
+   - Handset: the `base` "host ringing" event from
+     `tests/handset_fit.mjs:29` (who "Ada Lovelace", an incoming call),
+     shown like `handset_fit.mjs:44` `show` (`onEvent`, resize to
+     `340+callWant[0]`, `nixiLayout`, wait 500 ms); **assert** `#handset`
+     is visible, in the viewport and shows "Ada Lovelace", then save
+     `handset.png`. Any failed assert exits non-zero and saves nothing
+     for that card.
    → verify: `nix develop -c python3 docs/media/capture.py` writes 8 PNGs
    in `docs/media/`; view each.
-   Traps: never a GPU browser or the live desktop; never the real HOME or
-   `XDG_RUNTIME_DIR` (memories: no GPU Chrome, test servers use nixi_env).
+   Traps: never a GPU browser or the live desktop; never the real HOME,
+   runtime folder or `runtime.json` (memories: no GPU Chrome, test
+   servers use nixi_env); no network update request.
 
 2. **README** `README.md`: after **What it is** (line 17), a `## See him`
    section: an HTML row of the six `char-*.png` at width 120 with alt
    text, a caption line naming the characters and linking
    `docs/GUIDE.md#characters-and-their-voices`; then a row of
-   `docs/media/message.png`, `whatsapp.png`, `handset.png` with captions.
+   `docs/media/message.png`, `whatsapp.png`, `handset.png` with captions
+   (the handset caption says an incoming call).
    In **Next**, add WhatsApp and placing calls lines linking the new
    Guide anchors.
    → verify: the link check under Tests.
    Traps: README is the setup guide; the gallery stays short.
 
 3. **Guide** `docs/GUIDE.md`:
-   - after **Take calls on Nixi** (ends line 192), `### Place calls`;
+   - after **Take calls on Nixi** (ends line 192), `### Place calls`:
+     needs Phone on, the computer unlocked and the phone's Bluetooth
+     hands-free link (the Host path); "call Anna" / "dial <number>";
+     with several phones a "Which phone?" card; a name is looked up in
+     the phone's contacts (needs **Contact sharing** in the phone's
+     Bluetooth settings) and several matches give a "Which number?"
+     card; a number goes straight to the confirmation card; only the
+     click on **Call** dials; emergency and short numbers are refused;
+     the handset shows **Calling…** with hang-up, then the in-call
+     controls;
    - then `### WhatsApp`: option `services.nixi.companion.whatsapp.enable`
-     (nixi's Home Manager module), the **WhatsApp** switch on the Phone
-     tab, pairing by QR from "read my whatsapp" when unpaired, phrases
+     (nixi-nixarchy's Home Manager module), the **WhatsApp** switch,
+     **Pair** and **Unlink and forget** on the Phone tab (the switch shows
+     only once the option is on; WhatsApp does not need Phone on), pairing by QR from "read my whatsapp" when unpaired, phrases
      from `app/lang/en.json` `wa_read`/`wa_open`/`wa_summary`/`wa_file`/
      `wa_reply`, the card buttons, the limits (sending to direct chats
      only, groups read and download only, every send is a click, voice
-     notes not played, summaries use Claude on one open direct chat and
-     are never saved, cards hidden from agent captures), and **Unlink and
+     notes not played; "summarise my whatsapp with X" only opens the chat,
+     and the **Summarise** click sends at most 50 messages or 8,000
+     characters of that one open direct chat to Claude, never saved to
+     session history; cards hidden from agent captures), and **Unlink and
      forget**;
    - in the settings table, `card_text` `1.0`: card text scale, 0.6–2.0,
      also `nixi-companion text up|down|reset`.
@@ -87,22 +116,40 @@ Decisions carried from the approved spec:
    Traps: none.
 
 5. **Remove Void demos**: `git rm assets/demo/*.webp assets/void.png`.
-   → verify: `grep -rn 'assets/demo\|void.png'` outside `.git` and
-   `graphify-out` finds nothing.
+   → verify: `git ls-files assets/demo assets/void.png` is empty, and
+   `grep -n 'assets/demo\|void.png' README.md docs/*.md app nix bin` finds
+   nothing.
    Traps: keep the fork credit line in the README.
 
 ## Tests
 
-- Link check: every `src=`/`](...)` path in README and GUIDE exists:
-  `grep -oE '(src="|\]\()[^")#]+' README.md docs/GUIDE.md` then `test -f`.
+- Link check: each new image path in README exists (`test -f` on the
+  eight `docs/media/*.png`), and each new `GUIDE.md#anchor` the README
+  links matches a heading in `docs/GUIDE.md` (GitHub slug: lower case,
+  spaces to `-`, punctuation dropped).
 - `nix develop -c python3 -m unittest discover -s tests`: no failures that
   `main` does not also have. No code behaviour changes, so the plugin
   sandbox run is not required (README "Working on it").
 
 ## After merge
 
+The release is safe for existing installs (`app/server.py` `Updates`):
+bridged installs (the nixi setup) never check; Nix installs are
+"manual" and only get a banner linking the release page; git installs
+`git pull --ff-only` main. The release carries no package assets, so
+`.deb`/`.rpm`/Arch installs see the link only.
+
 `git tag v1.7.0 <merge commit> && git push origin v1.7.0`, then
 `gh release create v1.7.0` with a short feature list.
+
+## Review
+
+Codex (gpt-6.2-astra) plan review, 2026-11-28: findings 1 (env to both
+children), 2 (assert the cards rendered), 4 (call flow), 5 (summary and
+module wording), 6 (checks), 7 (`update_check: false`) confirmed and
+folded in. Finding 3 (release) checked against `Updates`: confirmed for
+package installs (banner link only), refuted as a breakage risk; noted
+under After merge.
 
 ## Rollback
 
