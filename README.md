@@ -18,6 +18,20 @@ Say “Hey Nixi” and the agent does the work, under nixi's rules.</p>
 Nixi is a small snowflake with a face that floats on your desktop. You talk or type, and he hands your words to the [nixi](https://github.com/olafkfreund/nixi-nixarchy) bridge, which runs the agent.
 Nixi's trust levels decide what the agent may do, not the companion. In **Guide** (the default) the agent explains and changes nothing. In **Mechanic** it may edit, and asks you first.
 
+## See him
+
+<p align="center"><img src="docs/media/char-snowflake.png" width="120" alt="Snowflake"> <img src="docs/media/char-terminal.png" width="120" alt="Terminal"> <img src="docs/media/char-robot.png" width="120" alt="Robot"> <img src="docs/media/char-devil.png" width="120" alt="Devil"> <img src="docs/media/char-einstein.png" width="120" alt="Einstein"> <img src="docs/media/char-skull.png" width="120" alt="Skull"></p>
+
+<p align="center"><sub>Six characters: Snowflake, Terminal, Robot, Devil, Einstein and Skull, each with its own voice. <a href="docs/GUIDE.md#characters-and-their-voices">Characters</a></sub></p>
+
+<p align="center"><img src="docs/media/whatsapp.png" width="560" alt="Nixi beside a WhatsApp chat card with Reply, Send a file, Summarise and Suggest a reply"></p>
+
+<p align="center"><sub>Your WhatsApp chats beside him. Every send is your click. <a href="docs/GUIDE.md#whatsapp">WhatsApp</a></sub></p>
+
+<p align="center"><img src="docs/media/handset.png" width="300" alt="Nixi beside a retro handset showing an incoming call from Ada Lovelace"> <img src="docs/media/message.png" width="260" alt="A message shown through him"></p>
+
+<p align="center"><sub>An incoming call on the retro handset, and a message through him. <a href="docs/GUIDE.md#take-calls-on-nixi">Calls</a></sub></p>
+
 ## Before you start
 
 Each line has a command that tells you if it is ready.
@@ -240,6 +254,8 @@ nixi-companion restart
 - [Guide](docs/GUIDE.md): every setting and command.
 - [Make and share a plugin](skills/nixi-plugin/SKILL.md): walkthrough, reference and starter template.
 - [Take calls on Nixi](docs/GUIDE.md#take-calls-on-nixi): answer or reject phone calls from a retro handset next to him, with call audio on the computer over Bluetooth or on the phone through Flux.
+- [Place calls](docs/GUIDE.md#place-calls): "call Anna" or a number, then click **Call** on the confirmation card.
+- [WhatsApp](docs/GUIDE.md#whatsapp): read, answer and send files on WhatsApp as a linked device, every send by your click.
 - Tips, and what is off in nixi mode: [Getting started](docs/GETTING-STARTED.md#handy-to-know).
 
 ## Working on it
