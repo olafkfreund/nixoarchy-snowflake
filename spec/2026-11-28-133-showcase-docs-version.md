@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 133
 intent: intent/2026-11-28-133-showcase-docs-version.md
 ---
