@@ -1,6 +1,6 @@
 """Make the README pictures (#133) in a throwaway home with a headless, GPU-off Chromium.
 
-    nix develop -c python3 docs/media/capture.py
+    nix develop .#ci -c python3 docs/media/capture.py
 
 Never the live desktop or the real config: the server gets its own HOME and runtime folder, like the tests."""
 import json
@@ -42,7 +42,7 @@ def wait(url, secs=30):
 def main():
     browser = shutil.which("chromium") or shutil.which("chromium-browser")
     if not browser or not shutil.which("node"):
-        sys.exit("needs chromium and node (run inside nix develop)")
+        sys.exit("needs chromium and node: nix develop .#ci -c python3 docs/media/capture.py")
     home = Path(tempfile.mkdtemp(prefix="nixi-capture-"))
     procs = []
     try:
@@ -52,7 +52,9 @@ def main():
                "XDG_DATA_HOME": str(home / "data"), "XDG_STATE_HOME": str(home / "state"), "XDG_CACHE_HOME": str(home / "cache")})
         for d in (".config/nixi-companion", "data", "state", "cache"):
             (home / d).mkdir(parents=True, exist_ok=True)
-        (home / ".config/nixi-companion/config.json").write_text(json.dumps({"port": port, "update_check": False}))
+        (home / ".config/nixi-companion/config.json").write_text(json.dumps({"port": port, "update_check": False,   # no network, no mic, no voice
+                       "wake_word": False, "listen_on_show": False, "barge_in": False, "follow_up": 0,
+                       "stt_prewarm": False, "tts": "off"}))
         env = nixi_env.server_env(env, home)                 # adds a throwaway XDG_RUNTIME_DIR
         procs.append(start_browser(browser, cdp, home / "chromium", env=env))
         procs.append(subprocess.Popen([sys.executable, str(REPO / "app/server.py")], env=env,

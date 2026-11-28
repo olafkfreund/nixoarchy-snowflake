@@ -200,8 +200,11 @@ With the phone linked to this computer over Bluetooth (the **Host** path above),
 |---|---|
 | "call Anna" · "ring up Anna" · "dial +47 912 34 567" | finds the contact or the number on your phone |
 
-- When several people or numbers match, a card lets you pick one. Then a confirmation card always shows the name, the
-  label (mobile, work) and the number. Only your click on **Call** places it.
+- With more than one phone linked over Bluetooth, a **Which phone?** card comes first, for a number too.
+- A name is looked up in the phone's contacts. When several people or numbers match, a **Which number?** card lets you
+  pick one. A number you say goes straight to the confirmation card.
+- The confirmation card shows the number, and for a contact the name and label (mobile, work). Every path ends there:
+  only your click on **Call** places the call.
 - The handset shows **Calling…** with hang-up while it rings, then the usual controls and timer once answered. The
   call's sound is on the computer, and he goes quiet and frees the mic until it ends.
 - Contact names and labels come from the phone, for incoming calls too. An unknown number shows as the number. For
@@ -241,8 +244,9 @@ message raises a "New WhatsApp message: open?" card; a group message does so onl
 - **Summarise** and **Suggest a reply** send at most the last 50 messages (8,000 characters) of the one open direct chat
   to Claude, with no tools and no session, never saved to session history. They need the Claude CLI.
 - WhatsApp cards are hidden from the agent's screen captures, and WhatsApp text never reaches the agent.
-- The messages are stored only in the bridge's own store. **Unlink and forget** in Settings → **Phone** logs the
-  device out and deletes that store.
+- The messages are stored only in the bridge's own store. **Unlink and forget** in Settings → **Phone** deletes that
+  store, and tries to log the device out. If the bridge is offline the logout can fail: check **Linked devices** in
+  WhatsApp on the phone, and remove it there if it is still listed.
 - WhatsApp may limit or ban accounts that use unofficial linked devices. Use it knowing that.
 
 ## Agent alerts

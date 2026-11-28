@@ -41,7 +41,8 @@ Decisions carried from the approved spec:
      `tempfile.mkdtemp` home, through `nixi_env.server_env(env, home)`
      (adds `XDG_RUNTIME_DIR`). `start_browser(chromium, cdp, dir, env=env)`
      and `app/server.py` with that env. The config holds
-     `{"port": N, "update_check": false}`. Wait for both like
+     `{"port": N, "update_check": false}` plus `wake_word`, `listen_on_show`,
+     `barge_in`, `stt_prewarm` false, `follow_up` 0 and `tts` "off" (no mic, no voice). Wait for both like
      `tests/test_character_fit.py:_serve`, read the token from the
      throwaway `data/nixi-companion/runtime.json`, run
      `node capture.mjs <cdp> <url> <outdir>`, then terminate both and
@@ -54,16 +55,16 @@ Decisions carried from the approved spec:
      made-up names, shown the way `stages_fit.mjs:55` `show` does
      (`stageClose`, `onEvent`, resize to `340+stageWant[0]`, then
      `nixiLayout(0,0)`, wait 700 ms); **assert** `stgState==='open'`, the
-     `#stg` box is inside the viewport and holds the fixture text, then
+     `#stg` box is inside the 400 px crop and holds the fixture text, then
      save `whatsapp.png`.
    - Handset: the `base` "host ringing" event from
      `tests/handset_fit.mjs:29` (who "Ada Lovelace", an incoming call),
      shown like `handset_fit.mjs:44` `show` (`onEvent`, resize to
      `340+callWant[0]`, `nixiLayout`, wait 500 ms); **assert** `#handset`
-     is visible, in the viewport and shows "Ada Lovelace", then save
+     is visible, inside the 320 px crop and shows "Ada Lovelace", then save
      `handset.png`. Any failed assert exits non-zero and saves nothing
      for that card.
-   → verify: `nix develop -c python3 docs/media/capture.py` writes 8 PNGs
+   → verify: `nix develop .#ci -c python3 docs/media/capture.py` writes 8 PNGs
    in `docs/media/`; view each.
    Traps: never a GPU browser or the live desktop; never the real HOME,
    runtime folder or `runtime.json` (memories: no GPU Chrome, test
@@ -150,6 +151,14 @@ module wording), 6 (checks), 7 (`update_check: false`) confirmed and
 folded in. Finding 3 (release) checked against `Updates`: confirmed for
 package installs (banner link only), refuted as a breakage risk; noted
 under After merge.
+
+Codex (gpt-6.2-astra) diff review, 2026-11-28: all five findings
+confirmed and fixed in the same commit as this note: the capture server
+had the mic and Whisper prewarm on (ALSA is not isolated by the runtime
+folder); the default dev shell has no Chromium or Node (`.#ci` has);
+the card checks now match the crops; Place calls separates phone choice,
+contact lookup and a bare number; Unlink and forget's logout is
+best-effort.
 
 ## Rollback
 

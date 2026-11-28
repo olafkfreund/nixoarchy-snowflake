@@ -42,7 +42,7 @@ await ev(`stageClose(); await new Promise(r=>setTimeout(r,320)); onEvent(${JSON.
 let want = await ev("return stageWant[0]");
 await view(340 + want); await ev("window.nixiLayout(0,0); return 1"); await sleep(700);
 need(await ev(`const r=document.getElementById('stg').getBoundingClientRect();
-  return stgState==='open' && r.left>=0 && r.top>=0 && r.right<=innerWidth && r.bottom<=innerHeight && document.getElementById('stg').textContent.includes('usual place')`), "whatsapp card");
+  return stgState==='open' && r.left>=0 && r.top>=0 && r.right<=innerWidth && r.bottom<=400 && document.getElementById('stg').textContent.includes('usual place')`), "whatsapp card");
 await shot("whatsapp", 400);
 
 await ev("stageClose(); await new Promise(r=>setTimeout(r,400)); return 1"); await view(340); await sleep(300);
@@ -52,6 +52,6 @@ await ev(`onEvent(${JSON.stringify(call)}); return 1`); await sleep(80);
 want = await ev("return callWant[0]");
 await view(340 + want); await ev("window.nixiLayout(0,0); return 1"); await sleep(500);
 need(await ev(`const h=document.getElementById('handset'), r=h.getBoundingClientRect();
-  return getComputedStyle(h).display!=='none' && r.width>0 && r.left>=0 && r.right<=innerWidth && r.bottom<=innerHeight && h.textContent.includes('Ada Lovelace')`), "handset");
+  return getComputedStyle(h).display!=='none' && r.width>0 && r.left>=0 && r.top>=0 && r.right<=innerWidth && r.bottom<=320 && h.textContent.includes('Ada Lovelace')`), "handset");
 await shot("handset", 320);
 process.exit(0);
