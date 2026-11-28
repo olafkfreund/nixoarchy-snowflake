@@ -51,7 +51,7 @@ let
 in
 stdenvNoCC.mkDerivation {
   pname = "nixi-companion";
-  version = "0.1.0";
+  version = lib.fileContents ../app/VERSION;
   src = ../.;
 
   # the module builds a plugin folder through this, so a raw path is checked before it is linked in
